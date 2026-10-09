@@ -7,7 +7,6 @@ import (
 
 	"server/app/trade/internal/biz"
 	"server/conf"
-	"server/ent"
 	"server/pkg/events"
 	"server/pkg/market"
 	"server/pkg/outbox"
@@ -23,19 +22,19 @@ var ProviderSet = wire.NewSet(NewRunner)
 type Runner struct {
 	e        *biz.Engine
 	bus      *events.Bus
-	client   *ent.Client
+	box      *outbox.Dispatcher
 	interval time.Duration
 	log      *log.Helper
 	sub      *nats.Subscription
 	cancel   context.CancelFunc
 }
 
-func NewRunner(c *conf.Trade, e *biz.Engine, bus *events.Bus, client *ent.Client, logger log.Logger) *Runner {
+func NewRunner(c *conf.Trade, e *biz.Engine, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
 	every := 10 * time.Second
 	if c != nil && c.GetSnapshotInterval() != nil && c.GetSnapshotInterval().AsDuration() > 0 {
 		every = c.GetSnapshotInterval().AsDuration()
 	}
-	return &Runner{e: e, bus: bus, client: client, interval: every, log: log.NewHelper(logger)}
+	return &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger)}
 }
 
 func (r *Runner) Start(ctx context.Context) error {
@@ -139,7 +138,7 @@ func (r *Runner) loop(ctx context.Context) {
 			if err := r.e.SweepWorking(context.Background()); err != nil {
 				r.log.Warnf("chase: %v", err)
 			}
-			if _, err := outbox.Dispatch(context.Background(), r.client, r.bus, 100); err != nil {
+			if _, err := r.box.Dispatch(context.Background(), 100); err != nil {
 				r.log.Warnf("outbox: %v", err)
 			}
 		}

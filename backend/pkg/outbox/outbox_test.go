@@ -18,6 +18,17 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+func TestDispatcherNilBus(t *testing.T) {
+	n, err := (&Dispatcher{}).Dispatch(context.Background(), 10)
+	if err != nil || n != 0 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	n, err = (*Dispatcher)(nil).Dispatch(context.Background(), 10)
+	if err != nil || n != 0 {
+		t.Fatalf("nil n=%d err=%v", n, err)
+	}
+}
+
 func testClient(t *testing.T) *ent.Client {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)

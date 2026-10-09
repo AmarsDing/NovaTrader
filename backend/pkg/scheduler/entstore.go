@@ -14,6 +14,11 @@ type EntStore struct {
 	Client *ent.Client
 }
 
+// NewEntStore 供 Wire 注入。core 依赖 Store，不直接拿 *ent.Client。
+func NewEntStore(client *ent.Client) Store {
+	return EntStore{Client: client}
+}
+
 func (s EntStore) SucceededOn(ctx context.Context, name string, day time.Time) (bool, error) {
 	d := day.In(tradecal.Shanghai())
 	start := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, tradecal.Shanghai())

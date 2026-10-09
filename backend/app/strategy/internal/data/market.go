@@ -59,7 +59,7 @@ func listed(asOf time.Time) func(*sql.Selector) {
 }
 
 func (m *marketSource) Universe(ctx context.Context, asOf time.Time) ([]rules.Snapshot, error) {
-	basics, err := m.d.Client.StockBasic.Query().Where(listed(asOf)).All(ctx)
+	basics, err := m.d.client.StockBasic.Query().Where(listed(asOf)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (m *marketSource) Snapshots(ctx context.Context, symbols []string, asOf tim
 	if len(symbols) == 0 {
 		return nil, nil
 	}
-	basics, err := m.d.Client.StockBasic.Query().Where(stockbasic.StockCodeIn(symbols...), listed(asOf)).All(ctx)
+	basics, err := m.d.client.StockBasic.Query().Where(stockbasic.StockCodeIn(symbols...), listed(asOf)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (m *marketSource) build(ctx context.Context, basics []*ent.StockBasic, asOf
 // dailyBars 取 asOf 当天之前的日线，按复权因子换成以最后一根为基准的前复权价。
 func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.Time) (map[string][]rules.Bar, error) {
 	day := dayStart(asOf)
-	q := m.d.Client.MarketData.Query().Where(
+	q := m.d.client.MarketData.Query().Where(
 		marketdata.Freq("1d"),
 		marketdata.BarTimeGTE(day.AddDate(0, 0, -historyDays)),
 		marketdata.BarTimeLT(day),
@@ -196,7 +196,7 @@ func (m *marketSource) todayBars(ctx context.Context, codes []string, asOf time.
 
 // stage 取 asOf 之前最近一次未过期的情绪截面。没有时按 WARM。
 func (m *marketSource) stage(ctx context.Context, asOf time.Time) rules.Stage {
-	row, err := m.d.Client.MarketSentiment.Query().
+	row, err := m.d.client.MarketSentiment.Query().
 		Where(marketsentiment.AsOfLTE(asOf), marketsentiment.AsOfGT(asOf.Add(-stageMaxAge)), marketsentiment.Stale(false)).
 		Order(marketsentiment.ByAsOf(sql.OrderDesc())).
 		First(ctx)
@@ -210,7 +210,7 @@ func (m *marketSource) stage(ctx context.Context, asOf time.Time) rules.Stage {
 }
 
 func (m *marketSource) badNews(ctx context.Context, codes []string, asOf time.Time) (map[string]bool, error) {
-	q := m.d.Client.NewsSentiment.Query().Where(
+	q := m.d.client.NewsSentiment.Query().Where(
 		newssentiment.PublishTimeGTE(asOf.Add(-badNewsHours*time.Hour)),
 		newssentiment.PublishTimeLTE(asOf),
 		newssentiment.ImportanceGTE(badNewsLevel),
@@ -233,7 +233,7 @@ func (m *marketSource) badNews(ctx context.Context, codes []string, asOf time.Ti
 
 // DailyCloses 按 from 前最后一根日线的复权因子折算，除权日落在区间内也不会算出假涨跌。
 func (m *marketSource) DailyCloses(ctx context.Context, symbol string, from, to time.Time) (map[string]float64, error) {
-	rows, err := m.d.Client.MarketData.Query().
+	rows, err := m.d.client.MarketData.Query().
 		Where(marketdata.Symbol(symbol), marketdata.Freq("1d"),
 			marketdata.BarTimeGTE(dayStart(from)), marketdata.BarTimeLT(dayStart(to).AddDate(0, 0, 1))).
 		All(ctx)
@@ -241,7 +241,7 @@ func (m *marketSource) DailyCloses(ctx context.Context, symbol string, from, to 
 		return nil, err
 	}
 	base := 0.0
-	prev, err := m.d.Client.MarketData.Query().
+	prev, err := m.d.client.MarketData.Query().
 		Where(marketdata.Symbol(symbol), marketdata.Freq("1d"), marketdata.BarTimeLT(dayStart(from))).
 		Order(marketdata.ByBarTime(sql.OrderDesc())).
 		First(ctx)

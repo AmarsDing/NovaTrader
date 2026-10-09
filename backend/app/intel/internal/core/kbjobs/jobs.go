@@ -11,7 +11,6 @@ import (
 	"server/app/intel/internal/biz/kb"
 	"server/app/intel/internal/service/kbsvc"
 	"server/conf"
-	"server/ent"
 	"server/pkg/errcode"
 	"server/pkg/events"
 	"server/pkg/scheduler"
@@ -24,10 +23,10 @@ import (
 
 const (
 	consumerName = "intel-kb-case"
-	embedEvery           = 5 * time.Minute
-	tickEvery            = time.Minute
-	purgeJob             = "kb.purge"
-	purgeSpec            = "30 3 1 * *"
+	embedEvery   = 5 * time.Minute
+	tickEvery    = time.Minute
+	purgeJob     = "kb.purge"
+	purgeSpec    = "30 3 1 * *"
 	// purgeWindow 比调度器的 48 小时回看略短，窗口外不调用 Tick。
 	purgeWindow = 47 * time.Hour
 )
@@ -45,14 +44,14 @@ type Runner struct {
 	sub    *nats.Subscription
 }
 
-func New(uc *kb.KnowledgeUsecase, client *ent.Client, bus *events.Bus, c *conf.Kb, logger log.Logger) *Runner {
+func New(uc *kb.KnowledgeUsecase, store scheduler.Store, bus *events.Bus, c *conf.Kb, logger log.Logger) *Runner {
 	r := &Runner{
 		uc:      uc,
 		bus:     bus,
 		consume: c.GetConsumeSignals(),
 		log:     log.NewHelper(log.With(logger, "module", "kb.jobs")),
 	}
-	r.sched = scheduler.New(tradecal.Default, scheduler.EntStore{Client: client}, scheduler.Job{
+	r.sched = scheduler.New(tradecal.Default, store, scheduler.Job{
 		Name:     purgeJob,
 		Spec:     purgeSpec,
 		Timeout:  10 * time.Minute,

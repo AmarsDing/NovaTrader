@@ -31,7 +31,7 @@ func newTestData(t *testing.T) *Data {
 		t.Skip(err)
 	}
 	t.Cleanup(cleanup)
-	c := d.Client
+	c := d.client
 	for _, del := range []func() error{
 		func() error { _, err := c.SignalEvent.Delete().Exec(ctx); return err },
 		func() error { _, err := c.TradeSignal.Delete().Exec(ctx); return err },
@@ -98,14 +98,14 @@ func TestSignalRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	evs, err := d.Client.SignalEvent.Query().Where(signalevent.SignalID(id)).Order(signalevent.ByID()).All(ctx)
+	evs, err := d.client.SignalEvent.Query().Where(signalevent.SignalID(id)).Order(signalevent.ByID()).All(ctx)
 	if err != nil || len(evs) != 5 || evs[0].FromStatus != "" || evs[4].ToStatus != "done" {
 		t.Fatalf("signal events %v err=%v", evs, err)
 	}
-	if n, _ := d.Client.Outbox.Query().Where(outbox.Subject(events.SubjectSignal)).Count(ctx); n != 5 {
+	if n, _ := d.client.Outbox.Query().Where(outbox.Subject(events.SubjectSignal)).Count(ctx); n != 5 {
 		t.Fatalf("outbox %d", n)
 	}
-	last, _ := d.Client.Outbox.Query().Order(outbox.ByID()).All(ctx)
+	last, _ := d.client.Outbox.Query().Order(outbox.ByID()).All(ctx)
 	var p map[string]any
 	_ = json.Unmarshal(last[4].Payload, &p)
 	if p["status"] != "done" || p["from"] != "executing" {
@@ -218,9 +218,9 @@ func TestBlacklistAndPositions(t *testing.T) {
 	}
 
 	cost := 12.0
-	d.Client.Position.Create().SetBook("paper").SetSymbol("600000.SH").SetQuantity(1000).SetAvailable(500).SetAvgCost(cost).ExecX(ctx)
-	d.Client.Position.Create().SetBook("paper").SetSymbol("000001.SZ").SetQuantity(0).ExecX(ctx)
-	d.Client.Position.Create().SetBook("live").SetSymbol("600519.SH").SetQuantity(100).ExecX(ctx)
+	d.client.Position.Create().SetBook("paper").SetSymbol("600000.SH").SetQuantity(1000).SetAvailable(500).SetAvgCost(cost).ExecX(ctx)
+	d.client.Position.Create().SetBook("paper").SetSymbol("000001.SZ").SetQuantity(0).ExecX(ctx)
+	d.client.Position.Create().SetBook("live").SetSymbol("600519.SH").SetQuantity(100).ExecX(ctx)
 	hs, err := NewPositionRepo(d).Holdings(ctx, "paper")
 	if err != nil || len(hs) != 1 || hs[0].Available != 500 || hs[0].AvgCost != 12 {
 		t.Fatalf("holdings %v err=%v", hs, err)
@@ -232,8 +232,8 @@ func TestMarketSource(t *testing.T) {
 	sh := tradecal.Shanghai()
 	asOf := time.Date(2026, 10, 9, 10, 0, 0, 0, sh)
 	list := time.Date(2024, 10, 9, 0, 0, 0, 0, sh)
-	d.Client.StockBasic.Create().SetStockCode("600000.SH").SetStockName("浦发银行").SetMarket("SH").SetListDate(list).ExecX(ctx)
-	d.Client.StockBasic.Create().SetStockCode("600001.SH").SetStockName("已退市").SetMarket("SH").
+	d.client.StockBasic.Create().SetStockCode("600000.SH").SetStockName("浦发银行").SetMarket("SH").SetListDate(list).ExecX(ctx)
+	d.client.StockBasic.Create().SetStockCode("600001.SH").SetStockName("已退市").SetMarket("SH").
 		SetListDate(list).SetDelistDate(asOf.AddDate(0, -1, 0)).ExecX(ctx)
 
 	// 三根日线，第三根除权：不复权价腰斩，后复权因子翻倍。
@@ -247,7 +247,7 @@ func TestMarketSource(t *testing.T) {
 		{time.Date(2026, 10, 9, 0, 0, 0, 0, sh), 11.5, 2}, // asOf 当天，不能进 Bars
 	}
 	for _, b := range bars {
-		d.Client.MarketData.Create().SetSymbol("600000.SH").SetFreq("1d").SetBarTime(b.day).
+		d.client.MarketData.Create().SetSymbol("600000.SH").SetFreq("1d").SetBarTime(b.day).
 			SetOpen(b.close).SetHigh(b.close).SetLow(b.close).SetClose(b.close).SetVolume(1000).SetAmount(1e8).
 			SetAdjFactor(b.adj).ExecX(ctx)
 	}

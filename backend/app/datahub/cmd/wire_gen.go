@@ -14,37 +14,43 @@ import (
 	"server/app/datahub/internal/server"
 	"server/app/datahub/internal/service"
 	"server/conf"
+	"server/pkg/registry"
+	"server/pkg/scheduler"
 )
+
+// Injectors from wire.go:
 
 func wireApp(datahub *conf.Datahub, postgres *conf.Postgres, redis *conf.Redis, nats *conf.Nats, logger log.Logger) (*kratos.App, func(), error) {
 	client, cleanup, err := data.NewEntClient(postgres, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	rdb, cleanup2, err := data.NewRedis(redis)
+	repo := data.NewRepo(client)
+	redisClient, cleanup2, err := data.NewRedis(redis)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
+	snapshotStore := data.NewSnapshotStore(redisClient)
 	bus, cleanup3, err := data.NewBus(nats)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	repo := data.NewRepo(client)
-	snap := data.NewSnapshotStore(rdb)
-	collector, err := data.NewCollector(datahub, repo, snap, bus, logger)
+	collector, err := data.NewCollector(datahub, repo, snapshotStore, bus, logger)
 	if err != nil {
 		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	svc := service.NewDatahubService(collector)
-	httpServer := server.NewHTTPServer(datahub, svc, logger)
-	grpcServer := server.NewGRPCServer(datahub, svc, logger)
-	worker, err := core.NewWorker(collector, client, bus, datahub, logger)
+	datahubService := service.NewDatahubService(collector)
+	httpServer := server.NewHTTPServer(datahub, datahubService, logger)
+	grpcServer := server.NewGRPCServer(datahub, datahubService, logger)
+	store := scheduler.NewEntStore(client)
+	beater := registry.NewBeater(client)
+	worker, err := core.NewWorker(collector, store, beater, bus, datahub, logger)
 	if err != nil {
 		cleanup3()
 		cleanup2()

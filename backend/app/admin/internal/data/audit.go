@@ -11,12 +11,9 @@ import (
 	"server/conf"
 	"server/ent"
 	"server/pkg/dbinit"
-	"server/pkg/migrate"
+	"server/pkg/entclient"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-kratos/kratos/v2/log"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // AuditStore 把网关审计写进 audit_log。库连不上时 Enabled 为 false，admin 仍可启动。
@@ -50,33 +47,16 @@ func connectAudit(ctx context.Context, pg *conf.Postgres) (*AuditStore, func(), 
 	if cfg.Database == "" && cfg.DSN == "" {
 		cfg.Database = "novatrader"
 	}
-	if err := dbinit.EnsureDatabase(ctx, cfg); err != nil {
-		return nil, nil, err
-	}
-	if err := dbinit.EnsureExtension(ctx, cfg, "vector"); err != nil {
-		return nil, nil, err
-	}
-	if err := migrate.Schema(ctx, cfg); err != nil {
-		return nil, nil, err
-	}
-	dsn, err := dbinit.BusinessDSN(cfg)
+	conn, err := entclient.Open(ctx, entclient.Config{
+		DB:           cfg,
+		MaxOpenConns: int(pg.GetMaxOpenConns()),
+		MaxIdleConns: int(pg.GetMaxIdleConns()),
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, nil, fmt.Errorf("admin: open postgres: %w", err)
-	}
-	if n := pg.GetMaxOpenConns(); n > 0 {
-		db.SetMaxOpenConns(int(n))
-	}
-	if n := pg.GetMaxIdleConns(); n > 0 {
-		db.SetMaxIdleConns(int(n))
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	store := &AuditStore{client: client, db: db}
-	cleanup := func() { _ = client.Close() }
-	return store, cleanup, nil
+	store := &AuditStore{client: conn.Client, db: conn.DB}
+	return store, func() { _ = conn.Close() }, nil
 }
 
 func (s *AuditStore) Enabled() bool {

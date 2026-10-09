@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"server/app/brain/internal/biz"
-	"server/ent"
-	"server/pkg/events"
 	"server/pkg/outbox"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
@@ -28,8 +26,7 @@ const (
 // Runner 实现 kratos transport.Server，随服务启停。
 type Runner struct {
 	uc    *biz.Usecase
-	db    *ent.Client
-	bus   *events.Bus
+	box   *outbox.Dispatcher
 	sched *scheduler.Scheduler
 	log   *log.Helper
 
@@ -37,9 +34,9 @@ type Runner struct {
 	wg     sync.WaitGroup
 }
 
-func NewRunner(uc *biz.Usecase, db *ent.Client, bus *events.Bus, logger log.Logger) *Runner {
-	r := &Runner{uc: uc, db: db, bus: bus, log: log.NewHelper(log.With(logger, "module", "brain/core"))}
-	r.sched = scheduler.New(tradecal.Default, scheduler.EntStore{Client: db}, scheduler.Job{
+func NewRunner(uc *biz.Usecase, store scheduler.Store, box *outbox.Dispatcher, logger log.Logger) *Runner {
+	r := &Runner{uc: uc, box: box, log: log.NewHelper(log.With(logger, "module", "brain/core"))}
+	r.sched = scheduler.New(tradecal.Default, store, scheduler.Job{
 		Name:           jobBriefing,
 		Spec:           uc.Settings().BriefingCron,
 		TradingDayOnly: true,
@@ -63,7 +60,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 	})
 	go r.loop(ctx, dispatchInterval, func(ctx context.Context) {
-		if _, err := outbox.Dispatch(ctx, r.db, r.bus, 100); err != nil {
+		if _, err := r.box.Dispatch(ctx, 100); err != nil {
 			r.log.Warnf("outbox dispatch: %v", err)
 		}
 	})

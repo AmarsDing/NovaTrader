@@ -19,6 +19,8 @@ import (
 	"server/app/intel/internal/service"
 	"server/app/intel/internal/service/kbsvc"
 	"server/conf"
+	"server/pkg/outbox"
+	"server/pkg/scheduler"
 )
 
 // Injectors from wire.go:
@@ -47,8 +49,10 @@ func wireApp(intel *conf.Intel, confKb *conf.Kb, postgres *conf.Postgres, nats *
 		cleanup()
 		return nil, nil, err
 	}
-	worker := core.NewWorker(usecase, client, bus, logger)
-	runner := kbjobs.New(knowledgeUsecase, client, bus, confKb, logger)
+	dispatcher := outbox.NewDispatcher(client, bus)
+	worker := core.NewWorker(usecase, dispatcher, bus, logger)
+	store := scheduler.NewEntStore(client)
+	runner := kbjobs.New(knowledgeUsecase, store, bus, confKb, logger)
 	app := newApp(logger, httpServer, grpcServer, worker, runner)
 	return app, func() {
 		cleanup2()
