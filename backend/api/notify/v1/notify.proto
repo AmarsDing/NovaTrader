@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package api.notify.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/notify/v1;v1";
+
+// Notify 是 M10 通知记录查询。发送由事件驱动，不在这里触发。
+// 客户端不直连本服务，以后经 admin 转发。
+service Notify {
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesReply) {
+    option (google.api.http) = {
+      get: "/notify/v1/messages"
+    };
+  }
+  rpc GetMessage(GetMessageRequest) returns (MessageReply) {
+    option (google.api.http) = {
+      get: "/notify/v1/messages/{id}"
+    };
+  }
+}
+
+message ListMessagesRequest {
+  int32 limit = 1;
+}
+
+message ListMessagesReply {
+  repeated MessageReply messages = 1;
+}
+
+message GetMessageRequest {
+  int64 id = 1;
+}
+
+message MessageReply {
+  int64 id = 1;
+  string event_id = 2;
+  string trace_id = 3;
+  string source = 4;
+  string subject = 5;
+  string category = 6;
+  string priority = 7;
+  string title = 8;
+  string body = 9;
+  string dedup_key = 10;
+  int32 merge_count = 11;
+  string status = 12;
+  string rendered = 13;
+  string desktop_status = 14;
+  int32 desktop_attempts = 15;
+  string desktop_error = 16;
+  string feishu_status = 17;
+  int32 feishu_attempts = 18;
+  string feishu_error = 19;
+  string created_at = 20;
+  string sent_at = 21;
+}

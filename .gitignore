@@ -1,0 +1,34 @@
+﻿# Go
+backend/bin/
+backend/dist/
+backend/build/
+backend/runtime/*.log
+*.exe
+*.test
+*.out
+
+# Python
+pyworker/.venv/
+pyworker/**/__pycache__/
+*.pyc
+.Python
+
+# Node / frontend
+web/node_modules/
+web/dist/
+web/src-tauri/target/
+web/.vite/
+
+# IDE / local
+.trae/
+.idea/
+.vscode/
+*.log
+.env
+.env.*
+!.env.example
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

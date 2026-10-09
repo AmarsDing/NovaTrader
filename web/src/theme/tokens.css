@@ -1,0 +1,94 @@
+/* 视觉令牌唯一来源（doc/开发文档/1.视觉需求.md 第五节）。
+   所有颜色/间距/字号只能从这里取；亮暗主题与密度通过 <html data-theme|data-density> 切换。 */
+
+:root {
+  color-scheme: dark;
+
+  --nt-bg-0: #0a0e17;
+  --nt-bg-1: #0e1220;
+  --nt-bg-2: #131828;
+  --nt-bg-3: #1a2136;
+  --nt-bg-glass: rgba(14, 18, 32, 0.72);
+
+  --nt-border-1: rgba(255, 255, 255, 0.07);
+  --nt-border-2: rgba(255, 255, 255, 0.14);
+
+  --nt-text-1: rgba(255, 255, 255, 0.92);
+  --nt-text-2: rgba(255, 255, 255, 0.58);
+  --nt-text-3: rgba(255, 255, 255, 0.38);
+
+  --nt-accent: #00e5ff;
+  --nt-accent-2: #7b61ff;
+  --nt-warn: #ff6b00;
+  --nt-danger: #ff3a3a;
+  --nt-success: #00d084;
+  --nt-info: #4c9aff;
+
+  /* 红涨绿跌（A 股约定） */
+  --nt-up: #ff4d4d;
+  --nt-down: #00d084;
+
+  /* 发光预算：只给 AI 高分信号 / 预警 / Kill Switch */
+  --nt-glow-accent: 0 0 12px rgba(0, 229, 255, 0.35);
+  --nt-glow-danger: 0 0 12px rgba(255, 58, 58, 0.45);
+  --nt-glow-warn: 0 0 12px rgba(255, 107, 0, 0.4);
+
+  --nt-radius-s: 6px;
+  --nt-radius-m: 8px;
+  --nt-radius-l: 12px;
+
+  --nt-row-h: 26px;
+  --nt-cell-pad: 4px 8px;
+  --nt-pad-panel: 12px 14px;
+
+  --nt-font-sans: 'Segoe UI', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --nt-font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'Cascadia Code', Consolas, monospace;
+
+  --nt-transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 滚动条（中性色，hover 才显青） */
+  --nt-scroll: rgba(255, 255, 255, 0.14);
+  --nt-scroll-hover: rgba(0, 229, 255, 0.5);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --nt-bg-0: #f4f6fa;
+  --nt-bg-1: #ffffff;
+  --nt-bg-2: #eef1f7;
+  --nt-bg-3: #e3e9f2;
+  --nt-bg-glass: rgba(255, 255, 255, 0.82);
+
+  --nt-border-1: rgba(13, 27, 62, 0.09);
+  --nt-border-2: rgba(13, 27, 62, 0.17);
+
+  --nt-text-1: rgba(13, 27, 62, 0.92);
+  --nt-text-2: rgba(13, 27, 62, 0.6);
+  --nt-text-3: rgba(13, 27, 62, 0.42);
+
+  --nt-accent: #0891b2;
+  --nt-accent-2: #6d5bd0;
+  --nt-warn: #d97706;
+  --nt-danger: #dc2626;
+  --nt-success: #059669;
+  --nt-info: #2563eb;
+
+  /* 亮模式明度 -10% */
+  --nt-up: #dc2626;
+  --nt-down: #059669;
+
+  --nt-glow-accent: 0 0 10px rgba(8, 145, 178, 0.28);
+  --nt-glow-danger: 0 0 10px rgba(220, 38, 38, 0.3);
+  --nt-glow-warn: 0 0 10px rgba(217, 119, 6, 0.3);
+
+  --nt-scroll: rgba(13, 27, 62, 0.16);
+  --nt-scroll-hover: rgba(8, 145, 178, 0.5);
+}
+
+:root[data-density='compact'] {
+  --nt-row-h: 22px;
+  --nt-cell-pad: 2px 6px;
+  --nt-pad-panel: 8px 10px;
+  font-size: 12px;
+}

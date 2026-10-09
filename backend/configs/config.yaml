@@ -1,0 +1,442 @@
+# 服务
+admin:
+  http:
+    addr: 0.0.0.0:2001
+    timeout: 1s
+  grpc:
+    addr: 0.0.0.0:2002
+    timeout: 1s
+  websocket:
+    addr: 0.0.0.0:2003
+    timeout: 1s
+  timeOut: 600 #超时时间，单位秒
+  # /api/* 需要登录。回测转发到 M07。
+  backtest_upstream: http://127.0.0.1:2071
+  # 本地账号。password_hash 是 bcrypt。默认口令见开发进度，上线前必须换掉。
+  users:
+    - name: owner
+      display_name: 主人
+      role: owner
+      password_hash: "$2a$10$2oXApevKwzfBZsenpO25suwkfUwlsCUH.XCZnfIeinhogKCOfvPnS"
+    - name: viewer
+      display_name: 观察
+      role: viewer
+      password_hash: "$2a$10$cMEZz5.sLqpSDeLLRalDwen68h28syHR3rWGG0bt.TPZGgoMswBQO"
+demo:
+  http:
+    addr: 0.0.0.0:2004
+    timeout: 1s
+  grpc:
+    addr: 0.0.0.0:2005
+    timeout: 1s
+  websocket:
+    addr: 0.0.0.0:2006
+    timeout: 1s
+# 服务发现与注册配置
+discovery:
+  nodes:
+    - 127.0.0.1:7171
+    # - 192.168.2.126:7171
+    # - 192.168.1.2:7171
+  env: dev
+  region: sh
+  zone: sh001
+  host: test10
+  weight: "101"
+  endpoints:
+    admin: admin
+    demo: demo
+  clients:
+    admin: admin
+    demo: demo
+# 链路追踪
+trace:
+  endpoint: http://127.0.0.1:14269/api/traces
+# nats消息中心
+nats:
+  # url: nats://192.168.4.182:4333,nats://192.168.4.182:4333
+  url: nats://127.0.0.1:4222
+# 日志配置（level: zap 级别 -1=Debug 0=Info 1=Warn 2=Error，生产建议 0 便于看流程日志）
+log:
+  logger:
+    level: 0
+    stackLevel: 0
+    caller: true
+    callerSkip: 3
+    development: false
+  file:
+    filename: ./server.log
+    maxSize: 2
+    maxBackups: 5
+    maxAge: 7
+    compress: false
+# 认证加密
+auth:
+  key: some-secret-key
+  modefile: "../../../configs/casbin/auth_model.conf"
+  superid: "226"
+  apid: "227"
+# Redis 数据库
+redis:
+  addr: 127.0.0.1:6379
+  read_timeout: 0.2s
+  write_timeout: 0.2s
+# 关系数据：PostgreSQL
+postgres:
+  # dsn: "postgres://postgres:postgres@127.0.0.1:5432/novatrader?sslmode=disable"
+  host: 127.0.0.1
+  port: 5432
+  user: postgres
+  password: postgres
+  database: novatrader
+  ssl_mode: disable
+  dial_timeout: 5s
+  max_open_conns: 50
+  max_idle_conns: 10
+# 服务：datahub（M01 数据采集）。口径见 doc/开发文档/M01-数据采集/设计文档.md
+datahub:
+  http:
+    addr: 0.0.0.0:2011
+    timeout: 30s
+  grpc:
+    addr: 0.0.0.0:2012
+    timeout: 30s
+  # 本机通达信正式版没有 PYPlugins，关掉后盘中快照会空
+  allow_unofficial: true
+  breaker_failures: 3
+  breaker_cooldown: 60s
+  raw_enabled: false
+  raw_keep_days: 7
+  secret_key_file: ./secrets/datahub.key
+  jobs_disabled: false
+  snapshot:
+    interval: 3s
+    stale_after: 10s
+    timeout: 3s
+  sources:
+    tushare:
+      enabled: true
+      official: true
+      token: "env:TUSHARE_TOKEN"
+      qps: 2
+      daily_quota: 0
+      timeout: 15s
+      concurrency: 2
+    tdx_local:
+      enabled: true
+      official: true
+      url: http://127.0.0.1:18080
+      timeout: 3s
+      concurrency: 2
+    tdx_file:
+      enabled: true
+      official: true
+      url: http://127.0.0.1:18080
+      timeout: 60s
+      concurrency: 2
+    tdx_tcp:
+      enabled: true
+      official: false
+      url: http://127.0.0.1:18080
+      timeout: 8s
+      concurrency: 2
+    akshare:
+      enabled: true
+      official: true
+      url: http://127.0.0.1:18080
+      timeout: 30s
+      concurrency: 2
+    eastmoney:
+      enabled: true
+      official: false
+      qps: 4
+      timeout: 10s
+      concurrency: 4
+    sina:
+      enabled: true
+      official: false
+      qps: 8
+      timeout: 5s
+      concurrency: 4
+    tencent:
+      enabled: true
+      official: false
+      qps: 8
+      timeout: 5s
+      concurrency: 4
+    cninfo:
+      enabled: true
+      official: true
+      qps: 2
+      timeout: 15s
+      concurrency: 2
+    tavily:
+      enabled: true
+      official: true
+      token: "env:TAVILY_API_KEY"
+      feeds: ["A股 快讯", "证监会"]
+      timeout: 20s
+    rss:
+      enabled: false
+      official: true
+      feeds: []
+      timeout: 15s
+  domains:
+    security:
+      enabled: true
+      sources: [tushare, tdx_tcp, eastmoney]
+    daily_bar:
+      enabled: true
+      sources: [tushare, tdx_file, eastmoney]
+    adj_factor:
+      enabled: true
+      sources: [tushare, tdx_tcp]
+    minute_bar:
+      enabled: true
+      sources: [tdx_file, tdx_tcp, akshare]
+    snapshot:
+      enabled: true
+      sources: [tdx_local, tdx_tcp, eastmoney, sina, tencent]
+    limit_pool:
+      enabled: true
+      sources: [eastmoney, akshare]
+      interval: 10s
+    money_flow:
+      enabled: true
+      sources: [tushare, eastmoney]
+      interval: 10s
+    lhb:
+      enabled: true
+      sources: [tushare, eastmoney]
+    margin:
+      enabled: true
+      sources: [tushare, eastmoney]
+    hsgt_top10:
+      enabled: true
+      sources: [tushare, eastmoney]
+    sector:
+      enabled: true
+      sources: [tdx_file, eastmoney]
+    sector_quote:
+      enabled: true
+      sources: [eastmoney]
+      interval: 10s
+    finance:
+      enabled: true
+      sources: [tushare, eastmoney]
+    flash:
+      enabled: true
+      sources: [eastmoney, tavily, rss]
+      interval: 60s
+    news:
+      enabled: true
+      sources: [tavily, rss, eastmoney]
+      interval: 60s
+    announcement:
+      enabled: true
+      sources: [cninfo, eastmoney]
+      interval: 60s
+    report:
+      enabled: true
+      sources: [eastmoney]
+      interval: 600s
+    overseas:
+      enabled: true
+      sources: [akshare]
+    macro:
+      enabled: true
+      sources: [akshare]
+    hot_rank:
+      enabled: false
+      sources: [eastmoney]
+      interval: 300s
+# 服务：market（M02 行情与因子）。口径见 doc/开发文档/M02-行情与因子/设计文档.md
+market:
+  http:
+    addr: 0.0.0.0:2021
+    timeout: 30s
+  grpc:
+    addr: 0.0.0.0:2022
+    timeout: 30s
+  refresh_interval: 3s
+  # 快照超过这个时长没更新就标 stale，不再参与涨停、情绪统计
+  stale_after: 10s
+  bar_grace: 5s
+  warmup_days: 250
+  # 盘中因子落库时刻。11:31 等 11:29 那根分钟线封口
+  checkpoints: ["10:00", "11:31", "14:30"]
+  watch_ttl: 600s
+# 服务：intel（M03 情报处理）。阈值含义见 doc/开发文档/M03-情报处理/设计文档.md
+intel:
+  # M04 知识库上传要抽文字、分块、调嵌入，5 秒不够
+  http:
+    addr: 0.0.0.0:2031
+    timeout: 60s
+  grpc:
+    addr: 0.0.0.0:2032
+    timeout: 60s
+  link_threshold: 0.6
+  alert_importance: 4
+  alert_shift: 0.5
+  # 48 小时。protobuf Duration 只认秒
+  dedup_window: 172800s
+  dedup_hamming: 6
+  blocked_sources: []
+  ad_keywords: []
+  # 模型地址未定，先只用规则打分。填上 base_url 和模型名后把 enabled 改成 true，调用走 pkg/llm
+  llm:
+    enabled: false
+    base_url: http://127.0.0.1:8000/v1
+    api_key: ""
+    small_model: ""
+    large_model: ""
+    timeout: 20s
+    review_importance: 4
+# M04 知识库，挂在 intel 服务。见 doc/开发文档/M04-知识库/设计文档.md 第 8 节
+kb:
+  # DGX 上的嵌入服务地址未定，先只用关键词检索。接上后改成 openai 并填 endpoint，补嵌入任务会把已有分块补齐
+  # openai | hash（仅开发自测，不能用于正式数据）| none
+  embed_provider: none
+  embed_endpoint: ""
+  embed_model: BAAI/bge-large-zh-v1.5
+  embed_dims: 1024
+  embed_api_key: ""
+  embed_timeout: 30s
+  embed_batch: 32
+  max_upload_mb: 20
+  consume_signals: true
+# 服务：brain（M05 AI 智脑）
+brain:
+  # 批量 30 只要等模型排队，超时放宽；单只研判另受 analyze_timeout 约束
+  http:
+    addr: 0.0.0.0:2051
+    timeout: 300s
+  grpc:
+    addr: 0.0.0.0:2052
+    timeout: 300s
+  # DGX 上的 vLLM 地址和模型名待确认。base_url 留空时所有研判降级为规则分
+  models:
+    large:
+      base_url: ""
+      model: Qwen3.5-122B-A10B-GPTQ-Int4
+      timeout: 60s
+      # vLLM 连续批处理，并发可以开大；联调时按显存和延迟实测再调
+      max_concurrency: 8
+      max_queue: 128
+      temperature: 0.2
+      max_tokens: 1200
+    small:
+      base_url: ""
+      model: Qwen2.5-7B-Instruct-GPTQ-Int8
+      timeout: 20s
+      max_concurrency: 16
+      max_queue: 256
+      temperature: 0.1
+      max_tokens: 800
+  routes:
+    technical: small
+    capital: small
+    news: large
+    external: large
+    synthesis: large
+    briefing: large
+    explain: small
+    ask: large
+  weights:
+    technical: 0.30
+    news: 0.25
+    capital: 0.30
+    external: 0.15
+  phase_coef:
+    ICE: 0.80
+    RECOVER: 0.95
+    WARM: 1.00
+    HOT: 1.05
+    FADE: 0.85
+  briefing_cron: "30 8 * * *"
+  analyze_timeout: 30s
+  max_batch: 30
+
+# M06 选股与信号。选股阈值在 strategy_config 表里，这里只放运行参数
+strategy:
+  http:
+    addr: 0.0.0.0:2061
+    timeout: 10s
+  grpc:
+    addr: 0.0.0.0:2062
+    timeout: 10s
+  brain_addr: http://127.0.0.1:2051
+  book: paper
+  scan_interval: 60s
+  full_scan_interval: 600s
+  ai_concurrency: 4
+  ai_timeout: 30s
+  buy_cutoff: "14:50"
+
+# M08 风控。规则参数在 strategy_config 的 risk.* 键里，经 UpdateParam 热更新
+risk:
+  http:
+    addr: 0.0.0.0:2081
+    timeout: 1s
+  grpc:
+    addr: 0.0.0.0:2082
+    timeout: 1s
+  audit_queue: 4096
+
+# M07 回测与自进化。客户端经 admin /api/backtest/* 转发。
+backtest:
+  http:
+    addr: 0.0.0.0:2071
+    timeout: 30s
+  grpc:
+    addr: 0.0.0.0:2072
+    timeout: 30s
+  workers: 1
+  search_workers: 2
+  evolve_strategies: [breakout_ref]
+  introspect_book: paper
+  introspect:
+    window_days: 30
+    horizon: 3
+    trigger_days: 5
+    win_rate_below: 0.4
+    min_samples: 10
+    missed_return: 0.05
+    evolve_is_days: 120
+    evolve_oos_days: 60
+    evolve_candidates: 20
+    evolve_freq: 1d
+  admission:
+    min_trades: 30
+    max_drawdown: 0.20
+    min_annual: 0
+    min_profit_factor: 1.2
+    min_sharpe: 0.5
+    paper_days: 20
+    paper_max_drawdown: 0.10
+
+# M09 交易执行。模拟盘在本服务撮合。实盘文件单不在这里写。
+trade:
+  http:
+    addr: 0.0.0.0:2091
+    timeout: 5s
+  grpc:
+    addr: 0.0.0.0:2092
+    timeout: 5s
+  risk_addr: http://127.0.0.1:2081
+  initial_cash: 1000000
+  paper_days_required: 20
+  snapshot_interval: 10s
+
+# M10 通知。飞书 Webhook 留空时只发桌面。机器人若要求关键词，写进 templates。
+notify:
+  http:
+    addr: 0.0.0.0:2101
+    timeout: 5s
+  grpc:
+    addr: 0.0.0.0:2102
+    timeout: 5s
+  feishu_webhook: ""
+  feishu_secret: ""
+  merge_window_sec: 60
+  retry_max: 3

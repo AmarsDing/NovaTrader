@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+// M01 数据采集对内接口。桌面端经 admin 聚合访问，不直连本服务。
+// 设计见 doc/开发文档/M01-数据采集/设计文档.md。
+package api.datahub.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/datahub/v1;v1";
+
+service Datahub {
+  // 各数据域、各源的健康：断路状态、成功率、延迟、配额。FR-01-08。
+  rpc ListSources(ListSourcesRequest) returns (ListSourcesReply) {
+    option (google.api.http) = {
+      get: "/v1/datahub/sources"
+    };
+  }
+  // 运行时开关某个源，不改配置文件；重启后以配置为准。FR-01-12。
+  rpc SetSourceEnabled(SetSourceEnabledRequest) returns (SetSourceEnabledReply) {
+    option (google.api.http) = {
+      post: "/v1/datahub/sources/{source}/enabled"
+      body: "*"
+    };
+  }
+  // 提交补数任务，异步执行。FR-01-05、FR-01-09。
+  rpc Backfill(BackfillRequest) returns (BackfillJob) {
+    option (google.api.http) = {
+      post: "/v1/datahub/backfill"
+      body: "*"
+    };
+  }
+  rpc GetBackfill(GetBackfillRequest) returns (BackfillJob) {
+    option (google.api.http) = {
+      get: "/v1/datahub/backfill/{id}"
+    };
+  }
+  // 立即采集一次某个数据域，结果同定时任务。
+  rpc Collect(CollectRequest) returns (CollectReply) {
+    option (google.api.http) = {
+      post: "/v1/datahub/collect/{domain}"
+      body: "*"
+    };
+  }
+  // 最近的校验与对账问题。
+  rpc ListQualityIssues(ListQualityIssuesRequest) returns (ListQualityIssuesReply) {
+    option (google.api.http) = {
+      get: "/v1/datahub/quality"
+    };
+  }
+}
+
+message ListSourcesRequest {
+  // 为空返回全部
+  string domain = 1;
+}
+
+message SourceStatus {
+  string domain = 1;
+  string source = 2;
+  int32 priority = 3;
+  bool enabled = 4;
+  bool official = 5;
+  // closed / open / half_open / disabled / unavailable
+  string state = 6;
+  int32 consecutive_failures = 7;
+  int64 success_count = 8;
+  int64 failure_count = 9;
+  double success_rate = 10;
+  int64 last_latency_ms = 11;
+  int64 avg_latency_ms = 12;
+  string last_success_at = 13;
+  string last_failure_at = 14;
+  string last_error = 15;
+  int64 quota_used = 16;
+  int64 quota_limit = 17;
+  // 当前该域实际在用的源
+  bool active = 18;
+}
+
+message ListSourcesReply {
+  repeated SourceStatus sources = 1;
+  // 快照批次信息：as_of、source、count、latency_ms、stale
+  map<string, string> snapshot = 2;
+}
+
+message SetSourceEnabledRequest {
+  string source = 1;
+  bool enabled = 2;
+}
+
+message SetSourceEnabledReply {
+  string source = 1;
+  bool enabled = 2;
+}
+
+message BackfillRequest {
+  // daily_bar、adj_factor、minute_bar、money_flow、lhb、margin、hsgt_top10、limit_pool、finance、security、sector
+  string domain = 1;
+  // YYYY-MM-DD
+  string start_date = 2;
+  string end_date = 3;
+  // 空为全市场
+  repeated string symbols = 4;
+  // 指定源；空为按优先级
+  string source = 5;
+  string requested_by = 6;
+}
+
+message GetBackfillRequest {
+  int64 id = 1;
+}
+
+message BackfillJob {
+  int64 id = 1;
+  string domain = 2;
+  string start_date = 3;
+  string end_date = 4;
+  repeated string symbols = 5;
+  string source = 6;
+  // pending / running / success / failed
+  string status = 7;
+  int32 total = 8;
+  int32 done = 9;
+  int64 rows = 10;
+  string error = 11;
+  string created_at = 12;
+  string finished_at = 13;
+}
+
+message CollectRequest {
+  string domain = 1;
+  // YYYY-MM-DD，空为最近一个交易日
+  string date = 2;
+}
+
+message CollectReply {
+  string domain = 1;
+  string source = 2;
+  int64 rows = 3;
+  bool stale = 4;
+  string message = 5;
+}
+
+message ListQualityIssuesRequest {
+  // YYYY-MM-DD，空为全部
+  string trade_date = 1;
+  string domain = 2;
+  int32 limit = 3;
+}
+
+message QualityIssue {
+  int64 id = 1;
+  string domain = 2;
+  string check_name = 3;
+  string symbol = 4;
+  string trade_date = 5;
+  string severity = 6;
+  string source = 7;
+  string other_source = 8;
+  string message = 9;
+  int32 hits = 10;
+  string last_seen = 11;
+}
+
+message ListQualityIssuesReply {
+  repeated QualityIssue issues = 1;
+}

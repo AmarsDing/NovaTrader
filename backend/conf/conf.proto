@@ -1,0 +1,494 @@
+syntax = "proto3";
+
+package conf;
+
+option go_package = "server/conf;conf";
+option java_multiple_files = true;
+option java_package = "..conf";
+
+import "google/protobuf/duration.proto";
+
+// =============================================================================
+// 根配置：字段顺序与 configs/config.yaml 一致；末尾为代码依赖但 YAML 可省略的扩展项。
+// =============================================================================
+message Bootstrap {
+  // 服务：admin
+  Admin admin = 1;
+  // 服务：demo
+  Demo demo = 2;
+  // 服务发现与注册
+  Discovery discovery = 3;
+  // 链路追踪
+  Trace trace = 4;
+  // NATS 消息中心
+  Nats nats = 5;
+  // 日志
+  Log log = 6;
+  // 认证加密
+  Auth auth = 7;
+  // Redis
+  Redis redis = 8;
+  // 9、11 曾是 TDengine、ChromaDB，已停用。号保留，避免以后复用。
+  reserved 9, 11;
+  reserved "tdengine", "chromadb";
+  // 关系数据：PostgreSQL
+  Postgres postgres = 10;
+  // demo 示例服务仍读取的杂项。业务服务不使用。
+  Other other = 12;
+  // 服务：intel（M03 情报处理）。字段号取 30 + 模块号，避免各模块并行加配置时撞号。
+  Intel intel = 33;
+  // M04 知识库，挂在 intel 服务
+  Kb kb = 34;
+  // 服务：brain（M05 AI 智脑）
+  Brain brain = 35;
+  // 服务：datahub（M01 数据采集）
+  Datahub datahub = 31;
+  // 服务：market（M02 行情与因子）
+  Market market = 32;
+  // 服务：strategy（M06 选股与信号）
+  Strategy strategy = 36;
+  // 服务：risk（M08 风控）
+  Risk risk = 38;
+  // 服务：backtest（M07 回测与自进化）
+  Backtest backtest = 37;
+  // 服务：trade（M09 交易执行）
+  Trade trade = 39;
+  // 服务：notify（M10 通知）。HTTP 2101、gRPC 2102。
+  Notify notify = 40;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：backtest（M07 回测与自进化）
+// -----------------------------------------------------------------------------
+
+message Backtest {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // 同时执行的回测任务数，默认 1
+  int32 workers = 3;
+  // 参数搜索单个任务内的并发数，默认 2
+  int32 search_workers = 4;
+  // 自省触发时参与参数进化的策略
+  repeated string evolve_strategies = 5;
+  // 自省读取的账户，默认 paper
+  string introspect_book = 6;
+  BacktestIntrospect introspect = 7;
+  BacktestAdmission admission = 8;
+}
+
+message BacktestIntrospect {
+  // 统计窗口（交易日），默认 30
+  int32 window_days = 1;
+  // 收益周期 1 / 3 / 5，默认 3
+  int32 horizon = 2;
+  // 触发：连续 trigger_days 天胜率低于 win_rate_below 且每天样本数 ≥ min_samples。默认 5、0.4、10
+  int32 trigger_days = 3;
+  double win_rate_below = 4;
+  int32 min_samples = 5;
+  // 没入选但该周期收益 ≥ 此值记为漏选，默认 0.05
+  double missed_return = 6;
+  // 进化样本内、样本外交易日数，默认 120、60
+  int32 evolve_is_days = 7;
+  int32 evolve_oos_days = 8;
+  // 进化候选数上限，默认 20
+  int32 evolve_candidates = 9;
+  // 进化回测频率，默认 1d
+  string evolve_freq = 10;
+}
+
+message BacktestAdmission {
+  int32 min_trades = 1;
+  double max_drawdown = 2;
+  double min_annual = 3;
+  double min_profit_factor = 4;
+  double min_sharpe = 5;
+  int32 paper_days = 6;
+  double paper_max_drawdown = 7;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：risk（M08 风控）。规则参数在 strategy_config 的 risk.* 键里，可热更新，不放这里。
+// -----------------------------------------------------------------------------
+
+message Risk {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // 审计队列长度，满了拒单，默认 4096
+  int32 audit_queue = 3;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：notify（M10 通知）。HTTP 2101、gRPC 2102。
+// 飞书 Webhook 留空时只走桌面。模板按 category 覆盖，缺省为「标题换行正文」。
+// -----------------------------------------------------------------------------
+
+message Notify {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  string feishu_webhook = 3;
+  string feishu_secret = 4;
+  // 同类合并窗口，默认 60 秒
+  int32 merge_window_sec = 5;
+  // 每个渠道的尝试次数，含第一次，默认 3
+  int32 retry_max = 6;
+  map<string, string> templates = 7;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：trade（M09 交易执行）。HTTP 2091、gRPC 2092。
+// -----------------------------------------------------------------------------
+
+message Trade {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // 风控 CheckOrder 地址。调用失败按拒绝处理。
+  string risk_addr = 3;
+  // 模拟盘初始资金，默认 1000000
+  double initial_cash = 4;
+  // 允许实盘开仓前，模拟盘至少经过的交易日，默认 20
+  int32 paper_days_required = 5;
+  // 账户快照间隔，默认 10s
+  google.protobuf.Duration snapshot_interval = 6;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：admin / demo（与 YAML 中 http / grpc / websocket 结构一致）
+// -----------------------------------------------------------------------------
+
+message Admin {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  WEBSOCKET websocket = 3;
+  // 超时时间，单位秒（对应 YAML timeOut）
+  int64 time_out = 4;
+  // /api/backtest/* 转发目标（M07 backtest HTTP），默认 http://127.0.0.1:2071
+  string backtest_upstream = 5;
+}
+
+message Demo {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  WEBSOCKET websocket = 3;
+}
+
+message HTTP {
+  string network = 1;
+  string addr = 2;
+  google.protobuf.Duration timeout = 3;
+}
+
+message GRPC {
+  string network = 1;
+  string addr = 2;
+  google.protobuf.Duration timeout = 3;
+}
+
+message WEBSOCKET {
+  string network = 1;
+  string addr = 2;
+  google.protobuf.Duration timeout = 3;
+}
+
+// -----------------------------------------------------------------------------
+// 服务发现与注册（discovery）
+// -----------------------------------------------------------------------------
+
+message Discovery {
+  repeated string nodes = 1;
+  string env = 2;
+  string region = 3;
+  string zone = 4;
+  string host = 5;
+  string weight = 6;
+  map<string, string> endpoints = 7;
+  map<string, string> clients = 8;
+}
+
+// -----------------------------------------------------------------------------
+// 链路追踪（trace）
+// -----------------------------------------------------------------------------
+
+message Trace {
+  string endpoint = 1;
+}
+
+// -----------------------------------------------------------------------------
+// NATS（nats）
+// -----------------------------------------------------------------------------
+
+message Nats {
+  string url = 1;
+}
+
+// -----------------------------------------------------------------------------
+// 日志（log）
+// -----------------------------------------------------------------------------
+
+message Log {
+  message Logger {
+    int64 level = 1;
+    int64 stack_level = 2;
+    bool caller = 3;
+    int64 caller_skip = 4;
+    bool development = 5;
+  }
+  message File {
+    string filename = 1;
+    int64 max_size = 2;
+    int64 max_backups = 3;
+    int64 max_age = 4;
+    bool compress = 5;
+  }
+  Logger logger = 1;
+  File file = 2;
+}
+
+// -----------------------------------------------------------------------------
+// 认证（auth）
+// -----------------------------------------------------------------------------
+
+message Auth {
+  string key = 1;
+  string modefile = 2;
+  string superid = 3;
+  string apid = 4;
+}
+
+// -----------------------------------------------------------------------------
+// Redis（redis，超时与 YAML 中 0.2s 等 duration 一致）
+// -----------------------------------------------------------------------------
+
+message Redis {
+  string addr = 1;
+  google.protobuf.Duration read_timeout = 2;
+  google.protobuf.Duration write_timeout = 3;
+}
+// -----------------------------------------------------------------------------
+// 关系数据：PostgreSQL
+// -----------------------------------------------------------------------------
+
+message Postgres {
+  // 完整 DSN（推荐），例如：postgres://user:pass@127.0.0.1:5432/novatrader?sslmode=disable
+  string dsn = 1;
+  string host = 2;
+  int32 port = 3;
+  string user = 4;
+  string password = 5;
+  string database = 6;
+  string ssl_mode = 7;
+  google.protobuf.Duration dial_timeout = 8;
+  int32 max_open_conns = 9;
+  int32 max_idle_conns = 10;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：intel（M03 情报处理），见 doc/开发文档/M03-情报处理/设计文档.md 第 10 节
+// -----------------------------------------------------------------------------
+
+message Intel {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // 关联置信度阈值，默认 0.6
+  double link_threshold = 3;
+  // 重要度达到即告警，默认 4
+  int32 alert_importance = 4;
+  // 个股综合情感变化达到即告警，默认 0.5
+  double alert_shift = 5;
+  // 近似去重窗口，默认 48h
+  google.protobuf.Duration dedup_window = 6;
+  // SimHash 汉明距离阈值，默认 6；少于 30 字的文本固定收紧到 2
+  int32 dedup_hamming = 7;
+  repeated string blocked_sources = 8;
+  // 为空时用内置广告词
+  repeated string ad_keywords = 9;
+  IntelLLM llm = 10;
+}
+
+// OpenAI 兼容接口（vLLM 或 M05 网关）。默认关闭，只用规则打分。
+message IntelLLM {
+  bool enabled = 1;
+  string base_url = 2;
+  string api_key = 3;
+  string small_model = 4;
+  string large_model = 5;
+  google.protobuf.Duration timeout = 6;
+  // 小模型给出的重要度达到此值时，再用大模型复核，默认 4
+  int32 review_importance = 7;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：datahub（M01 数据采集），HTTP 2011、gRPC 2012。见 doc/开发文档/M01-数据采集/设计文档.md
+// -----------------------------------------------------------------------------
+
+message Datahub {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // false 时跳过所有 official=false 的源（网页接口、7709），FR-01-12
+  bool allow_unofficial = 3;
+  // 键为源名：tdx_local、tdx_file、tdx_tcp、akshare、tushare、eastmoney、sina、tencent、cninfo、tavily、rss
+  map<string, DataSource> sources = 4;
+  // 键为数据域：security、daily_bar、adj_factor、minute_bar、snapshot、limit_pool、money_flow、lhb、
+  // margin、hsgt_top10、sector、sector_quote、finance、flash、news、announcement、report、overseas、macro、hot_rank
+  map<string, DataDomain> domains = 5;
+  DatahubSnapshot snapshot = 6;
+  // 连续失败多少次打开断路，默认 3
+  int32 breaker_failures = 7;
+  // 断开多久后半开探测，默认 60s
+  google.protobuf.Duration breaker_cooldown = 8;
+  // 原始响应留存，默认关闭，FR-01-11
+  bool raw_enabled = 9;
+  // 原始响应保留天数，默认 7
+  int32 raw_keep_days = 10;
+  // 解密 enc: 前缀密钥用的 AES 密钥文件
+  string secret_key_file = 11;
+  // 为 true 时不启动定时任务与快照循环，只提供接口（联调用）
+  bool jobs_disabled = 12;
+}
+
+message DataSource {
+  bool enabled = 1;
+  // 官方或有授权的源为 true；网页接口和 7709 为 false
+  bool official = 2;
+  // pyworker 地址，或覆盖默认接口地址
+  string url = 3;
+  // 明文、env:变量名、enc:密文（base64）三种写法
+  string token = 4;
+  // 每秒请求数，0 为不限
+  double qps = 5;
+  // 每日请求上限，0 为不限
+  int64 daily_quota = 6;
+  // 单次请求超时，默认 10s
+  google.protobuf.Duration timeout = 7;
+  // RSS 地址
+  repeated string feeds = 8;
+  // 并发数，默认 4
+  int32 concurrency = 9;
+}
+
+message DataDomain {
+  bool enabled = 1;
+  // 按优先级排列，第一个为主源
+  repeated string sources = 2;
+  // 循环采集的间隔；日任务不看这个字段
+  google.protobuf.Duration interval = 3;
+}
+
+message DatahubSnapshot {
+  // 采集间隔，默认 3s
+  google.protobuf.Duration interval = 1;
+  // 行情时间落后多久算不是最新，默认 10s。M08 读 snap:meta 时用同一阈值
+  google.protobuf.Duration stale_after = 2;
+  // 单次采集超时，默认 3s
+  google.protobuf.Duration timeout = 3;
+}
+
+// -----------------------------------------------------------------------------
+// demo 示例服务的杂项。NovaTrader 业务不读这一节。
+// -----------------------------------------------------------------------------
+
+message Other {
+  WEBSOCKET dataws = 1;
+  int64 check_pri_internal = 2;
+  int64 monitor_internal = 3;
+}
+
+// -----------------------------------------------------------------------------
+// M04 知识库。embed_dims 必须等于 kb_chunk.embedding 的 1024 维。
+// -----------------------------------------------------------------------------
+
+message Kb {
+  // openai：OpenAI 兼容 /v1/embeddings；hash：仅开发自测；none 或空：不做向量
+  string embed_provider = 1;
+  string embed_endpoint = 2;
+  string embed_model = 3;
+  int32 embed_dims = 4;
+  string embed_api_key = 5;
+  google.protobuf.Duration embed_timeout = 6;
+  int32 embed_batch = 7;
+  // 查询前缀。为空时用 bge 的中文检索指令
+  string query_instruction = 8;
+  int32 max_upload_mb = 9;
+  // 是否订阅 strategy.signal.updated 生成案例
+  bool consume_signals = 10;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：brain（M05 AI 智脑），HTTP 2051、gRPC 2052。见 doc/开发文档/M05-AI智脑/设计文档.md 第 12 节
+// -----------------------------------------------------------------------------
+
+message Brain {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // 键为 large / small。base_url 为空的档位视为未配置，研判全部降级为规则分
+  map<string, BrainModel> models = 3;
+  // 任务到档位，例如 technical: small。未列出的用设计文档里的默认值
+  map<string, string> routes = 4;
+  // 维度权重 technical / news / capital / external，和不为 1 时按比例归一
+  map<string, double> weights = 5;
+  // 情绪阶段系数 ICE / RECOVER / WARM / HOT / FADE
+  map<string, double> phase_coef = 6;
+  // 晨报触发，五段 cron，上海时间，默认 "30 8 * * *"（仅交易日）
+  string briefing_cron = 7;
+  // 单只研判总超时，默认 30s
+  google.protobuf.Duration analyze_timeout = 8;
+  // 批量上限，默认 30
+  int32 max_batch = 9;
+}
+
+// vLLM 的 OpenAI 兼容接口
+message BrainModel {
+  // 例如 http://dgx:8000/v1
+  string base_url = 1;
+  string model = 2;
+  string api_key = 3;
+  google.protobuf.Duration timeout = 4;
+  int32 max_concurrency = 5;
+  int32 max_queue = 6;
+  double temperature = 7;
+  int32 max_tokens = 8;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：strategy（M06 选股与信号），HTTP 2061、gRPC 2062。见 doc/开发文档/M06-选股与信号/设计文档.md
+// 选股阈值放在 strategy_config（可版本化、可回滚），这里只放运行参数。
+// -----------------------------------------------------------------------------
+
+message Strategy {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // brain 服务地址，例如 http://127.0.0.1:2051。为空时全部按模型不可用处理，信号标 ai_degraded
+  string brain_addr = 3;
+  // 信号所属账本 paper / live，默认 paper
+  string book = 4;
+  // 盘中池扫描间隔，默认 60s
+  google.protobuf.Duration scan_interval = 5;
+  // 全市场扫描间隔，默认 10m
+  google.protobuf.Duration full_scan_interval = 6;
+  // 调 brain 的并发，默认 4
+  int32 ai_concurrency = 7;
+  // 单只研判超时，默认 30s
+  google.protobuf.Duration ai_timeout = 8;
+  // 此后不再出买入信号，HH:MM，默认 14:50
+  string buy_cutoff = 9;
+}
+
+// -----------------------------------------------------------------------------
+// 服务：market（M02 行情与因子）。端口 http 2021、grpc 2022。
+// -----------------------------------------------------------------------------
+
+message Market {
+  HTTP http = 1;
+  GRPC grpc = 2;
+  // 收不到 market.snapshot 通知时自己读 Redis 的间隔，默认 3s。
+  google.protobuf.Duration refresh_interval = 3;
+  // 快照 as_of 超过这个时长视为过期，默认 10s。
+  google.protobuf.Duration stale_after = 4;
+  // 分钟线结束后再等多久封口，默认 5s。
+  google.protobuf.Duration bar_grace = 5;
+  // 预热载入的日线根数，默认 250。
+  int32 warmup_days = 6;
+  // 盘中因子落库时刻，HH:MM，默认 10:00、11:30、14:30。
+  repeated string checkpoints = 7;
+  // 候选池默认租约，默认 10m。
+  google.protobuf.Duration watch_ttl = 8;
+}

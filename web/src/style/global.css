@@ -1,0 +1,69 @@
+@import '../theme/tokens.css';
+@import '../theme/dockview-theme.css';
+@import './controls.css';
+@import './page.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--nt-font-sans);
+  background: var(--nt-bg-0);
+  color: var(--nt-text-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+a {
+  color: var(--nt-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* 数据面板：纯色 + 1px 描边，无玻璃无 glow（发光预算见 1.视觉需求.md 第五节）。
+   玻璃模糊只允许在 CommandBar / 弹层 / AlertCenter，见 ui/ 组件。
+   说明：.nt-glass 已移除——原页面面板样式由 .nt-panel 直接表达（见 page.css）。
+   大数字：等宽数字 + 微弱青光；只用于权益/盈亏 hero 与 AI 信号分。 */
+.nt-holo-num {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+}
+
+@keyframes nt-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.4));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 14px rgba(0, 229, 255, 0.85));
+  }
+}
+
+@keyframes nt-pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}

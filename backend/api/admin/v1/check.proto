@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package api.admin.v1;
+import "api/check/v1/check.proto";
+import "google/api/annotations.proto";
+// import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+
+// The greeting service definition.
+service checkService {
+    rpc WeatherCheck (api.check.v1.CheckRequest) returns (api.check.v1.CheckReponse){
+		option (google.api.http) = {
+			post: "/weatherCheck/check"
+			body: "*"
+		};
+	}
+	
+}
+
+  

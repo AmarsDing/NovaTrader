@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package api.admin.v1;
+import "api/common/v1/topic.proto";
+import "api/cfgcenter/v1/alarm_dev_communication.proto";
+option go_package = "server/api/admin/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.admin.v1";
+
+service AdminConfig {
+  rpc GetAdminConfig (ConfigRequest) returns (ConfigReply);
+  rpc GetTopic (api.common.v1.GetTopicRequest) returns (api.common.v1.GetTopicReply);
+}
+message ConfigRequest {
+    string appname = 1;
+}
+message ConfigReply{
+  repeated SystemInfo systemList= 1;
+}
+//系统及拥有的设备
+message SystemInfo {
+  int32 systemId = 1;
+  string systemName = 2;
+  repeated api.cfgcenter.v1.AlarmDevCommunication devList= 3;
+}

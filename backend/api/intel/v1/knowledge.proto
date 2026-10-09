@@ -1,0 +1,257 @@
+syntax = "proto3";
+
+// M04 知识库对内接口，挂在 intel 服务。桌面端经 admin 聚合访问，不直连本服务。
+// 设计见 doc/开发文档/M04-知识库/设计文档.md。与 intel.proto 同包，消息名统一加 Kb 前缀。
+package api.intel.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/intel/v1;v1";
+
+service Knowledge {
+  // 上传文档入库。同一内容重复上传返回原 doc_id。
+  rpc IngestDocument(KbIngestRequest) returns (KbIngestReply) {
+    option (google.api.http) = {
+      post: "/v1/kb/documents"
+      body: "*"
+    };
+  }
+  // 文档详情和全部分块。
+  rpc GetDocument(KbGetDocumentRequest) returns (KbGetDocumentReply) {
+    option (google.api.http) = {
+      get: "/v1/kb/documents/{id}"
+    };
+  }
+  rpc ListDocuments(KbListDocumentsRequest) returns (KbListDocumentsReply) {
+    option (google.api.http) = {
+      get: "/v1/kb/documents"
+    };
+  }
+  // 标记删除，月度清理时连同向量一起删。
+  rpc DeleteDocument(KbDeleteDocumentRequest) returns (KbDeleteDocumentReply) {
+    option (google.api.http) = {
+      delete: "/v1/kb/documents/{id}"
+    };
+  }
+  // 向量 + 关键词混合检索，结果带出处。
+  rpc Search(KbSearchRequest) returns (KbSearchReply) {
+    option (google.api.http) = {
+      post: "/v1/kb/search"
+      body: "*"
+    };
+  }
+  // 相似历史案例。只返回 as_of 之前已结束的案例。
+  rpc SimilarCases(KbSimilarCasesRequest) returns (KbSimilarCasesReply) {
+    option (google.api.http) = {
+      post: "/v1/kb/cases/similar"
+      body: "*"
+    };
+  }
+  // 补录走完的信号，与 strategy.signal.updated 消费走同一逻辑。
+  rpc RecordCase(KbSignalCase) returns (KbRecordCaseReply) {
+    option (google.api.http) = {
+      post: "/v1/kb/cases"
+      body: "*"
+    };
+  }
+}
+
+message KbDocument {
+  int64 id = 1;
+  // case / rule / compliance / review
+  string category = 2;
+  string title = 3;
+  string source = 4;
+  // file / url / signal / manual
+  string source_type = 5;
+  string author = 6;
+  string format = 7;
+  string file_name = 8;
+  int64 size_bytes = 9;
+  string content_hash = 10;
+  // active / superseded / expired / deleted
+  string status = 11;
+  int32 version = 12;
+  repeated string stock_codes = 13;
+  repeated string tags = 14;
+  // RFC3339，空表示不过期
+  string expires_at = 15;
+  int32 chunk_count = 16;
+  // pending / done
+  string embed_status = 17;
+  string created_at = 18;
+  string updated_at = 19;
+}
+
+message KbChunk {
+  int64 id = 1;
+  int32 seq = 2;
+  string heading = 3;
+  string content = 4;
+  int32 token_count = 5;
+  bool embedded = 6;
+}
+
+message KbIngestRequest {
+  string category = 1;
+  // 为空时取文件名
+  string title = 2;
+  // 文件路径或 http(s) 地址；手工录入写出处
+  string source = 3;
+  // file / url / manual
+  string source_type = 4;
+  // manual 必填
+  string author = 5;
+  // 用后缀判断格式：md、txt、docx、xlsx、pdf
+  string file_name = 6;
+  // 原始文件字节，HTTP 下为 base64
+  bytes content = 7;
+  repeated string stock_codes = 8;
+  repeated string tags = 9;
+  // RFC3339，可空
+  string expires_at = 10;
+}
+
+message KbIngestReply {
+  KbDocument document = 1;
+  bool duplicate = 2;
+  // 向量是否已写入；为 false 时由补嵌入任务补齐
+  bool embedded = 3;
+}
+
+message KbGetDocumentRequest {
+  int64 id = 1;
+}
+
+message KbGetDocumentReply {
+  KbDocument document = 1;
+  repeated KbChunk chunks = 2;
+}
+
+message KbListDocumentsRequest {
+  string category = 1;
+  string status = 2;
+  int32 offset = 3;
+  // 默认 50，最大 200
+  int32 limit = 4;
+}
+
+message KbListDocumentsReply {
+  repeated KbDocument documents = 1;
+  int32 total = 2;
+}
+
+message KbDeleteDocumentRequest {
+  int64 id = 1;
+}
+
+message KbDeleteDocumentReply {}
+
+message KbSearchRequest {
+  string query = 1;
+  // 默认 8，最大 50
+  int32 top_k = 2;
+  repeated string categories = 3;
+  string stock_code = 4;
+}
+
+message KbHit {
+  int64 doc_id = 1;
+  int64 chunk_id = 2;
+  string title = 3;
+  string heading = 4;
+  // 资料原文，交给模型时必须放进数据块
+  string content = 5;
+  string source = 6;
+  string source_type = 7;
+  string category = 8;
+  // 倒数排名融合分
+  double score = 9;
+  // 两路名次，0 表示该路未命中
+  int32 keyword_rank = 10;
+  int32 vector_rank = 11;
+}
+
+message KbSearchReply {
+  repeated KbHit hits = 1;
+  // 向量路不可用，只用了关键词
+  bool degraded = 2;
+}
+
+message KbSimilarCasesRequest {
+  // 情形描述；为空时按结束时间倒序
+  string situation = 1;
+  string pattern = 2;
+  string emotion_phase = 3;
+  string stock_code = 4;
+  string strategy = 5;
+  string book = 6;
+  // RFC3339，默认当前时间
+  string as_of = 7;
+  // 默认 5，最大 50
+  int32 top_k = 8;
+}
+
+message KbCase {
+  int64 id = 1;
+  string book = 2;
+  int64 signal_id = 3;
+  string stock_code = 4;
+  string stock_name = 5;
+  string strategy = 6;
+  string pattern = 7;
+  string emotion_phase = 8;
+  string signal_type = 9;
+  // closed / expired / cancelled
+  string final_status = 10;
+  string signal_time = 11;
+  string closed_at = 12;
+  optional double entry_price = 13;
+  optional double exit_price = 14;
+  // 百分比，3.25 表示 +3.25%
+  optional double pnl_pct = 15;
+  optional int32 holding_days = 16;
+  // win / loss / flat / unfilled / cancelled
+  string outcome = 17;
+  string attribution = 18;
+  int64 doc_id = 19;
+}
+
+message KbCaseHit {
+  KbCase case = 1;
+  int64 chunk_id = 2;
+  double score = 3;
+}
+
+message KbSimilarCasesReply {
+  repeated KbCaseHit cases = 1;
+  bool degraded = 2;
+}
+
+// 字段与 strategy.signal.updated 载荷一致（M04 设计第 6 节）。
+message KbSignalCase {
+  int64 signal_id = 1;
+  string book = 2;
+  string status = 3;
+  string stock_code = 4;
+  string stock_name = 5;
+  string strategy = 6;
+  string signal_type = 7;
+  string signal_time = 8;
+  string closed_at = 9;
+  optional double entry_price = 10;
+  optional double exit_price = 11;
+  optional double pnl_pct = 12;
+  optional int32 holding_days = 13;
+  string pattern = 14;
+  string emotion_phase = 15;
+  string attribution = 16;
+  string reasoning = 17;
+  string review = 18;
+}
+
+message KbRecordCaseReply {
+  int64 case_id = 1;
+  int64 doc_id = 2;
+  bool created = 3;
+}

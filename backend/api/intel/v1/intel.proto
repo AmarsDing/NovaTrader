@@ -1,0 +1,184 @@
+syntax = "proto3";
+
+// M03 情报处理对内接口。桌面端经 admin 聚合访问，不直连本服务。
+// 设计见 doc/开发文档/M03-情报处理/设计文档.md 第 9 节。
+package api.intel.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/intel/v1;v1";
+
+service Intel {
+  // 手动录入一条情报，与 intel.raw.<kind> 走同一条流水线。
+  rpc Ingest(IngestRequest) returns (IngestReply) {
+    option (google.api.http) = {
+      post: "/v1/intel/items"
+      body: "*"
+    };
+  }
+  // 条目详情，含关联和抽取字段。
+  rpc GetItem(GetItemRequest) returns (Item) {
+    option (google.api.http) = {
+      get: "/v1/intel/items/{id}"
+    };
+  }
+  // 个股消息时间线，每个事件簇只列首条。
+  rpc Timeline(TimelineRequest) returns (TimelineReply) {
+    option (google.api.http) = {
+      get: "/v1/intel/stocks/{code}/timeline"
+    };
+  }
+  // 热词：个股、概念、事件类型。
+  rpc HotWords(HotWordsRequest) returns (HotWordsReply) {
+    option (google.api.http) = {
+      get: "/v1/intel/hotwords"
+    };
+  }
+  // 新增或修改一条人工别名。
+  rpc UpsertAlias(UpsertAliasRequest) returns (UpsertAliasReply) {
+    option (google.api.http) = {
+      post: "/v1/intel/aliases"
+      body: "*"
+    };
+  }
+  // 立即刷新关联词典。
+  rpc ReloadAliases(ReloadAliasesRequest) returns (ReloadAliasesReply) {
+    option (google.api.http) = {
+      post: "/v1/intel/aliases/reload"
+      body: "*"
+    };
+  }
+}
+
+message IngestRequest {
+  string source = 1;
+  string source_id = 2;
+  // flash / news / announcement / report / social
+  string kind = 3;
+  string title = 4;
+  string content = 5;
+  string url = 6;
+  // RFC3339；为空时用接收时间
+  string publish_time = 7;
+  // 源头自带的证券代码，600519.SH
+  repeated string codes = 8;
+}
+
+message IngestReply {
+  int64 news_id = 1;
+  int64 cluster_id = 2;
+  // scored / filtered / duplicate / near_duplicate
+  string status = 3;
+  string reason = 4;
+}
+
+message Link {
+  // stock / concept
+  string type = 1;
+  string target = 2;
+  double confidence = 3;
+  string method = 4;
+  string matched = 5;
+}
+
+message Fact {
+  // amount / ratio / date
+  string type = 1;
+  double value = 2;
+  string unit = 3;
+  string text = 4;
+  // content 的字符下标，左闭右开
+  int32 start = 5;
+  int32 end = 6;
+}
+
+message Item {
+  int64 id = 1;
+  int64 cluster_id = 2;
+  string kind = 3;
+  string source = 4;
+  string source_id = 5;
+  string url = 6;
+  string title = 7;
+  // 时间线里不返回正文
+  string content = 8;
+  string publish_time = 9;
+  string event_type = 10;
+  double sentiment = 11;
+  int32 importance = 12;
+  int32 half_life_minutes = 13;
+  // 按半衰期衰减到当前时刻的情感
+  double effective_sentiment = 14;
+  string scorer = 15;
+  bool degraded = 16;
+  string status = 17;
+  string reason = 18;
+  // 所在簇的条数（含转载）
+  int32 cluster_size = 19;
+  repeated Link links = 20;
+  repeated Fact facts = 21;
+}
+
+message GetItemRequest {
+  int64 id = 1;
+}
+
+message TimelineRequest {
+  string code = 1;
+  // RFC3339；默认近 72 小时
+  string since = 2;
+  string until = 3;
+  // 默认 50，最大 500
+  int32 limit = 4;
+}
+
+message TimelineReply {
+  string code = 1;
+  // 近 72 小时综合情感，[-1, 1]
+  double composite_sentiment = 2;
+  repeated Item items = 3;
+}
+
+message HotWordsRequest {
+  // 默认 120
+  int32 window_minutes = 1;
+  // 默认 20
+  int32 limit = 2;
+  // stock / concept / event；为空时全部
+  string type = 3;
+}
+
+message HotWord {
+  string type = 1;
+  string target = 2;
+  int32 count = 3;
+  int32 prev_count = 4;
+  double score = 5;
+}
+
+message HotWordsReply {
+  repeated HotWord items = 1;
+}
+
+message UpsertAliasRequest {
+  string alias = 1;
+  string stock_code = 2;
+  // former / english / nickname / manual
+  string kind = 3;
+  // 默认 0.8
+  double confidence = 4;
+  // 默认 true
+  optional bool enabled = 5;
+}
+
+message UpsertAliasReply {
+  int64 id = 1;
+}
+
+message ReloadAliasesRequest {}
+
+message ReloadAliasesReply {
+  int32 stocks = 1;
+  int32 aliases = 2;
+  int32 concepts = 3;
+}

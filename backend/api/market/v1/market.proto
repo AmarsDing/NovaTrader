@@ -1,0 +1,226 @@
+syntax = "proto3";
+
+// M02 行情与因子对内接口。桌面端经 admin 聚合访问，不直连本服务。
+// 设计见 doc/开发文档/M02-行情与因子/设计文档.md 第 8 节。
+package api.market.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/market/v1;v1";
+
+service Market {
+  // K 线。freq 为 1m 或 1d。
+  rpc GetBars(GetBarsRequest) returns (GetBarsReply) {
+    option (google.api.http) = {
+      get: "/v1/market/bars"
+    };
+  }
+  // 日线指标，用与实时计算相同的公式即时算出。
+  rpc GetIndicators(GetIndicatorsRequest) returns (GetIndicatorsReply) {
+    option (google.api.http) = {
+      get: "/v1/market/indicators"
+    };
+  }
+  // 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
+  rpc GetFactorsCross(GetFactorsCrossRequest) returns (GetFactorsCrossReply) {
+    option (google.api.http) = {
+      get: "/v1/market/factors"
+    };
+  }
+  // 情绪截面，as_of 规则同上。
+  rpc GetSentiment(GetSentimentRequest) returns (Sentiment) {
+    option (google.api.http) = {
+      get: "/v1/market/sentiment"
+    };
+  }
+  // 涨跌停列表。
+  rpc GetLimitBoards(GetLimitBoardsRequest) returns (GetLimitBoardsReply) {
+    option (google.api.http) = {
+      get: "/v1/market/limits"
+    };
+  }
+  // 板块热度排名。
+  rpc GetSectorHeat(GetSectorHeatRequest) returns (GetSectorHeatReply) {
+    option (google.api.http) = {
+      get: "/v1/market/sectors"
+    };
+  }
+  // 登记候选池。同一 owner 再次登记会整体替换并续租。
+  rpc SetWatchlist(SetWatchlistRequest) returns (SetWatchlistReply) {
+    option (google.api.http) = {
+      post: "/v1/market/watchlist"
+      body: "*"
+    };
+  }
+}
+
+// 复权方式。NONE：价格不复权，指标为每天当时看到的值；QFQ：前复权（以区间最后一天为基准）；HFQ：后复权。
+enum Adjust {
+  NONE = 0;
+  QFQ = 1;
+  HFQ = 2;
+}
+
+message GetBarsRequest {
+  string symbol = 1;
+  // 1m 或 1d，默认 1d。
+  string freq = 2;
+  // RFC3339 或 2006-01-02，含两端。
+  string start = 3;
+  string end = 4;
+  Adjust adjust = 5;
+  // 最多返回条数，默认 1000，上限 10000。从 end 往前取。
+  int32 limit = 6;
+}
+
+message Bar {
+  string time = 1;
+  double open = 2;
+  double high = 3;
+  double low = 4;
+  double close = 5;
+  int64 volume = 6;
+  double amount = 7;
+  double adj_factor = 8;
+}
+
+message GetBarsReply {
+  string symbol = 1;
+  string freq = 2;
+  repeated Bar bars = 3;
+}
+
+message GetIndicatorsRequest {
+  string symbol = 1;
+  string start = 2;
+  string end = 3;
+  Adjust adjust = 4;
+  // 只返回这些键，空为全部。
+  repeated string names = 5;
+}
+
+message IndicatorPoint {
+  string time = 1;
+  map<string, double> values = 2;
+}
+
+message GetIndicatorsReply {
+  string symbol = 1;
+  repeated IndicatorPoint points = 2;
+}
+
+message GetFactorsCrossRequest {
+  // 2006-01-02，默认今天。
+  string trade_date = 1;
+  // RFC3339。为空取实时截面。
+  string as_of = 2;
+  // close / intraday / auction / capital，为空不限。
+  string kind = 3;
+  repeated string symbols = 4;
+  repeated string names = 5;
+}
+
+message FactorRow {
+  string symbol = 1;
+  string as_of = 2;
+  string kind = 3;
+  map<string, double> values = 4;
+  bool stale = 5;
+}
+
+message GetFactorsCrossReply {
+  string trade_date = 1;
+  repeated FactorRow rows = 2;
+}
+
+message GetSentimentRequest {
+  string trade_date = 1;
+  string as_of = 2;
+}
+
+message Sentiment {
+  string trade_date = 1;
+  string as_of = 2;
+  int32 up_count = 3;
+  int32 down_count = 4;
+  int32 broken_count = 5;
+  double broken_rate = 6;
+  int32 max_height = 7;
+  double profit_effect = 8;
+  int32 advance = 9;
+  int32 decline = 10;
+  int32 flat = 11;
+  double amount = 12;
+  // ICE / RECOVER / WARM / HOT / FADE
+  string phase = 13;
+  double score_coef = 14;
+  double position_scale = 15;
+  bool stale = 16;
+}
+
+message GetLimitBoardsRequest {
+  string trade_date = 1;
+  // UP / DOWN，为空不限。
+  string direction = 2;
+  // SEALED / BROKEN，为空不限。
+  string status = 3;
+}
+
+message LimitBoard {
+  string symbol = 1;
+  string trade_date = 2;
+  string direction = 3;
+  string status = 4;
+  double limit_price = 5;
+  string first_seal_at = 6;
+  string last_seal_at = 7;
+  int32 open_count = 8;
+  double seal_amount = 9;
+  int32 consecutive = 10;
+  string as_of = 11;
+}
+
+message GetLimitBoardsReply {
+  repeated LimitBoard boards = 1;
+}
+
+message GetSectorHeatRequest {
+  string trade_date = 1;
+  // 为空取实时排名。
+  string as_of = 2;
+  // 默认 50。
+  int32 top = 3;
+}
+
+message SectorHeat {
+  string sector_code = 1;
+  string name = 2;
+  int32 rank = 3;
+  double heat = 4;
+  double avg_pct = 5;
+  int32 up_limit_count = 6;
+  double advance_ratio = 7;
+  double amount = 8;
+  int32 member_count = 9;
+  string leader_symbol = 10;
+  string leader_reason = 11;
+  double overseas_impulse = 12;
+  string as_of = 13;
+}
+
+message GetSectorHeatReply {
+  repeated SectorHeat sectors = 1;
+}
+
+message SetWatchlistRequest {
+  // 登记方，例如 strategy。
+  string owner = 1;
+  repeated string symbols = 2;
+  // 租约秒数，默认 600。
+  int32 ttl_seconds = 3;
+}
+
+message SetWatchlistReply {
+  int32 count = 1;
+  string expires_at = 2;
+}

@@ -1,0 +1,3 @@
+*.exe
+*.log
+app/runInfoCollector/cmd/uploads/

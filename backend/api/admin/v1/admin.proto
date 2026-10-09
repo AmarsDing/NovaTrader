@@ -1,0 +1,275 @@
+syntax = "proto3";
+
+package api.admin.v1;
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.admin.v1";
+
+service Admin {
+  // 登陆
+  rpc Login (LoginReq) returns (LoginReply) {
+    option (google.api.http) = {
+      post: "/api/v1/login"
+      body: "*"
+    };
+  }
+  // 登出
+  rpc Logout (LogoutReq) returns (LogoutReply) {
+    option (google.api.http) = {
+      post: "/api/v1/logout"
+      body: "*"
+    };
+  }
+  rpc AddRole (AddRoleReq) returns (AddRoleReply) {
+    option (google.api.http) = {
+      post: "/api/v1/addrole"
+      body: "*"
+    };
+  }
+  rpc ListMenusByRole (ListMenusByRoleReq) returns (ListMenusByRoleReply) {
+    option (google.api.http) = {
+      get: "/api/v1/listmenusbyrole"
+    };
+  }
+  rpc EditRole (EditRoleReq) returns (EditRoleReply) {
+    option (google.api.http) = {
+      post: "/api/v1/editrole"
+      body: "*"
+    };
+  }
+  rpc DeleteRole (DeleteRoleReq) returns (DeleteRoleReply) {
+    option (google.api.http) = {
+      post: "/api/v1/deleterole"
+      body: "*"
+    };
+  }
+  rpc ListRolesByUserid(ListRolesByUseridReq) returns(ListRolesByUseridReply) {
+    option (google.api.http) = {
+      get: "/api/v1/listrolebyuserid"
+    };
+  }
+  rpc AddUser (AddUserReq) returns (AddUserReply) {
+    option (google.api.http) = {
+      post: "/api/v1/adduser"
+      body: "*"
+    };
+  }
+  rpc EditUser (EditUserReq) returns (EditUserReply) {
+    option (google.api.http) = {
+      post: "/api/v1/edituser"
+      body: "*"
+    };
+  }
+  rpc DeleteUser (DeleteUserReq) returns (DeleteUserReply) {
+    option (google.api.http) = {
+      post: "/api/v1/deleteuser"
+      body: "*"
+    };
+  }
+  //获取菜单列表
+  rpc ListMenus(google.protobuf.Empty) returns(ListMenusReply) {
+    option (google.api.http) = {
+      get: "/api/v1/listmenus"
+    };
+  }
+  //获取某个系统的设备状态列表
+  rpc ListDevStatusBySystemId(DeviceStatusListBySystemIdReq) returns(DeviceStatusListBySystemIdReply) {
+    option (google.api.http) = {
+      get: "/api/v1/listDevStatusBySystemId"
+    };
+  }
+  //获取当前的系统状态列表
+  rpc ListSystemStatus(SystemStatusListReq) returns(SystemStatusList) {
+    option (google.api.http) = {
+      get: "/api/v1/listSystemStatus"
+    };
+  }
+  //获取当前的系统状态数量
+  rpc GetSystemStatusCount(google.protobuf.Empty) returns(SystemStatusCount) {
+    option (google.api.http) = {
+      get: "/api/v1/getSystemStatusCount"
+    };
+  }
+
+  // rpc GetAllDiffData(google.protobuf.Empty) returns(GetAllDiffDataReply) {
+  //   option (google.api.http) = {
+  //     get: "/api/v1/getAllDiffData"
+  //   };
+  // }
+}
+//设备状态列表
+//设备状态信息
+message DeviceStatus{
+  optional int32	devid      =1;
+  optional int32	status     =2;
+  optional int32	systemId   =3;
+}
+//设备状态列表
+message DeviceStatusListBySystemIdReq{
+    int32 systemId = 1;
+}
+message DeviceStatusListBySystemIdReply{
+    repeated DeviceStatus deviceStatusList = 1;
+}
+//系统状态信息
+message SystemStatus {
+  optional int32	systemId   =1;
+  optional int32	status     =2;
+  optional string name       =3;
+}
+//系统状态列表请求
+message SystemStatusListReq{
+  int32 level =1;  //告警等级,-1 全部 0 正常 1 一般告警 2 严重告警
+}
+//系统状态列表
+message SystemStatusList{
+    repeated SystemStatus systemStatusList = 1;
+}
+//系统状态数量
+message SystemStatusCount {
+  //正常的数量
+  optional int32 normalCount =1;
+  //一般告警的数量
+  optional int32 warningCount =2;
+  //严重告警的数量
+  optional int32 errorCount =3;
+}
+
+// 登录  请求 - 
+message LoginReq {
+  string user_name = 1 [json_name = "user_name"];
+  string password = 2 [json_name = "password"];
+}
+// 登录  回应 - 
+message LoginReply {
+  string reply = 1;
+  api.cfgcenter.v1.User user = 2;
+  string token = 3 ;
+  repeated MenuTree permissions = 4;
+  string avatar = 5;
+}
+message MenuTree {
+  api.cfgcenter.v1.SysRouteRule meta = 1;
+  repeated MenuTree children = 2;
+  string path = 3;
+  string component = 4;
+  string name = 5;
+}
+message SysRouteRule {    
+    optional int32 id =1 ;    
+    optional int32 pid =2 ;    
+    // optional string name =3 ;    
+    optional string title =4 ;    
+    optional string icon =5 ;    
+    optional int32 menuType =6 ;    
+    optional int32 weigh =7 ;    
+    optional int32 status =8 ;    
+    optional int32 alwaysShow =9 ;    
+    optional string path =10 ;    
+    optional string jumpPath =11 ;    
+    optional string component =12 ;    
+    optional int32 isFrame =13 ;    
+    optional string moduleType =14 ;    
+    optional int32 modelId =15 ;    
+    optional string remark =16 ;    
+}
+// 登出  请求 - 
+message LogoutReq {
+  uint32 id = 1;
+}
+// 登出  回应 - 
+message LogoutReply {
+  string msg = 1;
+}
+// 根据角色id获取菜单信息
+message ListMenusByRoleReq {
+  string id = 1;
+}
+// 根据角色获取菜单的返回信息
+message ListMenusByRoleReply {
+  repeated MenusSelect menu = 1;
+}
+// 菜单信息
+message MenusSelect {
+  int32 id = 1;
+  string name = 2;
+  bool select = 3;
+  repeated MenusSelect children = 4;
+}
+// 根据userid 获取 roles
+message ListRolesByUseridReq {
+  string id = 1;
+}
+message ListRolesByUseridReply {
+  repeated Roles role = 1;
+}
+message Roles {
+  int32 id = 1;
+  string name = 2;
+}
+// add role  新增角色 请求
+message AddRoleReq {
+  api.cfgcenter.v1.ApOrgRole apOrgRole =1;
+  repeated int32 menuids = 2;
+}
+message AddRoleReply {
+  int32 code=1;
+	string msg = 2;
+}
+// edit role  编辑角色  请求
+message EditRoleReq {
+  api.cfgcenter.v1.ApOrgRole apOrgRole =1;
+  repeated int32 oldmenuids = 2;
+  repeated int32 menuids = 3;
+}
+message EditRoleReply {
+  int32 code=1;
+	string msg = 2;
+}
+// delete role 删除角色  请求
+message DeleteRoleReq {
+  repeated int32 ids = 1;
+}
+message DeleteRoleReply {
+  int32 code=1;
+	string msg = 2;
+}
+
+// 新增用户
+message AddUserReq {
+  api.cfgcenter.v1.UserWithAvatar user =1;
+  repeated int32 roleid = 2;
+}
+message AddUserReply {
+  int32 code=1;
+	string msg = 2;
+}
+
+// 修改用户
+message EditUserReq{
+  api.cfgcenter.v1.UserWithAvatar user =1;
+  repeated int32 oldroleid = 2;
+  repeated int32 roleid = 3;
+}
+message EditUserReply {
+  int32 code=1;
+	string msg = 2;
+}
+
+// 删除用户
+message DeleteUserReq {
+  repeated int32 userids = 1;
+}
+
+message DeleteUserReply {
+  int32 code=1;
+	string msg = 2;
+}
+
+//根据token获取的菜单列表
+message ListMenusReply {
+  repeated MenuTree permissions = 1;
+}

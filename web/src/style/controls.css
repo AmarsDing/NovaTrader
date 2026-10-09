@@ -1,0 +1,283 @@
+/* 全局控件。页面不要再写按钮、表格、输入框、滚动条的私有皮肤。
+   变体用 class：nt-btn-primary / nt-btn-ghost / nt-btn-danger / nt-btn-success。
+   收敛约定（1.视觉需求.md 第五节）：无常驻 glow、无扫描光，发光预算只留给 AI 高分/预警/Kill Switch。 */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--nt-scroll) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--nt-scroll);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--nt-scroll-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+button,
+.nt-btn,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button,
+.nt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 34px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--nt-accent);
+  background: rgba(0, 229, 255, 0.06);
+  border: 1px solid rgba(0, 229, 255, 0.32);
+  border-radius: var(--nt-radius-s);
+  cursor: pointer;
+  transition:
+    background var(--nt-transition),
+    border-color var(--nt-transition),
+    transform var(--nt-transition),
+    filter var(--nt-transition);
+}
+
+button:hover,
+.nt-btn:hover {
+  background: rgba(0, 229, 255, 0.13);
+  border-color: rgba(0, 229, 255, 0.55);
+}
+
+button:active,
+.nt-btn:active {
+  transform: scale(0.98);
+}
+
+button:focus-visible,
+.nt-btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.22);
+}
+
+button:disabled,
+.nt-btn:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 主按钮：平填 + 1px 描边，无常驻发光、无扫描光。 */
+.nt-btn-primary,
+button.nt-btn-primary {
+  color: var(--nt-bg-0);
+  background: var(--nt-accent);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.nt-btn-primary:hover,
+button.nt-btn-primary:hover {
+  color: var(--nt-bg-0);
+  background: var(--nt-accent);
+  filter: brightness(1.12);
+}
+
+.nt-btn-ghost,
+button.nt-btn-ghost {
+  color: var(--nt-accent);
+  background: rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  box-shadow: none;
+}
+
+.nt-btn-danger,
+button.nt-btn-danger {
+  color: #fff;
+  background: var(--nt-danger);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.nt-btn-danger:hover,
+button.nt-btn-danger:hover {
+  color: #fff;
+  background: var(--nt-danger);
+  filter: brightness(1.12);
+}
+
+.nt-btn-success,
+button.nt-btn-success {
+  color: var(--nt-bg-0);
+  background: var(--nt-success);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.nt-btn-success:hover,
+button.nt-btn-success:hover {
+  color: var(--nt-bg-0);
+  background: var(--nt-success);
+  filter: brightness(1.1);
+}
+
+input[type='text'],
+input[type='password'],
+input[type='number'],
+input[type='search'],
+input[type='email'],
+input:not([type]),
+.nt-input,
+select,
+textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.88rem;
+  color: var(--nt-text-1);
+  background: var(--nt-bg-0);
+  border: 1px solid var(--nt-border-2);
+  border-radius: var(--nt-radius-s);
+  outline: none;
+  transition: border-color var(--nt-transition), box-shadow var(--nt-transition);
+}
+
+textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.nt-input:focus {
+  border-color: rgba(0, 229, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+}
+
+input::placeholder,
+textarea::placeholder,
+.nt-input::placeholder {
+  color: var(--nt-text-3);
+}
+
+select {
+  appearance: none;
+  padding-right: 2rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--nt-accent) 50%),
+    linear-gradient(135deg, var(--nt-accent) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 55%,
+    calc(100% - 9px) 55%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--nt-accent);
+  cursor: pointer;
+}
+
+.nt-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border-radius: var(--nt-radius-m);
+  border: 1px solid var(--nt-border-1);
+  background: var(--nt-bg-1);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--nt-cell-pad);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--nt-text-3);
+  background: var(--nt-bg-2);
+  border-bottom: 1px solid var(--nt-border-2);
+}
+
+tbody td {
+  padding: var(--nt-cell-pad);
+  color: var(--nt-text-1);
+  border-bottom: 1px solid var(--nt-border-1);
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+tbody tr:hover td {
+  background: rgba(0, 229, 255, 0.05);
+}
+
+td.num,
+th.num {
+  text-align: right;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 红涨绿跌（A 股约定）。方向判定只走 format.ts 的 pnlClass()。 */
+.up {
+  color: var(--nt-up);
+}
+
+.down {
+  color: var(--nt-down);
+}
+
+code,
+kbd {
+  font-family: var(--nt-font-mono);
+  font-size: 0.85em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  color: var(--nt-accent);
+  background: var(--nt-bg-0);
+  border: 1px solid var(--nt-border-1);
+}

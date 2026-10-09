@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package Greeter;
+option go_package = "./Greeter";
+// 程序内容数据交换结构
+message CoreData {
+	int32 apid = 1;
+	int32 rwyid = 2;
+	int32 lid = 3;
+	int32 devid = 4;
+  int32 groupid = 5;
+	int32 sid = 6;
+	string msgtype = 7;
+  map<string,Item> item = 8;
+}
+
+message Item {
+  // name
+  string n = 1;
+  // alias  二分钟平均风
+  string a = 2;
+  // value
+  string v = 3;
+  // type
+  string t = 4;
+  // unit
+  string u = 5;
+  // status
+  string s = 6;
+}
+
+message StreamReqData{
+}
+
+message StreamResData{
+  CoreData StreamData = 1;
+}
+
+service GreeterService {
+	rpc HBData(StreamReqData) returns (stream StreamResData);
+}

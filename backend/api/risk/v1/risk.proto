@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package api.risk.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/risk/v1;v1";
+
+// Risk 是 M08 事前风控。trade 下单前调 CheckOrder；客户端经 admin 转调其余接口。
+service Risk {
+  // 事前校验。调用方超时（建议 200ms）视为拒绝。
+  rpc CheckOrder(CheckOrderRequest) returns (CheckOrderReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/check"
+      body: "*"
+    };
+  }
+  rpc GetState(GetStateRequest) returns (StateReply) {
+    option (google.api.http) = {
+      get: "/risk/v1/state"
+    };
+  }
+  rpc SetMode(SetModeRequest) returns (StateReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/mode"
+      body: "*"
+    };
+  }
+  rpc TriggerKillSwitch(TriggerKillSwitchRequest) returns (StateReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/killswitch"
+      body: "*"
+    };
+  }
+  // 恢复必须带操作人和确认字样 CONFIRM。恢复后模式仍为 L0。
+  rpc ResetKillSwitch(ResetKillSwitchRequest) returns (StateReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/killswitch/reset"
+      body: "*"
+    };
+  }
+  rpc UpdateParam(UpdateParamRequest) returns (StateReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/params"
+      body: "*"
+    };
+  }
+  rpc DailyReport(DailyReportRequest) returns (DailyReportReply) {
+    option (google.api.http) = {
+      get: "/risk/v1/report"
+    };
+  }
+}
+
+message CheckOrderRequest {
+  string client_order_id = 1;
+  // SIM / LIVE
+  string account_type = 2;
+  // 600519.SH
+  string symbol = 3;
+  // buy / sell
+  string side = 4;
+  double price = 5;
+  int32 volume = 6;
+  // auto / watch / manual
+  string source = 7;
+  // 人工单必填
+  string operator = 8;
+  string sector = 9;
+}
+
+message RuleResult {
+  string rule = 1;
+  string name = 2;
+  bool pass = 3;
+  string note = 4;
+  int32 volume = 5;
+}
+
+message CheckOrderReply {
+  bool approved = 1;
+  // 放行数量，缩量时小于申报数量
+  int32 volume = 2;
+  bool adjusted = 3;
+  // 拒绝时的规则编号 R00–R15
+  string rule = 4;
+  string reason = 5;
+  repeated RuleResult results = 6;
+  int64 latency_us = 7;
+}
+
+message GetStateRequest {}
+
+message KillSwitch {
+  bool active = 1;
+  string source = 2;
+  string reason = 3;
+  string operator = 4;
+  // RFC3339
+  string at = 5;
+}
+
+message StateReply {
+  string mode = 1;
+  KillSwitch kill_switch = 2;
+  // 账户类型 → 当日锁存的熔断原因
+  map<string, string> breakers = 3;
+  // 当前市场类熔断原因，空为未触发
+  string market_breaker = 4;
+  int32 buys_today = 5;
+  map<string, string> params = 6;
+  // 账户类型 → 最近快照时间
+  map<string, string> account_as_of = 7;
+  string last_quote_at = 8;
+}
+
+message SetModeRequest {
+  // L0–L3
+  string mode = 1;
+  string operator = 2;
+  string reason = 3;
+}
+
+message TriggerKillSwitchRequest {
+  // client / reconcile / terminal / market
+  string source = 1;
+  string reason = 2;
+  string operator = 3;
+}
+
+message ResetKillSwitchRequest {
+  string operator = 1;
+  string confirm = 2;
+  string reason = 3;
+}
+
+message UpdateParamRequest {
+  // 带或不带 risk. 前缀
+  string key = 1;
+  string value = 2;
+  string operator = 3;
+}
+
+message DailyReportRequest {
+  // YYYY-MM-DD，空为今天
+  string date = 1;
+}
+
+message RuleCount {
+  string rule = 1;
+  string name = 2;
+  int32 count = 3;
+}
+
+message RiskEventItem {
+  string kind = 1;
+  bool active = 2;
+  string mode = 3;
+  string source = 4;
+  string reason = 5;
+  string operator = 6;
+  string at = 7;
+}
+
+message DailyReportReply {
+  string date = 1;
+  int32 checks = 2;
+  int32 approved = 3;
+  int32 rejected = 4;
+  int32 adjusted = 5;
+  repeated RuleCount rejects = 6;
+  repeated RiskEventItem events = 7;
+  int64 p99_latency_us = 8;
+}

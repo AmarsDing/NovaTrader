@@ -1,0 +1,4 @@
+# Python 3.12 优先；本机若只有 3.14 也可以。
+mootdx==0.11.7
+akshare>=1.14
+pandas>=2.0

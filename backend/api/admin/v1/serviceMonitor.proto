@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package api.admin.v1;
+import "api/common/v1/serviceMonitor.proto";
+import "google/api/annotations.proto";
+// import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+
+// The greeting service definition.
+service serviceMonitorService {
+    rpc StartService (api.common.v1.GetCmdRequest) returns (api.common.v1.GetStatusReply){
+		option (google.api.http) = {
+			get: "/serviceMonitor/start"
+		};
+	}
+	rpc StopService (api.common.v1.GetCmdRequest) returns (api.common.v1.GetStatusReply){
+		option (google.api.http) = {
+			get: "/serviceMonitor/stop"
+		};
+	}
+	rpc ReStartService (api.common.v1.GetCmdRequest) returns (api.common.v1.GetStatusReply){
+		option (google.api.http) = {
+			get: "/serviceMonitor/restart"
+		};
+	}
+}
+
+  

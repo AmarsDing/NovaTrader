@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package admin.v1;
+
+import "google/api/annotations.proto";
+// import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+
+// The greeting service definition.
+service NtpService {
+    rpc SetServerTime (GetTimeReq) returns (TimeRes) {
+      option (google.api.http) = {
+        post: "/ntp/setTime"
+        body: "*"
+      };
+    }
+  }
+  
+  message GetTimeReq{
+    string time=1;
+  }
+  
+
+  message TimeRes{
+    string code=1;
+  }
+  
+

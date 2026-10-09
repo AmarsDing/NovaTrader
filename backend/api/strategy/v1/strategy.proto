@@ -1,0 +1,170 @@
+syntax = "proto3";
+
+package strategy.v1;
+
+option go_package = "server/api/strategy/v1;v1";
+
+import "google/api/annotations.proto";
+
+// Strategy 是 M06 选股与信号。信号价格由规则计算；状态只能经 TransitionSignal 修改。
+service Strategy {
+  rpc ListSignals(ListSignalsRequest) returns (ListSignalsReply) {
+    option (google.api.http) = {get: "/v1/strategy/signals"};
+  }
+  rpc GetSignal(GetSignalRequest) returns (Signal) {
+    option (google.api.http) = {get: "/v1/strategy/signals/{id}"};
+  }
+  // M08 风控、M09 交易、客户端改信号状态。非法迁移返回 400，并发冲突返回 409。
+  rpc TransitionSignal(TransitionSignalRequest) returns (Signal) {
+    option (google.api.http) = {post: "/v1/strategy/signals/{id}/transition" body: "*"};
+  }
+  // 手动触发一次扫描。
+  rpc Scan(ScanRequest) returns (ScanReply) {
+    option (google.api.http) = {post: "/v1/strategy/scan" body: "*"};
+  }
+  rpc ListCandidates(ListCandidatesRequest) returns (ListCandidatesReply) {
+    option (google.api.http) = {get: "/v1/strategy/candidates"};
+  }
+  rpc AddBlacklist(AddBlacklistRequest) returns (BlacklistReply) {
+    option (google.api.http) = {post: "/v1/strategy/blacklist" body: "*"};
+  }
+  rpc RemoveBlacklist(RemoveBlacklistRequest) returns (BlacklistReply) {
+    option (google.api.http) = {delete: "/v1/strategy/blacklist/{symbol}"};
+  }
+}
+
+message Signal {
+  int64 id = 1;
+  string book = 2;
+  string signal_time = 3; // RFC3339
+  string trade_date = 4;  // YYYY-MM-DD
+  string symbol = 5;
+  string name = 6;
+  string side = 7; // buy / sell
+  string strategy = 8;
+  int64 strategy_version_id = 9;
+  double entry = 10;
+  double entry_low = 11;
+  double entry_high = 12;
+  double stop_loss = 13;
+  double take_profit = 14;
+  double atr = 15;
+  double position_pct = 16; // 买入为建议仓位占权益比例；卖出为卖出比例，1 为全部可卖
+  string valid_until = 17;
+  int32 hold_days_max = 18;
+  double rule_score = 19;
+  double ai_score = 20; // 降级时为 0
+  double final_score = 21;
+  map<string, double> dims = 22;
+  repeated string evidence = 23;
+  bool ai_degraded = 24;
+  bool high_value = 25;
+  string exit_kind = 26;
+  string reason = 27;
+  string status = 28;
+  string trace_id = 29;
+  string created_at = 30;
+  string updated_at = 31;
+  double exit_price = 32; // 平仓价，未平仓为 0
+  double pnl_pct = 33;    // 百分比，3.2 表示 +3.2%
+  bool has_pnl = 34;
+  string closed_at = 35;
+  int32 holding_days = 36; // 平仓后才有；0 可能是当日平仓，看 has_pnl
+}
+
+message ListSignalsRequest {
+  string trade_date = 1; // YYYY-MM-DD，空为今天
+  string status = 2;     // 空为全部
+  string side = 3;
+  int32 limit = 4;       // 默认 100
+}
+
+message ListSignalsReply {
+  repeated Signal items = 1;
+}
+
+message GetSignalRequest {
+  int64 id = 1;
+}
+
+message TransitionSignalRequest {
+  int64 id = 1;
+  string to = 2; // risk_checking / approved / rejected / executing / done / closed / expired / cancelled
+  string reason = 3;
+  string actor = 4; // risk / trade / user / strategy
+  // 只有 to=closed 时填写。pnl_pct 是百分比。closed_at 空则用服务器当前时间。
+  optional double exit_price = 5;
+  optional double pnl_pct = 6;
+  string closed_at = 7;
+}
+
+message ScanRequest {
+  string pool = 1; // pre / intraday，默认 intraday
+  bool full = 2;
+  repeated string symbols = 3;
+  bool exits = 4; // 同时做持仓卖出检查
+}
+
+message ScanReply {
+  string trace_id = 1;
+  int32 universe = 2;
+  int32 matched = 3;
+  int32 ranked = 4;
+  int32 ai_calls = 5;
+  int32 degraded = 6;
+  repeated int64 signal_ids = 7;
+  repeated int64 sell_signal_ids = 8;
+  map<string, int32> dropped = 9;
+  map<string, int32> misses = 10;
+  bool kill_switch = 11;
+  int64 elapsed_ms = 12;
+}
+
+message Candidate {
+  int64 id = 1;
+  string trade_date = 2;
+  string strategy = 3;
+  string symbol = 4;
+  string name = 5;
+  string pool = 6;
+  string stage = 7;
+  string miss_reason = 8;
+  double rule_score = 9;
+  double ai_score = 10;
+  double final_score = 11;
+  int64 signal_id = 12;
+  double ref_price = 13;
+  // 后验收益，未出时 has_* 为假
+  double ret_t1 = 14;
+  double ret_t3 = 15;
+  double ret_t5 = 16;
+  bool has_t1 = 17;
+  bool has_t3 = 18;
+  bool has_t5 = 19;
+}
+
+message ListCandidatesRequest {
+  string trade_date = 1; // 空为今天
+  string pool = 2;
+  string stage = 3;
+  int32 limit = 4; // 默认 200
+}
+
+message ListCandidatesReply {
+  repeated Candidate items = 1;
+}
+
+message AddBlacklistRequest {
+  string symbol = 1;
+  string reason = 2;
+  string operator = 3;
+  string expires_at = 4; // RFC3339，空为永久
+}
+
+message RemoveBlacklistRequest {
+  string symbol = 1;
+}
+
+message BlacklistReply {
+  string symbol = 1;
+}

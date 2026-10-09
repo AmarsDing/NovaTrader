@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+// M09 交易执行。模拟盘在本服务撮合；实盘文件单由 Windows broker-gw 写，本服务不写 CSV。
+package api.trade.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "server/api/trade/v1;v1";
+
+service Trade {
+  rpc PlaceOrder(PlaceOrderRequest) returns (Order) {
+    option (google.api.http) = {
+      post: "/v1/trade/orders"
+      body: "*"
+    };
+  }
+  rpc CancelOrder(CancelOrderRequest) returns (Order) {
+    option (google.api.http) = {
+      post: "/v1/trade/orders/{client_order_id}/cancel"
+      body: "*"
+    };
+  }
+  rpc GetOrder(GetOrderRequest) returns (Order) {
+    option (google.api.http) = {
+      get: "/v1/trade/orders/{client_order_id}"
+    };
+  }
+  rpc ListPositions(ListPositionsRequest) returns (ListPositionsReply) {
+    option (google.api.http) = {
+      get: "/v1/trade/positions"
+    };
+  }
+  rpc GetAccount(GetAccountRequest) returns (Account) {
+    option (google.api.http) = {
+      get: "/v1/trade/account"
+    };
+  }
+  // 用一根 K 线撮合该标的未完成委托。涨跌停价为 0 时不判断封板。
+  rpc ApplyBar(ApplyBarRequest) returns (ApplyBarReply) {
+    option (google.api.http) = {
+      post: "/v1/trade/bars"
+      body: "*"
+    };
+  }
+  rpc RollDay(RollDayRequest) returns (Account) {
+    option (google.api.http) = {
+      post: "/v1/trade/roll"
+      body: "*"
+    };
+  }
+  rpc Reconcile(ReconcileRequest) returns (ReconcileReply) {
+    option (google.api.http) = {
+      post: "/v1/trade/reconcile"
+      body: "*"
+    };
+  }
+}
+
+message PlaceOrderRequest {
+  string client_order_id = 1;
+  // SIM / LIVE
+  string account = 2;
+  string symbol = 3;
+  string side = 4;
+  double price = 5;
+  int32 volume = 6;
+  // auto / manual。manual 必须带 operator
+  string source = 7;
+  string operator = 8;
+  string signal_id = 9;
+  string strategy_version = 10;
+  // 有值时下单后立刻用这根 K 线撮合
+  Bar bar = 11;
+}
+
+message Bar {
+  double open = 1;
+  double high = 2;
+  double low = 3;
+  int64 volume = 4;
+  double limit_up = 5;
+  double limit_down = 6;
+  double close = 7;
+}
+
+message Order {
+  string client_order_id = 1;
+  string account = 2;
+  string symbol = 3;
+  string side = 4;
+  string status = 5;
+  double price = 6;
+  int32 volume = 7;
+  int32 filled = 8;
+  string reason = 9;
+  string signal_id = 10;
+  string strategy_version = 11;
+}
+
+message CancelOrderRequest {
+  string client_order_id = 1;
+}
+
+message GetOrderRequest {
+  string client_order_id = 1;
+}
+
+message ListPositionsRequest {
+  string account = 1;
+}
+
+message Position {
+  string symbol = 1;
+  int32 quantity = 2;
+  int32 available = 3;
+  double avg_cost = 4;
+  double last_price = 5;
+}
+
+message ListPositionsReply {
+  repeated Position positions = 1;
+}
+
+message GetAccountRequest {
+  string account = 1;
+}
+
+message Account {
+  string account = 1;
+  double cash = 2;
+  double equity = 3;
+  double realized_pnl = 4;
+  double unrealized_pnl = 5;
+  int32 position_count = 6;
+  int32 paper_days = 7;
+  bool open_halted = 8;
+  string halt_reason = 9;
+}
+
+message ApplyBarRequest {
+  string account = 1;
+  string symbol = 2;
+  Bar bar = 3;
+}
+
+message ApplyBarReply {
+  repeated Order orders = 1;
+}
+
+message RollDayRequest {
+  string account = 1;
+}
+
+message RemotePosition {
+  string symbol = 1;
+  int32 quantity = 2;
+  int32 available = 3;
+}
+
+message ReconcileRequest {
+  string account = 1;
+  repeated RemotePosition positions = 2;
+}
+
+message ReconcileReply {
+  bool matched = 1;
+  bool open_halted = 2;
+  repeated string diffs = 3;
+}

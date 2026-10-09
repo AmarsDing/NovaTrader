@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package api.admin.v1;
+import "api/common/v1/snmpMonitor.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+// import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+
+// The greeting service definition.
+service SnmpMonitorService {
+    rpc SetDataForwardSendDevdata (api.common.v1.SnmpMonitorDevCmd) returns (google.protobuf.Empty) {
+      option (google.api.http) = {
+        post: "/snmpMonitor/setDataForwardSendDevdata"
+        body: "*"
+      };
+    }
+    rpc SetSroomDevCmd (api.common.v1.SroomMonitorDevCmd) returns (google.protobuf.Empty) {
+      option (google.api.http) = {
+        post: "/snmpMonitor/setSroomDevCmd"
+        body: "*"
+      };
+    }
+}
+
+  

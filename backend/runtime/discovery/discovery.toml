@@ -1,0 +1,21 @@
+# 本机单节点注册中心。不要放进 backend/configs，admin 会把该目录下所有文件当成自己的配置。
+nodes = ["127.0.0.1:7171"]
+enableprotect = false
+
+[env]
+region = "sh"
+zone = "sh001"
+host = "127.0.0.1"
+DeployEnv = "dev"
+
+[httpServer]
+addr = "127.0.0.1:7171"
+timeout = "40s"
+
+[httpClient]
+dial = "1s"
+keepAlive = "120s"
+timeout = "40s"
+
+[log]
+stdout = true

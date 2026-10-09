@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package admin.v1;
+
+import "google/api/annotations.proto";
+// import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+
+// The greeting service definition.
+service AirportService {
+  rpc GetAirInfoComplete (GetAirCompleteReq) returns (airportinfo) {
+    option (google.api.http) = {
+      get: "/airport/info/getComplete"
+    };
+  }
+  rpc UpdateAirInfoComplete (airportinfo) returns (UpdateAirCompleteRes) {
+    option (google.api.http) = {
+      post: "/airport/info/updateComplete"
+      body: "*"
+    };
+  }
+}
+//获取完整机场配置信息的方法
+message GetAirCompleteReq{
+  string code=1;
+}
+message airportinfo {
+  // 机场名称
+  string airport=1;
+  // 四字代码
+  string code = 2;
+  // 省份
+  string province = 3;
+  // 地区
+  string zone = 4;
+  // 地址
+  string address = 5;
+  // 国家名称
+  string country = 6;
+  // 经度
+  string lon = 7;
+  // 纬度
+  string lat = 8;
+  // 基准点
+  string baselocal = 9;
+  // 观测平台高度
+  string obsvh = 10;
+  // 基准点海拔高度
+  string baselocalh = 11;
+  // 机场标高
+  string elevation = 12;
+  // 重力加速度
+  string g =13;
+  // 国家代号
+  string countrycode = 14;
+  // 地区代号
+  string areacode = 15;
+  // 磁偏角
+  string declination =16;
+  // 云最低扇区高度
+string cloudsectorh =17;
+}
+message UpdateAirCompleteRes{
+  string message=1;
+}
+
+

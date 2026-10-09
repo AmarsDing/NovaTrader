@@ -1,0 +1,149 @@
+/* dockview 工作台主题：把 dockview-core 的 --dv-* 变量映射到 --nt-* 令牌。
+   使用方式：createDockview(el, { theme: { name:'nt', className:'dockview-theme-nt', colorScheme:'dark' } })。
+   结构变量抄自 dockview 内置 theme-dark 基线，只改色值与圆角；亮模式随 tokens.css 自动换色。 */
+
+.dockview-theme-nt {
+  color-scheme: dark;
+
+  /* 主色映射 */
+  --dv-group-view-background-color: var(--nt-bg-0);
+  --dv-tabs-and-actions-container-background-color: var(--nt-bg-0);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--nt-bg-1);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--nt-bg-0);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--nt-bg-1);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--nt-bg-0);
+  --dv-tab-divider-color: var(--nt-border-1);
+  --dv-activegroup-visiblepanel-tab-color: var(--nt-text-1);
+  --dv-activegroup-hiddenpanel-tab-color: var(--nt-text-2);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--nt-text-2);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--nt-text-3);
+  --dv-separator-border: var(--nt-border-1);
+  --dv-paneview-header-border-color: var(--nt-border-1);
+  --dv-paneview-active-outline-color: var(--nt-accent);
+
+  /* tab 栏 */
+  --dv-tabs-and-actions-container-font-size: 12.5px;
+  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tab-font-size: inherit;
+  --dv-tab-margin: 0;
+  --dv-tab-border-radius: 0;
+  --dv-tab-close-icon-size: inherit;
+  --dv-tabs-container-scrollbar-color: var(--nt-scroll);
+
+  /* 拖拽与指示 */
+  --dv-drag-over-background-color: rgba(0, 229, 255, 0.08);
+  --dv-drag-over-border-color: transparent;
+  --dv-drag-over-border: none;
+  --dv-edge-dock-indicator-color: var(--nt-accent);
+  --dv-smart-guides-color: rgba(0, 229, 255, 0.35);
+  --dv-smart-guides-preview-color: rgba(0, 229, 255, 0.08);
+  --dv-dnd-compass-color: var(--nt-text-1);
+  --dv-dnd-compass-cell-color: var(--nt-bg-2);
+  --dv-dnd-compass-active-cell-color: rgba(0, 229, 255, 0.25);
+  --dv-dnd-compass-edge-cell-color: var(--nt-bg-2);
+
+  /* 分栏把手 */
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--nt-accent);
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0.4s;
+  --dv-sash-border-radius: 0;
+
+  /* 浮窗 */
+  --dv-floating-box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+  --dv-floating-border: 1px solid var(--nt-border-2);
+  --dv-floating-group-border: none;
+  --dv-floating-group-dragging-opacity: 0.55;
+  --dv-floating-titlebar-height: 24px;
+  --dv-floating-titlebar-background-color: var(--dv-tabs-and-actions-container-background-color);
+  --dv-floating-titlebar-border-bottom: var(--dv-floating-border);
+
+  /* 杂项 */
+  --dv-overlay-z-index: 999;
+  --dv-border-radius: 0;
+  --dv-spacing-padding: 0;
+  --dv-dropdown-border-radius: var(--nt-radius-s);
+  --dv-icon-hover-background-color: rgba(255, 255, 255, 0.08);
+  --dv-context-menu-background-color: var(--nt-bg-2);
+  --dv-context-menu-color: var(--nt-text-1);
+
+  background: var(--nt-bg-0);
+  color: var(--nt-text-1);
+}
+
+/* active tab 下划主色（克制：无 glow，只 2px 线） */
+.dockview-theme-nt .dv-dockview .dv-tabs-container .dv-tab.dv-active {
+  box-shadow: inset 0 -2px 0 0 var(--nt-accent);
+}
+
+.dockview-theme-nt .dv-dockview .dv-tabs-container .dv-tab {
+  border-right: 1px solid var(--nt-border-1);
+}
+
+/* 面板宿主：内容区统一可滚动、内边距由 .nt-page 自带 */
+.dockview-theme-nt .nt-panel-host {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  background: var(--nt-bg-0);
+}
+
+/* 自定义 tab */
+.dockview-theme-nt .nt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+}
+
+.dockview-theme-nt .nt-tab__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dockview-theme-nt .nt-tab__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: var(--nt-radius-s);
+  padding: 0;
+  background: transparent;
+  color: var(--nt-text-3);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.dockview-theme-nt .nt-tab__close:hover {
+  background: var(--dv-icon-hover-background-color);
+  color: var(--nt-text-1);
+}
+
+/* 水印 */
+.dockview-theme-nt .nt-watermark {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--nt-text-3);
+  font-size: 12.5px;
+  user-select: none;
+}
+
+.dockview-theme-nt .nt-watermark kbd {
+  padding: 2px 7px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-bg-1);
+  font-family: var(--nt-font-mono);
+  font-size: 11.5px;
+  color: var(--nt-text-2);
+}

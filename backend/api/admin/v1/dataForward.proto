@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package api.admin.v1;
+import "api/common/v1/dataForward.proto";
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+// import "google/protobuf/empty.proto";
+
+option go_package = "server/api/admin/v1;v1";
+
+// The greeting service definition.
+service DataForwardService {
+    rpc SetDataForwardSendData (api.common.v1.DataForwardCmd) returns (google.protobuf.Empty) {
+      option (google.api.http) = {
+        post: "/dataForward/setDataForwardSendData"
+        body: "*"
+      };
+    }
+    rpc SetDataForwardSendStatus (api.common.v1.DataForwardStatusCmd) returns (google.protobuf.Empty) {
+      option (google.api.http) = {
+        post: "/dataForward/setDataForwardSendStatus"
+        body: "*"
+      };
+    }
+}
+
+  

@@ -1,0 +1,371 @@
+syntax = "proto3";
+
+package api.backtest.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "server/api/backtest/v1;v1";
+
+// Backtest 是 M07 回测与自进化。客户端经 admin /api/backtest/* 转发到 /v1/backtest/*。
+// 时间字段为 RFC3339（上海时区），日期为 2006-01-02。比例都是小数。
+service Backtest {
+  // 已注册策略、参数范围和当前生效参数。
+  rpc ListStrategies(ListStrategiesRequest) returns (ListStrategiesReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/strategies"
+    };
+  }
+  rpc CreateTask(CreateTaskRequest) returns (Task) {
+    option (google.api.http) = {
+      post: "/v1/backtest/tasks"
+      body: "*"
+    };
+  }
+  rpc ListTasks(ListTasksRequest) returns (ListTasksReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/tasks"
+    };
+  }
+  rpc GetTask(GetTaskRequest) returns (Task) {
+    option (google.api.http) = {
+      get: "/v1/backtest/tasks/{id}"
+    };
+  }
+  rpc CancelTask(GetTaskRequest) returns (Task) {
+    option (google.api.http) = {
+      post: "/v1/backtest/tasks/{id}/cancel"
+      body: "*"
+    };
+  }
+  // 复制配置新建任务，结束后与原任务比对数据哈希和成交哈希。
+  rpc RerunTask(GetTaskRequest) returns (Task) {
+    option (google.api.http) = {
+      post: "/v1/backtest/tasks/{id}/rerun"
+      body: "*"
+    };
+  }
+  rpc GetReport(GetTaskRequest) returns (ReportReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/tasks/{id}/report"
+    };
+  }
+  rpc ListTrades(ListTradesRequest) returns (ListTradesReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/tasks/{id}/trades"
+    };
+  }
+  rpc ShadowStats(ShadowStatsRequest) returns (ShadowStatsReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/shadow/stats"
+    };
+  }
+  rpc ListIntrospections(ListIntrospectionsRequest) returns (ListIntrospectionsReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/introspections"
+    };
+  }
+  rpc RunIntrospection(RunIntrospectionRequest) returns (Introspection) {
+    option (google.api.http) = {
+      post: "/v1/backtest/introspections/run"
+      body: "*"
+    };
+  }
+  rpc ListProposals(ListProposalsRequest) returns (ListProposalsReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/proposals"
+    };
+  }
+  // 操作人取请求头 X-User，缺省 local。M11 完成后限 Owner 并写审计。
+  rpc ApproveProposal(DecideProposalRequest) returns (Proposal) {
+    option (google.api.http) = {
+      post: "/v1/backtest/proposals/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectProposal(DecideProposalRequest) returns (Proposal) {
+    option (google.api.http) = {
+      post: "/v1/backtest/proposals/{id}/reject"
+      body: "*"
+    };
+  }
+  // 回到该策略最近一次批准前的参数版本。strategy_version 是全局快照，会恢复全部参数键。
+  rpc RollbackStrategy(RollbackStrategyRequest) returns (Proposal) {
+    option (google.api.http) = {
+      post: "/v1/backtest/strategies/{name}/rollback"
+      body: "*"
+    };
+  }
+  rpc PeriodReport(PeriodReportRequest) returns (PeriodReportReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/reports/period"
+    };
+  }
+  rpc Admission(AdmissionRequest) returns (AdmissionReply) {
+    option (google.api.http) = {
+      get: "/v1/backtest/admission"
+    };
+  }
+}
+
+message ListStrategiesRequest {}
+
+message ParamInfo {
+  string name = 1;
+  string title = 2;
+  double default = 3;
+  double min = 4;
+  double max = 5;
+  double step = 6;
+  // 当前生效值：strategy_config 里有就取它，否则为默认值。
+  double current = 7;
+  // strategy_config 的键
+  string key = 8;
+}
+
+message StrategyInfo {
+  string name = 1;
+  string title = 2;
+  repeated ParamInfo params = 3;
+  // 是否在自省触发时参与参数进化
+  bool evolve = 4;
+}
+
+message ListStrategiesReply {
+  repeated StrategyInfo strategies = 1;
+  // 默认撮合参数（pkg/backtest.Config）
+  google.protobuf.Struct defaults = 2;
+}
+
+message CreateTaskRequest {
+  // single / optimize / walkforward
+  string kind = 1;
+  string name = 2;
+  // pkg/backtest.Config 的 JSON：strategy、params、freq、start、end、initial_cash ……
+  google.protobuf.Struct config = 3;
+  // pkg/backtest.SearchConfig 的 JSON，optimize / walkforward 用
+  google.protobuf.Struct search = 4;
+}
+
+message TaskSummary {
+  double total_return = 1;
+  double annual_return = 2;
+  double max_drawdown = 3;
+  double sharpe = 4;
+  double win_rate = 5;
+  int32 trade_count = 6;
+  bool has_report = 7;
+}
+
+message Task {
+  int64 id = 1;
+  string kind = 2;
+  string name = 3;
+  string strategy = 4;
+  string freq = 5;
+  string start_date = 6;
+  string end_date = 7;
+  // queued / running / succeeded / failed / cancelled
+  string status = 8;
+  double progress = 9;
+  string message = 10;
+  string error = 11;
+  string params_hash = 12;
+  string engine_version = 13;
+  string build_version = 14;
+  int64 seed = 15;
+  string data_hash = 16;
+  string data_cutoff = 17;
+  int64 rerun_of = 18;
+  string created_by = 19;
+  string created_at = 20;
+  string started_at = 21;
+  string finished_at = 22;
+  google.protobuf.Struct config = 23;
+  TaskSummary summary = 24;
+}
+
+message ListTasksRequest {
+  string status = 1;
+  string strategy = 2;
+  string kind = 3;
+  int32 limit = 4;
+  int32 offset = 5;
+}
+
+message ListTasksReply {
+  repeated Task tasks = 1;
+  int32 total = 2;
+}
+
+message GetTaskRequest {
+  int64 id = 1;
+}
+
+message ReportReply {
+  int64 task_id = 1;
+  // pkg/backtest.Report 的 JSON
+  google.protobuf.Struct report = 2;
+}
+
+message ListTradesRequest {
+  int64 id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string symbol = 4;
+}
+
+message Trade {
+  int32 seq = 1;
+  string symbol = 2;
+  // buy / sell / dividend
+  string side = 3;
+  string time = 4;
+  double price = 5;
+  int32 quantity = 6;
+  double amount = 7;
+  double fee = 8;
+  string reason = 9;
+  double pnl = 10;
+  int32 round_id = 11;
+}
+
+message ListTradesReply {
+  repeated Trade trades = 1;
+  int32 total = 2;
+}
+
+message ShadowStatsRequest {
+  string model = 1;
+  string prompt_version = 2;
+  string start = 3;
+  string end = 4;
+}
+
+message HorizonStat {
+  // 1 / 3 / 5
+  int32 horizon = 1;
+  int32 count = 2;
+  double avg_return = 3;
+  double win_rate = 4;
+}
+
+message BucketStat {
+  // 0-20 / 20-40 / 40-60 / 60-80 / 80-100
+  string bucket = 1;
+  int32 count = 2;
+  double avg_t1 = 3;
+  double avg_t3 = 4;
+  double avg_t5 = 5;
+}
+
+message ShadowStatsReply {
+  int32 total = 1;
+  int32 pending = 2;
+  repeated HorizonStat horizons = 3;
+  repeated BucketStat buckets = 4;
+  // 评分越高 T+3 平均收益越高（有样本的档位之间单调不减）
+  bool monotonic = 5;
+}
+
+message Introspection {
+  int64 id = 1;
+  string trade_date = 2;
+  string book = 3;
+  int32 window_days = 4;
+  int32 sample_count = 5;
+  double win_rate = 6;
+  double avg_return = 7;
+  double max_drawdown = 8;
+  int32 missed_count = 9;
+  map<string, int32> attribution = 10;
+  bool triggered = 11;
+  string trigger_reason = 12;
+  int64 task_id = 13;
+  string note = 14;
+  string created_at = 15;
+}
+
+message ListIntrospectionsRequest {
+  string book = 1;
+  int32 limit = 2;
+}
+
+message ListIntrospectionsReply {
+  repeated Introspection items = 1;
+}
+
+message RunIntrospectionRequest {
+  // 缺省为最近一个已收盘交易日
+  string date = 1;
+  string book = 2;
+}
+
+message Proposal {
+  int64 id = 1;
+  string strategy = 2;
+  map<string, double> base_params = 3;
+  map<string, double> params = 4;
+  string reason = 5;
+  int64 task_id = 6;
+  google.protobuf.Struct base_metrics = 7;
+  google.protobuf.Struct new_metrics = 8;
+  // pending / approved / rejected / rolled_back
+  string status = 9;
+  int64 version_id = 10;
+  int64 prev_version_id = 11;
+  string decided_by = 12;
+  string created_at = 13;
+  string decided_at = 14;
+}
+
+message ListProposalsRequest {
+  string status = 1;
+  string strategy = 2;
+  int32 limit = 3;
+}
+
+message ListProposalsReply {
+  repeated Proposal proposals = 1;
+}
+
+message DecideProposalRequest {
+  int64 id = 1;
+  string note = 2;
+}
+
+message RollbackStrategyRequest {
+  string name = 1;
+}
+
+message PeriodReportRequest {
+  // week / month
+  string period = 1;
+  // 周期内任一天，缺省今天
+  string date = 2;
+}
+
+message PeriodReportReply {
+  string period = 1;
+  string start = 2;
+  string end = 3;
+  google.protobuf.Struct report = 4;
+}
+
+message AdmissionRequest {
+  string strategy = 1;
+}
+
+message AdmissionItem {
+  string key = 1;
+  string title = 2;
+  // pass / fail / unknown
+  string status = 3;
+  string detail = 4;
+}
+
+message AdmissionReply {
+  string strategy = 1;
+  repeated AdmissionItem items = 2;
+  bool ready = 3;
+}

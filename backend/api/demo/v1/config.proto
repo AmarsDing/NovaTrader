@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package api.demo.v1;
+
+import "api/common/v1/topic.proto";
+option go_package = "server/api/demo/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.demo.v1";
+
+
+service Config {
+	rpc GetConfig (ConfigRequest) returns (ConfigReply){};
+    rpc GetTopic (api.common.v1.GetTopicRequest) returns (api.common.v1.GetTopicReply);
+}
+
+
+//获取完整机场配置信息的方法
+message ConfigRequest{
+  string Appname=1;
+}
+
+// 线路优选配置
+// ap_merge
+message ConfigReply {
+    // 机场id
+    int32 id=1;
+    // 机场名称
+    string name = 2;
+    // 跑道
+    repeated RWY rwy = 3;
+}
+
+// 跑道
+// ap_merge
+message RWY {
+    int32 id = 1;
+    string name = 2;
+    repeated Point point = 3;
+}
+// 端
+// ap_merge
+message Point {
+    int32 id = 1;
+    string name = 2;
+    repeated DEV device = 3;
+}
+// 设备
+// ap_merge
+message DEV {
+    int32 id = 1;
+    string name =2;
+    // 传感器信息
+    repeated Sensor sensor = 3;
+    // 通信信息
+    repeated COMM comm = 4;
+}
+
+// 传感器
+// ap_sensor
+message Sensor {
+    int32 id = 1;
+    // 名称
+    string name = 2;
+    // 别名
+    string alias = 3;
+    // 传感器超时间
+    int32 timeout = 4;
+    // msg  数据解析格式
+    string msgjson = 5;
+    // 外部处理JavaScript脚本
+    string dlljs = 6;
+    // 校验js
+    string checkjs = 7;
+}
+
+// 通信
+// ap_comm
+message COMM {
+    // 通信id
+    int32 id = 1;
+    // 通信的名称
+    string name = 2;
+    // 通信类型
+    int32 ctype = 3;
+    // 网卡名称
+    string netname = 4;
+    // 本地ip
+    string lip = 5;
+    // 本地端口
+    int32 lport = 6;
+    // 远端ip
+    string rip = 7;
+    // 远端端口
+    int32 rport = 8;
+    // 串口名称
+    string serial = 9;
+    // 波特率
+    int32 baud = 10;
+    // 数据位
+    int32 size = 11;
+    // 停止位
+    int32 stopbits = 12;
+    // 校验位
+    int32 parity = 13;
+}

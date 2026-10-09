@@ -1,0 +1,33 @@
+{
+  "name": "web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.1",
+    "@tauri-apps/plugin-autostart": "^2.7.0",
+    "@tauri-apps/plugin-global-shortcut": "^2.4.0",
+    "@tauri-apps/plugin-notification": "^2.5.1",
+    "dockview-core": "^8.4.1",
+    "echarts": "^6.1.0",
+    "lightweight-charts": "^4.2.2",
+    "pinia": "^4.0.3",
+    "vue": "^3.5.30",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
+    "@types/node": "^26.6.4",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.1",
+    "vue-tsc": "^3.3.12"
+  }
+}
