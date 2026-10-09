@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"server/app/backtest/internal/biz"
-	"server/ent"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
 
@@ -28,7 +27,6 @@ const (
 // Runner 实现 kratos transport.Server。
 type Runner struct {
 	uc      *biz.Usecase
-	client  *ent.Client
 	sched   *scheduler.Scheduler
 	workers int
 	log     *log.Helper
@@ -37,15 +35,15 @@ type Runner struct {
 	wg     sync.WaitGroup
 }
 
-func NewRunner(uc *biz.Usecase, client *ent.Client, logger log.Logger) *Runner {
+func NewRunner(uc *biz.Usecase, store scheduler.Store, logger log.Logger) *Runner {
 	r := &Runner{
-		uc: uc, client: client, workers: uc.Settings().Workers,
+		uc: uc, workers: uc.Settings().Workers,
 		log: log.NewHelper(log.With(logger, "module", "backtest/core")),
 	}
 	if r.workers < 1 {
 		r.workers = 1
 	}
-	r.sched = scheduler.New(tradecal.Default, scheduler.EntStore{Client: client},
+	r.sched = scheduler.New(tradecal.Default, store,
 		scheduler.Job{
 			Name: jobIntro, Spec: "30 15 * * *", TradingDayOnly: true,
 			Timeout: 10 * time.Minute, Retry: 1, MaxDelay: 6 * time.Hour,

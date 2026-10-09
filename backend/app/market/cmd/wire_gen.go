@@ -15,6 +15,7 @@ import (
 	"server/app/market/internal/server"
 	"server/app/market/internal/service"
 	"server/conf"
+	"server/pkg/scheduler"
 )
 
 // Injectors from wire.go:
@@ -43,7 +44,8 @@ func wireApp(market *conf.Market, postgres *conf.Postgres, redis *conf.Redis, na
 	marketService := service.NewMarketService(usecase)
 	httpServer := server.NewHTTPServer(market, marketService, logger)
 	grpcServer := server.NewGRPCServer(market, marketService, logger)
-	worker, err := core.NewWorker(usecase, client, bus, config, logger)
+	store := scheduler.NewEntStore(client)
+	worker, err := core.NewWorker(usecase, store, bus, config, logger)
 	if err != nil {
 		cleanup3()
 		cleanup2()

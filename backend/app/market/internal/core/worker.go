@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"server/app/market/internal/biz"
-	"server/ent"
 	"server/pkg/events"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
@@ -42,7 +41,7 @@ type Worker struct {
 	wg     sync.WaitGroup
 }
 
-func NewWorker(uc *biz.Usecase, client *ent.Client, bus *events.Bus, cfg biz.Config, logger log.Logger) (*Worker, error) {
+func NewWorker(uc *biz.Usecase, store scheduler.Store, bus *events.Bus, cfg biz.Config, logger log.Logger) (*Worker, error) {
 	w := &Worker{
 		uc: uc, bus: bus, cfg: cfg, cal: tradecal.Default,
 		log:  log.NewHelper(log.With(logger, "module", "market/core")),
@@ -52,7 +51,7 @@ func NewWorker(uc *biz.Usecase, client *ent.Client, bus *events.Bus, cfg biz.Con
 	if err != nil {
 		return nil, err
 	}
-	w.sched = scheduler.New(w.cal, scheduler.EntStore{Client: client}, jobs...)
+	w.sched = scheduler.New(w.cal, store, jobs...)
 	return w, nil
 }
 

@@ -18,6 +18,12 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+func TestBeaterNilClient(t *testing.T) {
+	if err := (&Beater{}).Beat(context.Background(), "datahub", "id", ":2011"); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestHeartbeatParamsAndTasks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

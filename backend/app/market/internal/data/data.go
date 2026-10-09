@@ -3,7 +3,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"time"
 
@@ -11,21 +10,18 @@ import (
 	"server/conf"
 	"server/ent"
 	"server/pkg/dbinit"
+	"server/pkg/entclient"
 	"server/pkg/events"
 	"server/pkg/market"
-	"server/pkg/migrate"
+	"server/pkg/scheduler"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/wire"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var ProviderSet = wire.NewSet(
-	NewEntClient, NewRedis, NewBus, NewRepo, NewSnapshots, NewPublisher,
+	NewEntClient, scheduler.NewEntStore, NewRedis, NewBus, NewRepo, NewSnapshots, NewPublisher,
 	wire.Bind(new(biz.Repo), new(*Repo)),
 	wire.Bind(new(biz.SnapshotSource), new(*Snapshots)),
 	wire.Bind(new(biz.Publisher), new(*Publisher)),
@@ -52,39 +48,20 @@ func NewEntClient(c *conf.Postgres, logger log.Logger) (*ent.Client, func(), err
 	if c == nil {
 		return nil, nil, fmt.Errorf("data: postgres config is missing")
 	}
-	cfg := dbConfig(c)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	if err := dbinit.EnsureDatabase(ctx, cfg); err != nil {
-		return nil, nil, err
-	}
-	if err := dbinit.EnsureExtension(ctx, cfg, "vector"); err != nil {
-		return nil, nil, err
-	}
-	if err := migrate.Schema(ctx, cfg); err != nil {
-		return nil, nil, err
-	}
-	dsn, err := dbinit.BusinessDSN(cfg)
+	conn, err := entclient.Open(context.Background(), entclient.Config{
+		DB:           dbConfig(c),
+		MaxOpenConns: int(c.GetMaxOpenConns()),
+		MaxIdleConns: int(c.GetMaxIdleConns()),
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, nil, fmt.Errorf("data: open: %w", err)
-	}
-	if n := c.GetMaxOpenConns(); n > 0 {
-		db.SetMaxOpenConns(int(n))
-	}
-	if n := c.GetMaxIdleConns(); n > 0 {
-		db.SetMaxIdleConns(int(n))
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	cleanup := func() {
-		if err := client.Close(); err != nil {
+		if err := conn.Close(); err != nil {
 			log.NewHelper(logger).Errorf("close ent: %v", err)
 		}
 	}
-	return client, cleanup, nil
+	return conn.Client, cleanup, nil
 }
 
 // NewRedis 连接快照所在的 Redis。

@@ -3,21 +3,18 @@ package data
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"time"
 
 	"server/conf"
 	"server/ent"
 	"server/pkg/dbinit"
-	"server/pkg/migrate"
+	"server/pkg/entclient"
+	"server/pkg/outbox"
+	"server/pkg/scheduler"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-redis/redis/v8"
 	"github.com/google/wire"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 var ProviderSet = wire.NewSet(
@@ -26,8 +23,24 @@ var ProviderSet = wire.NewSet(
 )
 
 type Data struct {
-	Client *ent.Client
+	client *ent.Client
 	Redis  *redis.Client
+}
+
+// TaskStore 把 task_run 交给调度器，core 不直接拿 ent 客户端。
+func (d *Data) TaskStore() scheduler.Store {
+	if d == nil {
+		return scheduler.EntStore{}
+	}
+	return scheduler.EntStore{Client: d.client}
+}
+
+// DispatchOutbox 投递尚未发出的事件。
+func (d *Data) DispatchOutbox(ctx context.Context, pub outbox.Publisher, limit int) (int, error) {
+	if d == nil || d.client == nil || pub == nil {
+		return 0, nil
+	}
+	return outbox.Dispatch(ctx, d.client, pub, limit)
 }
 
 func dbConfig(c *conf.Postgres) dbinit.Config {
@@ -48,31 +61,16 @@ func NewData(pg *conf.Postgres, rc *conf.Redis, logger log.Logger) (*Data, func(
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	cfg := dbConfig(pg)
-	if err := dbinit.EnsureDatabase(ctx, cfg); err != nil {
-		return nil, nil, err
-	}
-	if err := dbinit.EnsureExtension(ctx, cfg, "vector"); err != nil {
-		return nil, nil, err
-	}
-	if err := migrate.Schema(ctx, cfg); err != nil {
-		return nil, nil, err
-	}
-	dsn, err := dbinit.BusinessDSN(cfg)
+	conn, err := entclient.Open(ctx, entclient.Config{
+		DB:           cfg,
+		MaxOpenConns: int(pg.GetMaxOpenConns()),
+		MaxIdleConns: int(pg.GetMaxIdleConns()),
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, nil, fmt.Errorf("strategy: open postgres: %w", err)
-	}
-	if n := pg.GetMaxOpenConns(); n > 0 {
-		db.SetMaxOpenConns(int(n))
-	}
-	if n := pg.GetMaxIdleConns(); n > 0 {
-		db.SetMaxIdleConns(int(n))
-	}
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	d := &Data{Client: client}
+	client := conn.Client
+	d := &Data{client: client}
 	if addr := rc.GetAddr(); addr != "" {
 		d.Redis = redis.NewClient(&redis.Options{
 			Addr:         addr,
@@ -84,7 +82,7 @@ func NewData(pg *conf.Postgres, rc *conf.Redis, logger log.Logger) (*Data, func(
 		if d.Redis != nil {
 			_ = d.Redis.Close()
 		}
-		if err := client.Close(); err != nil {
+		if err := conn.Close(); err != nil {
 			helper.Errorf("close ent: %v", err)
 		}
 	}

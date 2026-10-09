@@ -15,6 +15,8 @@ import (
 	"server/app/brain/internal/server"
 	"server/app/brain/internal/service"
 	"server/conf"
+	"server/pkg/outbox"
+	"server/pkg/scheduler"
 )
 
 // Injectors from wire.go:
@@ -39,7 +41,9 @@ func wireApp(brain *conf.Brain, postgres *conf.Postgres, nats *conf.Nats, logger
 	brainService := service.NewBrainService(usecase)
 	httpServer := server.NewHTTPServer(brain, brainService, logger)
 	grpcServer := server.NewGRPCServer(brain, brainService, logger)
-	runner := core.NewRunner(usecase, client, bus, logger)
+	store := scheduler.NewEntStore(client)
+	dispatcher := outbox.NewDispatcher(client, bus)
+	runner := core.NewRunner(usecase, store, dispatcher, logger)
 	app := newApp(logger, httpServer, grpcServer, runner)
 	return app, func() {
 		cleanup2()

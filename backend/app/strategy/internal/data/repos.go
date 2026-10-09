@@ -18,7 +18,7 @@ type paramRepo struct{ d *Data }
 func NewParamRepo(d *Data) biz.ParamRepo { return &paramRepo{d: d} }
 
 func (r *paramRepo) Values(ctx context.Context) (map[string]string, error) {
-	rows, err := r.d.Client.StrategyConfig.Query().All(ctx)
+	rows, err := r.d.client.StrategyConfig.Query().All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,7 @@ func (r *paramRepo) Values(ctx context.Context) (map[string]string, error) {
 }
 
 func (r *paramRepo) ActiveVersion(ctx context.Context) (*int, error) {
-	row, err := r.d.Client.StrategyVersion.Query().Where(strategyversion.IsActive(true)).
+	row, err := r.d.client.StrategyVersion.Query().Where(strategyversion.IsActive(true)).
 		Order(strategyversion.ByID(sql.OrderDesc())).First(ctx)
 	if ent.IsNotFound(err) {
 		return nil, nil
@@ -46,7 +46,7 @@ type blacklistRepo struct{ d *Data }
 func NewBlacklistRepo(d *Data) biz.BlacklistRepo { return &blacklistRepo{d: d} }
 
 func (r *blacklistRepo) Active(ctx context.Context, now time.Time) (map[string]bool, error) {
-	codes, err := r.d.Client.StockBlacklist.Query().
+	codes, err := r.d.client.StockBlacklist.Query().
 		Where(stockblacklist.Or(stockblacklist.ExpiresAtIsNil(), stockblacklist.ExpiresAtGT(now))).
 		Select(stockblacklist.FieldStockCode).
 		Strings(ctx)
@@ -62,9 +62,9 @@ func (r *blacklistRepo) Active(ctx context.Context, now time.Time) (map[string]b
 
 // Add 已存在时更新原因、操作人和到期时间。
 func (r *blacklistRepo) Add(ctx context.Context, symbol, reason, by string, expires *time.Time) error {
-	old, err := r.d.Client.StockBlacklist.Query().Where(stockblacklist.StockCode(symbol)).Only(ctx)
+	old, err := r.d.client.StockBlacklist.Query().Where(stockblacklist.StockCode(symbol)).Only(ctx)
 	if ent.IsNotFound(err) {
-		return r.d.Client.StockBlacklist.Create().
+		return r.d.client.StockBlacklist.Create().
 			SetStockCode(symbol).SetReason(reason).SetCreatedBy(by).SetNillableExpiresAt(expires).
 			Exec(ctx)
 	}
@@ -81,7 +81,7 @@ func (r *blacklistRepo) Add(ctx context.Context, symbol, reason, by string, expi
 }
 
 func (r *blacklistRepo) Remove(ctx context.Context, symbol string) error {
-	_, err := r.d.Client.StockBlacklist.Delete().Where(stockblacklist.StockCode(symbol)).Exec(ctx)
+	_, err := r.d.client.StockBlacklist.Delete().Where(stockblacklist.StockCode(symbol)).Exec(ctx)
 	return err
 }
 
@@ -90,7 +90,7 @@ type positionRepo struct{ d *Data }
 func NewPositionRepo(d *Data) biz.PositionRepo { return &positionRepo{d: d} }
 
 func (r *positionRepo) Holdings(ctx context.Context, book string) ([]biz.Holding, error) {
-	rows, err := r.d.Client.Position.Query().Where(position.Book(book), position.QuantityGT(0)).All(ctx)
+	rows, err := r.d.client.Position.Query().Where(position.Book(book), position.QuantityGT(0)).All(ctx)
 	if err != nil {
 		return nil, err
 	}

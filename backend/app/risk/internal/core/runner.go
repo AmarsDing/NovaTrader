@@ -10,7 +10,6 @@ import (
 
 	"server/app/risk/internal/biz"
 	"server/app/risk/internal/data"
-	"server/ent"
 	"server/pkg/events"
 	"server/pkg/outbox"
 	"server/pkg/tradecal"
@@ -33,12 +32,12 @@ const (
 
 // Runner 实现 kratos transport.Server。
 type Runner struct {
-	e      *biz.Engine
-	bus    *events.Bus
-	client *ent.Client
-	audit  *data.Auditor
-	log    *log.Helper
-	seen   *events.Seen
+	e     *biz.Engine
+	bus   *events.Bus
+	box   *outbox.Dispatcher
+	audit *data.Auditor
+	log   *log.Helper
+	seen  *events.Seen
 
 	lastSnap atomic.Int64
 
@@ -48,9 +47,9 @@ type Runner struct {
 	subs        []*nats.Subscription
 }
 
-func NewRunner(e *biz.Engine, bus *events.Bus, client *ent.Client, audit *data.Auditor, logger log.Logger) *Runner {
+func NewRunner(e *biz.Engine, bus *events.Bus, box *outbox.Dispatcher, audit *data.Auditor, logger log.Logger) *Runner {
 	return &Runner{
-		e: e, bus: bus, client: client, audit: audit,
+		e: e, bus: bus, box: box, audit: audit,
 		log:  log.NewHelper(log.With(logger, "module", "risk/core")),
 		seen: events.NewSeen(4096),
 	}
@@ -209,7 +208,7 @@ func (r *Runner) poll(ctx context.Context) {
 }
 
 func (r *Runner) dispatch(ctx context.Context) {
-	if _, err := outbox.Dispatch(ctx, r.client, r.bus, 100); err != nil && ctx.Err() == nil {
+	if _, err := r.box.Dispatch(ctx, 100); err != nil && ctx.Err() == nil {
 		r.log.Warnf("outbox dispatch: %v", err)
 	}
 }

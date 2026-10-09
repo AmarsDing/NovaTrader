@@ -15,7 +15,9 @@
 - ORM 统一使用 **entgo.io/ent**（Schema-as-Code），**禁止使用 GORM** 写新业务代码；存量 GORM 代码逐步替换。
 - 数据库统一为 **PostgreSQL**（原有 MySQL/SQLite/TDengine 方案仅作历史参考，见 `doc/NovaTrader智脑方案.md`）。
 - **自动建库建表**：服务启动时自动完成，禁止手动执行 SQL 脚本建表。
-  - 启动流程：连接 postgres 系统库 → `CREATE DATABASE IF NOT EXISTS novatrader` → 连接业务库 → 执行 ent 自动迁移（`client.Schema.Create`）。
+  - 启动流程：连接 postgres 系统库 → 创建业务库 → `CREATE EXTENSION vector` → 建议锁下执行 ent 自动迁移（`client.Schema.Create`）→ 打开 `*ent.Client`。这一整段写在 `backend/pkg/entclient.Open`，各服务 `internal/data` 的 `NewEntClient` / `NewData` 只做配置映射和 Wire 清理。
+- **物理位置**：Schema-as-Code 与生成代码在 `backend/ent/`（`schema/` 手写，其余在 `backend/` 下 `go generate ./ent`）。多服务共用这一份包，禁止挪到 `app/*/internal/data/ent`，也禁止按服务复制 schema。
+- **逻辑归属**：说「ent 在数据层」指访问权，不是目录。业务读写只走各服务 `internal/data` 的仓储。`*ent.Client` 还可以由横切基础设施持有（`pkg/dbinit`、`pkg/migrate`、`pkg/entclient`，以及 outbox、调度记录、心跳、参数、交易日历同步这类共享表）。`service` / `biz` / `core` 不查询 ent；`core` 使用 `scheduler.Store`、`outbox.Dispatcher` 等端口。
 - `sql/init_db.sql` 仅为**历史参考**，其中的表结构需要逐一翻译为 ent Schema，禁止继续维护该 SQL 文件。
 - 向量用 PostgreSQL 扩展 **pgvector**，不单独部署 ChromaDB。不引入 TDengine、Neo4j、SQLite 业务库。
 - `CREATE DATABASE`、迁移锁、`CREATE EXTENSION vector` 只允许写在 `backend/pkg/dbinit`。业务代码不写裸 SQL。
@@ -75,7 +77,8 @@ NovaTrader/
 │   │   └── discovery/        ← 注册中心（第三方独立 module，勿动）
 │   ├── conf/conf.proto       ← 配置结构定义（已含 postgres 节）
 │   ├── configs/config.yaml   ← 运行配置（端口/中间件/数据源）
-│   ├── ent/                  ← 【待建】ent Schema 与生成代码
+│   ├── ent/                  ← 共享 Schema-as-Code（物理位置固定在此，不按服务拆分）
+│   ├── pkg/entclient/        ← 建库、pgvector、迁移、打开 *ent.Client
 │   ├── library/              ← 通用库（dataformat 等）
 │   ├── model/                ← 全局错误码定义
 │   ├── utils/                ← 工具包（log/websocket/casbin/aes...）
@@ -95,8 +98,8 @@ NovaTrader/
 |------|------|------|
 | `service/` | 协议适配层 | 只做参数校验与转调 biz，不写业务逻辑 |
 | `biz/` | 业务编排层 | 用例、领域规则、事务边界 |
-| `data/` | 数据访问层 | **只许通过 ent Client 访问 Postgres**，禁止裸 SQL、禁止 GORM |
-| `core/` | 长连接/常驻逻辑 | WebSocket、定时任务、状态维护 |
+| `data/` | 数据访问层 | 业务读写 Postgres 的唯一入口，通过 `backend/ent` 的 Client。禁止裸 SQL、禁止 GORM。schema 包留在 `backend/ent`，不要在 data 目录再放一份 |
+| `core/` | 长连接/常驻逻辑 | WebSocket、定时任务、状态维护。不持有 `*ent.Client`；调度与 outbox 走 data/pkg 端口 |
 
 约定：
 - **Proto-first**：新增接口先写 `backend/api/admin/v1/*.proto`，再生成 pb 代码，再实现 service。
@@ -105,7 +108,7 @@ NovaTrader/
 
 ## 5. 数据层落地规范（ent + Postgres）
 
-目标结构（尚未创建，按此执行）：
+`backend/ent` 是共享 Schema-as-Code，物理上不属于任何一个 `app`。逻辑上的数据层是各服务 `internal/data`：只有这里（以及第 0 节列出的横切 pkg）可以持有 `*ent.Client`。
 
 ```
 backend/ent/
@@ -115,10 +118,10 @@ backend/ent/
 
 关键约定：
 1. Schema 文件头部必须写注释说明表用途（对齐 `doc/NovaTrader智脑方案.md` 第 4 章）。
-2. 先生成的表（首批）：`stock_basic`、`market_data`、`news_sentiment`、`trade_signals`、`positions`、`account_snapshots`、`strategy_config`、`agent_decisions`、`morning_briefings`、`daily_reviews`、`strategy_library`、`strategy_feedback`、`strategy_version`。
+2. 表已经按业务扩展，超出最初的 `stock_basic`、`market_data`、`news_sentiment`、`trade_signals`、`positions`、`account_snapshots`、`strategy_config`、`agent_decisions`、`morning_briefings`、`daily_reviews`、`strategy_library`、`strategy_feedback`、`strategy_version`。新增表继续放在 `backend/ent/schema/`。
 3. 字段类型约定：金额为 `decimal`（ent 用 `field.Float` + schema 注解或 `field.Other` + Numeric），时间统一 `time.Time` / `timestamptz`，JSON 字段用 `field.JSON` / `field.Strings`。
 4. 唯一约束、索引用 ent 的 `field.Unique()` / `index.Fields()` 声明，保证自动迁移可重复执行。
-5. 数据层初始化放在 `internal/data/`：`ent.Open("postgres", dsn)` → `client.Schema.Create(ctx)`，由 wire 注入各 Repo。
+5. 客户端由 `pkg/entclient.Open` 创建（建库、vector 扩展、迁移、连接池）。各服务 `internal/data` 保留同名 `NewEntClient`（strategy 为 `NewData`）作为 Wire Provider，函数体只调用 `entclient.Open`。不要在 app 里再写一遍建库和 `Schema.Create`。
 6. 迁移只许**追加式演进**（新增字段给默认值），禁止手写回滚 SQL。
 
 ## 6. 前端与桌面端规范

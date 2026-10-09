@@ -8,7 +8,6 @@ import (
 
 	"server/app/datahub/internal/biz"
 	"server/conf"
-	"server/ent"
 	"server/pkg/events"
 	"server/pkg/registry"
 	"server/pkg/scheduler"
@@ -30,7 +29,7 @@ const (
 
 type Worker struct {
 	col    *biz.Collector
-	client *ent.Client
+	beater *registry.Beater
 	bus    *events.Bus
 	cfg    *conf.Datahub
 	cal    *tradecal.Calendar
@@ -44,17 +43,17 @@ type Worker struct {
 	bfMu   sync.Mutex
 }
 
-func NewWorker(col *biz.Collector, client *ent.Client, bus *events.Bus, cfg *conf.Datahub, logger log.Logger) (*Worker, error) {
+func NewWorker(col *biz.Collector, store scheduler.Store, beat *registry.Beater, bus *events.Bus, cfg *conf.Datahub, logger log.Logger) (*Worker, error) {
 	id, _ := os.Hostname()
 	addr := ":2011"
 	if h := cfg.GetHttp(); h != nil && h.GetAddr() != "" {
 		addr = h.GetAddr()
 	}
 	w := &Worker{
-		col: col, client: client, bus: bus, cfg: cfg, cal: tradecal.Default,
+		col: col, beater: beat, bus: bus, cfg: cfg, cal: tradecal.Default,
 		log: log.NewHelper(log.With(logger, "module", "datahub/core")), addr: addr, id: id,
 	}
-	w.sched = scheduler.New(w.cal, scheduler.EntStore{Client: client}, w.jobs()...)
+	w.sched = scheduler.New(w.cal, store, w.jobs()...)
 	return w, nil
 }
 
@@ -324,7 +323,7 @@ func (w *Worker) maintainLoop(ctx context.Context) {
 }
 
 func (w *Worker) beat(ctx context.Context) {
-	if err := registry.Beat(ctx, w.client, "datahub", w.id, w.addr); err != nil && ctx.Err() == nil {
+	if err := w.beater.Beat(ctx, "datahub", w.id, w.addr); err != nil && ctx.Err() == nil {
 		w.log.Errorf("heartbeat: %v", err)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"server/pkg/dbinit"
 	"server/pkg/events"
 	"server/pkg/migrate"
+	"server/pkg/scheduler"
 	"server/pkg/tradecal"
 
 	"entgo.io/ent/dialect"
@@ -27,10 +28,10 @@ import (
 func TestInPurgeWindow(t *testing.T) {
 	sh := tradecal.Shanghai()
 	cases := map[time.Time]bool{
-		time.Date(2026, 11, 1, 3, 29, 0, 0, sh): false,
-		time.Date(2026, 11, 1, 3, 30, 0, 0, sh): true,
-		time.Date(2026, 11, 3, 2, 29, 0, 0, sh): true,
-		time.Date(2026, 11, 3, 2, 30, 0, 0, sh): false,
+		time.Date(2026, 11, 1, 3, 29, 0, 0, sh):  false,
+		time.Date(2026, 11, 1, 3, 30, 0, 0, sh):  true,
+		time.Date(2026, 11, 3, 2, 29, 0, 0, sh):  true,
+		time.Date(2026, 11, 3, 2, 30, 0, 0, sh):  false,
 		time.Date(2026, 11, 15, 3, 30, 0, 0, sh): false,
 	}
 	for now, want := range cases {
@@ -65,7 +66,7 @@ func testRunner(t *testing.T) (*Runner, *ent.Client) {
 	t.Cleanup(func() { client.Close() })
 	c := &conf.Kb{}
 	uc := kb.NewKnowledgeUsecase(kbstore.NewKnowledgeRepo(client), nil, c, log.DefaultLogger)
-	return New(uc, client, nil, c, log.DefaultLogger), client
+	return New(uc, scheduler.NewEntStore(client), nil, c, log.DefaultLogger), client
 }
 
 func signalMsg(t *testing.T, payload string) *nats.Msg {

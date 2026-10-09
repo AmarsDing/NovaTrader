@@ -15,6 +15,7 @@ import (
 	"server/app/backtest/internal/server"
 	"server/app/backtest/internal/service"
 	"server/conf"
+	"server/pkg/scheduler"
 )
 
 // Injectors from wire.go:
@@ -30,7 +31,8 @@ func wireApp(backtest *conf.Backtest, postgres *conf.Postgres, nats *conf.Nats, 
 	publisher := data.NewPublisher(bus)
 	settings := biz.NewSettings(backtest)
 	usecase := biz.NewUsecase(repo, source, publisher, settings, logger)
-	runner := core.NewRunner(usecase, client, logger)
+	store := scheduler.NewEntStore(client)
+	runner := core.NewRunner(usecase, store, logger)
 	backtestService := service.NewBacktestService(usecase)
 	httpServer := server.NewHTTPServer(backtest, backtestService, logger)
 	grpcServer := server.NewGRPCServer(backtest, backtestService, logger)

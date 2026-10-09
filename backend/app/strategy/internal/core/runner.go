@@ -11,7 +11,6 @@ import (
 	"server/app/strategy/internal/data"
 	"server/conf"
 	"server/pkg/events"
-	"server/pkg/outbox"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
 
@@ -71,7 +70,7 @@ func NewRunner(uc *biz.Usecase, d *data.Data, bus *events.Bus, logger log.Logger
 		log: log.NewHelper(log.With(logger, "module", "strategy/core")),
 		now: time.Now, alerted: map[string]struct{}{}, seen: events.NewSeen(10000),
 	}
-	r.sched = scheduler.New(r.cal, scheduler.EntStore{Client: d.Client},
+	r.sched = scheduler.New(r.cal, d.TaskStore(),
 		scheduler.Job{
 			Name: jobPremarket, Spec: "0 9 * * *", TradingDayOnly: true,
 			Timeout: 3 * time.Minute, Retry: 1, MaxDelay: 25 * time.Minute,
@@ -140,7 +139,7 @@ func (r *Runner) loop(ctx context.Context, fn func(context.Context, time.Time)) 
 // housekeep 投递 outbox、过期信号。单独一个协程，扫描再慢也不耽误信号送到风控。
 func (r *Runner) housekeep(ctx context.Context, now time.Time) {
 	if r.bus != nil {
-		if _, err := outbox.Dispatch(ctx, r.d.Client, r.bus, 200); err != nil {
+		if _, err := r.d.DispatchOutbox(ctx, r.bus, 200); err != nil {
 			r.log.Warnf("outbox dispatch: %v", err)
 		}
 	}

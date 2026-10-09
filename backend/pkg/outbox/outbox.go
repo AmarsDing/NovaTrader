@@ -39,6 +39,25 @@ func Insert(ctx context.Context, tx *ent.Tx, env events.Envelope) error {
 	return nil
 }
 
+// Dispatcher 把 outbox 投递从常驻循环里隔开，core 不必持有 *ent.Client。
+type Dispatcher struct {
+	client *ent.Client
+	bus    *events.Bus
+}
+
+// NewDispatcher 供 Wire 注入。bus 为空时 Dispatch 直接返回。
+func NewDispatcher(client *ent.Client, bus *events.Bus) *Dispatcher {
+	return &Dispatcher{client: client, bus: bus}
+}
+
+// Dispatch 发送尚未投递的事件。
+func (d *Dispatcher) Dispatch(ctx context.Context, limit int) (int, error) {
+	if d == nil || d.client == nil || d.bus == nil {
+		return 0, nil
+	}
+	return Dispatch(ctx, d.client, d.bus, limit)
+}
+
 // Dispatch 发送尚未投递的事件。发送失败时停下，已成功的行会写下 published_at。
 func Dispatch(ctx context.Context, client *ent.Client, pub Publisher, limit int) (int, error) {
 	if limit <= 0 {

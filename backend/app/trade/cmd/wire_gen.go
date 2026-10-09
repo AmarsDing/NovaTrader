@@ -7,16 +7,18 @@
 package main
 
 import (
+	"github.com/go-kratos/kratos/v2"
+	"github.com/go-kratos/kratos/v2/log"
 	"server/app/trade/internal/biz"
 	"server/app/trade/internal/core"
 	"server/app/trade/internal/data"
 	"server/app/trade/internal/server"
 	"server/app/trade/internal/service"
 	"server/conf"
-
-	"github.com/go-kratos/kratos/v2"
-	"github.com/go-kratos/kratos/v2/log"
+	"server/pkg/outbox"
 )
+
+// Injectors from wire.go:
 
 func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, logger log.Logger) (*kratos.App, func(), error) {
 	client, cleanup, err := data.NewEntClient(postgres, logger)
@@ -32,7 +34,8 @@ func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, logger
 		cleanup()
 		return nil, nil, err
 	}
-	runner := core.NewRunner(trade, engine, bus, client, logger)
+	dispatcher := outbox.NewDispatcher(client, bus)
+	runner := core.NewRunner(trade, engine, bus, dispatcher, logger)
 	tradeService := service.NewTradeService(engine)
 	httpServer := server.NewHTTPServer(trade, tradeService, logger)
 	grpcServer := server.NewGRPCServer(trade, tradeService, logger)

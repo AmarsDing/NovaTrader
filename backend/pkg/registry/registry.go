@@ -10,6 +10,24 @@ import (
 	"server/ent/serviceinstance"
 )
 
+// Beater 供常驻循环刷新心跳，调用方不必持有 *ent.Client。
+type Beater struct {
+	client *ent.Client
+}
+
+// NewBeater 供 Wire 注入。
+func NewBeater(client *ent.Client) *Beater {
+	return &Beater{client: client}
+}
+
+// Beat 刷新一条心跳。
+func (b *Beater) Beat(ctx context.Context, name, instanceID, addr string) error {
+	if b == nil || b.client == nil {
+		return fmt.Errorf("registry: no client")
+	}
+	return Beat(ctx, b.client, name, instanceID, addr)
+}
+
 // Beat 写入或刷新一条心跳。
 func Beat(ctx context.Context, client *ent.Client, name, instanceID, addr string) error {
 	row, err := client.ServiceInstance.Query().

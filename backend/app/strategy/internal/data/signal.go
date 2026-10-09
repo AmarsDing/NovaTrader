@@ -59,7 +59,7 @@ func toSignal(r *ent.TradeSignal) *biz.Signal {
 }
 
 func (r *signalRepo) Create(ctx context.Context, s *biz.Signal, env biz.EnvelopeFunc) (int, error) {
-	tx, err := r.d.Client.Tx(ctx)
+	tx, err := r.d.client.Tx(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -125,7 +125,7 @@ func writeEvent(ctx context.Context, tx *ent.Tx, s *biz.Signal, from biz.Status,
 }
 
 func (r *signalRepo) Transition(ctx context.Context, id int, from, to biz.Status, reason, actor, trace string, env biz.EnvelopeFunc, patch *biz.SignalPatch) (*biz.Signal, error) {
-	tx, err := r.d.Client.Tx(ctx)
+	tx, err := r.d.client.Tx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (r *signalRepo) Transition(ctx context.Context, id int, from, to biz.Status
 }
 
 func (r *signalRepo) Get(ctx context.Context, id int) (*biz.Signal, error) {
-	row, err := r.d.Client.TradeSignal.Get(ctx, id)
+	row, err := r.d.client.TradeSignal.Get(ctx, id)
 	if ent.IsNotFound(err) {
 		return nil, biz.ErrNotFound
 	}
@@ -170,7 +170,7 @@ func (r *signalRepo) Get(ctx context.Context, id int) (*biz.Signal, error) {
 }
 
 func (r *signalRepo) Latest(ctx context.Context, book, symbol, side string) (*biz.Signal, error) {
-	row, err := r.d.Client.TradeSignal.Query().
+	row, err := r.d.client.TradeSignal.Query().
 		Where(tradesignal.Book(book), tradesignal.StockCode(symbol), tradesignal.SignalTypeEQ(tradesignal.SignalType(side))).
 		Order(tradesignal.ByCreatedAt(sql.OrderDesc()), tradesignal.ByID(sql.OrderDesc())).
 		First(ctx)
@@ -184,7 +184,7 @@ func (r *signalRepo) Latest(ctx context.Context, book, symbol, side string) (*bi
 }
 
 func (r *signalRepo) HasOpen(ctx context.Context, book, symbol, side string) (bool, error) {
-	return r.d.Client.TradeSignal.Query().
+	return r.d.client.TradeSignal.Query().
 		Where(tradesignal.Book(book), tradesignal.StockCode(symbol),
 			tradesignal.SignalTypeEQ(tradesignal.SignalType(side)),
 			tradesignal.StatusIn(statusStrings(biz.OpenStatuses)...)).
@@ -192,13 +192,13 @@ func (r *signalRepo) HasOpen(ctx context.Context, book, symbol, side string) (bo
 }
 
 func (r *signalRepo) CountBuys(ctx context.Context, book string, day time.Time) (int, error) {
-	return r.d.Client.TradeSignal.Query().
+	return r.d.client.TradeSignal.Query().
 		Where(tradesignal.Book(book), tradesignal.TradeDate(day), tradesignal.SignalTypeEQ(tradesignal.SignalTypeBuy)).
 		Count(ctx)
 }
 
 func (r *signalRepo) Due(ctx context.Context, now time.Time) ([]*biz.Signal, error) {
-	rows, err := r.d.Client.TradeSignal.Query().
+	rows, err := r.d.client.TradeSignal.Query().
 		Where(tradesignal.StatusIn(statusStrings(biz.ExpirableStatuses)...), tradesignal.ValidUntilLT(now)).
 		Order(tradesignal.ByID()).
 		Limit(500).
@@ -214,7 +214,7 @@ func (r *signalRepo) Due(ctx context.Context, now time.Time) ([]*biz.Signal, err
 }
 
 func (r *signalRepo) List(ctx context.Context, f biz.SignalFilter) ([]*biz.Signal, error) {
-	q := r.d.Client.TradeSignal.Query()
+	q := r.d.client.TradeSignal.Query()
 	if f.Book != "" {
 		q.Where(tradesignal.Book(f.Book))
 	}
@@ -239,7 +239,7 @@ func (r *signalRepo) List(ctx context.Context, f biz.SignalFilter) ([]*biz.Signa
 }
 
 func (r *signalRepo) LastDoneBuy(ctx context.Context, book, symbol string) (*biz.Signal, error) {
-	row, err := r.d.Client.TradeSignal.Query().
+	row, err := r.d.client.TradeSignal.Query().
 		Where(tradesignal.Book(book), tradesignal.StockCode(symbol),
 			tradesignal.SignalTypeEQ(tradesignal.SignalTypeBuy), tradesignal.Status(string(biz.StatusDone))).
 		Order(tradesignal.ByCreatedAt(sql.OrderDesc()), tradesignal.ByID(sql.OrderDesc())).

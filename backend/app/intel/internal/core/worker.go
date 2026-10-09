@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"server/app/intel/internal/biz"
-	"server/ent"
 	"server/pkg/events"
 	"server/pkg/outbox"
 
@@ -33,18 +32,18 @@ const (
 
 // Worker 实现 kratos 的 transport.Server，随应用启动和停止。
 type Worker struct {
-	uc     *biz.Usecase
-	client *ent.Client
-	bus    *events.Bus
-	log    *log.Helper
+	uc  *biz.Usecase
+	box *outbox.Dispatcher
+	bus *events.Bus
+	log *log.Helper
 
 	msgs   chan *nats.Msg
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewWorker(uc *biz.Usecase, client *ent.Client, bus *events.Bus, logger log.Logger) *Worker {
-	return &Worker{uc: uc, client: client, bus: bus, log: log.NewHelper(log.With(logger, "module", "intel/core"))}
+func NewWorker(uc *biz.Usecase, box *outbox.Dispatcher, bus *events.Bus, logger log.Logger) *Worker {
+	return &Worker{uc: uc, box: box, bus: bus, log: log.NewHelper(log.With(logger, "module", "intel/core"))}
 }
 
 func (w *Worker) Start(ctx context.Context) error {
@@ -164,7 +163,7 @@ func (w *Worker) loop(ctx context.Context, every time.Duration, fn func(context.
 }
 
 func (w *Worker) dispatch(ctx context.Context) {
-	if _, err := outbox.Dispatch(ctx, w.client, w.bus, 100); err != nil && ctx.Err() == nil {
+	if _, err := w.box.Dispatch(ctx, 100); err != nil && ctx.Err() == nil {
 		w.log.Warnf("outbox dispatch: %v", err)
 	}
 }

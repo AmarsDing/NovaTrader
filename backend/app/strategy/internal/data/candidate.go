@@ -21,7 +21,7 @@ func (r *candidateRepo) Save(ctx context.Context, list []biz.Candidate) error {
 	if len(list) == 0 {
 		return nil
 	}
-	tx, err := r.d.Client.Tx(ctx)
+	tx, err := r.d.client.Tx(ctx)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (r *candidateRepo) Save(ctx context.Context, list []biz.Candidate) error {
 }
 
 func (r *candidateRepo) PoolSymbols(ctx context.Context, day time.Time, pool string) ([]string, error) {
-	return r.d.Client.StrategyCandidate.Query().
+	return r.d.client.StrategyCandidate.Query().
 		Where(strategycandidate.TradeDate(day), strategycandidate.Pool(pool)).
 		Unique(true).
 		Select(strategycandidate.FieldStockCode).
@@ -78,7 +78,7 @@ func (r *candidateRepo) PoolSymbols(ctx context.Context, day time.Time, pool str
 }
 
 func (r *candidateRepo) PendingOutcomes(ctx context.Context, since, today time.Time) ([]biz.Candidate, error) {
-	rows, err := r.d.Client.StrategyCandidate.Query().
+	rows, err := r.d.client.StrategyCandidate.Query().
 		Where(strategycandidate.TradeDateGTE(since), strategycandidate.TradeDateLT(today), strategycandidate.RetT5IsNil()).
 		Order(strategycandidate.ByID()).
 		All(ctx)
@@ -103,7 +103,7 @@ func toCandidates(rows []*ent.StrategyCandidate) []biz.Candidate {
 }
 
 func (r *candidateRepo) List(ctx context.Context, f biz.CandidateFilter) ([]biz.Candidate, error) {
-	q := r.d.Client.StrategyCandidate.Query()
+	q := r.d.client.StrategyCandidate.Query()
 	if !f.Day.IsZero() {
 		q.Where(strategycandidate.TradeDate(f.Day))
 	}
@@ -125,7 +125,7 @@ func (r *candidateRepo) List(ctx context.Context, f biz.CandidateFilter) ([]biz.
 }
 
 func (r *candidateRepo) SetOutcome(ctx context.Context, id int, t1, t3, t5 *float64) error {
-	return r.d.Client.StrategyCandidate.UpdateOneID(id).
+	return r.d.client.StrategyCandidate.UpdateOneID(id).
 		SetNillableRetT1(t1).SetNillableRetT3(t3).SetNillableRetT5(t5).
 		Exec(ctx)
 }
