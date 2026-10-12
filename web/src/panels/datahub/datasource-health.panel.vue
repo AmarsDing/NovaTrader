@@ -1,16 +1,23 @@
 <script setup lang="ts">
 /**
- * 数据源治理面板（M01）：数据源启停（owner）+ 质量报告。
+ * 数据源治理面板（M01）：数据源启停（owner）+ 手动触发采集（owner）+ 质量报告。
  * 状态灯：enabled + lastAt 新鲜度 → live/ok/stale/down。
  */
 import { computed, onMounted, ref } from 'vue'
-import { getQuality, listSources, setSourceEnabled, type DataSource, type QualityReport } from '@/api/datahub'
+import {
+  collectDomain,
+  getQuality,
+  listSources,
+  setSourceEnabled,
+  type DataSource,
+  type QualityReport,
+} from '@/api/datahub'
 import { useAuthStore } from '@/stores/auth'
 import NtButton from '@/ui/NtButton.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
-import { clock, messageOf } from '@/utils/format'
+import { clock, messageOf, ratioPct } from '@/utils/format'
 
 const auth = useAuthStore()
 
@@ -18,7 +25,9 @@ const sources = ref<DataSource[]>([])
 const quality = ref<QualityReport[]>([])
 const loading = ref(false)
 const error = ref('')
+const hint = ref('')
 const toggling = ref('')
+const collecting = ref('')
 
 const STALE_MS = 30 * 60 * 1000
 
@@ -37,9 +46,12 @@ type SourceRow = DataSource & Record<string, unknown>
 const sourceColumns: NtTableColumn<SourceRow>[] = [
   { key: 'name', title: '数据源' },
   { key: 'kind', title: '类型', mono: true },
+  { key: 'successRate', title: '成功率', align: 'right' },
+  { key: 'latencyMs', title: '延迟(ms)', align: 'right' },
   { key: 'lastAt', title: '最近采集', mono: true },
   { key: 'detail', title: '说明' },
   { key: 'enabled', title: '启停' },
+  { key: 'collect', title: '' },
 ]
 const sourceRows = computed(() => sources.value as unknown as SourceRow[])
 
@@ -81,6 +93,24 @@ async function toggle(source: DataSource, enabled: boolean) {
   }
 }
 
+/** 手动触发该源域的立即采集（owner），完成后刷新状态。 */
+async function collect(source: DataSource) {
+  if (auth.isViewer()) return
+  const domain = String(source.kind || source.id)
+  collecting.value = source.id
+  error.value = ''
+  hint.value = ''
+  try {
+    await collectDomain(domain)
+    hint.value = `${source.name || source.id} 已触发采集，稍等片刻看最近采集时间`
+    await load()
+  } catch (err) {
+    error.value = messageOf(err)
+  } finally {
+    collecting.value = ''
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -95,6 +125,7 @@ onMounted(load)
     </header>
 
     <p v-if="error" class="nt-err">{{ error }}</p>
+    <p v-if="hint" class="nt-note">{{ hint }}</p>
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">数据源</h2>
@@ -102,10 +133,24 @@ onMounted(load)
         <template #cell-name="{ row }">
           <NtStatusDot :status="statusOf(row)" :label="row.name || row.id" />
         </template>
+        <template #cell-successRate="{ row }">
+          <span :class="{ warn: (row.successRate ?? 1) < 0.9 }">{{ row.successRate != null ? ratioPct(row.successRate, 0) : '—' }}</span>
+        </template>
+        <template #cell-latencyMs="{ row }">{{ row.latencyMs != null ? Math.round(row.latencyMs) : '—' }}</template>
         <template #cell-lastAt="{ row }">{{ clock(row.lastAt) }}</template>
         <template #cell-enabled="{ row }">
           <NtSwitch v-if="!auth.isViewer()" :model-value="row.enabled" @update:model-value="toggle(row, $event)" />
           <span v-else>{{ row.enabled ? '开' : '关' }}</span>
+        </template>
+        <template #cell-collect="{ row }">
+          <NtButton
+            v-if="!auth.isViewer() && row.enabled"
+            size="sm"
+            :loading="collecting === row.id"
+            @click="collect(row)"
+          >
+            采集
+          </NtButton>
         </template>
       </NtTable>
     </section>
@@ -116,3 +161,10 @@ onMounted(load)
     </section>
   </div>
 </template>
+
+<style scoped>
+.warn {
+  color: var(--nt-warn);
+  font-weight: 600;
+}
+</style>

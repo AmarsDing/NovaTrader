@@ -91,41 +91,93 @@ function normalizeTask(raw: RawRecord): BacktestTask {
 
 /* ---------- M07 自进化：影子 / 自省 / 提案 / 准入 ---------- */
 
-/** 影子统计（实盘 vs 回测口径对比）。 */
-export interface ShadowStat {
-  name: string
-  live: number | null
-  shadow: number | null
-  delta: number | null
+/** 影子统计某一持有窗口的聚合（比率口径）。 */
+export interface ShadowHorizon {
+  horizon: number
+  count: number | null
+  avgReturn: number | null
+  winRate: number | null
 }
 
-export async function getShadowStats(): Promise<ShadowStat[]> {
+/** 影子统计按信号分数桶的聚合（比率口径）。 */
+export interface ShadowBucket {
+  bucket: string
+  count: number | null
+  avgT1: number | null
+  avgT3: number | null
+  avgT5: number | null
+}
+
+/** 影子统计（策略影子仓后验，非实盘对比）。 */
+export interface ShadowStats {
+  total: number | null
+  pending: number | null
+  monotonic: boolean
+  horizons: ShadowHorizon[]
+  buckets: ShadowBucket[]
+}
+
+export async function getShadowStats(): Promise<ShadowStats> {
   const data = await request('/api/backtest/shadow/stats')
-  return asList(data, 'items', 'stats', 'rows').map((raw) => ({
-    name: pick<string>(raw, 'name', 'metric') || '',
-    live: num(pick(raw, 'live')),
-    shadow: num(pick(raw, 'shadow')),
-    delta: num(pick(raw, 'delta', 'diff')),
-  }))
+  const raw = (data && typeof data === 'object' ? data : {}) as RawRecord
+  return {
+    total: num(pick(raw, 'total')),
+    pending: num(pick(raw, 'pending')),
+    monotonic: !!raw.monotonic,
+    horizons: asList<RawRecord>(raw, 'horizons').map((row) => ({
+      horizon: num(pick(row, 'horizon')) ?? 0,
+      count: num(pick(row, 'count')),
+      avgReturn: num(pick(row, 'avgReturn', 'avg_return')),
+      winRate: num(pick(row, 'winRate', 'win_rate')),
+    })),
+    buckets: asList<RawRecord>(raw, 'buckets').map((row) => ({
+      bucket: pick<string>(row, 'bucket') || '',
+      count: num(pick(row, 'count')),
+      avgT1: num(pick(row, 'avgT1', 'avg_t1')),
+      avgT3: num(pick(row, 'avgT3', 'avg_t3')),
+      avgT5: num(pick(row, 'avgT5', 'avg_t5')),
+    })),
+  }
 }
 
-/** 自省记录。 */
+/** 自省记录（盘后窗口统计 + 触发原因）。 */
 export interface Introspection {
   id: string
-  at: string
-  title: string
-  body: string
-  kind: string
+  tradeDate: string
+  book: string
+  windowDays: number | null
+  sampleCount: number | null
+  winRate: number | null
+  avgReturn: number | null
+  maxDrawdown: number | null
+  missedCount: number | null
+  attribution: Record<string, number>
+  triggered: boolean
+  triggerReason: string
+  note: string
+  createdAt: string
 }
 
 export async function listIntrospections(): Promise<Introspection[]> {
   const data = await request('/api/backtest/introspections')
-  return asList(data, 'items', 'introspections').map((raw) => ({
-    id: pick<string>(raw, 'id') || '',
-    at: pick<string>(raw, 'at', 'createdAt', 'created_at', 'time') || '',
-    title: pick<string>(raw, 'title', 'subject') || '',
-    body: pick<string>(raw, 'body', 'text', 'content') || '',
-    kind: pick<string>(raw, 'kind', 'type') || '',
+  return asList<RawRecord>(data, 'items', 'introspections').map((raw) => ({
+    id: String(pick(raw, 'id') ?? ''),
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    book: pick<string>(raw, 'book') || '',
+    windowDays: num(pick(raw, 'windowDays', 'window_days')),
+    sampleCount: num(pick(raw, 'sampleCount', 'sample_count')),
+    winRate: num(pick(raw, 'winRate', 'win_rate')),
+    avgReturn: num(pick(raw, 'avgReturn', 'avg_return')),
+    maxDrawdown: num(pick(raw, 'maxDrawdown', 'max_drawdown')),
+    missedCount: num(pick(raw, 'missedCount', 'missed_count')),
+    attribution:
+      raw.attribution && typeof raw.attribution === 'object'
+        ? Object.fromEntries(Object.entries(raw.attribution as RawRecord).map(([k, v]) => [k, num(v) ?? 0]))
+        : {},
+    triggered: !!raw.triggered,
+    triggerReason: pick<string>(raw, 'triggerReason', 'trigger_reason') || '',
+    note: pick<string>(raw, 'note') || '',
+    createdAt: pick<string>(raw, 'createdAt', 'created_at') || '',
   }))
 }
 

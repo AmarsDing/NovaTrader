@@ -1,14 +1,19 @@
 <script setup lang="ts">
 /**
- * 底栏 chrome（不进 dock）：链路健康、交易模式、Kill Switch、WS 主题、上海时段钟。
+ * 底栏 chrome（不进 dock）：链路健康、账本、交易模式、Kill Switch、未读通知、WS 主题、上海时段钟。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
+import { useAccountStore } from '@/stores/account'
+import { useNotifyStore } from '@/stores/notify'
 import { useRiskStore } from '@/stores/risk'
 import { formatClock, SESSION_TEXT, sessionOf } from '@/utils/time'
 import { desiredTopics, isLive, link } from '@/ws/hub'
+import { getWorkbench } from '@/workspace/inject'
 
 const risk = useRiskStore()
+const account = useAccountStore()
+const notify = useNotifyStore()
 
 const now = ref(new Date())
 let timer: ReturnType<typeof setInterval> | undefined
@@ -22,10 +27,15 @@ const topics = computed(() => {
   return desiredTopics().join(' · ')
 })
 
+function openNotify() {
+  getWorkbench()?.openPanel('notify-center')
+}
+
 onMounted(() => {
   timer = setInterval(() => {
     now.value = new Date()
   }, 1000)
+  notify.start()
 })
 
 onBeforeUnmount(() => clearInterval(timer))
@@ -41,8 +51,14 @@ onBeforeUnmount(() => clearInterval(timer))
       <NtStatusDot :status="link.ws === 'open' ? 'live' : 'down'" />
       行情通道 2003 · {{ link.ws === 'open' ? '已连接' : '中断' }}
     </div>
+    <div class="cell book" :class="{ live: account.book === 'LIVE' }">
+      {{ account.book === 'LIVE' ? 'LIVE 实盘' : 'SIM 模拟' }}
+    </div>
     <div class="cell">模式 {{ risk.mode || '—' }}</div>
     <div class="cell" :class="{ warn: risk.killActive }">Kill Switch {{ risk.killActive ? '已触发' : '未触发' }}</div>
+    <button type="button" class="cell bell" :class="{ has: notify.unread > 0 }" @click="openNotify">
+      通知<template v-if="notify.unread > 0"> {{ notify.unread > 99 ? '99+' : notify.unread }}</template>
+    </button>
     <div class="cell dim">{{ isLive() ? '数据实时' : '不是实时' }}</div>
     <div class="cell topics" :title="topics">订阅 {{ topics }}</div>
     <div class="cell clock">{{ sessionText }} · {{ clockText }}</div>
@@ -71,6 +87,33 @@ onBeforeUnmount(() => clearInterval(timer))
 
 .cell.warn {
   color: var(--nt-danger);
+}
+
+.book {
+  font-weight: 600;
+  color: var(--nt-text-1);
+}
+
+.book.live {
+  color: var(--nt-warn);
+}
+
+.bell {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--nt-text-3);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bell.has {
+  color: var(--nt-accent);
+  font-weight: 600;
+}
+
+.bell:hover {
+  text-decoration: underline;
 }
 
 .cell.dim {

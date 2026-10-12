@@ -1,25 +1,39 @@
 <script setup lang="ts">
 /**
- * 通知中心面板（M10）：消息列表 + 级别筛选 + WS alert 推送即时入列。
- * 读取走 /api/notify/messages，实时增量走 alert 主题。
+ * 通知中心面板（M10）：消息列表 + 级别/类别筛选 + WS alert 推送即时入列。
+ * 打开即视为已读（联动 StatusBar 未读角标，见 stores/notify.ts）。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { listMessages, type NotifyMessage } from '@/api/notify'
+import { useNotifyStore } from '@/stores/notify'
 import NtButton from '@/ui/NtButton.vue'
+import NtSelect from '@/ui/NtSelect.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import { clock, messageOf } from '@/utils/format'
 import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
+
+const notify = useNotifyStore()
 
 const items = ref<NotifyMessage[]>([])
 const loading = ref(false)
 const error = ref('')
 const level = ref('')
+const kind = ref('')
 
 const levels = computed(() => [...new Set(items.value.map((m) => m.level).filter(Boolean))].sort())
+const levelOptions = computed(() => [
+  { value: '', label: '全部级别' },
+  ...levels.value.map((lv) => ({ value: lv, label: lv })),
+])
+const kinds = computed(() => [...new Set(items.value.map((m) => m.kind).filter(Boolean))].sort())
+const kindOptions = computed(() => [
+  { value: '', label: '全部类别' },
+  ...kinds.value.map((k) => ({ value: k, label: k })),
+])
 
 const entries = computed<TimelineEntry[]>(() =>
   items.value
-    .filter((m) => !level.value || m.level === level.value)
+    .filter((m) => (!level.value || m.level === level.value) && (!kind.value || m.kind === kind.value))
     .map((m) => ({
       id: m.id,
       time: clock(m.time),
@@ -65,6 +79,8 @@ function onPushMessage(msg: WsPushMessage) {
     read: false,
   }
   items.value = [entry, ...items.value].slice(0, 200)
+  // 面板开着等于在看，推送到了就顺手清未读。
+  notify.markRead()
 }
 
 let offPush: (() => void) | undefined
@@ -72,6 +88,8 @@ let unsubscribe: (() => void) | undefined
 
 onMounted(() => {
   void load()
+  notify.start()
+  notify.markRead()
   unsubscribe = subscribe('alert')
   offPush = onPush(onPushMessage)
 })
@@ -87,13 +105,11 @@ onBeforeUnmount(() => {
     <header class="nt-head">
       <div>
         <h1 class="nt-title">通知中心</h1>
-        <p class="nt-note">{{ items.length }} 条消息 · WS alert 实时入列</p>
+        <p class="nt-note">{{ items.length }} 条消息 · WS alert 实时入列 · 打开即已读</p>
       </div>
       <div class="filters">
-        <select v-model="level" class="level">
-          <option value="">全部级别</option>
-          <option v-for="lv in levels" :key="lv" :value="lv">{{ lv }}</option>
-        </select>
+        <NtSelect v-model="level" :options="levelOptions" />
+        <NtSelect v-model="kind" :options="kindOptions" />
         <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
       </div>
     </header>
@@ -112,13 +128,5 @@ onBeforeUnmount(() => {
   gap: 8px;
   align-items: center;
 }
-
-.level {
-  padding: 4px 8px;
-  font-size: 12.5px;
-  color: var(--nt-text-1);
-  background: var(--nt-bg-2);
-  border: 1px solid var(--nt-border-1);
-  border-radius: var(--nt-radius-s);
-}
 </style>
+

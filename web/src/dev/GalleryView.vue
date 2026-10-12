@@ -34,8 +34,13 @@ import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import CanvasStage from '@/monitor/CanvasStage.vue'
+import { computeHealth } from '@/monitor/health'
+import { resolveHud } from '@/monitor/hud'
 import { emptyMonitorInput } from '@/monitor/load-input'
 import { buildScene } from '@/monitor/scene-model'
+import Sparkline from '@/monitor/Sparkline.vue'
+import { bandCountdown, bandSegments, bandSpec, hudCells } from '@/monitor/timeband'
+import '@/monitor/monitor.css'
 import type { Bar } from '@/api/market'
 import type { EquityPoint } from '@/api/backtest'
 import { useSettingsStore, type DensityName, type ThemeName } from '@/stores/settings'
@@ -236,6 +241,102 @@ const stageGraph = buildScene(
   },
   stageNow,
 )
+
+/* ---------- 监控 S1 原语：时段带 / 健康分 / 十格 HUD（静态） ---------- */
+const demoNow = new Date(2026, 9, 12, 10, 24).getTime()
+const demoInput = {
+  ...emptyMonitorInput(),
+  now: demoNow,
+  sentiment: {
+    ok: true,
+    phase: '上午',
+    up: 3021,
+    down: 1502,
+    asOf: new Date(demoNow - 4000).toISOString(),
+    stale: false,
+    brokenRate: 32.4,
+    maxHeight: 5,
+  },
+  limits: {
+    ok: true,
+    rows: [
+      { symbol: '600519', consecutive: 2, status: 'sealed' },
+      { symbol: '000001', consecutive: 5, status: 'sealed' },
+      { symbol: '300750', consecutive: 1, status: 'sealed' },
+      { symbol: '601318', consecutive: 1, status: 'sealed' },
+    ],
+  },
+  sectors: {
+    ok: true,
+    rows: [
+      { name: '固态电池', avgPct: 3.42, overseas: 1.2, leader: '002466' },
+      { name: '算力租赁', avgPct: 1.85, overseas: null, leader: '000628' },
+    ],
+  },
+  signals: {
+    ok: true,
+    items: [
+      {
+        id: 'gs1',
+        symbol: '600519',
+        name: '贵州茅台',
+        score: 88,
+        highValue: true,
+        degraded: false,
+        status: 'risk_checking',
+        evidence: [],
+        dims: {},
+        entry: 1682,
+        stop: 1650,
+        take: 1736,
+        time: '10:12',
+      },
+    ],
+  },
+  risk: { ok: true, mode: 'SIM', killActive: false, killReason: '', buysToday: 1, marketBreaker: '' },
+  brainStats: {
+    ok: true,
+    tiers: [
+      { tier: 'large', model: 'qwen-32b', configured: true, circuitOpen: false, calls: 12, failures: 0, p95Ms: 1820 },
+      { tier: 'small', model: 'qwen-4b', configured: true, circuitOpen: false, calls: 214, failures: 1, p95Ms: 86 },
+    ],
+  },
+  ops: {
+    ok: true,
+    services: [
+      { name: 'admin', status: 'ok', detail: '' },
+      { name: 'brain', status: 'ok', detail: '' },
+      { name: 'nats', status: 'up', detail: '' },
+    ],
+    sources: [],
+    resources: [{ name: '显存 GPU0', status: 'ok', detail: '显存 GPU0 已用 6104 MiB / 共 8188 MiB' }],
+  },
+  sources: {
+    ok: true,
+    items: [{ id: 'tdx', name: '通达信', status: 'live', detail: '', lastAt: new Date(demoNow - 5000).toISOString() }],
+  },
+  account: {
+    ok: true,
+    book: 'SIM',
+    equity: 1284902.44,
+    cash: 412205.1,
+    dayPnl: 18204.1,
+    positions: [{ symbol: '600519', quantity: 100, avgCost: 1680, lastPrice: 1683.5 }],
+  },
+}
+const demoSegments = bandSegments('morning')
+const demoSpec = bandSpec('morning')
+const demoCountdown = bandCountdown(new Date(demoNow), 'morning')
+const demoHealth = computeHealth(demoInput, demoNow)
+const demoHud = resolveHud(demoInput, hudCells('morning'), demoNow)
+const demoSpark = (values: number[]) => values as (number | null)[]
+const demoSparks: Record<string, (number | null)[]> = {
+  limit: demoSpark([2, 3, 3, 4, 4, 5, 4, 6, 5, 4]),
+  broken: demoSpark([22, 24, 27, 26, 30, 31, 29, 32, 32, 32]),
+  signal: demoSpark([0, 1, 1, 0, 2, 1, 1, 1, 0, 1]),
+  p95: demoSpark([1200, 1450, 1380, 1600, 1820, 1750, 1900, 1820, 1700, 1820]),
+  equity: demoSpark([4200, 8600, 6400, 11200, 9800, 13400, 15100, 12800, 16900, 18204]),
+}
 </script>
 
 <template>
@@ -488,6 +589,62 @@ const stageGraph = buildScene(
     </section>
 
     <section class="g-sec">
+      <h2>监控 S1 原语（时段带 / 健康分 / 十格 HUD · 静态）</h2>
+      <div class="g-monitor nt-monitor">
+        <nav class="nt-band" data-band="morning" aria-label="交易时段（示例）">
+          <span
+            v-for="bandSeg in demoSegments"
+            :key="bandSeg.key"
+            class="nt-band__seg"
+            :data-state="bandSeg.state"
+            :data-key="bandSeg.key"
+          >
+            {{ bandSeg.label }}
+          </span>
+          <span class="nt-band__focus">{{ demoSpec.focus }}</span>
+          <span v-if="demoCountdown" class="nt-band__count">{{ demoCountdown }}</span>
+        </nav>
+        <div class="g-monitor__bar">
+          <button type="button" class="nt-health__badge" :data-tone="demoHealth.tone">
+            健康 {{ demoHealth.score }}<i class="dot" :class="`is-${demoHealth.tone}`"></i>
+          </button>
+        </div>
+        <section class="nt-health__pop g-monitor__pop" aria-label="健康分明细（示例）">
+          <h3>健康分 {{ demoHealth.score }} · 五项各 20 分起扣</h3>
+          <ul>
+            <li v-for="part in demoHealth.parts" :key="part.key" :data-measured="part.measured">
+              <span>{{ part.label }}</span>
+              <strong v-if="part.measured" :data-deduct="part.deduction > 0">
+                {{ part.deduction > 0 ? `−${part.deduction}` : '满分' }}
+              </strong>
+              <strong v-else>未判定</strong>
+              <small>{{ part.note }}</small>
+            </li>
+          </ul>
+        </section>
+        <section class="nt-hud" aria-label="总览（示例）">
+          <button
+            v-for="cell in demoHud"
+            :key="cell.key"
+            type="button"
+            :class="{ 'is-hero': cell.hero }"
+            :title="cell.sub"
+          >
+            <span>{{ cell.label }}</span>
+            <strong :class="cell.tone">{{ cell.face }}</strong>
+            <Sparkline
+              v-if="cell.spark"
+              class="nt-hud__spark"
+              :points="demoSparks[cell.spark] ?? []"
+              :tone="cell.spark === 'equity' ? cell.tone : 'flat'"
+            />
+            <small v-if="cell.sub">{{ cell.sub }}</small>
+          </button>
+        </section>
+      </div>
+    </section>
+
+    <section class="g-sec">
       <h2>监控画布（CanvasStage · 静态场景，可拖拽/缩放）</h2>
       <div class="g-stage">
         <CanvasStage :graph="stageGraph" :selected-id="stageSelected" :hot-ids="[]" :paused="false" @select="stageSelected = $event" />
@@ -513,6 +670,29 @@ const stageGraph = buildScene(
   background: var(--nt-bg-0);
   color: var(--nt-text-1);
   overflow: auto;
+}
+
+/* 监控 S1 原语走查：借 .nt-monitor 让状态光点类生效，但解除整页网格定高 */
+.g-monitor {
+  display: block;
+  height: auto;
+  overflow: visible;
+  background: transparent;
+}
+
+.g-monitor__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.g-monitor__pop {
+  position: static;
+  width: 380px;
+  margin-bottom: 10px;
+  background: var(--nt-bg-2);
+  backdrop-filter: none;
 }
 
 .g-head {

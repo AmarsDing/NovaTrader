@@ -288,6 +288,7 @@ function enqueue(pulse: Pulse) {
 }
 
 function select(id: string) {
+  healthOpen.value = false
   if (id === 'action:trade') {
     void router.push('/panel/trade')
     return

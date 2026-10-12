@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   createTask,
   getReport,
@@ -78,6 +78,12 @@ function taskStatus(row: BacktestTask): string {
   return [label, message].filter(Boolean).join(' · ')
 }
 
+/** 有排队/运行中任务时 5 秒自动刷新。 */
+const hasActive = computed(() =>
+  tasks.value.some((row) => ['pending', 'queued', 'running'].includes(String(row.status || '').toLowerCase())),
+)
+let timer: ReturnType<typeof setInterval> | null = null
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -134,7 +140,16 @@ async function openTask(task: TaskRow) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  timer = setInterval(() => {
+    if (hasActive.value) void load()
+  }, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <template>
@@ -142,7 +157,10 @@ onMounted(load)
     <header class="nt-head">
       <div>
         <h1 class="nt-title">回测</h1>
-        <p class="nt-note">单次回测任务和报告。参数优化页在增强阶段，这里不提供。</p>
+        <p class="nt-note">
+          单次回测任务和报告。参数优化页在增强阶段，这里不提供。
+          <span v-if="hasActive" class="active-hint">有任务在排队/运行中，每 5 秒自动刷新。</span>
+        </p>
       </div>
       <NtButton :loading="loading" @click="load">刷新</NtButton>
     </header>
@@ -200,5 +218,9 @@ onMounted(load)
 <style scoped>
 .report {
   margin-bottom: 12px;
+}
+
+.active-hint {
+  color: var(--nt-accent);
 }
 </style>
