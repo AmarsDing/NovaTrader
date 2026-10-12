@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { NodeStatus, Pulse, SceneGraph } from './types'
 import { ACTIVITY_OFF_ALPHA, ACTIVITY_ON_ALPHA } from './activity'
+import { ambientPeriod, flowWidth, HIGH_SCORE, KILL_EDGE_ID, type EdgeFlow } from './flow'
 import { funnelCountText } from './funnel'
 import {
   applyOffsets,
@@ -49,6 +50,12 @@ const props = defineProps<{
   bandKey?: string
   /** S4：事件流点行后要让对应节点「闪一下」。at 是触发时刻，动画按 Date.now() 自己衰减 */
   flash?: { id: string; at: number }
+  /** S6：束线流量（键 = 边 id `from>to`）。rate null = 没观测 → 固定宽度 1.3px，不猜 */
+  flow?: Record<string, EdgeFlow>
+  /** S6：急停态——风控→账户束线转红加粗 + 账户牌呼吸环（§3.2） */
+  killActive?: boolean
+  /** S6：信号 id/symbol → 评分。≥85 的信号脉冲升级（更亮、三格尾迹、标签加粗） */
+  signalScores?: Record<string, number>
 }>()
 const emit = defineEmits<{ select: [id: string] }>()
 
@@ -88,9 +95,15 @@ let pointer: { x: number; y: number; worldX: number; worldY: number; mode: '' | 
 }
 const offsets = new Map<string, StagePoint>()
 const PULSE_TTL = 2400
-const AMBIENT_PERIOD = 5200
 /** S4：事件流点行的定位闪光时长。一圈向外扩散的描边，不用 shadowBlur，不占发光预算 */
 const FLASH_MS = 620
+/** S6：数字变化闪（§3.2）——卡片边框 300ms 内 α0.4→0，不放大、不跳动 */
+const NUM_FLASH_MS = 300
+/** S6：急停态账户牌呼吸环周期（§3.2：1.2s，sin 缓动 α0.35↔0.75） */
+const KILL_BREATH_MS = 1200
+/** S6：牌面主词的上一次快照，用来侦测「数字变化」；首次建台不闪 */
+let prevFaces: Map<string, string> | null = null
+const numFlash = new Map<string, number>()
 
 const selectedSet = computed(() => {
   const lit = new Set<string>(props.hotIds ?? [])
@@ -141,6 +154,17 @@ function rebuild() {
   layout = buildStage(props.graph, { promote: props.promote, thicken: props.thicken })
   nodes = applyOffsets(layout.nodes, offsets)
   syncGeometry()
+  /* S6 数字变化闪（§3.2）：牌面主词变了记一笔时刻，drawNumFlash 按 300ms 衰减。
+   * 只比 face——角标「距今 Ns」每秒都在变，那不是数字变化，闪起来就成噪声了 */
+  const faces = new Map(nodes.map((item) => [item.id, item.node.face]))
+  if (prevFaces) {
+    const at = Date.now()
+    for (const [id, face] of faces) {
+      const before = prevFaces.get(id)
+      if (before != null && before !== face) numFlash.set(id, at)
+    }
+  }
+  prevFaces = faces
 }
 
 /* ---------------- 时段感知的拖动持久化 ----------------
@@ -390,6 +414,7 @@ function draw() {
   drawPulses(context)
   drawNodes(context)
   drawFlash(context)
+  drawNumFlash(context)
   context.restore()
 
   /* 时段压暗：午休 0.75 / 盘后 0.5。在世界坐标之外盖一层，保证遮住所有缩放级别 */
@@ -439,22 +464,42 @@ function edgeLit(edge: StageEdgeLayout): boolean {
 
 function drawEdges(context: CanvasRenderingContext2D) {
   context.lineCap = 'round'
+  const selection = selectedSet.value
   for (const edge of layout.edges) {
     const curves = edgeCurves.get(edge.id)
     if (!curves) continue
-    /* S3：主干被漏斗光带取代时旧束线压暗兜底（§4.4.3），不参与选中提亮 */
-    const lit = edge.fallback ? false : edgeLit(edge)
-    const color = theme.domain[edge.domain] || theme.fiber
-    /* 时段带加粗：竞价把「数据源→扫描」抬亮，尾盘把「风控→账户」抬亮。
-     * 只加线宽和透明度，不加 shadowBlur——glow 预算留给异常与高分信号。 */
-    const boost = edge.thick === true && !edge.fallback
+    const flow = props.flow?.[edge.id]
+    /* S6 急停态（§3.2）：风控→账户的边 --nt-danger α0.6 宽 2.4，盖过时段带加粗与选中提亮 */
+    const kill = props.killActive === true && edge.id === KILL_EDGE_ID && !edge.fallback
+    /* S6 模型熔断（§4.4.3）：模型→维度的边转 --nt-danger α0.4，流向点停（见 drawAmbient） */
+    const circuit = flow?.circuit === true && !edge.fallback
+    const active = !edge.fallback && selection.size > 0 && (selection.has(edge.from) || selection.has(edge.to))
+    const dim = !edge.fallback && selection.size > 0 && !active
+    const boost = edge.thick === true && !edge.fallback && !kill && !circuit
+    const color = kill || circuit ? theme.status.down : theme.domain[edge.domain] || theme.fiber
+    /* S6 束线流量映射（§3.2）：宽 = 0.8 + min(2.4, log10(每分钟条数+1)*0.9) px，
+     * 估不出固定 1.3px 不猜；选中相邻 +0.4px；时段带加粗再 +1.3px。
+     * 只动线宽与透明度——glow 预算留给异常与高分信号。 */
+    const main = kill ? 2.4 : flowWidth(flow?.rate ?? null) + (active ? 0.4 : 0) + (boost ? 1.3 : 0)
     curves.forEach((curve, index) => {
       context.beginPath()
       context.moveTo(curve[0], curve[1])
       context.bezierCurveTo(curve[2], curve[3], curve[4], curve[5], curve[6], curve[7])
-      const alpha = edge.fallback ? 0.05 : lit ? (index === 0 ? 0.34 : 0.2) : 0.07
-      context.strokeStyle = withAlpha(color, boost ? Math.min(0.85, alpha + 0.28) : alpha)
-      context.lineWidth = boost ? (index === 0 ? 2.6 : 1.8) : index === 0 ? 1.3 : 0.9
+      /* 双股透明度（§3.2）：常态 0.20/0.07，选中相邻 0.34/0.20，被选中压暗 0.07；
+       * 急停 0.6/0.35，熔断 0.4/0.22；时段带加粗 +0.28（封顶 0.85） */
+      const pair: [number, number] = edge.fallback
+        ? [0.05, 0.05]
+        : kill
+          ? [0.6, 0.35]
+          : circuit
+            ? [0.4, 0.22]
+            : dim
+              ? [0.07, 0.07]
+              : active
+                ? [0.34, 0.2]
+                : [0.2, 0.07]
+      context.strokeStyle = withAlpha(color, Math.min(0.85, pair[index === 0 ? 0 : 1] + (boost ? 0.28 : 0)))
+      context.lineWidth = index === 0 ? main : Math.max(0.6, main * 0.69)
       context.stroke()
     })
   }
@@ -574,13 +619,26 @@ function drawAmbient(context: CanvasRenderingContext2D) {
     if (!edgeLit(edge)) continue
     const curves = edgeCurves.get(edge.id)
     if (!curves || curves.length === 0) continue
-    const color = theme.domain[edge.domain] || theme.fiber
+    const flow = props.flow?.[edge.id]
+    /* S6 模型熔断（§4.4.3）：停止流向点，边本身已转红 */
+    if (flow?.circuit === true) continue
     const phase = hash01(`ambient:${edge.id}`)
-    const t = (now / AMBIENT_PERIOD + phase) % 1
+    /* S6 断流（§3.2）：流向点停住并转 --nt-warn α0.35——位置冻在相位处，不再前进 */
+    if (flow?.stalled === true) {
+      const stuck = cubicPoint(curves[0], phase % 1)
+      context.beginPath()
+      context.arc(stuck.x, stuck.y, 1.7, 0, Math.PI * 2)
+      context.fillStyle = withAlpha(theme.status.gap, 0.35)
+      context.fill()
+      continue
+    }
+    /* S6 周期由速率映射 1200–8000ms；估不出保持固定周期（§11 行 6），不外推 */
+    const period = ambientPeriod(flow?.rate ?? null)
+    const t = (now / period + phase) % 1
     const point = cubicPoint(curves[0], t)
     context.beginPath()
     context.arc(point.x, point.y, 1.7, 0, Math.PI * 2)
-    context.fillStyle = withAlpha(color, 0.5)
+    context.fillStyle = withAlpha(theme.domain[edge.domain] || theme.fiber, 0.5)
     context.fill()
   }
 }
@@ -595,23 +653,34 @@ function drawPulses(context: CanvasRenderingContext2D) {
     if (!curve) continue
     const t = Math.min(1, Math.max(0, (now - pulse.at) / PULSE_TTL))
     const point = cubicPoint(curve, t)
-    /* 尾迹：沿路往回画两格渐隐点 */
-    for (let back = 1; back <= 2; back += 1) {
+    /* S6 高分信号脉冲升级（§3.2）：≥85 分 → r4.5 + shadowBlur 8 + 三格尾迹 + 标签加粗。
+     * 发光预算内的五个对象之一；分数查不到（signalScores 没有这条）按普通脉冲画，不猜 */
+    const score = pulse.identifier.kind === 'signal' ? props.signalScores?.[pulse.identifier.value] : undefined
+    const hot = score != null && score >= HIGH_SCORE
+    /* 尾迹：沿路往回画渐隐点。普通 2 格 α0.5/0.25，高分 3 格 α0.6/0.35/0.15（§3.2） */
+    const tailAlpha = hot ? [0.6, 0.35, 0.15] : [0.5, 0.25]
+    for (let back = 1; back <= tailAlpha.length; back += 1) {
       const tail = cubicPoint(curve, Math.max(0, t - back * 0.045))
       context.beginPath()
-      context.arc(tail.x, tail.y, 2.2 - back * 0.6, 0, Math.PI * 2)
-      context.fillStyle = withAlpha(theme.fiberActive, 0.34 - back * 0.12)
+      context.arc(tail.x, tail.y, (hot ? 2.8 : 2.2) - back * 0.6, 0, Math.PI * 2)
+      context.fillStyle = withAlpha(theme.fiberActive, tailAlpha[back - 1])
       context.fill()
     }
+    context.save()
+    if (hot) {
+      context.shadowColor = theme.fiberActive
+      context.shadowBlur = 8
+    }
     context.beginPath()
-    context.arc(point.x, point.y, 3, 0, Math.PI * 2)
+    context.arc(point.x, point.y, hot ? 4.5 : 3, 0, Math.PI * 2)
     context.fillStyle = withAlpha(theme.fiberActive, 0.95)
     context.fill()
+    context.restore()
     const label = pulseLabel(pulse)
     if (label) {
-      context.font = `9px ${theme.fontMono}`
+      context.font = `${hot ? '700 ' : ''}9px ${theme.fontMono}`
       context.textBaseline = 'alphabetic'
-      context.fillStyle = withAlpha(theme.fiberActive, 0.85)
+      context.fillStyle = withAlpha(theme.fiberActive, hot ? 0.95 : 0.85)
       context.fillText(label, point.x + 7, point.y - 5)
     }
   }
@@ -669,6 +738,28 @@ function drawFlash(context: CanvasRenderingContext2D) {
   context.strokeStyle = withAlpha(theme.fiberActive, 0.6 * (1 - progress))
   context.lineWidth = 0.5 + 1.5 * (1 - progress)
   context.stroke()
+}
+
+/** S6 数字变化闪（§3.2）：值变化时卡片边框 300ms 内 α0.4→0（--nt-accent），不放大、不跳动。
+ * 过期的条目顺手清掉，Map 不会越攒越大。 */
+function drawNumFlash(context: CanvasRenderingContext2D) {
+  if (numFlash.size === 0) return
+  const now = Date.now()
+  for (const [id, at] of numFlash) {
+    const age = now - at
+    if (!Number.isFinite(age) || age < 0 || age > NUM_FLASH_MS) {
+      numFlash.delete(id)
+      continue
+    }
+    const item = nodes.find((node) => node.id === id)
+    if (!item) continue
+    const rect = item.rect
+    context.beginPath()
+    roundedRect(context, rect.x, rect.y, rect.w, rect.h, 8)
+    context.strokeStyle = withAlpha(theme.fiberActive, 0.4 * (1 - age / NUM_FLASH_MS))
+    context.lineWidth = 1
+    context.stroke()
+  }
 }
 
 function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
@@ -766,6 +857,18 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
     roundedRect(context, rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, radius + 2)
     context.strokeStyle = withAlpha(dotColor, 0.5)
     context.lineWidth = 1
+    context.stroke()
+  }
+
+  /* S6 急停态（§3.2）：账户牌外圈 1.5px 红环，呼吸 1.2s（sin 缓动，α0.35↔0.75）。
+   * 发光预算内的五个对象之一——用透明度呼吸表达，不叠 shadowBlur。 */
+  if (props.killActive === true && domain === 'account') {
+    const phase = (performance.now() % KILL_BREATH_MS) / KILL_BREATH_MS
+    const breath = 0.55 + 0.2 * Math.sin(phase * Math.PI * 2)
+    context.beginPath()
+    roundedRect(context, rect.x - 3.5, rect.y - 3.5, rect.w + 7, rect.h + 7, radius + 3.5)
+    context.strokeStyle = withAlpha(theme.status.down, breath)
+    context.lineWidth = 1.5
     context.stroke()
   }
 }

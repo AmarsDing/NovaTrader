@@ -18,9 +18,11 @@ import { getRiskReport } from '@/api/risk'
 import CanvasStage from './CanvasStage.vue'
 import DetailSheet from './DetailSheet.vue'
 import { ActivityLog } from './activity'
+import { stagePulse } from './canvas-stage'
 import { buildDetail, intelIdsOf, type DetailExtra } from './detail'
 import { dutyOf } from './duty'
-import { cardFreshness, cardSilence, channelSilence, decorate, observeGraph } from './freshness'
+import { CounterFlow, KILL_EDGE_ID, MODEL_EDGE_KEYS, PulseFlow, tierFor, type EdgeFlow } from './flow'
+import { cardFreshness, cardSilence, channelSilence, decorate, observeGraph, sourceKind, sourceNodeId } from './freshness'
 import { computeHealth } from './health'
 import { resolveHud } from './hud'
 import { emptyMonitorInput, loadMonitorInput } from './load-input'
@@ -68,6 +70,77 @@ const graph = computed(() => {
 })
 const cards = computed(() => buildChildren(input.value, selectedId.value))
 const picked = computed(() => graph.value.nodes.find((node) => node.id === selectedId.value) ?? null)
+
+/* ---- S6 束线流量（§3.2/§4.4.3/§7）：计数器差分 + WS 脉冲计数，估不出固定宽度不猜 ----
+ * 环形缓冲全在前端内存（§9）：不落库、不上传，页面刷新即失。 */
+
+const counterFlow = new CounterFlow()
+const pulseFlow = new PulseFlow()
+/* 风控→账户没有计数器，只有 WS 告警脉冲这一个观测口；从挂载起攒 60s 窗口 */
+pulseFlow.observe(KILL_EDGE_ID, Date.now())
+
+/** 每轮轮询末尾喂计数器：数据源 successCount（边键取自场景图）、模型档 calls */
+function sampleFlow() {
+  const at = Date.now()
+  const data = input.value
+  if (data.sources?.ok) {
+    const byNode = new Map(data.sources.items.map((item) => [sourceNodeId(item.id, item.name), item]))
+    for (const edge of graph.value.edges) {
+      if (!edge.from.startsWith('source:')) continue
+      const item = byNode.get(edge.from)
+      counterFlow.sample(edge.id, item?.successCount ?? null, at)
+    }
+  }
+  const tiers = data.brainStats?.ok ? data.brainStats.tiers : []
+  for (const which of ['small', 'large'] as const) {
+    const tier = tierFor(tiers, which)
+    for (const key of MODEL_EDGE_KEYS[which]) counterFlow.sample(key, tier?.calls ?? null, at)
+  }
+}
+
+const edgeFlow = computed<Record<string, EdgeFlow>>(() => {
+  const now = nowMs.value
+  const data = input.value
+  const out: Record<string, EdgeFlow> = {}
+  /* 数据源边：差分速率。断流 = 静默表命中，或行情源计数整窗没动——
+   * 非行情源（新闻/外围）本来就是一阵一阵的，闲时不算断流，不冤枉它 */
+  if (data.sources?.ok) {
+    const byNode = new Map(data.sources.items.map((item) => [sourceNodeId(item.id, item.name), item]))
+    for (const edge of graph.value.edges) {
+      if (!edge.from.startsWith('source:')) continue
+      const item = byNode.get(edge.from)
+      const rate = counterFlow.rate(edge.id, now)
+      const stalled = silenceMap.value.has(edge.from) || (rate === 0 && item != null && sourceKind(item.id, item.name) === 'tape')
+      out[edge.id] = { rate, stalled, circuit: false }
+    }
+  }
+  /* 模型边：档位 calls 差分 + 熔断标记（§4.4.3：熔断时该边转红并停流向点） */
+  const tiers = data.brainStats?.ok ? data.brainStats.tiers : []
+  for (const which of ['small', 'large'] as const) {
+    const tier = tierFor(tiers, which)
+    for (const key of MODEL_EDGE_KEYS[which]) {
+      out[key] = { rate: counterFlow.rate(key, now), stalled: false, circuit: tier?.circuitOpen === true }
+    }
+  }
+  /* 风控→账户：WS 告警脉冲计数；窗口没攒满 = null，画固定宽度 */
+  out[KILL_EDGE_ID] = { rate: pulseFlow.rate(KILL_EDGE_ID, now), stalled: false, circuit: false }
+  return out
+})
+
+/** S6 急停态视觉：风控→账户束线转红加粗 + 账户牌呼吸环（§3.2） */
+const killActive = computed(() => input.value.risk?.killActive === true)
+
+/** S6 ≥85 分信号脉冲升级：WS 信号脉冲只带 id/symbol，评分从信号表对齐；没有分数不升级 */
+const signalScores = computed<Record<string, number>>(() => {
+  const out: Record<string, number> = {}
+  if (!input.value.signals?.ok) return out
+  for (const item of input.value.signals.items) {
+    if (item.score == null) continue
+    if (item.id) out[item.id] = item.score
+    if (item.symbol) out[item.symbol] = item.score
+  }
+  return out
+})
 
 const AGENT = new Set(['post:scan', 'dim:tech', 'dim:news', 'dim:capital', 'dim:overseas', 'dim:synth'])
 
@@ -434,6 +507,8 @@ async function pull() {
       next.pulses = input.value.pulses
       input.value = next
       sampleSparks()
+      /* S6：这一轮的 successCount / calls 喂给流量差分（束线宽度与流向点速度） */
+      sampleFlow()
       /* S2：这一轮读到的牌面喂给活动条（签名只含状态/主词/副行，见 freshness.observeGraph） */
       observeGraph(activity, buildScene(next, Date.now()), next, Date.now())
       /* S4：通知/审计/成交这三路是轮询来的，每轮拉完重新入流（id 稳定，不会重复） */
@@ -450,7 +525,12 @@ function enqueue(pulse: Pulse) {
   flush = window.setTimeout(() => {
     let list = input.value.pulses
     const now = Date.now()
-    for (const item of pending) list = pushPulse(list, item, now)
+    for (const item of pending) {
+      list = pushPulse(list, item, now)
+      /* S6：脉冲计数喂给流量口径——只有 observe 过的边（风控→账户）会被采用，其余记了也不读 */
+      const mapped = stagePulse(item)
+      if (mapped && mapped.from) pulseFlow.record(`${mapped.from}>${mapped.to}`, now)
+    }
     pending = []
     flush = 0
     input.value = { ...input.value, pulses: list, now }
@@ -561,6 +641,9 @@ function select(id: string) {
         :calm="spec.calm"
         :band-key="bandKey"
         :flash="flash ?? undefined"
+        :flow="edgeFlow"
+        :kill-active="killActive"
+        :signal-scores="signalScores"
         @select="select"
       />
       <p v-if="offday" class="nt-monitor__offday">今日休市，链路自检中</p>

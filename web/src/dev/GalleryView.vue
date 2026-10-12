@@ -4,7 +4,7 @@
  * Nt* 全组件 × 主题（暗/亮）× 密度（标准/紧凑），静态示例数据，零后端依赖。
  * 每阶段收尾跑一遍，保证令牌与组件改动可视。
  */
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtIcon from '@/ui/NtIcon.vue'
@@ -40,7 +40,7 @@ import { buildDetail } from '@/monitor/detail'
 import { computeHealth, healthTone } from '@/monitor/health'
 import { resolveHud } from '@/monitor/hud'
 import { emptyMonitorInput } from '@/monitor/load-input'
-import { buildScene } from '@/monitor/scene-model'
+import { buildScene, pushPulse } from '@/monitor/scene-model'
 import Sparkline from '@/monitor/Sparkline.vue'
 import { TapeSession } from '@/monitor/tape'
 import TerminalStrip from '@/monitor/TerminalStrip.vue'
@@ -49,7 +49,8 @@ import '@/monitor/monitor.css'
 import type { Bar } from '@/api/market'
 import type { EquityPoint } from '@/api/backtest'
 import type { HealthPart, HealthScore } from '@/monitor/health'
-import type { MonitorInput } from '@/monitor/types'
+import type { EdgeFlow } from '@/monitor/flow'
+import type { MonitorInput, Pulse, SceneGraph } from '@/monitor/types'
 import { useSettingsStore, type DensityName, type ThemeName } from '@/stores/settings'
 import { pnlClass, pnlSign } from '@/utils/format'
 
@@ -299,6 +300,49 @@ const demoActivityRows = [
   { label: '一顿一顿（零星活动）', cells: demoCellsQuiet, badge: '2m 前', tone: 'warn' },
   { label: '静默（全灰）+ 变红角标', cells: demoCellsQuiet.map(() => false as const), badge: '12m 前', tone: 'danger' },
 ]
+
+/* ---------- 监控 S6：束线流量宽度 + 高分脉冲 + 急停态（活的画布示例） ---------- */
+/* 流量表直接给边 id（监控页里由 flow.ts 的差分/脉冲计数产出，这里静态摆出各档样子） */
+const demoFlow: Record<string, EdgeFlow> = {
+  'source:tdx>post:scan': { rate: 420, stalled: false, circuit: false },
+  'source:tdx>dim:tech': { rate: 420, stalled: false, circuit: false },
+  'source:rss>dim:news': { rate: 12, stalled: false, circuit: false },
+  /* 资金流整窗计数没动 → 断流：束线照画，流向点停住转 --nt-warn α0.35 */
+  'source:fund>dim:capital': { rate: 0, stalled: true, circuit: false },
+  /* 外围没有可信观测 → rate null → 固定 1.3px，不猜 */
+  'source:overseas>dim:overseas': { rate: null, stalled: false, circuit: false },
+  'model:small>dim:tech': { rate: 95, stalled: false, circuit: false },
+  'model:small>dim:capital': { rate: 95, stalled: false, circuit: false },
+  /* 大模型熔断：它到三个维度的边转 --nt-danger α0.4 并停流向点 */
+  'model:large>dim:news': { rate: 6, stalled: false, circuit: true },
+  'model:large>dim:overseas': { rate: 6, stalled: false, circuit: true },
+  'model:large>dim:synth': { rate: 6, stalled: false, circuit: true },
+  'post:risk>book:center': { rate: 2, stalled: false, circuit: false },
+}
+/* ≥85 的信号 id/symbol → 升级脉冲（发光预算内的五个对象之一） */
+const demoScores: Record<string, number> = { s1: 88, '600519': 88 }
+
+const stageS6 = ref<SceneGraph>({ ...stageGraphS2, pulses: [] })
+let s6Timer = 0
+let s6Flip = false
+
+onMounted(() => {
+  s6Timer = window.setInterval(() => {
+    const at = Date.now()
+    s6Flip = !s6Flip
+    const pulse: Pulse = { id: `gs6:${at}`, from: 'post:model', to: 'post:desk', identifier: { kind: 'signal', value: '600519' }, at }
+    stageS6.value = {
+      ...stageS6.value,
+      pulses: pushPulse(stageS6.value.pulses, pulse, at),
+      /* 综合分每拍翻一下（88↔86），走真渲染路径演示「数字变化闪」 */
+      nodes: stageS6.value.nodes.map((node) => (node.id === 'dim:synth' ? { ...node, face: s6Flip ? '88' : '86' } : node)),
+    }
+  }, 1600)
+})
+
+onBeforeUnmount(() => {
+  if (s6Timer) window.clearInterval(s6Timer)
+})
 
 /* ---------- 监控 S1 原语：时段带 / 健康分 / 十格 HUD（静态） ---------- */
 const demoNow = new Date(2026, 9, 12, 10, 24).getTime()
@@ -973,6 +1017,28 @@ const demoTapeRows = demoTapeSession.absorb(
         S3 漏斗光带：六层「全市场→初筛→AI≥70→风控通过→已下单→成交」横贯 02/03 之间，主干厚 = sqrt(数量) 12..96px，青色渐变 α0.18→0.30（浅色主题统一 0.12）。
         全市场层没有只读出口 → 画 --nt-text-3 α0.15 虚线段标「未返回」，不 0 填充不跳过；侧漏 --nt-warn α0.25 虚线 [3,3] 汇入「漏选」牌，标签是该层最大过滤原因。
         点光带 = 选中扫描牌（详情窗里有同一组六层数字，含 DOM 等价读出）。旧主干束线（扫描→四维→综合→信号）压暗为兜底。
+      </p>
+    </section>
+
+    <section class="g-sec">
+      <h2>监控 S6 束线流量宽度 + 高分脉冲 + 急停态（CanvasStage · 活示例）</h2>
+      <div class="g-stage">
+        <CanvasStage
+          :graph="stageS6"
+          selected-id=""
+          :hot-ids="[]"
+          :paused="false"
+          :flow="demoFlow"
+          kill-active
+          :signal-scores="demoScores"
+        />
+      </div>
+      <p class="g-activity__note">
+        束线宽度 = 0.8 + min(2.4, log10(每分钟条数+1)×0.9) px：通达信 420 条/分最粗、新闻 12 条/分细一档；外围没有可信观测 →
+        固定 1.3px 不猜；资金流整窗计数没动 = 断流 → 流向点停住转 --nt-warn α0.35。大模型熔断 → 它到消息/外围/综合的边
+        转 --nt-danger α0.4 并停流向点。急停态 → 风控→账户的边 --nt-danger α0.6 宽 2.4，账户牌外圈 1.5px 红环呼吸 1.2s
+        （sin 缓动 α0.35↔0.75）。≥85 分信号脉冲升级：r4.5 + shadowBlur 8 + 三格尾迹 + 标签加粗（每 1.6s 续一颗）；
+        综合分每拍翻 88↔86 演示数字变化闪——卡片边框 300ms α0.4→0，不放大不跳动。
       </p>
     </section>
 
