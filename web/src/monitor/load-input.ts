@@ -6,7 +6,7 @@ import { hotWords, timeline as fetchTimeline } from '@/api/intel'
 import { getFactors, getSentimentDetail, listLimits, listSectors } from '@/api/market'
 import { listMessages } from '@/api/notify'
 import { opsStatus } from '@/api/ops'
-import { getRiskReport, getRiskState } from '@/api/risk'
+import { getRiskLimits, getRiskReport, getRiskState } from '@/api/risk'
 import { listCandidates } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
 import { getAccount, listFills, listOrders, listPositions } from '@/api/trade'
@@ -21,7 +21,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
 
-  const [account, positions, orders, fills, risk, report, ops, sources, quality, sentiment, sectors, limits, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors] =
+  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors] =
     await Promise.all([
       quiet(() => getAccount(book)),
       quiet(() => listPositions(book)),
@@ -29,6 +29,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       quiet(() => listFills(book)),
       quiet(() => getRiskState()),
       quiet(() => getRiskReport()),
+      quiet(() => getRiskLimits()),
       quiet(() => opsStatus()),
       quiet(() => listSources()),
       quiet(() => getQuality()),
@@ -149,10 +150,10 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
           })),
         }
       : null,
-    limits: limits
+    limits: limitsBoard
       ? {
           ok: true,
-          rows: limits.map((row) => ({ symbol: row.symbol, consecutive: row.consecutive, status: row.status })),
+          rows: limitsBoard.map((row) => ({ symbol: row.symbol, consecutive: row.consecutive, status: row.status })),
         }
       : null,
     signals: signals
@@ -332,6 +333,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
           events: report.events,
         }
       : { ok: false, summary: '' },
+    riskLimits: limits ? { ok: true, items: limits } : null,
     /* S7：脑服务只读聚合；两个接口任一通了就算 ok，界面按字段出，缺的仍写「未接入」 */
     brainP1:
       usage || latency

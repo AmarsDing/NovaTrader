@@ -334,6 +334,11 @@ export interface MonitorInput {
     rejects?: { rule: string; name: string; count: number | null }[]
     events?: { kind: string; active: boolean; mode: string; source: string; reason: string; operator: string; at: string }[]
   } | null
+  /** S7：风控限额上限 × 当前用量（GET /api/risk/limits，引擎内存口径）。拉不到为 null，界面仍走前端估算。 */
+  riskLimits?: {
+    ok: boolean
+    items: { key: string; name: string; unit: string; limit: number; used: number; ratio: number; note: string }[]
+  } | null
   /** S7：脑服务只读聚合（GET /api/brain/usage + latency-histogram）。拉不到时 ok=false，界面仍写「未接入」。 */
   brainP1?: {
     ok: boolean

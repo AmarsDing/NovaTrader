@@ -128,6 +128,18 @@ func (s *RiskService) DailyReport(ctx context.Context, req *v1.DailyReportReques
 	return out, nil
 }
 
+// Limits 返回各项限额的上限与当前用量（监控驾驶舱 P1，只读）。
+func (s *RiskService) Limits(_ context.Context, req *v1.LimitsRequest) (*v1.LimitsReply, error) {
+	out := &v1.LimitsReply{AccountType: strings.ToUpper(strings.TrimSpace(req.GetAccountType()))}
+	for _, item := range s.e.Limits(req.GetAccountType()) {
+		out.Items = append(out.Items, &v1.LimitItem{
+			Key: item.Key, Name: item.Name, Unit: item.Unit,
+			Limit: item.Limit, Used: item.Used, Ratio: item.Ratio, Note: item.Note,
+		})
+	}
+	return out, nil
+}
+
 func toState(st biz.State) *v1.StateReply {
 	out := &v1.StateReply{
 		Mode: st.Mode.String(),

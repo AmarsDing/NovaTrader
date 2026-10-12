@@ -245,3 +245,28 @@ export function setMode(body: ModeBody): Promise<unknown> {
 export function updateParam(body: ParamBody): Promise<unknown> {
   return request('/api/risk/params', { method: 'POST', json: body })
 }
+
+/* ---------- 监控驾驶舱 P1：限额上限 × 当前用量（只读） ---------- */
+
+export interface RiskLimitItem {
+  key: string
+  name: string
+  unit: string
+  limit: number
+  used: number
+  ratio: number
+  note: string
+}
+
+export async function getRiskLimits(accountType = ''): Promise<RiskLimitItem[]> {
+  const data = await request('/api/risk/limits', { query: accountType ? { account_type: accountType } : {} })
+  return asList(data, 'items').map((raw) => ({
+    key: pick<string>(raw, 'key') || '',
+    name: pick<string>(raw, 'name') || '',
+    unit: pick<string>(raw, 'unit') || '',
+    limit: num(pick(raw, 'limit')) ?? -1,
+    used: num(pick(raw, 'used')) ?? -1,
+    ratio: num(pick(raw, 'ratio')) ?? -1,
+    note: pick<string>(raw, 'note') || '',
+  }))
+}

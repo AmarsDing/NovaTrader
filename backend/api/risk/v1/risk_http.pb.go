@@ -22,6 +22,7 @@ const _ = http.SupportPackageIsVersion1
 const OperationRiskCheckOrder = "/api.risk.v1.Risk/CheckOrder"
 const OperationRiskDailyReport = "/api.risk.v1.Risk/DailyReport"
 const OperationRiskGetState = "/api.risk.v1.Risk/GetState"
+const OperationRiskLimits = "/api.risk.v1.Risk/Limits"
 const OperationRiskResetKillSwitch = "/api.risk.v1.Risk/ResetKillSwitch"
 const OperationRiskSetMode = "/api.risk.v1.Risk/SetMode"
 const OperationRiskTriggerKillSwitch = "/api.risk.v1.Risk/TriggerKillSwitch"
@@ -32,6 +33,8 @@ type RiskHTTPServer interface {
 	CheckOrder(context.Context, *CheckOrderRequest) (*CheckOrderReply, error)
 	DailyReport(context.Context, *DailyReportRequest) (*DailyReportReply, error)
 	GetState(context.Context, *GetStateRequest) (*StateReply, error)
+	// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
+	Limits(context.Context, *LimitsRequest) (*LimitsReply, error)
 	// ResetKillSwitch 恢复必须带操作人和确认字样 CONFIRM。恢复后模式仍为 L0。
 	ResetKillSwitch(context.Context, *ResetKillSwitchRequest) (*StateReply, error)
 	SetMode(context.Context, *SetModeRequest) (*StateReply, error)
@@ -48,6 +51,7 @@ func RegisterRiskHTTPServer(s *http.Server, srv RiskHTTPServer) {
 	r.POST("/risk/v1/killswitch/reset", _Risk_ResetKillSwitch0_HTTP_Handler(srv))
 	r.POST("/risk/v1/params", _Risk_UpdateParam0_HTTP_Handler(srv))
 	r.GET("/risk/v1/report", _Risk_DailyReport0_HTTP_Handler(srv))
+	r.GET("/risk/v1/limits", _Risk_Limits0_HTTP_Handler(srv))
 }
 
 func _Risk_CheckOrder0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
@@ -198,11 +202,32 @@ func _Risk_DailyReport0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) 
 	}
 }
 
+func _Risk_Limits0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in LimitsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskLimits)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.Limits(ctx, req.(*LimitsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*LimitsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type RiskHTTPClient interface {
 	// CheckOrder 事前校验。调用方超时（建议 200ms）视为拒绝。
 	CheckOrder(ctx context.Context, req *CheckOrderRequest, opts ...http.CallOption) (rsp *CheckOrderReply, err error)
 	DailyReport(ctx context.Context, req *DailyReportRequest, opts ...http.CallOption) (rsp *DailyReportReply, err error)
 	GetState(ctx context.Context, req *GetStateRequest, opts ...http.CallOption) (rsp *StateReply, err error)
+	// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
+	Limits(ctx context.Context, req *LimitsRequest, opts ...http.CallOption) (rsp *LimitsReply, err error)
 	// ResetKillSwitch 恢复必须带操作人和确认字样 CONFIRM。恢复后模式仍为 L0。
 	ResetKillSwitch(ctx context.Context, req *ResetKillSwitchRequest, opts ...http.CallOption) (rsp *StateReply, err error)
 	SetMode(ctx context.Context, req *SetModeRequest, opts ...http.CallOption) (rsp *StateReply, err error)
@@ -250,6 +275,20 @@ func (c *RiskHTTPClientImpl) GetState(ctx context.Context, in *GetStateRequest, 
 	pattern := "/risk/v1/state"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationRiskGetState))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
+func (c *RiskHTTPClientImpl) Limits(ctx context.Context, in *LimitsRequest, opts ...http.CallOption) (*LimitsReply, error) {
+	var out LimitsReply
+	pattern := "/risk/v1/limits"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationRiskLimits))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

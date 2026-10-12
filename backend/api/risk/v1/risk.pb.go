@@ -1061,6 +1061,196 @@ func (x *DailyReportReply) GetP99LatencyUs() int64 {
 	return 0
 }
 
+type LimitsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// SIM / LIVE；空为两本账合计
+	AccountType   string `protobuf:"bytes,1,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LimitsRequest) Reset() {
+	*x = LimitsRequest{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LimitsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LimitsRequest) ProtoMessage() {}
+
+func (x *LimitsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LimitsRequest.ProtoReflect.Descriptor instead.
+func (*LimitsRequest) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *LimitsRequest) GetAccountType() string {
+	if x != nil {
+		return x.AccountType
+	}
+	return ""
+}
+
+// LimitItem 一条限额：上限、当前用量、占上限比例（0–1；算不出为 -1）。
+type LimitItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`       // 参数键（带 risk. 前缀）或规则号
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`     // 中文口径，与 R01–R15 链一致处用规则名
+	Unit          string                 `protobuf:"bytes,3,opt,name=unit,proto3" json:"unit,omitempty"`     // 笔 / 元 / % / 笔每秒
+	Limit         float64                `protobuf:"fixed64,4,opt,name=limit,proto3" json:"limit,omitempty"` // 上限；-1 表示该限额不适用
+	Used          float64                `protobuf:"fixed64,5,opt,name=used,proto3" json:"used,omitempty"`   // 当前用量；-1 表示用量不可得（引擎没有这笔账）
+	Ratio         float64                `protobuf:"fixed64,6,opt,name=ratio,proto3" json:"ratio,omitempty"` // used/limit；任一为负则为 -1
+	Note          string                 `protobuf:"bytes,7,opt,name=note,proto3" json:"note,omitempty"`     // 口径说明
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LimitItem) Reset() {
+	*x = LimitItem{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LimitItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LimitItem) ProtoMessage() {}
+
+func (x *LimitItem) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LimitItem.ProtoReflect.Descriptor instead.
+func (*LimitItem) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *LimitItem) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *LimitItem) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LimitItem) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
+func (x *LimitItem) GetLimit() float64 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *LimitItem) GetUsed() float64 {
+	if x != nil {
+		return x.Used
+	}
+	return 0
+}
+
+func (x *LimitItem) GetRatio() float64 {
+	if x != nil {
+		return x.Ratio
+	}
+	return 0
+}
+
+func (x *LimitItem) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+type LimitsReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AccountType   string                 `protobuf:"bytes,1,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	Items         []*LimitItem           `protobuf:"bytes,2,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LimitsReply) Reset() {
+	*x = LimitsReply{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LimitsReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LimitsReply) ProtoMessage() {}
+
+func (x *LimitsReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LimitsReply.ProtoReflect.Descriptor instead.
+func (*LimitsReply) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *LimitsReply) GetAccountType() string {
+	if x != nil {
+		return x.AccountType
+	}
+	return ""
+}
+
+func (x *LimitsReply) GetItems() []*LimitItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 var File_api_risk_v1_risk_proto protoreflect.FileDescriptor
 
 const file_api_risk_v1_risk_proto_rawDesc = "" +
@@ -1159,7 +1349,20 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\badjusted\x18\x05 \x01(\x05R\badjusted\x120\n" +
 	"\arejects\x18\x06 \x03(\v2\x16.api.risk.v1.RuleCountR\arejects\x122\n" +
 	"\x06events\x18\a \x03(\v2\x1a.api.risk.v1.RiskEventItemR\x06events\x12$\n" +
-	"\x0ep99_latency_us\x18\b \x01(\x03R\fp99LatencyUs2\xdc\x05\n" +
+	"\x0ep99_latency_us\x18\b \x01(\x03R\fp99LatencyUs\"2\n" +
+	"\rLimitsRequest\x12!\n" +
+	"\faccount_type\x18\x01 \x01(\tR\vaccountType\"\x99\x01\n" +
+	"\tLimitItem\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04unit\x18\x03 \x01(\tR\x04unit\x12\x14\n" +
+	"\x05limit\x18\x04 \x01(\x01R\x05limit\x12\x12\n" +
+	"\x04used\x18\x05 \x01(\x01R\x04used\x12\x14\n" +
+	"\x05ratio\x18\x06 \x01(\x01R\x05ratio\x12\x12\n" +
+	"\x04note\x18\a \x01(\tR\x04note\"^\n" +
+	"\vLimitsReply\x12!\n" +
+	"\faccount_type\x18\x01 \x01(\tR\vaccountType\x12,\n" +
+	"\x05items\x18\x02 \x03(\v2\x16.api.risk.v1.LimitItemR\x05items2\xb5\x06\n" +
 	"\x04Risk\x12e\n" +
 	"\n" +
 	"CheckOrder\x12\x1e.api.risk.v1.CheckOrderRequest\x1a\x1c.api.risk.v1.CheckOrderReply\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/risk/v1/check\x12Y\n" +
@@ -1168,7 +1371,8 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x11TriggerKillSwitch\x12%.api.risk.v1.TriggerKillSwitchRequest\x1a\x17.api.risk.v1.StateReply\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/risk/v1/killswitch\x12u\n" +
 	"\x0fResetKillSwitch\x12#.api.risk.v1.ResetKillSwitchRequest\x1a\x17.api.risk.v1.StateReply\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/risk/v1/killswitch/reset\x12c\n" +
 	"\vUpdateParam\x12\x1f.api.risk.v1.UpdateParamRequest\x1a\x17.api.risk.v1.StateReply\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/risk/v1/params\x12f\n" +
-	"\vDailyReport\x12\x1f.api.risk.v1.DailyReportRequest\x1a\x1d.api.risk.v1.DailyReportReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/risk/v1/reportB\x17Z\x15server/api/risk/v1;v1b\x06proto3"
+	"\vDailyReport\x12\x1f.api.risk.v1.DailyReportRequest\x1a\x1d.api.risk.v1.DailyReportReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/risk/v1/report\x12W\n" +
+	"\x06Limits\x12\x1a.api.risk.v1.LimitsRequest\x1a\x18.api.risk.v1.LimitsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/risk/v1/limitsB\x17Z\x15server/api/risk/v1;v1b\x06proto3"
 
 var (
 	file_api_risk_v1_risk_proto_rawDescOnce sync.Once
@@ -1182,7 +1386,7 @@ func file_api_risk_v1_risk_proto_rawDescGZIP() []byte {
 	return file_api_risk_v1_risk_proto_rawDescData
 }
 
-var file_api_risk_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_api_risk_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_api_risk_v1_risk_proto_goTypes = []any{
 	(*CheckOrderRequest)(nil),        // 0: api.risk.v1.CheckOrderRequest
 	(*RuleResult)(nil),               // 1: api.risk.v1.RuleResult
@@ -1198,37 +1402,43 @@ var file_api_risk_v1_risk_proto_goTypes = []any{
 	(*RuleCount)(nil),                // 11: api.risk.v1.RuleCount
 	(*RiskEventItem)(nil),            // 12: api.risk.v1.RiskEventItem
 	(*DailyReportReply)(nil),         // 13: api.risk.v1.DailyReportReply
-	nil,                              // 14: api.risk.v1.StateReply.BreakersEntry
-	nil,                              // 15: api.risk.v1.StateReply.ParamsEntry
-	nil,                              // 16: api.risk.v1.StateReply.AccountAsOfEntry
+	(*LimitsRequest)(nil),            // 14: api.risk.v1.LimitsRequest
+	(*LimitItem)(nil),                // 15: api.risk.v1.LimitItem
+	(*LimitsReply)(nil),              // 16: api.risk.v1.LimitsReply
+	nil,                              // 17: api.risk.v1.StateReply.BreakersEntry
+	nil,                              // 18: api.risk.v1.StateReply.ParamsEntry
+	nil,                              // 19: api.risk.v1.StateReply.AccountAsOfEntry
 }
 var file_api_risk_v1_risk_proto_depIdxs = []int32{
 	1,  // 0: api.risk.v1.CheckOrderReply.results:type_name -> api.risk.v1.RuleResult
 	4,  // 1: api.risk.v1.StateReply.kill_switch:type_name -> api.risk.v1.KillSwitch
-	14, // 2: api.risk.v1.StateReply.breakers:type_name -> api.risk.v1.StateReply.BreakersEntry
-	15, // 3: api.risk.v1.StateReply.params:type_name -> api.risk.v1.StateReply.ParamsEntry
-	16, // 4: api.risk.v1.StateReply.account_as_of:type_name -> api.risk.v1.StateReply.AccountAsOfEntry
+	17, // 2: api.risk.v1.StateReply.breakers:type_name -> api.risk.v1.StateReply.BreakersEntry
+	18, // 3: api.risk.v1.StateReply.params:type_name -> api.risk.v1.StateReply.ParamsEntry
+	19, // 4: api.risk.v1.StateReply.account_as_of:type_name -> api.risk.v1.StateReply.AccountAsOfEntry
 	11, // 5: api.risk.v1.DailyReportReply.rejects:type_name -> api.risk.v1.RuleCount
 	12, // 6: api.risk.v1.DailyReportReply.events:type_name -> api.risk.v1.RiskEventItem
-	0,  // 7: api.risk.v1.Risk.CheckOrder:input_type -> api.risk.v1.CheckOrderRequest
-	3,  // 8: api.risk.v1.Risk.GetState:input_type -> api.risk.v1.GetStateRequest
-	6,  // 9: api.risk.v1.Risk.SetMode:input_type -> api.risk.v1.SetModeRequest
-	7,  // 10: api.risk.v1.Risk.TriggerKillSwitch:input_type -> api.risk.v1.TriggerKillSwitchRequest
-	8,  // 11: api.risk.v1.Risk.ResetKillSwitch:input_type -> api.risk.v1.ResetKillSwitchRequest
-	9,  // 12: api.risk.v1.Risk.UpdateParam:input_type -> api.risk.v1.UpdateParamRequest
-	10, // 13: api.risk.v1.Risk.DailyReport:input_type -> api.risk.v1.DailyReportRequest
-	2,  // 14: api.risk.v1.Risk.CheckOrder:output_type -> api.risk.v1.CheckOrderReply
-	5,  // 15: api.risk.v1.Risk.GetState:output_type -> api.risk.v1.StateReply
-	5,  // 16: api.risk.v1.Risk.SetMode:output_type -> api.risk.v1.StateReply
-	5,  // 17: api.risk.v1.Risk.TriggerKillSwitch:output_type -> api.risk.v1.StateReply
-	5,  // 18: api.risk.v1.Risk.ResetKillSwitch:output_type -> api.risk.v1.StateReply
-	5,  // 19: api.risk.v1.Risk.UpdateParam:output_type -> api.risk.v1.StateReply
-	13, // 20: api.risk.v1.Risk.DailyReport:output_type -> api.risk.v1.DailyReportReply
-	14, // [14:21] is the sub-list for method output_type
-	7,  // [7:14] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	15, // 7: api.risk.v1.LimitsReply.items:type_name -> api.risk.v1.LimitItem
+	0,  // 8: api.risk.v1.Risk.CheckOrder:input_type -> api.risk.v1.CheckOrderRequest
+	3,  // 9: api.risk.v1.Risk.GetState:input_type -> api.risk.v1.GetStateRequest
+	6,  // 10: api.risk.v1.Risk.SetMode:input_type -> api.risk.v1.SetModeRequest
+	7,  // 11: api.risk.v1.Risk.TriggerKillSwitch:input_type -> api.risk.v1.TriggerKillSwitchRequest
+	8,  // 12: api.risk.v1.Risk.ResetKillSwitch:input_type -> api.risk.v1.ResetKillSwitchRequest
+	9,  // 13: api.risk.v1.Risk.UpdateParam:input_type -> api.risk.v1.UpdateParamRequest
+	10, // 14: api.risk.v1.Risk.DailyReport:input_type -> api.risk.v1.DailyReportRequest
+	14, // 15: api.risk.v1.Risk.Limits:input_type -> api.risk.v1.LimitsRequest
+	2,  // 16: api.risk.v1.Risk.CheckOrder:output_type -> api.risk.v1.CheckOrderReply
+	5,  // 17: api.risk.v1.Risk.GetState:output_type -> api.risk.v1.StateReply
+	5,  // 18: api.risk.v1.Risk.SetMode:output_type -> api.risk.v1.StateReply
+	5,  // 19: api.risk.v1.Risk.TriggerKillSwitch:output_type -> api.risk.v1.StateReply
+	5,  // 20: api.risk.v1.Risk.ResetKillSwitch:output_type -> api.risk.v1.StateReply
+	5,  // 21: api.risk.v1.Risk.UpdateParam:output_type -> api.risk.v1.StateReply
+	13, // 22: api.risk.v1.Risk.DailyReport:output_type -> api.risk.v1.DailyReportReply
+	16, // 23: api.risk.v1.Risk.Limits:output_type -> api.risk.v1.LimitsReply
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_api_risk_v1_risk_proto_init() }
@@ -1242,7 +1452,7 @@ func file_api_risk_v1_risk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_risk_v1_risk_proto_rawDesc), len(file_api_risk_v1_risk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

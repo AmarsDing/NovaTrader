@@ -12,6 +12,7 @@ import { dimVotes, ticketRisk } from '@/view/decision-desk'
 import {
   amount,
   clock,
+  compactAmount,
   intText,
   missLabel,
   pctText,
@@ -666,6 +667,28 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
     value: '后端无此参数',
     note: '熔断 = 日内亏损线按账户锁存（R15）+ 市场熔断；没有独立的连亏计数器，不编 k/K',
   })
+  /* S7：引擎口径限额表（GET /api/risk/limits）——比上面前端估算多速度上限与板块集中，且含在途买单 */
+  const engineLimits = input.riskLimits?.ok ? input.riskLimits.items : null
+  const engineSection: DetailSection = {
+    key: 'engine-limits',
+    title: '引擎限额（含在途）',
+    table: engineLimits
+      ? {
+          key: 'eng',
+          columns: ['限额', '用量', '上限', '占比', '口径'],
+          rows: engineLimits.map((item) => [
+            item.name,
+            item.used < 0 ? '不可得' : fmtLimitValue(item.used, item.unit),
+            item.limit < 0 ? '不适用' : fmtLimitValue(item.limit, item.unit),
+            item.ratio < 0 ? '—' : pctText(item.ratio * 100, 0),
+            item.note,
+          ]),
+          empty: '限额接口没有返回条目',
+        }
+      : undefined,
+    rows: engineLimits ? undefined : [{ key: 'eng', label: '引擎限额', value: '未接入：需要 GET /v1/risk/limits', tone: 'warn' }],
+    foot: engineLimits ? '用量为风控引擎内存口径：持仓市值 + 在途买单 + 未落地预约（R08），速度为每秒/当日计数（R14）。' : undefined,
+  }
   const limitsSection: DetailSection = { key: 'limits', title: '限额仪表', rows: limitRows, foot: '环形 >80% 转橙、=100% 转红（§5.3）。' }
 
   /* R01–R15 逐条：今日命中次数来自日报 rejects，只有计数没有明细 */
@@ -729,6 +752,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
   return [
     { key: 'state', title: '状态', rows: state },
     limitsSection,
+    engineSection,
     ruleSection,
     killSection,
     { key: 'admit', title: '准入', rows: admitRows },
@@ -740,6 +764,14 @@ function limitRow(key: string, label: string, used: number | null, cap: number |
   if (cap == null || cap <= 0) return { key, label, value: '上限未返回', tone: 'warn', note: `参数 ${param} 未返回`, }
   const pct = Math.min(100, (used / cap) * 100)
   return { key, label, value: text(used, cap), note: extraNote, ring: { pct, tone: ringTone(pct) } }
+}
+
+/** 引擎限额条目的用量/上限按单位格式化：元→压缩金额，%→比率，笔→整数。 */
+function fmtLimitValue(value: number, unit: string): string {
+  if (unit === '元') return compactAmount(value)
+  if (unit === '%') return ratioPct(value, 2)
+  if (unit === '笔每秒') return `${value.toFixed(0)} 笔/s`
+  return intText(value)
 }
 
 function ageOf(text: string, now: number): number {

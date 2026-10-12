@@ -26,6 +26,7 @@ const (
 	Risk_ResetKillSwitch_FullMethodName   = "/api.risk.v1.Risk/ResetKillSwitch"
 	Risk_UpdateParam_FullMethodName       = "/api.risk.v1.Risk/UpdateParam"
 	Risk_DailyReport_FullMethodName       = "/api.risk.v1.Risk/DailyReport"
+	Risk_Limits_FullMethodName            = "/api.risk.v1.Risk/Limits"
 )
 
 // RiskClient is the client API for Risk service.
@@ -43,6 +44,8 @@ type RiskClient interface {
 	ResetKillSwitch(ctx context.Context, in *ResetKillSwitchRequest, opts ...grpc.CallOption) (*StateReply, error)
 	UpdateParam(ctx context.Context, in *UpdateParamRequest, opts ...grpc.CallOption) (*StateReply, error)
 	DailyReport(ctx context.Context, in *DailyReportRequest, opts ...grpc.CallOption) (*DailyReportReply, error)
+	// 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
+	Limits(ctx context.Context, in *LimitsRequest, opts ...grpc.CallOption) (*LimitsReply, error)
 }
 
 type riskClient struct {
@@ -123,6 +126,16 @@ func (c *riskClient) DailyReport(ctx context.Context, in *DailyReportRequest, op
 	return out, nil
 }
 
+func (c *riskClient) Limits(ctx context.Context, in *LimitsRequest, opts ...grpc.CallOption) (*LimitsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LimitsReply)
+	err := c.cc.Invoke(ctx, Risk_Limits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RiskServer is the server API for Risk service.
 // All implementations must embed UnimplementedRiskServer
 // for forward compatibility.
@@ -138,6 +151,8 @@ type RiskServer interface {
 	ResetKillSwitch(context.Context, *ResetKillSwitchRequest) (*StateReply, error)
 	UpdateParam(context.Context, *UpdateParamRequest) (*StateReply, error)
 	DailyReport(context.Context, *DailyReportRequest) (*DailyReportReply, error)
+	// 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
+	Limits(context.Context, *LimitsRequest) (*LimitsReply, error)
 	mustEmbedUnimplementedRiskServer()
 }
 
@@ -168,6 +183,9 @@ func (UnimplementedRiskServer) UpdateParam(context.Context, *UpdateParamRequest)
 }
 func (UnimplementedRiskServer) DailyReport(context.Context, *DailyReportRequest) (*DailyReportReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method DailyReport not implemented")
+}
+func (UnimplementedRiskServer) Limits(context.Context, *LimitsRequest) (*LimitsReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Limits not implemented")
 }
 func (UnimplementedRiskServer) mustEmbedUnimplementedRiskServer() {}
 func (UnimplementedRiskServer) testEmbeddedByValue()              {}
@@ -316,6 +334,24 @@ func _Risk_DailyReport_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Risk_Limits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LimitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).Limits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_Limits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).Limits(ctx, req.(*LimitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Risk_ServiceDesc is the grpc.ServiceDesc for Risk service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -350,6 +386,10 @@ var Risk_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DailyReport",
 			Handler:    _Risk_DailyReport_Handler,
+		},
+		{
+			MethodName: "Limits",
+			Handler:    _Risk_Limits_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

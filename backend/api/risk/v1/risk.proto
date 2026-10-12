@@ -50,6 +50,12 @@ service Risk {
       get: "/risk/v1/report"
     };
   }
+  // 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
+  rpc Limits(LimitsRequest) returns (LimitsReply) {
+    option (google.api.http) = {
+      get: "/risk/v1/limits"
+    };
+  }
 }
 
 message CheckOrderRequest {
@@ -171,4 +177,27 @@ message DailyReportReply {
   repeated RuleCount rejects = 6;
   repeated RiskEventItem events = 7;
   int64 p99_latency_us = 8;
+}
+
+/* ---------- 监控驾驶舱 P1：限额上限 × 当前用量（只读） ---------- */
+
+message LimitsRequest {
+  // SIM / LIVE；空为两本账合计
+  string account_type = 1;
+}
+
+// LimitItem 一条限额：上限、当前用量、占上限比例（0–1；算不出为 -1）。
+message LimitItem {
+  string key = 1;        // 参数键（带 risk. 前缀）或规则号
+  string name = 2;       // 中文口径，与 R01–R15 链一致处用规则名
+  string unit = 3;       // 笔 / 元 / % / 笔每秒
+  double limit = 4;      // 上限；-1 表示该限额不适用
+  double used = 5;       // 当前用量；-1 表示用量不可得（引擎没有这笔账）
+  double ratio = 6;      // used/limit；任一为负则为 -1
+  string note = 7;       // 口径说明
+}
+
+message LimitsReply {
+  string account_type = 1;
+  repeated LimitItem items = 2;
 }
