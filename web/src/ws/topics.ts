@@ -72,6 +72,18 @@ export interface MarketPushPayload extends Record<string, unknown> {
   as_of?: string
 }
 
+/** 行情快照批次信息（datahub 每轮快照写完后发，即后端 SnapshotMeta）。 */
+export interface MarketSnapshotMeta extends Record<string, unknown> {
+  asOf?: string
+  as_of?: string
+  source?: string
+  count?: number
+  latencyMs?: number
+  latency_ms?: number
+  seq?: number
+  stale?: boolean
+}
+
 export interface BrainPushPayload extends Record<string, unknown> {
   kind?: string
   traceId?: string

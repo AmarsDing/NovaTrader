@@ -199,7 +199,18 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
     admission: admission
       ? { ok: true, ready: admission.ready, tradingDays: admission.tradingDays, requiredDays: admission.requiredDays, items: admission.items.map((item) => ({ label: item.label, status: item.status, detail: item.detail })) }
       : { ok: false, ready: false, tradingDays: null, requiredDays: null, items: [] },
-    shadow: shadow ? { ok: true, items: shadow.map((item) => ({ name: item.name, live: item.live, shadow: item.shadow })) } : { ok: false, items: [] },
+    // 影子统计接口只给持有窗口维度的「样本数 / 平均收益」（没有实盘 vs 影子的对照列），
+    // 所以这里按 T+N 出卡：两列分别是样本数和该窗口的影子平均收益，口径写在 sub 上。
+    shadow: shadow
+      ? {
+          ok: true,
+          items: shadow.horizons.map((item) => ({
+            name: `T+${item.horizon}`,
+            live: item.count,
+            shadow: item.avgReturn,
+          })),
+        }
+      : { ok: false, items: [] },
     tasks: tasks ? { ok: true, items: tasks.map((item) => ({ id: item.id, name: item.name, status: item.status, message: item.message })) } : { ok: false, items: [] },
     notices: notices ? { ok: true, items: notices.map((item) => ({ id: item.id, title: item.title, level: item.level, time: item.time })) } : { ok: false, items: [] },
     audit: audit ? { ok: true, items: audit.map((item) => ({ id: String(item.id), action: item.action, target: item.target, time: item.createdAt })) } : { ok: false, items: [] },

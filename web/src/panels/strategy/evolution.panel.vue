@@ -17,16 +17,17 @@ import {
   type StrategyMeta,
   type Introspection,
   type Proposal,
-  type ShadowStat,
+  type ShadowStats,
 } from '@/api/backtest'
 import { useAuthStore } from '@/stores/auth'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtSelect from '@/ui/NtSelect.vue'
+import NtStatCard from '@/display/NtStatCard.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
-import { clock, messageOf, pctText } from '@/utils/format'
+import { clock, intText, messageOf, pnlClass, ratioPct } from '@/utils/format'
 
 const auth = useAuthStore()
 
@@ -34,7 +35,7 @@ const tab = ref('shadow')
 const loading = ref(false)
 const error = ref('')
 
-const shadow = ref<ShadowStat[]>([])
+const shadow = ref<ShadowStats | null>(null)
 const introspections = ref<Introspection[]>([])
 const proposals = ref<Proposal[]>([])
 const admission = ref<Admission | null>(null)
@@ -44,23 +45,47 @@ const strategy = ref('')
 const running = ref(false)
 const actingId = ref('')
 
-type ShadowRow = ShadowStat & Record<string, unknown>
-const shadowColumns: NtTableColumn<ShadowRow>[] = [
-  { key: 'name', title: '指标' },
-  { key: 'live', title: '实盘', align: 'right' },
-  { key: 'shadow', title: '影子', align: 'right' },
-  { key: 'delta', title: '差值', align: 'right' },
+/* 影子统计：horizons（持有窗口）与 buckets（分数桶）两张表，都是比率口径。 */
+interface HorizonRow extends Record<string, unknown> {
+  horizon: number
+  count: number | null
+  avgReturn: number | null
+  winRate: number | null
+}
+const horizonColumns: NtTableColumn<HorizonRow>[] = [
+  { key: 'horizon', title: '持有窗口', align: 'right' },
+  { key: 'count', title: '样本', align: 'right' },
+  { key: 'avgReturn', title: '平均收益', align: 'right' },
+  { key: 'winRate', title: '胜率', align: 'right' },
 ]
-const shadowRows = computed(() => shadow.value as unknown as ShadowRow[])
+const horizonRows = computed<HorizonRow[]>(() =>
+  (shadow.value?.horizons ?? []).map((h) => ({ ...h })).sort((a, b) => a.horizon - b.horizon),
+)
+
+interface BucketRow extends Record<string, unknown> {
+  bucket: string
+  count: number | null
+  avgT1: number | null
+  avgT3: number | null
+  avgT5: number | null
+}
+const bucketColumns: NtTableColumn<BucketRow>[] = [
+  { key: 'bucket', title: '分数桶' },
+  { key: 'count', title: '样本', align: 'right' },
+  { key: 'avgT1', title: 'T+1 均值', align: 'right' },
+  { key: 'avgT3', title: 'T+3 均值', align: 'right' },
+  { key: 'avgT5', title: 'T+5 均值', align: 'right' },
+]
+const bucketRows = computed<BucketRow[]>(() => (shadow.value?.buckets ?? []).map((b) => ({ ...b })))
 
 const introEntries = computed<TimelineEntry[]>(() =>
   introspections.value.map((r) => ({
-    id: r.id,
-    time: clock(r.at),
-    title: r.title || '（无标题）',
-    body: r.body,
-    tag: r.kind,
-    tone: 'neutral',
+    id: r.id || r.tradeDate + r.book,
+    time: r.tradeDate || clock(r.createdAt),
+    title: `${r.book || '—'} · 窗口 ${r.windowDays ?? '—'} 日 · 样本 ${r.sampleCount ?? '—'} · 胜率 ${ratioPct(r.winRate)} · 漏选 ${r.missedCount ?? 0}`,
+    body: r.note || r.triggerReason || '',
+    tag: r.triggered ? '已触发' : '',
+    tone: r.triggered ? 'warn' : 'neutral',
   })),
 )
 
@@ -169,11 +194,36 @@ onMounted(loadAll)
 
     <section v-show="tab === 'shadow'" class="nt-panel">
       <h2 class="nt-panel__title">影子统计</h2>
-      <NtTable :columns="shadowColumns" :rows="shadowRows" row-key="name" dense empty="还没有影子统计">
-        <template #cell-live="{ row }">{{ pctText(row.live) }}</template>
-        <template #cell-shadow="{ row }">{{ pctText(row.shadow) }}</template>
-        <template #cell-delta="{ row }">
-          <span :class="(row.delta ?? 0) >= 0 ? 'up' : 'down'">{{ pctText(row.delta) }}</span>
+      <div class="nt-cards">
+        <NtStatCard label="信号总数" :value="intText(shadow?.total ?? null)" />
+        <NtStatCard label="待后验" :value="intText(shadow?.pending ?? null)" />
+        <NtStatCard
+          label="窗口单调性"
+          :value="shadow ? (shadow.monotonic ? '成立' : '不成立') : '—'"
+          :tone="shadow ? (shadow.monotonic ? 'accent' : 'warn') : 'neutral'"
+          sub="T+1/3/5 均值随窗口变长应当更好"
+        />
+      </div>
+      <h3 class="sub">按持有窗口</h3>
+      <NtTable :columns="horizonColumns" :rows="horizonRows" row-key="horizon" dense empty="还没有影子统计">
+        <template #cell-horizon="{ row }">T+{{ row.horizon }}</template>
+        <template #cell-count="{ row }">{{ row.count ?? '—' }}</template>
+        <template #cell-avgReturn="{ row }">
+          <span :class="pnlClass(row.avgReturn)">{{ ratioPct(row.avgReturn) }}</span>
+        </template>
+        <template #cell-winRate="{ row }">{{ ratioPct(row.winRate) }}</template>
+      </NtTable>
+      <h3 class="sub">按信号分数桶</h3>
+      <NtTable :columns="bucketColumns" :rows="bucketRows" row-key="bucket" dense empty="还没有分数桶统计">
+        <template #cell-count="{ row }">{{ row.count ?? '—' }}</template>
+        <template #cell-avgT1="{ row }">
+          <span :class="pnlClass(row.avgT1)">{{ ratioPct(row.avgT1) }}</span>
+        </template>
+        <template #cell-avgT3="{ row }">
+          <span :class="pnlClass(row.avgT3)">{{ ratioPct(row.avgT3) }}</span>
+        </template>
+        <template #cell-avgT5="{ row }">
+          <span :class="pnlClass(row.avgT5)">{{ ratioPct(row.avgT5) }}</span>
         </template>
       </NtTable>
     </section>
@@ -233,6 +283,12 @@ onMounted(loadAll)
 </template>
 
 <style scoped>
+.sub {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
 .actions {
   margin-top: 10px;
   display: grid;

@@ -14,7 +14,7 @@ import { clock, compactAmount, messageOf, pnlClass, price } from '@/utils/format
 import { router } from '@/router'
 import { consumePanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
-import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
+import { onPush, subscribe, type MarketSnapshotMeta, type WsPushMessage } from '@/ws/hub'
 
 /** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转），路由 query 作兼容兜底。 */
 const panelParams = consumePanelParams('market')
@@ -139,8 +139,30 @@ let offPush: (() => void) | undefined
 let unsubscribe: (() => void) | undefined
 let lastPush = 0
 
+/** 最近一轮快照批次信息（market 主题推的 SnapshotMeta），null = 还没收到过推送。 */
+const snapshot = ref<MarketSnapshotMeta | null>(null)
+
+const snapshotLine = computed(() => {
+  const meta = snapshot.value
+  if (!meta) return ''
+  const asOf = meta.asOf || meta.as_of
+  const parts: string[] = []
+  parts.push(`快照 ${asOf ? clock(asOf) : '时间未返回'}`)
+  if (meta.stale) parts.push('已过期')
+  if (meta.source) parts.push(`源 ${meta.source}`)
+  const count = Number(meta.count)
+  if (Number.isFinite(count) && count > 0) parts.push(`${count} 只`)
+  const latency = Number(meta.latencyMs ?? meta.latency_ms)
+  if (Number.isFinite(latency) && latency > 0) parts.push(`采集 ${Math.round(latency)}ms`)
+  const seq = Number(meta.seq)
+  if (Number.isFinite(seq) && seq > 0) parts.push(`#${seq}`)
+  return parts.join(' · ')
+})
+
 function onPushMessage(msg: WsPushMessage) {
-  if (msg.topic !== 'market' || !symbol.value.trim()) return
+  if (msg.topic !== 'market') return
+  if (msg.data && typeof msg.data === 'object') snapshot.value = msg.data as MarketSnapshotMeta
+  if (!symbol.value.trim()) return
   const now = Date.now()
   if (now - lastPush < 5000) return
   lastPush = now
@@ -177,6 +199,7 @@ onBeforeUnmount(() => {
       <NtButton variant="primary" :loading="loading" @click="load">读取</NtButton>
     </form>
     <p v-if="error" class="nt-err">{{ error }}</p>
+    <p v-else-if="snapshotLine" class="nt-note snap-line">行情推送：{{ snapshotLine }}</p>
     <p v-else-if="loaded && !loading && !bars.length" class="nt-empty">
       没有这只股票的 K 线。先到数据源采集证券列表和日线。
       <button type="button" class="link" @click="getWorkbench()?.openPanel('datasource-health')">打开数据源</button>
@@ -225,6 +248,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.snap-line {
+  margin: 0 0 10px;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+
 .quote-strip {
   display: flex;
   flex-wrap: wrap;

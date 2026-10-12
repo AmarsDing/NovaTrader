@@ -13,7 +13,7 @@ import { wsUrl } from '@/utils/endpoint'
 import { deskNotify } from '@/utils/notify'
 import { BASE_TOPICS, type WsEnvelope, type WsPushMessage, type WsTopic } from './topics'
 
-export type { WsPushMessage, WsTopic } from './topics'
+export type { MarketSnapshotMeta, WsPushMessage, WsTopic } from './topics'
 export { ALL_TOPICS, BASE_TOPICS } from './topics'
 
 export interface HubDeps {
