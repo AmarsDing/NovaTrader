@@ -121,11 +121,16 @@ function fixture(): MonitorInput {
   input.quality = {
     ok: true,
     items: [
-      { domain: 'kline', tradeDate: '2026-10-10', missing: 12, stale: 0, detail: '' },
-      { domain: 'tick', tradeDate: '2026-10-10', missing: 3, stale: 0, detail: '' },
+      issue('q1', 'kline', 'daily_bar_missing', '2026-10-10', 12),
+      issue('q2', 'tick', 'tick_stale', '2026-10-10', 3),
     ],
   }
   return input
+}
+
+/** 质量问题（ListQualityIssuesReply.issues 的形状）：后端给逐条问题，不是按域汇总 */
+function issue(id: string, domain: string, checkName: string, tradeDate: string, hits: number) {
+  return { id, domain, checkName, symbol: '', tradeDate, severity: 'medium', source: '', otherSource: '', message: '', hits, lastSeen: '' }
 }
 
 describe('resolveHud · 默认十格', () => {
@@ -214,7 +219,7 @@ describe('resolveHud · 时段特化格', () => {
     expect(cells[2].sub).toContain('/v1/strategy/score-vs-pnl')
   })
 
-  it('休市：回测任务数、数据补全条数、库体积缺口', () => {
+  it('休市：回测任务数、质量问题命中条数、库体积缺口', () => {
     const cells = resolveHud(fixture(), hudCells('offday'), Date.UTC(2026, 9, 12, 6, 47))
     expect(cells[0].face).toBe('2')
     expect(cells[0].sub).toBe('1 个在跑')

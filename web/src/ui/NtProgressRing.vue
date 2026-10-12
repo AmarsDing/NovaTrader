@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{ value?: number | null; size?: number; hot?: boolean; label?: string }>(), {
-  value: null,
-  size: 56,
-  hot: false,
-  label: '',
-})
+const props = withDefaults(
+  defineProps<{ value?: number | null; size?: number; hot?: boolean; label?: string; tone?: 'ok' | 'warn' | 'danger' }>(),
+  {
+    value: null,
+    size: 56,
+    hot: false,
+    label: '',
+    tone: 'ok',
+  },
+)
 
 const clamped = computed(() => {
   const v = Number(props.value)
@@ -20,7 +24,11 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 </script>
 
 <template>
-  <span class="nt-ring" :class="{ 'nt-ring--hot': hot }" :style="{ width: `${size}px`, height: `${size}px` }">
+  <span
+    class="nt-ring"
+    :class="{ 'nt-ring--hot': hot, 'nt-ring--warn': tone === 'warn', 'nt-ring--danger': tone === 'danger' }"
+    :style="{ width: `${size}px`, height: `${size}px` }"
+  >
     <svg viewBox="0 0 48 48" aria-hidden="true">
       <circle class="nt-ring__bg" cx="24" cy="24" :r="R" />
       <circle class="nt-ring__bar" cx="24" cy="24" :r="R" :stroke-dasharray="dash" />
@@ -67,6 +75,23 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 .nt-ring--hot .nt-ring__value {
   color: var(--nt-accent);
   text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+}
+
+/* 用量色阶（§5.3 限额环形）：>80% 橙、=100% 红，不发光 */
+.nt-ring--warn .nt-ring__bar {
+  stroke: var(--nt-warn);
+}
+
+.nt-ring--warn .nt-ring__value {
+  color: var(--nt-warn);
+}
+
+.nt-ring--danger .nt-ring__bar {
+  stroke: var(--nt-danger);
+}
+
+.nt-ring--danger .nt-ring__value {
+  color: var(--nt-danger);
 }
 
 .nt-ring__value {

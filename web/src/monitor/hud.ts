@@ -201,8 +201,9 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     case 'off:backfill': {
       const items = input.quality?.ok ? input.quality.items : null
       if (!items) return { face: '质量未返回', sub: '', tone: 'flat' }
-      const missing = items.reduce((sum, item) => sum + (item.missing ?? 0), 0)
-      return { face: String(missing), sub: '待补数据条数', tone: 'flat' }
+      if (items.length === 0) return { face: '0', sub: '没有质量问题记录', tone: 'flat' }
+      const hits = items.reduce((sum, item) => sum + (item.hits ?? 0), 0)
+      return { face: String(hits), sub: `质量问题 ${items.length} 条命中`, tone: 'flat' }
     }
     case 'off:db':
       return { face: '未接入', sub: '需要 PG 库体积只读口（P2）', tone: 'flat' }

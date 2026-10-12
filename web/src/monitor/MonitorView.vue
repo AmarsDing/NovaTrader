@@ -13,8 +13,12 @@ import { useOverlay } from '@/ui/useOverlay'
 import { configCategories, type ConfigField } from '@/view/config-catalog'
 import { isLive } from '@/ws/hub'
 import AlertCenter from '@/workspace/AlertCenter.vue'
+import { getIntelItem } from '@/api/intel'
+import { getRiskReport } from '@/api/risk'
 import CanvasStage from './CanvasStage.vue'
+import DetailSheet from './DetailSheet.vue'
 import { ActivityLog } from './activity'
+import { buildDetail, intelIdsOf, type DetailExtra } from './detail'
 import { dutyOf } from './duty'
 import { cardFreshness, cardSilence, channelSilence, decorate, observeGraph } from './freshness'
 import { computeHealth } from './health'
@@ -149,6 +153,8 @@ const sparks = {
   signal: new RingSeries(30),
   p95: new RingSeries(30),
   equity: new RingSeries(30),
+  /* S5 §5.1：日内权益曲线的独立缓冲（equity spark 记的是当日盈亏，口径不同） */
+  day: new RingSeries(30),
 }
 
 function sparkPoints(key: string): (number | null)[] {
@@ -168,6 +174,7 @@ function sampleSparks() {
   )
   sparks.p95.push(data.brainStats?.ok ? Math.max(0, ...data.brainStats.tiers.map((tier) => tier.p95Ms ?? 0)) : null)
   sparks.equity.push(data.account?.ok ? data.account.dayPnl : null)
+  sparks.day.push(data.account?.ok ? data.account.equity : null)
 }
 
 const sampled = computed(() => {
@@ -191,6 +198,67 @@ const serviceLogs = computed(() => {
   const key = picked.value.title.trim().toLowerCase()
   const items = input.value.audit?.ok ? input.value.audit.items : []
   return items.filter((item) => `${item.action} ${item.target}`.toLowerCase().includes(key)).slice(0, 8)
+})
+
+/* ---- S5 详情窗深化（§5.1–5.6）：懒加载的补充数据全部只读，失败如实写进面板 ---- */
+const killHistory = ref<DetailExtra['killHistory']>(null)
+const intelTitles = ref<Record<string, { title: string; source: string; time: string } | null>>({})
+/** 换牌时作废旧请求：用这个令牌比对，晚到的响应直接丢 */
+let detailToken = 0
+
+const detailExtra = computed<DetailExtra>(() => ({
+  equityPoints: sparks.day.points(),
+  killHistory: killHistory.value,
+  intel: intelTitles.value,
+}))
+const detailPanel = computed(() => (selectedId.value ? buildDetail(input.value, selectedId.value, nowMs.value, detailExtra.value) : null))
+
+function onDetailExit(to: string) {
+  selectedId.value = ''
+  void router.push(to)
+}
+
+/** 风控牌的急停历史：今日已在轮询里，近 7 日按日读（点开才读，10s 轮询不背这 7 个请求） */
+async function loadKillHistory(token: number) {
+  const days: NonNullable<DetailExtra['killHistory']> = []
+  for (let back = 1; back <= 7; back += 1) {
+    const date = new Date(nowMs.value - back * 86400000)
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    try {
+      const report = await getRiskReport(key)
+      days.push({ date: key, ok: true, events: report.events ?? [] })
+    } catch {
+      days.push({ date: key, ok: false, events: [] })
+    }
+  }
+  if (token === detailToken) killHistory.value = days
+}
+
+/** 信号牌证据链的 N:123：逐条读标题（GET /api/intel/items/{id}），取不到记 null → 面板写「标题未返回」 */
+async function loadIntelTitles(ids: string[], token: number) {
+  for (const id of ids) {
+    if (intelTitles.value[id] !== undefined) continue
+    try {
+      const item = await getIntelItem(id)
+      if (token !== detailToken) return
+      intelTitles.value = { ...intelTitles.value, [id]: item ? { title: item.title, source: item.source, time: item.time } : null }
+    } catch {
+      if (token === detailToken) intelTitles.value = { ...intelTitles.value, [id]: null }
+    }
+  }
+}
+
+watch(selectedId, (id) => {
+  detailToken += 1
+  const token = detailToken
+  killHistory.value = null
+  const panel = id ? buildDetail(input.value, id, nowMs.value, { intel: intelTitles.value }) : null
+  if (panel?.kind === 'risk') void loadKillHistory(token)
+  if (panel?.kind === 'signal') {
+    const symbol = id!.startsWith('symbol:') ? id!.slice('symbol:'.length) : ''
+    const signal = input.value.signals?.ok ? input.value.signals.items.find((item) => item.symbol === symbol) : undefined
+    if (signal) void loadIntelTitles(intelIdsOf(signal.evidence), token)
+  }
 })
 
 watch(selectedId, (id) => {
@@ -402,7 +470,8 @@ function select(id: string) {
     selectedId.value = ''
     return
   }
-  if (!id.startsWith('symbol:') && buildChildren(input.value, id).length === 0) return
+  /* S5 深化牌（账户/风控/扫描/模型/数据源）弹层内容来自 buildDetail，不走 buildChildren 的门槛 */
+  if (!buildDetail(input.value, id, nowMs.value) && buildChildren(input.value, id).length === 0) return
   selectedId.value = id
   if (!id.startsWith('symbol:')) return
   const symbol = id.slice('symbol:'.length)
@@ -507,7 +576,7 @@ function select(id: string) {
     />
 
     <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true">
-      <section class="nt-pop__sheet">
+      <section class="nt-pop__sheet" :class="{ 'nt-pop__sheet--deep': detailPanel }">
         <header>
           <i class="dot" :class="`is-${picked.status}`"></i>
           <div>
@@ -517,7 +586,8 @@ function select(id: string) {
           <button type="button" @click="selectedId = ''">关闭</button>
         </header>
         <p class="nt-pop__face" :class="picked.tone">{{ picked.face || STATUS_WORD[picked.status] || '未返回' }}</p>
-        <div class="nt-pop__grid">
+        <DetailSheet v-if="detailPanel" :panel="detailPanel" @exit="onDetailExit" />
+        <div v-else class="nt-pop__grid">
           <article v-for="card in cards" :key="card.id">
             <span>{{ card.title }}</span>
             <strong :class="card.tone">{{ card.face }}</strong>

@@ -34,7 +34,9 @@ import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import CanvasStage from '@/monitor/CanvasStage.vue'
+import DetailSheet from '@/monitor/DetailSheet.vue'
 import { demoActivityCells } from '@/monitor/activity'
+import { buildDetail } from '@/monitor/detail'
 import { computeHealth, healthTone } from '@/monitor/health'
 import { resolveHud } from '@/monitor/hud'
 import { emptyMonitorInput } from '@/monitor/load-input'
@@ -475,6 +477,141 @@ const demoTapeInput: MonitorInput = {
   },
 }
 
+/* ---------- 监控 S5 详情窗深化（§5.1–5.6，静态） ---------- */
+/* 用 demoTapeInput 当底座（它字段最全），补 S5 专用字段：止损触发、风险参数、日报、质量问题、
+   T+1 后验，让六张牌的缺口文案与色阶一次走查完 */
+const demoDeepInput: MonitorInput = {
+  ...demoTapeInput,
+  risk: {
+    ok: true,
+    mode: 'SIM',
+    killActive: false,
+    killReason: '',
+    buysToday: 8,
+    marketBreaker: '',
+    params: { 'risk.max_daily_buys': '10', 'risk.max_single_pct': '0.05', 'risk.max_total_pct': '0.8', 'risk.daily_loss_pct': '0.02', 'risk.stop_pct': '0.05' },
+  },
+  riskReport: {
+    ok: true,
+    date: '2026-10-12',
+    summary: '拦截 3 笔，缩量 1 笔',
+    checks: 46,
+    approved: 42,
+    rejected: 3,
+    adjusted: 1,
+    p99Ms: 41,
+    rejects: [
+      { rule: 'R10', name: '当日开仓笔数', count: 2 },
+      { rule: 'R03', name: '可交易', count: 1 },
+    ],
+    events: [{ kind: 'kill_switch', active: true, mode: 'SIM', source: 'manual', reason: '手动急停演练', operator: 'admin', at: '2026-10-12 09:45' }],
+  },
+  sources: {
+    ok: true,
+    items: [
+      {
+        id: 'tdx',
+        name: '通达信',
+        status: 'live',
+        detail: '成功率 98%',
+        lastAt: new Date(demoNow - 5000).toISOString(),
+        kind: 'daily_bar',
+        enabled: true,
+        successRate: 0.98,
+        successCount: 490,
+        failureCount: 10,
+        latencyMs: 120,
+        avgLatencyMs: 210,
+        consecutiveFailures: 0,
+        quotaLimit: 0,
+        lastError: '',
+      },
+    ],
+  },
+  quality: {
+    ok: true,
+    items: [
+      { id: 'gq1', domain: 'daily_bar', checkName: 'daily_bar_missing', symbol: '000001', tradeDate: '2026-10-12', severity: 'high', source: 'tdx', otherSource: '', message: '缺当日日线', hits: 12, lastSeen: '2026-10-12 10:00' },
+      { id: 'gq2', domain: 'daily_bar', checkName: 'tick_stale', symbol: '600519', tradeDate: '2026-10-12', severity: 'medium', source: 'tdx', otherSource: '', message: '快照过期', hits: 3, lastSeen: '2026-10-12 10:05' },
+    ],
+  },
+  signals: {
+    ok: true,
+    items: [
+      {
+        id: 'gs1',
+        symbol: '600519',
+        name: '贵州茅台',
+        score: 88,
+        highValue: true,
+        degraded: false,
+        status: 'risk_checking',
+        evidence: ['F:ma20=+2.3%', 'N:123', 'R07'],
+        dims: { technical: 78, news: 62 },
+        entry: 1682,
+        stop: 1650,
+        take: 1736,
+        time: '10:12',
+        ruleScore: 72,
+        aiScore: 88,
+        reason: '首板弱转强',
+        entryLow: 1670,
+        entryHigh: 1690,
+        atr: 12.4,
+        positionPct: 0.08,
+        validUntil: new Date(demoNow + 30 * 60000).toISOString(),
+        holdingDays: 3,
+      },
+      { id: 'gs2', symbol: '000001', name: '平安银行', score: 76, highValue: false, degraded: true, status: 'approved', evidence: [], dims: {}, entry: 11.3, stop: 11.5, take: 11.95, time: '10:18' },
+    ],
+  },
+  account: {
+    ok: true,
+    book: 'SIM',
+    equity: 1284902.44,
+    cash: 412205.1,
+    dayPnl: 18204.1,
+    realized: 42150.3,
+    unrealized: -3120.5,
+    positions: [
+      { symbol: '600519', quantity: 100, avgCost: 1680, lastPrice: 1683.5 },
+      { symbol: '000001', quantity: 500, avgCost: 11.6, lastPrice: 11.24 },
+    ],
+  },
+  orders: {
+    ok: true,
+    items: [
+      { id: 'go1', symbol: '600519', side: 'buy', status: 'FILLED', price: 1682, volume: 100, filled: 100, reason: 'signal:gs1' },
+      { id: 'go2', symbol: '000001', side: 'sell', status: 'PARTIAL', price: 11.3, volume: 500, filled: 500, reason: '' },
+    ],
+  },
+  fills: {
+    ok: true,
+    items: [
+      { id: 'go1', symbol: '600519', side: 'buy', price: 1683.1, qty: 60, time: '2026-10-12 10:20:01' },
+      { id: 'go1', symbol: '600519', side: 'buy', price: 1683.3, qty: 40, time: '2026-10-12 10:20:03' },
+      { id: 'go2', symbol: '000001', side: 'sell', price: 11.24, qty: 500, time: '2026-10-12 10:21:11' },
+    ],
+  },
+  candidates: {
+    ok: true,
+    items: [
+      { symbol: '600519', name: '贵州茅台', strategy: 'limit_up', stage: 'selected', missReason: '', ruleScore: 86, aiScore: 91, finalScore: 88 },
+      { symbol: '300750', name: '宁德时代', strategy: 'limit_up', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 72, aiScore: 81, finalScore: 76, retT1: 0.061, hasT1: true },
+      { symbol: '600036', name: '招商银行', strategy: 'limit_up', stage: 'ranked', missReason: 'not_in_ai_top', ruleScore: 66, aiScore: null, finalScore: null },
+    ],
+  },
+  limits: { ok: true, rows: [{ symbol: '300750', consecutive: 1, status: 'sealed' }] },
+}
+const demoDeepAccount = buildDetail(demoDeepInput, 'book:center', demoNow, { equityPoints: demoSparks.equity })
+const demoDeepSignal = buildDetail(demoDeepInput, 'symbol:600519', demoNow, { intel: { '123': { title: '茅台批价企稳回升', source: '巨潮', time: '09:50' } } })
+const demoDeepRisk = buildDetail(demoDeepInput, 'post:risk', demoNow, {
+  killHistory: [{ date: '2026-10-11', ok: true, events: [{ kind: 'kill_switch', active: false, mode: 'SIM', source: 'manual', reason: '演练恢复', operator: 'admin', at: '2026-10-11 15:10' }] }],
+})
+const demoDeepSource = buildDetail(demoDeepInput, 'source:tdx', demoNow)
+const demoDeepModel = buildDetail(demoDeepInput, 'post:model', demoNow)
+const demoDeepScan = buildDetail(demoDeepInput, 'post:scan', demoNow)
+
 /* 健康分示例：扣分项自己加起来等于总分，避免出现「62 分但只扣了 22」这种对不上的示例 */
 const demoTapeParts: HealthPart[] = [
   { key: 'fresh', label: '数据新鲜度', deduction: 16, note: '行情 tick 42s 前', measured: true },
@@ -858,6 +995,42 @@ const demoTapeRows = demoTapeSession.absorb(
       </p>
     </section>
 
+    <section class="g-sec">
+      <h2>监控 S5 详情窗深化（§5.1–5.6 六张牌 · 静态）</h2>
+      <p class="g-activity__note">
+        六张牌全字段走查：缺口一律点名缺的接口（橙色文字），不写 0 不写破折号；唯一「按钮」是信号牌的「回到交易台确认」——那是一次路由跳转，不是写操作。
+        风控限额环形 8/10=80% 转橙、超配 10.8%/5% 转红（NtProgressRing tone）；四维雷达资金面/外围未评 → 断开的弧 + 虚线缺口点，不再按 0 画；
+        距止损 0.48% 的持仓整行橙框、跌破止损整行红框；滑点按 fills 精确配对（买入正为劣、卖出取反同口径）；
+        盘后漏选复盘只陈述「漏选里 1 只涨停 / T+1 最高 6.1%」，不假设收益。日内曲线标注「仅本次会话」。
+      </p>
+      <div class="g-deep">
+        <div v-if="demoDeepAccount" class="g-deep__card">
+          <h3>§5.1 账户</h3>
+          <DetailSheet :panel="demoDeepAccount" />
+        </div>
+        <div v-if="demoDeepSignal" class="g-deep__card">
+          <h3>§5.2 信号（600519 钻取）</h3>
+          <DetailSheet :panel="demoDeepSignal" />
+        </div>
+        <div v-if="demoDeepRisk" class="g-deep__card">
+          <h3>§5.3 风控</h3>
+          <DetailSheet :panel="demoDeepRisk" />
+        </div>
+        <div v-if="demoDeepSource" class="g-deep__card">
+          <h3>§5.4 数据源（通达信）</h3>
+          <DetailSheet :panel="demoDeepSource" />
+        </div>
+        <div v-if="demoDeepModel" class="g-deep__card">
+          <h3>§5.5 模型</h3>
+          <DetailSheet :panel="demoDeepModel" />
+        </div>
+        <div v-if="demoDeepScan" class="g-deep__card">
+          <h3>§5.6 扫描</h3>
+          <DetailSheet :panel="demoDeepScan" />
+        </div>
+      </div>
+    </section>
+
     <NtModal v-model:open="modalOpen" title="示例 Modal" width="420px">
       <p class="g-modal-body">
         Modal 走 useOverlay 的 z 栈 + Esc 链，Teleport 到 body。玻璃拟态允许出现的位置之一。
@@ -908,6 +1081,29 @@ const demoTapeRows = demoTapeSession.absorb(
   border: 1px solid var(--nt-border-1);
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* 监控 S5 详情窗走查：六张牌两列排，借弹层的底色但不 backdrop */
+.g-deep {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: 14px;
+}
+
+.g-deep__card {
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-l);
+  background: var(--nt-bg-1);
+  padding: 14px;
+  overflow: auto;
+  max-height: 560px;
+  scrollbar-width: thin;
+}
+
+.g-deep__card > h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--nt-text-2);
 }
 
 .g-head {

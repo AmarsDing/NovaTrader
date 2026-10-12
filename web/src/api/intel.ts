@@ -1,6 +1,6 @@
 import { request } from '@/api/http'
 import { asList, num, pick } from '@/utils/format'
-import type { HotWord, IntelTimeline } from './types/intel'
+import type { HotWord, IntelItem, IntelTimeline } from './types/intel'
 
 export type { HotWord, IntelItem, IntelTimeline } from './types/intel'
 
@@ -28,4 +28,28 @@ export async function hotWords(): Promise<HotWord[]> {
     count: num(pick(raw, 'count')),
     score: num(pick(raw, 'score')),
   }))
+}
+
+/**
+ * 按编号取一条情报（GET /v1/intel/items/{id}）。
+ * 监控详情窗的证据链只有 `N:123` 这样的编号，标题/来源/时间要靠这一条补齐（§5.2）。
+ * 取不到返回 null，调用方写「未返回」，不猜标题。
+ */
+export async function getIntelItem(id: string | number): Promise<IntelItem | null> {
+  const key = String(id).trim()
+  if (!key) return null
+  const raw = await request(`/api/intel/items/${encodeURIComponent(key)}`)
+  if (!raw || typeof raw !== 'object') return null
+  const item = raw as Record<string, unknown>
+  const title = pick<string>(item, 'title') || ''
+  if (!title) return null
+  return {
+    id: String(pick(item, 'id') ?? key),
+    title,
+    time: pick<string>(item, 'publishTime', 'publish_time') || '',
+    sentiment: num(pick(item, 'effectiveSentiment', 'effective_sentiment', 'sentiment')),
+    importance: num(pick(item, 'importance')),
+    source: pick<string>(item, 'source') || '',
+    kind: pick<string>(item, 'kind') || '',
+  }
 }

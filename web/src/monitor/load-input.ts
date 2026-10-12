@@ -63,6 +63,11 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
           equity: account.equity,
           cash: account.cash,
           dayPnl: account.dayPnl,
+          realized: account.realized,
+          unrealized: account.unrealized,
+          paperDays: account.paperDays,
+          openHalted: account.openHalted,
+          haltReason: account.haltReason,
           positions: positions ?? [],
           positionsOk: positions != null,
         }
@@ -75,6 +80,12 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
           killReason: risk.killReason,
           buysToday: risk.buysToday,
           marketBreaker: risk.marketBreaker,
+          killSource: risk.killSource,
+          killAt: risk.killAt,
+          params: risk.params,
+          breakers: risk.breakers,
+          accountAsOf: risk.accountAsOf,
+          lastQuoteAt: risk.lastQuoteAt,
         }
       : null,
     ops: ops
@@ -94,6 +105,21 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
             status: item.status,
             detail: sourceDetail(item),
             lastAt: item.lastAt,
+            kind: item.kind,
+            enabled: item.enabled,
+            active: item.active,
+            successRate: item.successRate,
+            latencyMs: item.latencyMs,
+            quotaUsed: item.quotaUsed,
+            quotaLimit: item.quotaLimit,
+            priority: item.priority,
+            official: item.official,
+            consecutiveFailures: item.consecutiveFailures,
+            successCount: item.successCount,
+            failureCount: item.failureCount,
+            avgLatencyMs: item.avgLatencyMs,
+            lastFailureAt: item.lastFailureAt,
+            lastError: item.lastError,
           })),
         }
       : null,
@@ -144,6 +170,26 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
             stop: item.stop,
             take: item.take,
             time: item.time,
+            /* S5 详情窗（§5.2）要的字段：三价依据、规则分对比、同类历史、有效期 */
+            side: item.side,
+            strategy: item.strategy,
+            ruleScore: item.ruleScore,
+            aiScore: item.aiScore,
+            reason: item.reason,
+            entryLow: item.entryLow,
+            entryHigh: item.entryHigh,
+            atr: item.atr,
+            positionPct: item.positionPct,
+            validUntil: item.validUntil,
+            holdDaysMax: item.holdDaysMax,
+            exitKind: item.exitKind,
+            exitPrice: item.exitPrice,
+            pnlPct: item.pnlPct,
+            hasPnl: item.hasPnl,
+            holdingDays: item.holdingDays,
+            traceId: item.traceId,
+            tradeDate: item.tradeDate,
+            closedAt: item.closedAt,
           })),
         }
       : null,
@@ -188,7 +234,21 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
         }
       : null,
     equityCurve: await equityCurve(tasks),
-    orders: orders ? { ok: true, items: orders.map((item) => ({ id: item.id, symbol: item.symbol, side: item.side, status: item.status, price: item.price, volume: item.volume, reason: item.reason })) } : { ok: false, items: [] },
+    orders: orders
+      ? {
+          ok: true,
+          items: orders.map((item) => ({
+            id: item.id,
+            symbol: item.symbol,
+            side: item.side,
+            status: item.status,
+            price: item.price,
+            volume: item.volume,
+            filled: item.filled,
+            reason: item.reason,
+          })),
+        }
+      : { ok: false, items: [] },
     fills: fills ? { ok: true, items: fills.map((item) => ({ id: item.id, symbol: item.symbol, side: item.side, price: item.price, qty: item.qty, time: item.time })) } : { ok: false, items: [] },
     candidates: candidates
       ? {
@@ -202,11 +262,35 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
             ruleScore: item.ruleScore,
             aiScore: item.aiScore,
             finalScore: item.finalScore,
+            /* S5 §5.6 盘后漏选复盘：这几个是该股此后的实际涨跌，只作事实陈述，不当策略收益 */
+            pool: item.pool,
+            refPrice: item.refPrice,
+            retT1: item.retT1,
+            retT3: item.retT3,
+            retT5: item.retT5,
+            hasT1: item.hasT1,
+            hasT3: item.hasT3,
+            hasT5: item.hasT5,
           })),
         }
       : { ok: false, items: [] },
     quality: quality
-      ? { ok: true, items: quality.map((item) => ({ domain: item.domain, tradeDate: item.tradeDate, missing: item.missing, stale: item.stale, detail: item.detail })) }
+      ? {
+          ok: true,
+          items: quality.map((item) => ({
+            id: item.id,
+            domain: item.domain,
+            checkName: item.checkName,
+            symbol: item.symbol,
+            tradeDate: item.tradeDate,
+            severity: item.severity,
+            source: item.source,
+            otherSource: item.otherSource,
+            message: item.message,
+            hits: item.hits,
+            lastSeen: item.lastSeen,
+          })),
+        }
       : { ok: false, items: [] },
     admission: admission
       ? { ok: true, ready: admission.ready, tradingDays: admission.tradingDays, requiredDays: admission.requiredDays, items: admission.items.map((item) => ({ label: item.label, status: item.status, detail: item.detail })) }
@@ -232,14 +316,41 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
         : focus
           ? { ok: false, symbol: focus, items: [] }
           : null,
-    riskReport: report ? { ok: true, summary: report.summary } : { ok: false, summary: '' },
+    riskReport: report
+      ? {
+          ok: true,
+          date: report.date,
+          summary: report.summary,
+          checks: report.checks,
+          approved: report.approved,
+          rejected: report.rejected,
+          adjusted: report.adjusted,
+          p99Ms: report.p99Ms,
+          rejects: report.rejects,
+          events: report.events,
+        }
+      : { ok: false, summary: '' },
   }
 }
 
-function sourceDetail(item: { status: string; detail: string; successRate?: number | null; latencyMs?: number | null; quotaUsed?: number | null; quotaLimit?: number | null; active?: boolean }): string {
+/** 牌面一行摘要（详情窗按字段出，这行只给远看）。缺的字段直接不写，不填 0。 */
+function sourceDetail(item: {
+  status: string
+  detail: string
+  successRate?: number | null
+  latencyMs?: number | null
+  avgLatencyMs?: number | null
+  successCount?: number | null
+  failureCount?: number | null
+  quotaUsed?: number | null
+  quotaLimit?: number | null
+  active?: boolean
+}): string {
   const bits: string[] = []
   if (item.successRate != null) bits.push(`成功率 ${item.successRate <= 1 ? Math.round(item.successRate * 100) : Math.round(item.successRate)}%`)
-  if (item.latencyMs != null) bits.push(`延迟 ${Math.round(item.latencyMs)}ms`)
+  if (item.successCount != null || item.failureCount != null) bits.push(`成 ${item.successCount ?? '—'} 败 ${item.failureCount ?? '—'}`)
+  const latency = item.latencyMs ?? item.avgLatencyMs
+  if (latency != null) bits.push(`延迟 ${Math.round(latency)}ms`)
   if (item.quotaUsed != null && item.quotaLimit != null) bits.push(`配额 ${item.quotaUsed}/${item.quotaLimit}`)
   if (item.active) bits.push('在用')
   if (item.detail && item.detail !== item.status) bits.push(item.detail)

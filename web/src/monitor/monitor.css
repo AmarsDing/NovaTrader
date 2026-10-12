@@ -875,6 +875,11 @@ button.nt-tape__row:hover {
   scrollbar-width: thin;
 }
 
+/* S5 深化牌：六张表要横排得下，放宽一档 */
+.nt-pop__sheet--deep {
+  width: min(960px, 100%);
+}
+
 .nt-pop__sheet header {
   display: flex;
   align-items: center;

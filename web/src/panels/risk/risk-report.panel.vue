@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * 风控日报面板（M08）：当日风控指标汇总（买入次数、拦截次数、Kill Switch 状态等）。
+ * 风控日报面板（M08）：当日风控指标汇总（校验/放行/拒绝、规则命中、风控事件）。
+ * 数据来自 GET /api/risk/report（DailyReportReply）：后端只给计数与事件，
+ * 指标行由 api/risk.ts 按计数拼出，缺的计数写「未返回」。
  */
 import { computed, onMounted, ref } from 'vue'
 import { getRiskReport, type RiskReport } from '@/api/risk'
@@ -19,6 +21,30 @@ const columns: NtTableColumn<Row>[] = [
   { key: 'note', title: '备注' },
 ]
 const rows = computed(() => (report.value?.rows ?? []) as unknown as Row[])
+
+const KIND_LABEL: Record<string, string> = {
+  killswitch: '急停',
+  mode: '模式变更',
+  breaker: '熔断',
+  reject_rate: '拒绝率告警',
+  param: '参数变更',
+}
+
+type EventRow = { at: string; kind: string; state: string; detail: string } & Record<string, unknown>
+const eventColumns: NtTableColumn<EventRow>[] = [
+  { key: 'at', title: '时间', mono: true },
+  { key: 'kind', title: '类别' },
+  { key: 'state', title: '状态' },
+  { key: 'detail', title: '详情' },
+]
+const eventRows = computed<EventRow[]>(() =>
+  (report.value?.events ?? []).map((item) => ({
+    at: item.at ? clock(item.at) : '时刻未返回',
+    kind: KIND_LABEL[item.kind] ?? (item.kind || '未返回'),
+    state: item.active ? '生效中' : '已解除',
+    detail: [item.mode, item.source, item.operator, item.reason].filter(Boolean).join(' · ') || '没有更多字段',
+  })),
+)
 
 async function load() {
   loading.value = true
@@ -57,7 +83,12 @@ onMounted(load)
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">指标明细</h2>
-      <NtTable :columns="columns" :rows="rows" row-key="metric" dense empty="今天还没有风控日报" />
+      <NtTable :columns="columns" :rows="rows" row-key="metric" dense empty="今天还没有风控校验记录" />
+    </section>
+
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">风控事件（急停 / 模式 / 熔断）</h2>
+      <NtTable :columns="eventColumns" :rows="eventRows" row-key="at" dense empty="今天没有风控事件" />
     </section>
   </div>
 </template>

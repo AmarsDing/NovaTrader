@@ -10,7 +10,7 @@ import {
   listSources,
   setSourceEnabled,
   type DataSource,
-  type QualityReport,
+  type QualityIssue,
 } from '@/api/datahub'
 import { useAuthStore } from '@/stores/auth'
 import NtButton from '@/ui/NtButton.vue'
@@ -22,7 +22,7 @@ import { clock, messageOf, ratioPct } from '@/utils/format'
 const auth = useAuthStore()
 
 const sources = ref<DataSource[]>([])
-const quality = ref<QualityReport[]>([])
+const quality = ref<QualityIssue[]>([])
 const loading = ref(false)
 const error = ref('')
 const hint = ref('')
@@ -45,24 +45,28 @@ function statusOf(s: DataSource): 'live' | 'ok' | 'stale' | 'down' | 'off' {
 type SourceRow = DataSource & Record<string, unknown>
 const sourceColumns: NtTableColumn<SourceRow>[] = [
   { key: 'name', title: '数据源' },
-  { key: 'kind', title: '类型', mono: true },
+  { key: 'kind', title: '域', mono: true },
   { key: 'successRate', title: '成功率', align: 'right' },
-  { key: 'latencyMs', title: '延迟(ms)', align: 'right' },
-  { key: 'lastAt', title: '最近采集', mono: true },
+  { key: 'latencyMs', title: '最近延迟(ms)', align: 'right' },
+  { key: 'fails', title: '成功/失败', align: 'right' },
+  { key: 'lastAt', title: '最近成功', mono: true },
   { key: 'detail', title: '说明' },
   { key: 'enabled', title: '启停' },
   { key: 'collect', title: '' },
 ]
 const sourceRows = computed(() => sources.value as unknown as SourceRow[])
 
-type QualityRow = QualityReport & Record<string, unknown>
+type QualityRow = QualityIssue & Record<string, unknown>
 const qualityColumns: NtTableColumn<QualityRow>[] = [
   { key: 'domain', title: '域', mono: true },
+  { key: 'checkName', title: '检查项' },
+  { key: 'symbol', title: '代码', mono: true },
   { key: 'tradeDate', title: '交易日', mono: true },
-  { key: 'total', title: '总数', align: 'right' },
-  { key: 'ok', title: '正常', align: 'right' },
-  { key: 'missing', title: '缺失', align: 'right' },
-  { key: 'stale', title: '过期', align: 'right' },
+  { key: 'severity', title: '严重度' },
+  { key: 'source', title: '来源', mono: true },
+  { key: 'hits', title: '条数', align: 'right' },
+  { key: 'lastSeen', title: '最近出现', mono: true },
+  { key: 'message', title: '说明' },
 ]
 const qualityRows = computed(() => quality.value as unknown as QualityRow[])
 
@@ -70,7 +74,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [s, q] = await Promise.allSettled([listSources(), getQuality({ limit: 20 })])
+    const [s, q] = await Promise.allSettled([listSources(), getQuality({ limit: 50 })])
     if (s.status === 'fulfilled') sources.value = s.value
     if (q.status === 'fulfilled') quality.value = q.value
     if (s.status === 'rejected') error.value = messageOf(s.reason)
@@ -102,7 +106,7 @@ async function collect(source: DataSource) {
   hint.value = ''
   try {
     await collectDomain(domain)
-    hint.value = `${source.name || source.id} 已触发采集，稍等片刻看最近采集时间`
+    hint.value = `${source.name || source.id} 已触发采集，稍等片刻看最近成功时间`
     await load()
   } catch (err) {
     error.value = messageOf(err)
@@ -119,7 +123,7 @@ onMounted(load)
     <header class="nt-head">
       <div>
         <h1 class="nt-title">数据源治理</h1>
-        <p class="nt-note">状态灯按 enabled + 最近采集时间判定；启停仅 owner。</p>
+        <p class="nt-note">状态灯按 enabled + 最近成功时间判定；启停与手动采集仅 owner。</p>
       </div>
       <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
     </header>
@@ -137,6 +141,11 @@ onMounted(load)
           <span :class="{ warn: (row.successRate ?? 1) < 0.9 }">{{ row.successRate != null ? ratioPct(row.successRate, 0) : '—' }}</span>
         </template>
         <template #cell-latencyMs="{ row }">{{ row.latencyMs != null ? Math.round(row.latencyMs) : '—' }}</template>
+        <template #cell-fails="{ row }">
+          <span :class="{ warn: (row.consecutiveFailures ?? 0) > 0 }">
+            {{ row.successCount != null ? row.successCount : '—' }} / {{ row.failureCount != null ? row.failureCount : '—' }}
+          </span>
+        </template>
         <template #cell-lastAt="{ row }">{{ clock(row.lastAt) }}</template>
         <template #cell-enabled="{ row }">
           <NtSwitch v-if="!auth.isViewer()" :model-value="row.enabled" @update:model-value="toggle(row, $event)" />
@@ -156,8 +165,14 @@ onMounted(load)
     </section>
 
     <section class="nt-panel">
-      <h2 class="nt-panel__title">质量报告</h2>
-      <NtTable :columns="qualityColumns" :rows="qualityRows" row-key="domain" dense empty="还没有质量报告" />
+      <h2 class="nt-panel__title">质量问题（逐条）</h2>
+      <NtTable :columns="qualityColumns" :rows="qualityRows" row-key="id" dense empty="没有质量问题记录">
+        <template #cell-severity="{ row }">
+          <span :class="{ warn: row.severity === 'high', mid: row.severity === 'medium' }">{{ row.severity || '—' }}</span>
+        </template>
+        <template #cell-hits="{ row }">{{ row.hits != null ? row.hits : '—' }}</template>
+        <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) }}</template>
+      </NtTable>
     </section>
   </div>
 </template>
@@ -166,5 +181,8 @@ onMounted(load)
 .warn {
   color: var(--nt-warn);
   font-weight: 600;
+}
+.mid {
+  color: var(--nt-text-2);
 }
 </style>

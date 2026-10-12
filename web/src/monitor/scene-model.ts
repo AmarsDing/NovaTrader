@@ -828,11 +828,14 @@ function modelExplain(input: MonitorInput, id: string): ChildCard[] {
 
 function qualityChildren(input: MonitorInput): ChildCard[] {
   if (!input.quality?.ok) return [{ id: 'quality:missing', title: '质量', face: '未返回', sub: '', tone: 'flat' }]
+  if (input.quality.items.length === 0) {
+    return [{ id: 'quality:clean', title: '质量', face: '没有问题记录', sub: '', tone: 'flat' }]
+  }
   return input.quality.items.map((item) => ({
-    id: `quality:${item.domain}`,
-    title: item.domain || '质量',
-    face: item.missing == null ? '—' : `缺 ${item.missing}`,
-    sub: `${item.tradeDate} 过期 ${intText(item.stale)} ${item.detail}`.trim(),
+    id: `quality:${item.id || `${item.domain}:${item.checkName}:${item.symbol}`}`,
+    title: item.domain || '未分域',
+    face: item.hits == null ? item.checkName || '问题' : `${item.checkName || '问题'} ${item.hits} 条`,
+    sub: [item.symbol, item.tradeDate, item.severity].filter(Boolean).join(' · '),
     tone: 'flat' as const,
   }))
 }
@@ -865,11 +868,19 @@ function buildServices(input: MonitorInput): { nodes: SceneNode[]; truncated: bo
   return capNodes([...services, ...resources], 16)
 }
 
+/** 质量牌：后端给的是逐条问题，这里按域合并成一行摘要（详情窗才展开逐条） */
 function qualityNode(input: MonitorInput): SceneNode | null {
   if (!input.quality?.ok) return null
-  const bad = input.quality.items.filter((item) => (item.missing ?? 0) > 0 || (item.stale ?? 0) > 0)
-  if (bad.length === 0) return null
-  const detail = bad.map((item) => `${item.domain || '域'} 缺 ${intText(item.missing)} 过期 ${intText(item.stale)}`).join('\n')
+  if (input.quality.items.length === 0) return null
+  const tally = new Map<string, { issues: number; hits: number }>()
+  for (const item of input.quality.items) {
+    const key = item.domain || '未分域'
+    const cur = tally.get(key) ?? { issues: 0, hits: 0 }
+    cur.issues += 1
+    cur.hits += item.hits ?? 0
+    tally.set(key, cur)
+  }
+  const detail = [...tally.entries()].map(([domain, item]) => `${domain} ${item.issues} 条问题 / 命中 ${intText(item.hits)}`).join('\n')
   return { id: 'source:quality', ring: 'source', title: '质量', status: 'gap', detail, inputs: [], outputs: [], ...PLAIN }
 }
 
