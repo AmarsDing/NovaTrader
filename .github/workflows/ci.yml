@@ -1,0 +1,87 @@
+# NovaTrader CI（P6 工程化）
+# 三道门：web 前端（typecheck/lint/test/build）、Tauri 桌面壳冒烟、Go 后端（build/vet/test）。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: web 前端门禁
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: typecheck（vue-tsc）
+        run: npm run typecheck
+      - name: lint（eslint flat）
+        run: npm run lint
+      - name: test（vitest）
+        run: npm run test
+      - name: build（vite，产物含 popout.html）
+        run: npm run build:fast
+      - name: 校验构建产物
+        run: |
+          test -f dist/index.html
+          test -f dist/popout.html
+          ! ls dist/assets | grep -i gallery   # gallery 仅 DEV，不得进生产包
+
+  tauri-smoke:
+    name: Tauri 桌面壳冒烟
+    runs-on: windows-latest
+    needs: web
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web/src-tauri
+      # 冒烟：编译 + capabilities/CSP 校验，不打安装包（--no-bundle）
+      - name: tauri build --no-bundle
+        run: npm run tauri build -- --no-bundle
+
+  backend:
+    name: Go 后端门禁
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: build
+        run: go build ./...
+      - name: vet
+        run: go vet ./...
+      - name: test（admin 网关/数据层，内存 fake，无需数据库）
+        run: go test ./app/admin/...
