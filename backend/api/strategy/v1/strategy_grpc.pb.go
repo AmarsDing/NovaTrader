@@ -26,6 +26,8 @@ const (
 	Strategy_ListCandidates_FullMethodName   = "/strategy.v1.Strategy/ListCandidates"
 	Strategy_AddBlacklist_FullMethodName     = "/strategy.v1.Strategy/AddBlacklist"
 	Strategy_RemoveBlacklist_FullMethodName  = "/strategy.v1.Strategy/RemoveBlacklist"
+	Strategy_Performance_FullMethodName      = "/strategy.v1.Strategy/Performance"
+	Strategy_ScoreVsPnl_FullMethodName       = "/strategy.v1.Strategy/ScoreVsPnl"
 )
 
 // StrategyClient is the client API for Strategy service.
@@ -43,6 +45,10 @@ type StrategyClient interface {
 	ListCandidates(ctx context.Context, in *ListCandidatesRequest, opts ...grpc.CallOption) (*ListCandidatesReply, error)
 	AddBlacklist(ctx context.Context, in *AddBlacklistRequest, opts ...grpc.CallOption) (*BlacklistReply, error)
 	RemoveBlacklist(ctx context.Context, in *RemoveBlacklistRequest, opts ...grpc.CallOption) (*BlacklistReply, error)
+	// 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
+	Performance(ctx context.Context, in *PerformanceRequest, opts ...grpc.CallOption) (*PerformanceReply, error)
+	// 监控驾驶舱 P1（只读）：评分-收益散点与 Pearson 相关系数。
+	ScoreVsPnl(ctx context.Context, in *ScoreVsPnlRequest, opts ...grpc.CallOption) (*ScoreVsPnlReply, error)
 }
 
 type strategyClient struct {
@@ -123,6 +129,26 @@ func (c *strategyClient) RemoveBlacklist(ctx context.Context, in *RemoveBlacklis
 	return out, nil
 }
 
+func (c *strategyClient) Performance(ctx context.Context, in *PerformanceRequest, opts ...grpc.CallOption) (*PerformanceReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PerformanceReply)
+	err := c.cc.Invoke(ctx, Strategy_Performance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *strategyClient) ScoreVsPnl(ctx context.Context, in *ScoreVsPnlRequest, opts ...grpc.CallOption) (*ScoreVsPnlReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ScoreVsPnlReply)
+	err := c.cc.Invoke(ctx, Strategy_ScoreVsPnl_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StrategyServer is the server API for Strategy service.
 // All implementations must embed UnimplementedStrategyServer
 // for forward compatibility.
@@ -138,6 +164,10 @@ type StrategyServer interface {
 	ListCandidates(context.Context, *ListCandidatesRequest) (*ListCandidatesReply, error)
 	AddBlacklist(context.Context, *AddBlacklistRequest) (*BlacklistReply, error)
 	RemoveBlacklist(context.Context, *RemoveBlacklistRequest) (*BlacklistReply, error)
+	// 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
+	Performance(context.Context, *PerformanceRequest) (*PerformanceReply, error)
+	// 监控驾驶舱 P1（只读）：评分-收益散点与 Pearson 相关系数。
+	ScoreVsPnl(context.Context, *ScoreVsPnlRequest) (*ScoreVsPnlReply, error)
 	mustEmbedUnimplementedStrategyServer()
 }
 
@@ -168,6 +198,12 @@ func (UnimplementedStrategyServer) AddBlacklist(context.Context, *AddBlacklistRe
 }
 func (UnimplementedStrategyServer) RemoveBlacklist(context.Context, *RemoveBlacklistRequest) (*BlacklistReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveBlacklist not implemented")
+}
+func (UnimplementedStrategyServer) Performance(context.Context, *PerformanceRequest) (*PerformanceReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Performance not implemented")
+}
+func (UnimplementedStrategyServer) ScoreVsPnl(context.Context, *ScoreVsPnlRequest) (*ScoreVsPnlReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method ScoreVsPnl not implemented")
 }
 func (UnimplementedStrategyServer) mustEmbedUnimplementedStrategyServer() {}
 func (UnimplementedStrategyServer) testEmbeddedByValue()                  {}
@@ -316,6 +352,42 @@ func _Strategy_RemoveBlacklist_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Strategy_Performance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PerformanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StrategyServer).Performance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Strategy_Performance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StrategyServer).Performance(ctx, req.(*PerformanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Strategy_ScoreVsPnl_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScoreVsPnlRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StrategyServer).ScoreVsPnl(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Strategy_ScoreVsPnl_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StrategyServer).ScoreVsPnl(ctx, req.(*ScoreVsPnlRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Strategy_ServiceDesc is the grpc.ServiceDesc for Strategy service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -350,6 +422,14 @@ var Strategy_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveBlacklist",
 			Handler:    _Strategy_RemoveBlacklist_Handler,
+		},
+		{
+			MethodName: "Performance",
+			Handler:    _Strategy_Performance_Handler,
+		},
+		{
+			MethodName: "ScoreVsPnl",
+			Handler:    _Strategy_ScoreVsPnl_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -23,8 +23,10 @@ const OperationStrategyAddBlacklist = "/strategy.v1.Strategy/AddBlacklist"
 const OperationStrategyGetSignal = "/strategy.v1.Strategy/GetSignal"
 const OperationStrategyListCandidates = "/strategy.v1.Strategy/ListCandidates"
 const OperationStrategyListSignals = "/strategy.v1.Strategy/ListSignals"
+const OperationStrategyPerformance = "/strategy.v1.Strategy/Performance"
 const OperationStrategyRemoveBlacklist = "/strategy.v1.Strategy/RemoveBlacklist"
 const OperationStrategyScan = "/strategy.v1.Strategy/Scan"
+const OperationStrategyScoreVsPnl = "/strategy.v1.Strategy/ScoreVsPnl"
 const OperationStrategyTransitionSignal = "/strategy.v1.Strategy/TransitionSignal"
 
 type StrategyHTTPServer interface {
@@ -32,9 +34,13 @@ type StrategyHTTPServer interface {
 	GetSignal(context.Context, *GetSignalRequest) (*Signal, error)
 	ListCandidates(context.Context, *ListCandidatesRequest) (*ListCandidatesReply, error)
 	ListSignals(context.Context, *ListSignalsRequest) (*ListSignalsReply, error)
+	// Performance 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
+	Performance(context.Context, *PerformanceRequest) (*PerformanceReply, error)
 	RemoveBlacklist(context.Context, *RemoveBlacklistRequest) (*BlacklistReply, error)
 	// Scan 手动触发一次扫描。
 	Scan(context.Context, *ScanRequest) (*ScanReply, error)
+	// ScoreVsPnl 监控驾驶舱 P1（只读）：评分-收益散点与 Pearson 相关系数。
+	ScoreVsPnl(context.Context, *ScoreVsPnlRequest) (*ScoreVsPnlReply, error)
 	// TransitionSignal M08 风控、M09 交易、客户端改信号状态。非法迁移返回 400，并发冲突返回 409。
 	TransitionSignal(context.Context, *TransitionSignalRequest) (*Signal, error)
 }
@@ -48,6 +54,8 @@ func RegisterStrategyHTTPServer(s *http.Server, srv StrategyHTTPServer) {
 	r.GET("/v1/strategy/candidates", _Strategy_ListCandidates0_HTTP_Handler(srv))
 	r.POST("/v1/strategy/blacklist", _Strategy_AddBlacklist0_HTTP_Handler(srv))
 	r.DELETE("/v1/strategy/blacklist/{symbol}", _Strategy_RemoveBlacklist0_HTTP_Handler(srv))
+	r.GET("/v1/strategy/performance", _Strategy_Performance0_HTTP_Handler(srv))
+	r.GET("/v1/strategy/score-vs-pnl", _Strategy_ScoreVsPnl0_HTTP_Handler(srv))
 }
 
 func _Strategy_ListSignals0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Context) error {
@@ -201,14 +209,56 @@ func _Strategy_RemoveBlacklist0_HTTP_Handler(srv StrategyHTTPServer) func(ctx ht
 	}
 }
 
+func _Strategy_Performance0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in PerformanceRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationStrategyPerformance)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.Performance(ctx, req.(*PerformanceRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PerformanceReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Strategy_ScoreVsPnl0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ScoreVsPnlRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationStrategyScoreVsPnl)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ScoreVsPnl(ctx, req.(*ScoreVsPnlRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ScoreVsPnlReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type StrategyHTTPClient interface {
 	AddBlacklist(ctx context.Context, req *AddBlacklistRequest, opts ...http.CallOption) (rsp *BlacklistReply, err error)
 	GetSignal(ctx context.Context, req *GetSignalRequest, opts ...http.CallOption) (rsp *Signal, err error)
 	ListCandidates(ctx context.Context, req *ListCandidatesRequest, opts ...http.CallOption) (rsp *ListCandidatesReply, err error)
 	ListSignals(ctx context.Context, req *ListSignalsRequest, opts ...http.CallOption) (rsp *ListSignalsReply, err error)
+	// Performance 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
+	Performance(ctx context.Context, req *PerformanceRequest, opts ...http.CallOption) (rsp *PerformanceReply, err error)
 	RemoveBlacklist(ctx context.Context, req *RemoveBlacklistRequest, opts ...http.CallOption) (rsp *BlacklistReply, err error)
 	// Scan 手动触发一次扫描。
 	Scan(ctx context.Context, req *ScanRequest, opts ...http.CallOption) (rsp *ScanReply, err error)
+	// ScoreVsPnl 监控驾驶舱 P1（只读）：评分-收益散点与 Pearson 相关系数。
+	ScoreVsPnl(ctx context.Context, req *ScoreVsPnlRequest, opts ...http.CallOption) (rsp *ScoreVsPnlReply, err error)
 	// TransitionSignal M08 风控、M09 交易、客户端改信号状态。非法迁移返回 400，并发冲突返回 409。
 	TransitionSignal(ctx context.Context, req *TransitionSignalRequest, opts ...http.CallOption) (rsp *Signal, err error)
 }
@@ -273,6 +323,20 @@ func (c *StrategyHTTPClientImpl) ListSignals(ctx context.Context, in *ListSignal
 	return &out, nil
 }
 
+// Performance 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
+func (c *StrategyHTTPClientImpl) Performance(ctx context.Context, in *PerformanceRequest, opts ...http.CallOption) (*PerformanceReply, error) {
+	var out PerformanceReply
+	pattern := "/v1/strategy/performance"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationStrategyPerformance))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *StrategyHTTPClientImpl) RemoveBlacklist(ctx context.Context, in *RemoveBlacklistRequest, opts ...http.CallOption) (*BlacklistReply, error) {
 	var out BlacklistReply
 	pattern := "/v1/strategy/blacklist/{symbol}"
@@ -294,6 +358,20 @@ func (c *StrategyHTTPClientImpl) Scan(ctx context.Context, in *ScanRequest, opts
 	opts = append(opts, http.Operation(OperationStrategyScan))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ScoreVsPnl 监控驾驶舱 P1（只读）：评分-收益散点与 Pearson 相关系数。
+func (c *StrategyHTTPClientImpl) ScoreVsPnl(ctx context.Context, in *ScoreVsPnlRequest, opts ...http.CallOption) (*ScoreVsPnlReply, error) {
+	var out ScoreVsPnlReply
+	pattern := "/v1/strategy/score-vs-pnl"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationStrategyScoreVsPnl))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

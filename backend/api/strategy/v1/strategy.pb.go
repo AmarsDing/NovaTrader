@@ -1252,6 +1252,377 @@ func (x *BlacklistReply) GetSymbol() string {
 	return ""
 }
 
+// PerformanceRequest 取近 N 笔已出后验（signal_correct 非空）的反馈。
+type PerformanceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Last          int32                  `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"` // 默认 20，上限 200
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PerformanceRequest) Reset() {
+	*x = PerformanceRequest{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PerformanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PerformanceRequest) ProtoMessage() {}
+
+func (x *PerformanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PerformanceRequest.ProtoReflect.Descriptor instead.
+func (*PerformanceRequest) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *PerformanceRequest) GetLast() int32 {
+	if x != nil {
+		return x.Last
+	}
+	return 0
+}
+
+// PerformanceReply 全量为空时（还没有后验样本）sample=0，其余字段为 0，由前端写「样本不足」。
+type PerformanceReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sample        int32                  `protobuf:"varint,1,opt,name=sample,proto3" json:"sample,omitempty"`                               // 参与统计的笔数
+	WinRate       float64                `protobuf:"fixed64,2,opt,name=win_rate,json=winRate,proto3" json:"win_rate,omitempty"`             // 胜率，signal_correct=true 占比
+	PlRatio       float64                `protobuf:"fixed64,3,opt,name=pl_ratio,json=plRatio,proto3" json:"pl_ratio,omitempty"`             // 盈亏比：平均盈利 / 平均亏损（无盈利或无亏损时为 0）
+	MaxDrawdown   float64                `protobuf:"fixed64,4,opt,name=max_drawdown,json=maxDrawdown,proto3" json:"max_drawdown,omitempty"` // 最大回撤：按 actual_return 逐笔累计的峰谷差（小数）
+	AvgReturn     float64                `protobuf:"fixed64,5,opt,name=avg_return,json=avgReturn,proto3" json:"avg_return,omitempty"`       // 平均实际收益（小数）
+	Attributions  []*AttributionCount    `protobuf:"bytes,6,rep,name=attributions,proto3" json:"attributions,omitempty"`                    // 分维归因计数
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PerformanceReply) Reset() {
+	*x = PerformanceReply{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PerformanceReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PerformanceReply) ProtoMessage() {}
+
+func (x *PerformanceReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PerformanceReply.ProtoReflect.Descriptor instead.
+func (*PerformanceReply) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PerformanceReply) GetSample() int32 {
+	if x != nil {
+		return x.Sample
+	}
+	return 0
+}
+
+func (x *PerformanceReply) GetWinRate() float64 {
+	if x != nil {
+		return x.WinRate
+	}
+	return 0
+}
+
+func (x *PerformanceReply) GetPlRatio() float64 {
+	if x != nil {
+		return x.PlRatio
+	}
+	return 0
+}
+
+func (x *PerformanceReply) GetMaxDrawdown() float64 {
+	if x != nil {
+		return x.MaxDrawdown
+	}
+	return 0
+}
+
+func (x *PerformanceReply) GetAvgReturn() float64 {
+	if x != nil {
+		return x.AvgReturn
+	}
+	return 0
+}
+
+func (x *PerformanceReply) GetAttributions() []*AttributionCount {
+	if x != nil {
+		return x.Attributions
+	}
+	return nil
+}
+
+type AttributionCount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Attribution   string                 `protobuf:"bytes,1,opt,name=attribution,proto3" json:"attribution,omitempty"` // indicator_failed / news_misread / unfilled / emotion_mismatch / missed / 空（未归因）
+	Count         int32                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AttributionCount) Reset() {
+	*x = AttributionCount{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AttributionCount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AttributionCount) ProtoMessage() {}
+
+func (x *AttributionCount) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AttributionCount.ProtoReflect.Descriptor instead.
+func (*AttributionCount) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *AttributionCount) GetAttribution() string {
+	if x != nil {
+		return x.Attribution
+	}
+	return ""
+}
+
+func (x *AttributionCount) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+// ScoreVsPnlRequest 取近 N 笔挂得上信号的反馈，做评分-收益对照。
+type ScoreVsPnlRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Last          int32                  `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"` // 默认 50，上限 500
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScoreVsPnlRequest) Reset() {
+	*x = ScoreVsPnlRequest{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScoreVsPnlRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScoreVsPnlRequest) ProtoMessage() {}
+
+func (x *ScoreVsPnlRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScoreVsPnlRequest.ProtoReflect.Descriptor instead.
+func (*ScoreVsPnlRequest) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ScoreVsPnlRequest) GetLast() int32 {
+	if x != nil {
+		return x.Last
+	}
+	return 0
+}
+
+type ScorePnlPoint struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SignalId      int64                  `protobuf:"varint,1,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Score         float64                `protobuf:"fixed64,3,opt,name=score,proto3" json:"score,omitempty"`                                   // trade_signals.confidence_score（0-100）
+	ActualReturn  float64                `protobuf:"fixed64,4,opt,name=actual_return,json=actualReturn,proto3" json:"actual_return,omitempty"` // strategy_feedback.actual_return（小数）
+	TradeDate     string                 `protobuf:"bytes,5,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Strategy      string                 `protobuf:"bytes,6,opt,name=strategy,proto3" json:"strategy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScorePnlPoint) Reset() {
+	*x = ScorePnlPoint{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScorePnlPoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScorePnlPoint) ProtoMessage() {}
+
+func (x *ScorePnlPoint) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScorePnlPoint.ProtoReflect.Descriptor instead.
+func (*ScorePnlPoint) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ScorePnlPoint) GetSignalId() int64 {
+	if x != nil {
+		return x.SignalId
+	}
+	return 0
+}
+
+func (x *ScorePnlPoint) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *ScorePnlPoint) GetScore() float64 {
+	if x != nil {
+		return x.Score
+	}
+	return 0
+}
+
+func (x *ScorePnlPoint) GetActualReturn() float64 {
+	if x != nil {
+		return x.ActualReturn
+	}
+	return 0
+}
+
+func (x *ScorePnlPoint) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *ScorePnlPoint) GetStrategy() string {
+	if x != nil {
+		return x.Strategy
+	}
+	return ""
+}
+
+type ScoreVsPnlReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Points        []*ScorePnlPoint       `protobuf:"bytes,1,rep,name=points,proto3" json:"points,omitempty"`
+	Pearson       float64                `protobuf:"fixed64,2,opt,name=pearson,proto3" json:"pearson,omitempty"` // 样本 <2 或方差为 0 时返回 0，由前端写「样本不足」
+	Sample        int32                  `protobuf:"varint,3,opt,name=sample,proto3" json:"sample,omitempty"`    // 参与相关系数的笔数
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ScoreVsPnlReply) Reset() {
+	*x = ScoreVsPnlReply{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ScoreVsPnlReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ScoreVsPnlReply) ProtoMessage() {}
+
+func (x *ScoreVsPnlReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ScoreVsPnlReply.ProtoReflect.Descriptor instead.
+func (*ScoreVsPnlReply) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ScoreVsPnlReply) GetPoints() []*ScorePnlPoint {
+	if x != nil {
+		return x.Points
+	}
+	return nil
+}
+
+func (x *ScoreVsPnlReply) GetPearson() float64 {
+	if x != nil {
+		return x.Pearson
+	}
+	return 0
+}
+
+func (x *ScoreVsPnlReply) GetSample() int32 {
+	if x != nil {
+		return x.Sample
+	}
+	return 0
+}
+
 var File_api_strategy_v1_strategy_proto protoreflect.FileDescriptor
 
 const file_api_strategy_v1_strategy_proto_rawDesc = "" +
@@ -1402,7 +1773,34 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\x16RemoveBlacklistRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"(\n" +
 	"\x0eBlacklistReply\x12\x16\n" +
-	"\x06symbol\x18\x01 \x01(\tR\x06symbol2\x9c\x06\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"(\n" +
+	"\x12PerformanceRequest\x12\x12\n" +
+	"\x04last\x18\x01 \x01(\x05R\x04last\"\xe5\x01\n" +
+	"\x10PerformanceReply\x12\x16\n" +
+	"\x06sample\x18\x01 \x01(\x05R\x06sample\x12\x19\n" +
+	"\bwin_rate\x18\x02 \x01(\x01R\awinRate\x12\x19\n" +
+	"\bpl_ratio\x18\x03 \x01(\x01R\aplRatio\x12!\n" +
+	"\fmax_drawdown\x18\x04 \x01(\x01R\vmaxDrawdown\x12\x1d\n" +
+	"\n" +
+	"avg_return\x18\x05 \x01(\x01R\tavgReturn\x12A\n" +
+	"\fattributions\x18\x06 \x03(\v2\x1d.strategy.v1.AttributionCountR\fattributions\"J\n" +
+	"\x10AttributionCount\x12 \n" +
+	"\vattribution\x18\x01 \x01(\tR\vattribution\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"'\n" +
+	"\x11ScoreVsPnlRequest\x12\x12\n" +
+	"\x04last\x18\x01 \x01(\x05R\x04last\"\xba\x01\n" +
+	"\rScorePnlPoint\x12\x1b\n" +
+	"\tsignal_id\x18\x01 \x01(\x03R\bsignalId\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x14\n" +
+	"\x05score\x18\x03 \x01(\x01R\x05score\x12#\n" +
+	"\ractual_return\x18\x04 \x01(\x01R\factualReturn\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x05 \x01(\tR\ttradeDate\x12\x1a\n" +
+	"\bstrategy\x18\x06 \x01(\tR\bstrategy\"w\n" +
+	"\x0fScoreVsPnlReply\x122\n" +
+	"\x06points\x18\x01 \x03(\v2\x1a.strategy.v1.ScorePnlPointR\x06points\x12\x18\n" +
+	"\apearson\x18\x02 \x01(\x01R\apearson\x12\x16\n" +
+	"\x06sample\x18\x03 \x01(\x05R\x06sample2\xfc\a\n" +
 	"\bStrategy\x12k\n" +
 	"\vListSignals\x12\x1f.strategy.v1.ListSignalsRequest\x1a\x1d.strategy.v1.ListSignalsReply\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/strategy/signals\x12b\n" +
 	"\tGetSignal\x12\x1d.strategy.v1.GetSignalRequest\x1a\x13.strategy.v1.Signal\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/strategy/signals/{id}\x12~\n" +
@@ -1410,7 +1808,10 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\x04Scan\x12\x18.strategy.v1.ScanRequest\x1a\x16.strategy.v1.ScanReply\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/strategy/scan\x12w\n" +
 	"\x0eListCandidates\x12\".strategy.v1.ListCandidatesRequest\x1a .strategy.v1.ListCandidatesReply\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/strategy/candidates\x12p\n" +
 	"\fAddBlacklist\x12 .strategy.v1.AddBlacklistRequest\x1a\x1b.strategy.v1.BlacklistReply\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/strategy/blacklist\x12|\n" +
-	"\x0fRemoveBlacklist\x12#.strategy.v1.RemoveBlacklistRequest\x1a\x1b.strategy.v1.BlacklistReply\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/strategy/blacklist/{symbol}B\x1bZ\x19server/api/strategy/v1;v1b\x06proto3"
+	"\x0fRemoveBlacklist\x12#.strategy.v1.RemoveBlacklistRequest\x1a\x1b.strategy.v1.BlacklistReply\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/strategy/blacklist/{symbol}\x12o\n" +
+	"\vPerformance\x12\x1f.strategy.v1.PerformanceRequest\x1a\x1d.strategy.v1.PerformanceReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/strategy/performance\x12m\n" +
+	"\n" +
+	"ScoreVsPnl\x12\x1e.strategy.v1.ScoreVsPnlRequest\x1a\x1c.strategy.v1.ScoreVsPnlReply\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/strategy/score-vs-pnlB\x1bZ\x19server/api/strategy/v1;v1b\x06proto3"
 
 var (
 	file_api_strategy_v1_strategy_proto_rawDescOnce sync.Once
@@ -1424,7 +1825,7 @@ func file_api_strategy_v1_strategy_proto_rawDescGZIP() []byte {
 	return file_api_strategy_v1_strategy_proto_rawDescData
 }
 
-var file_api_strategy_v1_strategy_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_api_strategy_v1_strategy_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_api_strategy_v1_strategy_proto_goTypes = []any{
 	(*Signal)(nil),                  // 0: strategy.v1.Signal
 	(*ListSignalsRequest)(nil),      // 1: strategy.v1.ListSignalsRequest
@@ -1439,35 +1840,47 @@ var file_api_strategy_v1_strategy_proto_goTypes = []any{
 	(*AddBlacklistRequest)(nil),     // 10: strategy.v1.AddBlacklistRequest
 	(*RemoveBlacklistRequest)(nil),  // 11: strategy.v1.RemoveBlacklistRequest
 	(*BlacklistReply)(nil),          // 12: strategy.v1.BlacklistReply
-	nil,                             // 13: strategy.v1.Signal.DimsEntry
-	nil,                             // 14: strategy.v1.ScanReply.DroppedEntry
-	nil,                             // 15: strategy.v1.ScanReply.MissesEntry
+	(*PerformanceRequest)(nil),      // 13: strategy.v1.PerformanceRequest
+	(*PerformanceReply)(nil),        // 14: strategy.v1.PerformanceReply
+	(*AttributionCount)(nil),        // 15: strategy.v1.AttributionCount
+	(*ScoreVsPnlRequest)(nil),       // 16: strategy.v1.ScoreVsPnlRequest
+	(*ScorePnlPoint)(nil),           // 17: strategy.v1.ScorePnlPoint
+	(*ScoreVsPnlReply)(nil),         // 18: strategy.v1.ScoreVsPnlReply
+	nil,                             // 19: strategy.v1.Signal.DimsEntry
+	nil,                             // 20: strategy.v1.ScanReply.DroppedEntry
+	nil,                             // 21: strategy.v1.ScanReply.MissesEntry
 }
 var file_api_strategy_v1_strategy_proto_depIdxs = []int32{
-	13, // 0: strategy.v1.Signal.dims:type_name -> strategy.v1.Signal.DimsEntry
+	19, // 0: strategy.v1.Signal.dims:type_name -> strategy.v1.Signal.DimsEntry
 	0,  // 1: strategy.v1.ListSignalsReply.items:type_name -> strategy.v1.Signal
-	14, // 2: strategy.v1.ScanReply.dropped:type_name -> strategy.v1.ScanReply.DroppedEntry
-	15, // 3: strategy.v1.ScanReply.misses:type_name -> strategy.v1.ScanReply.MissesEntry
+	20, // 2: strategy.v1.ScanReply.dropped:type_name -> strategy.v1.ScanReply.DroppedEntry
+	21, // 3: strategy.v1.ScanReply.misses:type_name -> strategy.v1.ScanReply.MissesEntry
 	7,  // 4: strategy.v1.ListCandidatesReply.items:type_name -> strategy.v1.Candidate
-	1,  // 5: strategy.v1.Strategy.ListSignals:input_type -> strategy.v1.ListSignalsRequest
-	3,  // 6: strategy.v1.Strategy.GetSignal:input_type -> strategy.v1.GetSignalRequest
-	4,  // 7: strategy.v1.Strategy.TransitionSignal:input_type -> strategy.v1.TransitionSignalRequest
-	5,  // 8: strategy.v1.Strategy.Scan:input_type -> strategy.v1.ScanRequest
-	8,  // 9: strategy.v1.Strategy.ListCandidates:input_type -> strategy.v1.ListCandidatesRequest
-	10, // 10: strategy.v1.Strategy.AddBlacklist:input_type -> strategy.v1.AddBlacklistRequest
-	11, // 11: strategy.v1.Strategy.RemoveBlacklist:input_type -> strategy.v1.RemoveBlacklistRequest
-	2,  // 12: strategy.v1.Strategy.ListSignals:output_type -> strategy.v1.ListSignalsReply
-	0,  // 13: strategy.v1.Strategy.GetSignal:output_type -> strategy.v1.Signal
-	0,  // 14: strategy.v1.Strategy.TransitionSignal:output_type -> strategy.v1.Signal
-	6,  // 15: strategy.v1.Strategy.Scan:output_type -> strategy.v1.ScanReply
-	9,  // 16: strategy.v1.Strategy.ListCandidates:output_type -> strategy.v1.ListCandidatesReply
-	12, // 17: strategy.v1.Strategy.AddBlacklist:output_type -> strategy.v1.BlacklistReply
-	12, // 18: strategy.v1.Strategy.RemoveBlacklist:output_type -> strategy.v1.BlacklistReply
-	12, // [12:19] is the sub-list for method output_type
-	5,  // [5:12] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	15, // 5: strategy.v1.PerformanceReply.attributions:type_name -> strategy.v1.AttributionCount
+	17, // 6: strategy.v1.ScoreVsPnlReply.points:type_name -> strategy.v1.ScorePnlPoint
+	1,  // 7: strategy.v1.Strategy.ListSignals:input_type -> strategy.v1.ListSignalsRequest
+	3,  // 8: strategy.v1.Strategy.GetSignal:input_type -> strategy.v1.GetSignalRequest
+	4,  // 9: strategy.v1.Strategy.TransitionSignal:input_type -> strategy.v1.TransitionSignalRequest
+	5,  // 10: strategy.v1.Strategy.Scan:input_type -> strategy.v1.ScanRequest
+	8,  // 11: strategy.v1.Strategy.ListCandidates:input_type -> strategy.v1.ListCandidatesRequest
+	10, // 12: strategy.v1.Strategy.AddBlacklist:input_type -> strategy.v1.AddBlacklistRequest
+	11, // 13: strategy.v1.Strategy.RemoveBlacklist:input_type -> strategy.v1.RemoveBlacklistRequest
+	13, // 14: strategy.v1.Strategy.Performance:input_type -> strategy.v1.PerformanceRequest
+	16, // 15: strategy.v1.Strategy.ScoreVsPnl:input_type -> strategy.v1.ScoreVsPnlRequest
+	2,  // 16: strategy.v1.Strategy.ListSignals:output_type -> strategy.v1.ListSignalsReply
+	0,  // 17: strategy.v1.Strategy.GetSignal:output_type -> strategy.v1.Signal
+	0,  // 18: strategy.v1.Strategy.TransitionSignal:output_type -> strategy.v1.Signal
+	6,  // 19: strategy.v1.Strategy.Scan:output_type -> strategy.v1.ScanReply
+	9,  // 20: strategy.v1.Strategy.ListCandidates:output_type -> strategy.v1.ListCandidatesReply
+	12, // 21: strategy.v1.Strategy.AddBlacklist:output_type -> strategy.v1.BlacklistReply
+	12, // 22: strategy.v1.Strategy.RemoveBlacklist:output_type -> strategy.v1.BlacklistReply
+	14, // 23: strategy.v1.Strategy.Performance:output_type -> strategy.v1.PerformanceReply
+	18, // 24: strategy.v1.Strategy.ScoreVsPnl:output_type -> strategy.v1.ScoreVsPnlReply
+	16, // [16:25] is the sub-list for method output_type
+	7,  // [7:16] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_api_strategy_v1_strategy_proto_init() }
@@ -1482,7 +1895,7 @@ func file_api_strategy_v1_strategy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_strategy_v1_strategy_proto_rawDesc), len(file_api_strategy_v1_strategy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

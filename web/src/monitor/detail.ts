@@ -376,6 +376,26 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
     foot: '最近 20 条。',
   }
 
+  const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
+  const perfRows: DetailRow[] = perf
+    ? perf.sample > 0
+      ? [
+          { key: 'win', label: '近 20 笔胜率', value: pctText(perf.winRate * 100, 1), note: `${perf.sample} 笔已出后验` },
+          { key: 'pl', label: '盈亏比', value: perf.plRatio > 0 ? perf.plRatio.toFixed(2) : '样本不足（缺盈利或缺亏损笔）' },
+          { key: 'dd', label: '最大回撤', value: ratioPct(perf.maxDrawdown, 2), note: '按后验收益逐笔累计的峰谷差' },
+          { key: 'avg', label: '平均实际收益', value: ratioPct(perf.avgReturn, 2) },
+          {
+            key: 'attr',
+            label: '分维归因',
+            value:
+              perf.attributions.length > 0
+                ? perf.attributions.map((a) => `${attributionLabel(a.attribution)} ×${a.count}`).join('，')
+                : '还没有归因记录',
+          },
+        ]
+      : [{ key: 'perf', label: '近 20 笔绩效', value: '样本不足：还没有已出后验的信号', tone: 'warn' }]
+    : [{ key: 'perf', label: '近 20 笔胜率 / 盈亏比 / 最大回撤', value: GAP_PERF, tone: 'warn' }]
+
   return [
     { key: 'overview', title: '总览', rows: overview },
     curve,
@@ -385,10 +405,8 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
     {
       key: 'perf',
       title: '绩效',
-      rows: [
-        { key: 'perf', label: '近 20 笔胜率 / 盈亏比 / 最大回撤 / 连亏天数 / 夏普', value: GAP_PERF, tone: 'warn' },
-      ],
-      foot: '绩效未接入：不用当日数据冒充（§5.1）。',
+      rows: perfRows,
+      foot: perf ? '口径：strategy_feedback 已出后验的近 20 笔（§5.1）。连亏天数与夏普后端没有，不编。' : '绩效未接入：不用当日数据冒充（§5.1）。',
     },
   ]
 }
@@ -552,7 +570,7 @@ function signalPanel(input: MonitorInput, id: string, now: number, extra: Detail
       evidence,
       { key: 'reason', title: '推理摘录', rows: reasoningRows, foot: reasoning ? undefined : '接口未通前绝不编造研判内容（§5.2）。' },
       { key: 'compare', title: '规则分对比', rows: compareRows },
-      { key: 'history', title: '同类历史', rows: [{ key: 'hist', label: '同策略模板近 20 次（胜率/平均盈亏/最大单笔亏损）', value: GAP_PERF, tone: 'warn' }] },
+      { key: 'history', title: '同类历史', rows: [{ key: 'hist', label: '同策略模板近 20 次（胜率/平均盈亏/最大单笔亏损）', value: '未接入：绩效接口（GET /v1/strategy/performance）是全策略口径，按模板拆分的行要等后端加 strategy 过滤', tone: 'warn' }] },
     ],
     exit: { label: '回到交易台确认', to: '/panel/trade' },
   }
@@ -914,8 +932,7 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
       ...(signals
         ? [{ key: 'note', label: '分布口径', value: scored.length === 0 ? '今日没有信号评分' : `按当前信号列表 ${scored.length} 条分桶`, note: '不是全市场评分的全量（全量在扫描执行完的 ScanReply 里，只读拿不到）' }]
         : [{ key: 'note', label: '分布', value: '信号未返回', tone: 'warn' as const }]),
-      { key: 'scatter', label: '评分 vs 实际收益散点 + 相关系数（盘后）', value: GAP_SCORE_PNL, tone: 'warn' },
-      { key: 'attr', label: '分维贡献归因', value: `${GAP_PERF}（分维归因）`, tone: 'warn' },
+      ...scatterRows(input),
     ],
   }
 
@@ -1012,6 +1029,65 @@ export function scoreHistogram(scores: number[]): { label: string; count: number
     buckets[index].count += 1
   }
   return buckets
+}
+
+const ATTRIBUTION_LABEL: Record<string, string> = {
+  indicator_failed: '指标失效',
+  news_misread: '消息误判',
+  unfilled: '未成交',
+  emotion_mismatch: '情绪错配',
+  missed: '漏选',
+  未归因: '未归因',
+}
+
+export function attributionLabel(code: string): string {
+  return ATTRIBUTION_LABEL[code] || code || '未归因'
+}
+
+/** 评分-收益散点 + 相关系数（§5.5 评分自检段）。拉不到写「未接入」，样本不足明说。 */
+function scatterRows(input: MonitorInput): DetailRow[] {
+  const p1 = input.strategyP1?.ok ? input.strategyP1 : null
+  const scatter = p1?.scatter ?? null
+  const perf = p1?.performance ?? null
+  const rows: DetailRow[] = []
+  if (!scatter) {
+    rows.push({ key: 'scatter', label: '评分 vs 实际收益散点 + 相关系数（盘后）', value: GAP_SCORE_PNL, tone: 'warn' })
+  } else if (scatter.sample < 2) {
+    rows.push({ key: 'scatter', label: '评分 vs 实际收益相关系数', value: '样本不足：挂得上信号的已后验笔数少于 2', tone: 'warn' })
+  } else {
+    rows.push({
+      key: 'scatter',
+      label: '评分 vs 实际收益相关系数',
+      value: scatter.pearson.toFixed(2),
+      note: `近 ${scatter.sample} 笔（Pearson；|r|>0.5 算有区分度）`,
+      tone: Math.abs(scatter.pearson) >= 0.5 ? 'up' : 'flat',
+    })
+    // 分桶均值：80+ 与 <70 两档的实际收益对比，比散点图本身更好读
+    const high = scatter.points.filter((p) => p.score >= 80)
+    const low = scatter.points.filter((p) => p.score < 70)
+    if (high.length > 0 && low.length > 0) {
+      const avg = (list: typeof high) => list.reduce((sum, p) => sum + p.actualReturn, 0) / list.length
+      rows.push({
+        key: 'bands',
+        label: '高分组（≥80） vs 低分组（<70）平均后验',
+        value: `${ratioPct(avg(high), 2)} / ${ratioPct(avg(low), 2)}`,
+        note: `${high.length} 笔 / ${low.length} 笔`,
+      })
+    }
+  }
+  if (!perf) {
+    rows.push({ key: 'attr', label: '分维贡献归因', value: `${GAP_PERF}（分维归因）`, tone: 'warn' })
+  } else if (perf.attributions.length === 0) {
+    rows.push({ key: 'attr', label: '分维贡献归因', value: '还没有归因记录（M07 归因写入后才有）', tone: 'warn' })
+  } else {
+    rows.push({
+      key: 'attr',
+      label: '分维贡献归因',
+      value: perf.attributions.map((a) => `${attributionLabel(a.attribution)} ×${a.count}`).join('，'),
+      note: `近 ${perf.sample} 笔已后验`,
+    })
+  }
+  return rows
 }
 
 /* ---------- §5.6 扫描牌 ---------- */

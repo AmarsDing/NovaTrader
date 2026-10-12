@@ -354,7 +354,7 @@ func newEnv(t *testing.T, ai *fakeAnalyzer, values map[string]string, snaps ...r
 		analyzer = ai
 	}
 	e.uc = NewUsecase(NewSettings(nil), e.market, analyzer, fakeParams{values: values}, e.signals,
-		e.cands, e.black, e.pos, log.DefaultLogger)
+		e.cands, e.black, e.pos, nil, log.DefaultLogger)
 	return e
 }
 

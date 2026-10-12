@@ -13,7 +13,7 @@ import (
 
 func newTestRunner(t *testing.T) *Runner {
 	t.Helper()
-	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, log.DefaultLogger)
+	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, log.DefaultLogger)
 	return NewRunner(uc, &data.Data{}, nil, log.DefaultLogger)
 }
 

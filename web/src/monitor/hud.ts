@@ -124,8 +124,12 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       }
     }
     /* ---- 时段特化格 ---- */
-    case 'gap:perf':
-      return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
+    case 'gap:perf': {
+      const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
+      if (!perf) return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
+      if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
+      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率 · 盈亏比 ${perf.plRatio > 0 ? perf.plRatio.toFixed(1) : '不足'}`, tone: perf.winRate >= 0.5 ? 'up' : 'down' }
+    }
     case 'gap:misslimit':
       return { face: '未接入', sub: '需要昨日涨停跨日快照表（P2）', tone: 'flat' }
     case 'overnight:overseas': {
@@ -186,12 +190,25 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const minutes = /(\d+) 分/.exec(text)
       return { face: minutes ? `${minutes[1]} 分` : '—', sub: '15:00 收盘', tone: 'flat' }
     }
-    case 'gap:winrate':
-      return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
-    case 'gap:attribution':
-      return { face: '未接入', sub: '需要 GET /v1/strategy/performance 分维归因', tone: 'flat' }
-    case 'gap:correlation':
-      return { face: '未接入', sub: '需要 GET /v1/strategy/score-vs-pnl', tone: 'flat' }
+    case 'gap:winrate': {
+      const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
+      if (!perf) return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
+      if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
+      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率`, tone: perf.winRate >= 0.5 ? 'up' : 'down' }
+    }
+    case 'gap:attribution': {
+      const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
+      if (!perf) return { face: '未接入', sub: '需要 GET /v1/strategy/performance 分维归因', tone: 'flat' }
+      if (perf.attributions.length === 0) return { face: '无记录', sub: 'M07 归因写入后才有', tone: 'flat' }
+      const top = perf.attributions.reduce((a, b) => (b.count > a.count ? b : a))
+      return { face: `${top.attribution} ×${top.count}`, sub: `近 ${perf.sample} 笔第一归因`, tone: 'flat' }
+    }
+    case 'gap:correlation': {
+      const scatter = input.strategyP1?.ok ? input.strategyP1.scatter : null
+      if (!scatter) return { face: '未接入', sub: '需要 GET /v1/strategy/score-vs-pnl', tone: 'flat' }
+      if (scatter.sample < 2) return { face: '样本不足', sub: '已后验笔数少于 2', tone: 'flat' }
+      return { face: scatter.pearson.toFixed(2), sub: `评分-收益相关（${scatter.sample} 笔）`, tone: Math.abs(scatter.pearson) >= 0.5 ? 'up' : 'flat' }
+    }
     case 'off:tasks': {
       const tasks = input.tasks?.ok ? input.tasks.items : null
       if (!tasks || tasks.length === 0) return { face: '任务未返回', sub: '', tone: 'flat' }

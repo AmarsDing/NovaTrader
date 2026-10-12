@@ -31,6 +31,14 @@ service Strategy {
   rpc RemoveBlacklist(RemoveBlacklistRequest) returns (BlacklistReply) {
     option (google.api.http) = {delete: "/v1/strategy/blacklist/{symbol}"};
   }
+  // 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
+  rpc Performance(PerformanceRequest) returns (PerformanceReply) {
+    option (google.api.http) = {get: "/v1/strategy/performance"};
+  }
+  // 监控驾驶舱 P1（只读）：评分-收益散点与 Pearson 相关系数。
+  rpc ScoreVsPnl(ScoreVsPnlRequest) returns (ScoreVsPnlReply) {
+    option (google.api.http) = {get: "/v1/strategy/score-vs-pnl"};
+  }
 }
 
 message Signal {
@@ -167,4 +175,44 @@ message RemoveBlacklistRequest {
 
 message BlacklistReply {
   string symbol = 1;
+}
+
+// PerformanceRequest 取近 N 笔已出后验（signal_correct 非空）的反馈。
+message PerformanceRequest {
+  int32 last = 1; // 默认 20，上限 200
+}
+
+// PerformanceReply 全量为空时（还没有后验样本）sample=0，其余字段为 0，由前端写「样本不足」。
+message PerformanceReply {
+  int32 sample = 1;          // 参与统计的笔数
+  double win_rate = 2;       // 胜率，signal_correct=true 占比
+  double pl_ratio = 3;       // 盈亏比：平均盈利 / 平均亏损（无盈利或无亏损时为 0）
+  double max_drawdown = 4;   // 最大回撤：按 actual_return 逐笔累计的峰谷差（小数）
+  double avg_return = 5;     // 平均实际收益（小数）
+  repeated AttributionCount attributions = 6; // 分维归因计数
+}
+
+message AttributionCount {
+  string attribution = 1; // indicator_failed / news_misread / unfilled / emotion_mismatch / missed / 空（未归因）
+  int32 count = 2;
+}
+
+// ScoreVsPnlRequest 取近 N 笔挂得上信号的反馈，做评分-收益对照。
+message ScoreVsPnlRequest {
+  int32 last = 1; // 默认 50，上限 500
+}
+
+message ScorePnlPoint {
+  int64 signal_id = 1;
+  string symbol = 2;
+  double score = 3;         // trade_signals.confidence_score（0-100）
+  double actual_return = 4; // strategy_feedback.actual_return（小数）
+  string trade_date = 5;
+  string strategy = 6;
+}
+
+message ScoreVsPnlReply {
+  repeated ScorePnlPoint points = 1;
+  double pearson = 2; // 样本 <2 或方差为 0 时返回 0，由前端写「样本不足」
+  int32 sample = 3;   // 参与相关系数的笔数
 }

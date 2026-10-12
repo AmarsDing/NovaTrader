@@ -19,7 +19,7 @@ import (
 
 var ProviderSet = wire.NewSet(
 	NewData, NewParamRepo, NewSignalRepo, NewCandidateRepo, NewBlacklistRepo, NewPositionRepo,
-	NewMarketSource, NewAnalyzer,
+	NewMarketSource, NewAnalyzer, NewFeedbackRepo,
 )
 
 type Data struct {

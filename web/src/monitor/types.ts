@@ -356,5 +356,22 @@ export interface MonitorInput {
       buckets: { leMs: number; count: number }[]
     } | null
   } | null
+  /** S7：策略绩效与评分-收益（GET /api/strategy/performance + score-vs-pnl）。sample=0 由界面写「样本不足」。 */
+  strategyP1?: {
+    ok: boolean
+    performance?: {
+      sample: number
+      winRate: number
+      plRatio: number
+      maxDrawdown: number
+      avgReturn: number
+      attributions: { attribution: string; count: number }[]
+    } | null
+    scatter?: {
+      points: { signalId: string; symbol: string; score: number; actualReturn: number; tradeDate: string; strategy: string }[]
+      pearson: number
+      sample: number
+    } | null
+  } | null
   pulses: Pulse[]
 }

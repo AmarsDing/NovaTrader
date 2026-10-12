@@ -135,6 +135,7 @@ type Usecase struct {
 	candidates CandidateRepo
 	blacklist  BlacklistRepo
 	positions  PositionRepo
+	feedback   FeedbackRepo
 	cal        *tradecal.Calendar
 	log        *log.Helper
 
@@ -143,10 +144,10 @@ type Usecase struct {
 }
 
 func NewUsecase(cfg Settings, market MarketSource, analyzer Analyzer, params ParamRepo, signals SignalRepo,
-	candidates CandidateRepo, blacklist BlacklistRepo, positions PositionRepo, logger log.Logger) *Usecase {
+	candidates CandidateRepo, blacklist BlacklistRepo, positions PositionRepo, feedback FeedbackRepo, logger log.Logger) *Usecase {
 	return &Usecase{
 		cfg: cfg, market: market, analyzer: analyzer, params: params, signals: signals,
-		candidates: candidates, blacklist: blacklist, positions: positions,
+		candidates: candidates, blacklist: blacklist, positions: positions, feedback: feedback,
 		cal: tradecal.Default, log: log.NewHelper(log.With(logger, "module", "strategy/biz")),
 	}
 }

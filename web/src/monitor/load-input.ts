@@ -7,7 +7,7 @@ import { getFactors, getSentimentDetail, listLimits, listSectors } from '@/api/m
 import { listMessages } from '@/api/notify'
 import { opsStatus } from '@/api/ops'
 import { getRiskLimits, getRiskReport, getRiskState } from '@/api/risk'
-import { listCandidates } from '@/api/strategy'
+import { listCandidates, getScoreVsPnl, getStrategyPerformance } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
 import { getAccount, listFills, listOrders, listPositions } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'
@@ -21,7 +21,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
 
-  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors] =
+  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter] =
     await Promise.all([
       quiet(() => getAccount(book)),
       quiet(() => listPositions(book)),
@@ -50,6 +50,8 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       quiet(() => listAudit({ limit: 8 })),
       focus ? quiet(() => fetchTimeline(focus)) : Promise.resolve(null),
       focus ? quiet(() => getFactors(focus, 'capital')) : Promise.resolve(null),
+      quiet(() => getStrategyPerformance(20)),
+      quiet(() => getScoreVsPnl(50)),
     ])
 
   void accountStore.refresh()
@@ -356,6 +358,15 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
                   buckets: latency.buckets,
                 }
               : null,
+          }
+        : { ok: false },
+    /* S7：策略绩效与评分-收益散点；两个接口任一通了就算 ok，界面按字段出 */
+    strategyP1:
+      perf || scatter
+        ? {
+            ok: true,
+            performance: perf ?? null,
+            scatter: scatter ?? null,
           }
         : { ok: false },
   }

@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	v1 "server/api/strategy/v1"
@@ -243,4 +244,41 @@ func (s *StrategyService) RemoveBlacklist(ctx context.Context, req *v1.RemoveBla
 		return nil, toErr(err)
 	}
 	return &v1.BlacklistReply{Symbol: code}, nil
+}
+
+// Performance 返回近 N 笔后验的绩效汇总（监控驾驶舱 P1，只读）。
+func (s *StrategyService) Performance(ctx context.Context, req *v1.PerformanceRequest) (*v1.PerformanceReply, error) {
+	p, err := s.uc.Performance(ctx, int(req.GetLast()))
+	if err != nil {
+		return nil, toErr(err)
+	}
+	out := &v1.PerformanceReply{
+		Sample: int32(p.Sample), WinRate: p.WinRate, PlRatio: p.PLRatio,
+		MaxDrawdown: p.MaxDrawdown, AvgReturn: p.AvgReturn,
+	}
+	keys := make([]string, 0, len(p.Attributions))
+	for k := range p.Attributions {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		out.Attributions = append(out.Attributions, &v1.AttributionCount{Attribution: k, Count: int32(p.Attributions[k])})
+	}
+	return out, nil
+}
+
+// ScoreVsPnl 返回评分-收益散点与 Pearson 相关系数（监控驾驶舱 P1，只读）。
+func (s *StrategyService) ScoreVsPnl(ctx context.Context, req *v1.ScoreVsPnlRequest) (*v1.ScoreVsPnlReply, error) {
+	points, r, err := s.uc.ScoreVsPnl(ctx, int(req.GetLast()))
+	if err != nil {
+		return nil, toErr(err)
+	}
+	out := &v1.ScoreVsPnlReply{Pearson: r, Sample: int32(len(points))}
+	for _, p := range points {
+		out.Points = append(out.Points, &v1.ScorePnlPoint{
+			SignalId: int64(p.SignalID), Symbol: p.Symbol, Score: p.Score,
+			ActualReturn: p.ActualReturn, TradeDate: fmtDay(p.TradeDate), Strategy: p.Strategy,
+		})
+	}
+	return out, nil
 }
