@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 
 	"server/app/admin/internal/data"
@@ -53,6 +54,8 @@ func NewHTTPServer(c *conf.Admin, settings gateway.Settings, audit *data.AuditSt
 		Backup:   audit,
 		Log:      helper,
 		PingDB:   audit.Ping,
+		// 备份要跑 pg_dump，不能挂在请求超时（config 里默认 1s）上。
+		ServerContext: context.Background,
 	}
 	if hub != nil {
 		gate.NATSUp = hub.Up

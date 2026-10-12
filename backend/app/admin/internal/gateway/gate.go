@@ -75,6 +75,9 @@ type Gate struct {
 	NATSUp   func() bool
 	PingDB   func(context.Context) error
 	Now      func() time.Time
+	// ServerContext 返回一个不被单个请求超时约束的 ctx（备份跑 pg_dump 要几分钟，
+	// 不能挂在 kratos 默认 1s 的请求超时上）。nil 时退化为 Background。
+	ServerContext func() context.Context
 
 	once    sync.Once
 	proxies map[string]*httputil.ReverseProxy
@@ -224,7 +227,14 @@ func (g *Gate) backup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusServiceUnavailable, "备份未启用（数据库未配置）")
 		return
 	}
-	result, err := g.Backup.Backup(r.Context())
+	// 请求 ctx 不直接用：kratos 默认给每个请求 1s 超时（见 server/http.go），
+	// 而 pg_dump 跑几分钟很正常。挂到 ServerContext 上，进程在跑就能跑完，
+	// 客户端断了备份也不作废（AuditStore.Backup 自带 10 分钟上限）。
+	ctx := context.Background()
+	if g.ServerContext != nil {
+		ctx = g.ServerContext()
+	}
+	result, err := g.Backup.Backup(ctx)
 	if err != nil {
 		_ = g.audit(r.Context(), Entry{
 			Actor: principal.Name, Role: principal.Role, Action: "ops.backup",

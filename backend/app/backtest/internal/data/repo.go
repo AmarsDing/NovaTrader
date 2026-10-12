@@ -428,6 +428,12 @@ func (r *Repo) Shadows(ctx context.Context, f biz.ShadowFilter) ([]biz.Shadow, e
 	if !f.To.IsZero() {
 		q = q.Where(shadowsignal.DecidedAtLT(f.To))
 	}
+	// 无日期界时兜底：统计接口要全表聚合，行数随策略和天数线性涨，
+	// 不封顶会把整个影子表读进内存。超出最新 5 万行时直接截断，
+	// 前端按「统计窗口被截断」理解即可（需要长区间统计就传 start/end）。
+	if f.From.IsZero() && f.To.IsZero() {
+		q = q.Limit(50000)
+	}
 	rows, err := q.Order(ent.Asc(shadowsignal.FieldDecidedAt)).All(ctx)
 	if err != nil {
 		return nil, err

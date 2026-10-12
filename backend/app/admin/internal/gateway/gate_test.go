@@ -453,6 +453,30 @@ func TestBackupNeedsOwnerAndConfirm(t *testing.T) {
 	}
 }
 
+// TestBackupSurvivesExpiredRequest 复现线上约束：kratos 给每个请求 1s 超时
+// （configs/config.yaml http.timeout），备份必须不被请求 ctx 掐死。
+func TestBackupSurvivesExpiredRequest(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &memBackup{result: BackupResult{Path: "backups/a.sql", Size: 1, Database: "db"}}
+	gate := testGate(string(hash), &memAudit{})
+	gate.Backup = runner
+	owner := login(t, gate, "ada", "pw")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/ops/backup", strings.NewReader(`{"confirm":"BACKUP"}`))
+	ctx, cancel := context.WithTimeout(req.Context(), 0)
+	defer cancel()
+	req = req.WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+owner)
+	res := httptest.NewRecorder()
+	gate.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || runner.calls != 1 {
+		t.Fatalf("expired request killed backup: %d %s calls=%d", res.Code, res.Body, runner.calls)
+	}
+}
+
 type memAudit struct {
 	rows []Entry
 }
