@@ -47,6 +47,8 @@ const props = defineProps<{
   calm?: boolean
   /** 时段键：拖动偏移按时段分别持久化到 localStorage */
   bandKey?: string
+  /** S4：事件流点行后要让对应节点「闪一下」。at 是触发时刻，动画按 Date.now() 自己衰减 */
+  flash?: { id: string; at: number }
 }>()
 const emit = defineEmits<{ select: [id: string] }>()
 
@@ -87,6 +89,8 @@ let pointer: { x: number; y: number; worldX: number; worldY: number; mode: '' | 
 const offsets = new Map<string, StagePoint>()
 const PULSE_TTL = 2400
 const AMBIENT_PERIOD = 5200
+/** S4：事件流点行的定位闪光时长。一圈向外扩散的描边，不用 shadowBlur，不占发光预算 */
+const FLASH_MS = 620
 
 const selectedSet = computed(() => {
   const lit = new Set<string>(props.hotIds ?? [])
@@ -385,6 +389,7 @@ function draw() {
   drawAmbient(context)
   drawPulses(context)
   drawNodes(context)
+  drawFlash(context)
   context.restore()
 
   /* 时段压暗：午休 0.75 / 盘后 0.5。在世界坐标之外盖一层，保证遮住所有缩放级别 */
@@ -645,6 +650,25 @@ function drawNodes(context: CanvasRenderingContext2D) {
   for (const item of nodes) {
     drawNode(context, item)
   }
+}
+
+/** S4：事件流点某行 → 选中对应画布节点并闪一下（§4.6 交互列）。
+ * 一圈描边从牌缘向外扩 6px，620ms 内透明度与线宽一起衰减到 0。 */
+function drawFlash(context: CanvasRenderingContext2D) {
+  const flash = props.flash
+  if (!flash?.id) return
+  const age = Date.now() - flash.at
+  if (!Number.isFinite(age) || age < 0 || age > FLASH_MS) return
+  const item = nodes.find((node) => node.id === flash.id)
+  if (!item) return
+  const progress = age / FLASH_MS
+  const grow = 6 * progress
+  const rect = item.rect
+  context.beginPath()
+  roundedRect(context, rect.x - grow, rect.y - grow, rect.w + grow * 2, rect.h + grow * 2, 8 + grow)
+  context.strokeStyle = withAlpha(theme.fiberActive, 0.6 * (1 - progress))
+  context.lineWidth = 0.5 + 1.5 * (1 - progress)
+  context.stroke()
 }
 
 function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {

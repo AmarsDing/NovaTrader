@@ -20,6 +20,19 @@ export interface HudCellView {
 const GAP_PERF = '未接入：需要 GET /v1/strategy/performance'
 const GAP_AUCTION = '未接入：需要 GET /v1/market/auction'
 
+/** 显存只有一个文本 detail（`已用 X MiB / 共 Y MiB`），HUD 的 GPU 格与终端带「模型 / GPU」共用这一处解析。
+ * 解析不出来就返回 null——GPU 利用率要等 GET /v1/ops/gpu（S7），不猜。 */
+export function gpuMemory(input: MonitorInput): { used: number; total: number; pct: number; text: string } | null {
+  const node = input.ops?.ok ? input.ops.resources?.find((item) => item.name.startsWith('显存')) : null
+  if (!node) return null
+  const parsed = /已用 (\d+(?:\.\d+)?) MiB \/ 共 (\d+(?:\.\d+)?) MiB/.exec(node.detail)
+  if (!parsed) return null
+  const used = Number(parsed[1])
+  const total = Number(parsed[2])
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null
+  return { used, total, pct: Math.round((used / total) * 100), text: `${used} / ${total} MiB` }
+}
+
 export function resolveHud(input: MonitorInput, cells: HudCellDef[], now: number): HudCellView[] {
   const date = new Date(now)
   return cells.map((cell) => {
@@ -96,10 +109,9 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     case 'gpu': {
       const node = input.ops?.ok ? input.ops.resources?.find((item) => item.name.startsWith('显存')) : null
       if (!node) return { face: '未接入', sub: 'ops.resources 无显存节点', tone: 'flat' }
-      const parsed = /已用 (\d+(?:\.\d+)?) MiB \/ 共 (\d+(?:\.\d+)?) MiB/.exec(node.detail)
-      if (!parsed) return { face: node.status === 'ok' ? '在' : '断', sub: '利用率未接入：需要 GET /v1/ops/gpu', tone: 'flat' }
-      const pct = Math.round((Number(parsed[1]) / Number(parsed[2])) * 100)
-      return { face: `${pct}%`, sub: '显存占比 · 利用率未接入', tone: 'flat' }
+      const memory = gpuMemory(input)
+      if (!memory) return { face: node.status === 'ok' ? '在' : '断', sub: '利用率未接入：需要 GET /v1/ops/gpu', tone: 'flat' }
+      return { face: `${memory.pct}%`, sub: '显存占比 · 利用率未接入', tone: 'flat' }
     }
     case 'pnl': {
       const account = input.account

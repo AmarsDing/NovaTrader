@@ -25,7 +25,7 @@ export interface BandSpec {
   veil: number
   /** 停掉环境流向点 */
   calm: boolean
-  /** 终端带第一格的时段语义（事件流 TAPE 落地前只记语义，S4 接管） */
+  /** 终端带第一格的时段语义（S4 已接管：tape/auction/midday/positions/review/dispatch，见 TerminalStrip.vue） */
   firstPane: FirstPane
 }
 

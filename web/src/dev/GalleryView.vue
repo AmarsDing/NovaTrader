@@ -35,15 +35,19 @@ import NtStatCard from '@/display/NtStatCard.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import CanvasStage from '@/monitor/CanvasStage.vue'
 import { demoActivityCells } from '@/monitor/activity'
-import { computeHealth } from '@/monitor/health'
+import { computeHealth, healthTone } from '@/monitor/health'
 import { resolveHud } from '@/monitor/hud'
 import { emptyMonitorInput } from '@/monitor/load-input'
 import { buildScene } from '@/monitor/scene-model'
 import Sparkline from '@/monitor/Sparkline.vue'
+import { TapeSession } from '@/monitor/tape'
+import TerminalStrip from '@/monitor/TerminalStrip.vue'
 import { bandCountdown, bandSegments, bandSpec, hudCells } from '@/monitor/timeband'
 import '@/monitor/monitor.css'
 import type { Bar } from '@/api/market'
 import type { EquityPoint } from '@/api/backtest'
+import type { HealthPart, HealthScore } from '@/monitor/health'
+import type { MonitorInput } from '@/monitor/types'
 import { useSettingsStore, type DensityName, type ThemeName } from '@/stores/settings'
 import { pnlClass, pnlSign } from '@/utils/format'
 
@@ -389,6 +393,119 @@ const demoSparks: Record<string, (number | null)[]> = {
   p95: demoSpark([1200, 1450, 1380, 1600, 1820, 1750, 1900, 1820, 1700, 1820]),
   equity: demoSpark([4200, 8600, 6400, 11200, 9800, 13400, 15100, 12800, 16900, 18204]),
 }
+
+/* ---------- 监控 S4 原语：事件流 TAPE 与五格终端带（静态） ---------- */
+const demoTapeInput: MonitorInput = {
+  ...demoInput,
+  notices: {
+    ok: true,
+    items: [
+      { id: 'gn1', title: '通达信行情 42 秒没有新数据', level: 'warn', time: '2026-10-12 10:23:58' },
+      { id: 'gn2', title: '回测任务 queue 堆积 3 条', level: 'info', time: '2026-10-12 10:21:04' },
+    ],
+  },
+  audit: {
+    ok: true,
+    items: [
+      { id: 'ga1', action: 'kill_switch_arm', target: 'account SIM', time: '2026-10-12 10:23:41' },
+      { id: 'ga2', action: 'order_submit', target: '600519 买入 100', time: '2026-10-12 10:23:12' },
+      { id: 'ga3', action: 'brain_call', target: 'large Kimi-32b', time: '2026-10-12 10:22:57' },
+    ],
+  },
+  fills: {
+    ok: true,
+    items: [
+      { id: 'gf1', symbol: '600519', side: 'buy', price: 1682, qty: 100, time: '2026-10-12 10:23:20' },
+      { id: 'gf2', symbol: '000001', side: 'sell', price: 11.24, qty: 500, time: '2026-10-12 10:19:03' },
+    ],
+  },
+  /* 尾盘「持仓明细」格示例（§5.1）：一只距止损不足 2% 转橙、一只已跌破止损转红、
+   * 一只没有对齐的信号止损价 → 写「止损价未对齐」，不拿别的价冒充 */
+  signals: {
+    ok: true,
+    items: [
+      { id: 'gs1', symbol: '600519', name: '贵州茅台', score: 88, highValue: true, degraded: false, status: 'risk_checking', evidence: [], dims: {}, entry: 1682, stop: 1650, take: 1736, time: '10:12' },
+      { id: 'gs2', symbol: '000001', name: '平安银行', score: 76, highValue: false, degraded: false, status: 'approved', evidence: [], dims: {}, entry: 11.3, stop: 11.5, take: 11.95, time: '10:18' },
+    ],
+  },
+  account: {
+    ok: true,
+    book: 'SIM',
+    equity: 1284902.44,
+    cash: 412205.1,
+    dayPnl: 18204.1,
+    positions: [
+      { symbol: '600519', quantity: 100, avgCost: 1680, lastPrice: 1683.5 },
+      { symbol: '000001', quantity: 500, avgCost: 11.6, lastPrice: 11.24 },
+      { symbol: '300750', quantity: 200, avgCost: 214.8, lastPrice: 214.2 },
+    ],
+  },
+  orders: {
+    ok: true,
+    items: [
+      { id: 'go1', symbol: '600519', side: 'buy', status: 'FILLED', price: 1682, volume: 100, reason: 'signal:gs1' },
+      { id: 'go2', symbol: '000001', side: 'buy', status: 'PARTIAL', price: 11.2, volume: 500, reason: 'signal:gs2' },
+    ],
+  },
+  candidates: {
+    ok: true,
+    items: [
+      { symbol: '600519', name: '贵州茅台', strategy: 'limit_up', stage: 'selected', missReason: '', ruleScore: 86, aiScore: 91, finalScore: 88 },
+      { symbol: '300750', name: '宁德时代', strategy: 'limit_up', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 72, aiScore: 81, finalScore: 76 },
+      { symbol: '600036', name: '招商银行', strategy: 'limit_up', stage: 'ranked', missReason: 'not_in_ai_top', ruleScore: 66, aiScore: null, finalScore: null },
+      { symbol: '601088', name: '中国神华', strategy: 'limit_up', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+    ],
+  },
+  tasks: {
+    ok: true,
+    items: [
+      { id: 'gt1', name: '回测 涨停接力 2026Q3', status: 'running', message: '第 42/120 天' },
+      { id: 'gt2', name: '数据补全 kline', status: 'done', message: '补 12 条' },
+      { id: 'gt3', name: '影子对照 T+3', status: 'queued', message: '' },
+    ],
+  },
+  admission: { ok: true, ready: false, tradingDays: 12, requiredDays: 20, items: [] },
+  shadow: { ok: true, items: [{ name: 'T+1', live: 1.02, shadow: 0.98 }] },
+  brainStats: {
+    ok: true,
+    tiers: [
+      { tier: 'large', model: 'Kimi-32b', configured: true, circuitOpen: false, calls: 12, failures: 0, p95Ms: 1820, inFlight: 1, queued: 2, kvCacheUsage: 0.62 },
+      { tier: 'small', model: 'Kimi-4b', configured: true, circuitOpen: true, calls: 214, failures: 7, p95Ms: 86, inFlight: 0, queued: 0, kvCacheUsage: 0.91 },
+    ],
+  },
+}
+
+/* 健康分示例：扣分项自己加起来等于总分，避免出现「62 分但只扣了 22」这种对不上的示例 */
+const demoTapeParts: HealthPart[] = [
+  { key: 'fresh', label: '数据新鲜度', deduction: 16, note: '行情 tick 42s 前', measured: true },
+  { key: 'services', label: '服务存活', deduction: 6, note: 'brain 非健康', measured: true },
+  { key: 'model', label: '模型可用', deduction: 12, note: 'small 熔断', measured: true },
+  { key: 'risk', label: '风控在线', deduction: 0, note: 'SIM 守着', measured: true },
+  { key: 'channel', label: '交易通道', deduction: 5, note: '模拟盘按 5 分扣', measured: true },
+]
+const demoTapeScore = 100 - demoTapeParts.reduce((sum, part) => sum + part.deduction, 0)
+const demoTapeHealth: HealthScore = { score: demoTapeScore, tone: healthTone(demoTapeScore), parts: demoTapeParts }
+
+/* 走真实的 TapeSession 出行，不手写行——六域各至少一条，含 §6.3 健康行、§6.1 模型静默与 WS 断开 */
+const demoTapeSession = new TapeSession()
+demoTapeSession.absorb({ live: true }, demoNow - 60_000)
+const demoTapeRows = demoTapeSession.absorb(
+  {
+    notices: demoTapeInput.notices,
+    audit: demoTapeInput.audit,
+    fills: demoTapeInput.fills,
+    health: demoTapeHealth,
+    silence: new Map([['model:small', { text: '10 分钟没有动静', alert: false }]]),
+    live: false,
+    pulses: [
+      { id: 'gp1', from: 'service:market', to: 'post:scan', identifier: { kind: 'symbol', value: '600519' }, at: demoNow - 3000 },
+      { id: 'gp2', from: 'service:brain', to: 'post:model', identifier: { kind: 'trace', value: 'tr-88213' }, at: demoNow - 2400 },
+      { id: 'gp3', from: 'post:model', to: 'post:desk', identifier: { kind: 'signal', value: '88' }, at: demoNow - 1800 },
+      { id: 'gp4', from: 'post:risk', to: 'book:center', identifier: { kind: 'rule', value: 'R01' }, at: demoNow - 1200 },
+    ],
+  },
+  demoNow,
+)
 </script>
 
 <template>
@@ -722,6 +839,25 @@ const demoSparks: Record<string, (number | null)[]> = {
       </p>
     </section>
 
+    <section class="g-sec">
+      <h2>监控 S4 原语（事件流 TAPE / 五格终端带 · 静态）</h2>
+      <div class="g-monitor nt-monitor g-terms">
+        <TerminalStrip :input="demoTapeInput" :rows="demoTapeRows" first-pane="tape" band-key="morning" />
+      </div>
+      <p class="g-activity__note">
+        六域标签色：信号 --nt-accent、成交 --nt-up/--nt-down（按买卖方向，方向认不出来用中性色不默认红）、风控 --nt-danger、告警 --nt-warn、数据 --nt-info、模型 --nt-accent-2。
+        行是真实 TapeSession 出的，不是手写的：含 §6.3「健康 61：数据新鲜度 -16，服务存活 -6，模型可用 -12，交易通道 -5」（必须列扣分项，不写「系统异常」）、§6.1 模型静默与 WS 断开各一行。
+        交互：暂停后新行只计数不滚动（按钮变「继续 · N 条新」）；点可定位的行 = 选中对应画布节点并闪一下，没有对应节点的行不可点；新行入场 300ms 背景淡出；上限 40 行。
+      </p>
+      <div class="g-monitor nt-monitor g-terms">
+        <TerminalStrip :input="demoTapeInput" :rows="demoTapeRows" first-pane="positions" band-key="closing" />
+      </div>
+      <p class="g-activity__note">
+        第一格随时段换语义（§4.3）。这里是尾盘「持仓明细」：浮盈走红涨绿跌，距止损不足 2% 整行左边框转橙、已跌破止损转红（两件事不混色），
+        没有对齐信号止损价的写「止损价未对齐」不拿别的价冒充。其余时段：盘前「昨日复盘」/盘后「复盘」（点名缺的绩效接口）、竞价（读口未接入先用事件流顶上）、午休「半场小结」、非交易日任务调度扩为两格。
+      </p>
+    </section>
+
     <NtModal v-model:open="modalOpen" title="示例 Modal" width="420px">
       <p class="g-modal-body">
         Modal 走 useOverlay 的 z 栈 + Esc 链，Teleport 到 body。玻璃拟态允许出现的位置之一。
@@ -764,6 +900,14 @@ const demoSparks: Record<string, (number | null)[]> = {
   margin-bottom: 10px;
   background: var(--nt-bg-2);
   backdrop-filter: none;
+}
+
+/* 监控 S4 原语走查：终端带自带 border-top，静态页里再给它一点上下留白 */
+.g-terms {
+  margin: 8px 0 2px;
+  border: 1px solid var(--nt-border-1);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .g-head {

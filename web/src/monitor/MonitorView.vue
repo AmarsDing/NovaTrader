@@ -24,8 +24,10 @@ import { bindPulses } from './pulses'
 import { RingSeries } from './sampler'
 import { buildChildren, buildScene, pushPulse } from './scene-model'
 import Sparkline from './Sparkline.vue'
+import { TapeSession } from './tape'
 import TerminalStrip from './TerminalStrip.vue'
 import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells } from './timeband'
+import type { TapeRow } from './tape'
 import type { Pulse } from './types'
 import './monitor.css'
 
@@ -49,14 +51,16 @@ const offday = computed(() => bandKey.value === 'offday')
 /* S2：活动条与角标只在内存里（activity.ts / freshness.ts），不落库不上传 */
 const activity = new ActivityLog()
 
+/** 静默表单独抽出来：画布牌面要用，S4 事件流也要用（模型域静默进流，§6.1） */
+const silenceMap = computed(() => cardSilence(input.value, { now: nowMs.value, trading: !offday.value, activity }))
+
 const graph = computed(() => {
   const base = buildScene(input.value, nowMs.value)
   const trading = !offday.value
   const fresh = cardFreshness(input.value, nowMs.value, trading)
-  const silence = cardSilence(input.value, { now: nowMs.value, trading, activity })
   const cells = new Map<string, (boolean | null)[]>()
   for (const node of base.nodes) cells.set(node.id, activity.cells(node.id, nowMs.value))
-  return decorate(base, fresh, silence, cells)
+  return decorate(base, fresh, silenceMap.value, cells)
 })
 const cards = computed(() => buildChildren(input.value, selectedId.value))
 const picked = computed(() => graph.value.nodes.find((node) => node.id === selectedId.value) ?? null)
@@ -105,6 +109,34 @@ function onDocPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement | null
   if (target?.closest('.nt-health')) return
   healthOpen.value = false
+}
+
+/* ---- S4 事件流 TAPE（§4.6）：六域统一时间线，唯一不做聚合的原始流 ----
+ * 脉冲 2.4s 后会从 input.pulses 过期（scene-model PULSE_TTL），健康分/静默/WS 通断
+ * 是状态量不能每帧刷一行——所以进流的事件交给 TapeSession 在会话内累积与去重。 */
+
+const tapeSession = new TapeSession()
+const tapeRows = ref<TapeRow[]>([])
+/** 点事件流某行 → 对应画布节点闪一下（CanvasStage 按 at 自己衰减） */
+const flash = ref<{ id: string; at: number } | null>(null)
+
+function absorbTape(pulses?: Pulse[]) {
+  tapeRows.value = tapeSession.absorb(
+    {
+      notices: input.value.notices,
+      audit: input.value.audit,
+      fills: input.value.fills,
+      pulses: pulses ?? input.value.pulses,
+      health: health.value,
+      silence: silenceMap.value,
+      live: isLive(),
+    },
+    Date.now(),
+  )
+}
+
+function onTapeFlash(id: string) {
+  flash.value = { id, at: Date.now() }
 }
 
 /* ---- 顶部 HUD：时段决定十格，格内容来自 resolveHud ---- */
@@ -243,6 +275,8 @@ const channelSeen = new Set<string>()
 
 function tick() {
   clockMs.value = Date.now()
+  /* S4：健康分跌破 70、模型静默、WS 通断都是状态量，交给会话去重后再进流（§6.1/§6.3） */
+  absorbTape()
   const hit = channelSilence(input.value, activity, clockMs.value, !offday.value)
   if (!hit || channelSeen.has(hit.orderId)) return
   channelSeen.add(hit.orderId)
@@ -334,6 +368,8 @@ async function pull() {
       sampleSparks()
       /* S2：这一轮读到的牌面喂给活动条（签名只含状态/主词/副行，见 freshness.observeGraph） */
       observeGraph(activity, buildScene(next, Date.now()), next, Date.now())
+      /* S4：通知/审计/成交这三路是轮询来的，每轮拉完重新入流（id 稳定，不会重复） */
+      absorbTape()
     } while (again)
   } finally {
     pulling = false
@@ -350,6 +386,8 @@ function enqueue(pulse: Pulse) {
     pending = []
     flush = 0
     input.value = { ...input.value, pulses: list, now }
+    /* S4：脉冲入流的时机就是这里——再晚 2.4s 它们就从 input 过期了 */
+    absorbTape(list)
   }, 300)
 }
 
@@ -453,12 +491,20 @@ function select(id: string) {
         :veil="spec.veil"
         :calm="spec.calm"
         :band-key="bandKey"
+        :flash="flash ?? undefined"
         @select="select"
       />
       <p v-if="offday" class="nt-monitor__offday">今日休市，链路自检中</p>
     </div>
 
-    <TerminalStrip :input="input" @select="select" />
+    <TerminalStrip
+      :input="input"
+      :rows="tapeRows"
+      :first-pane="spec.firstPane"
+      :band-key="bandKey"
+      @select="select"
+      @flash="onTapeFlash"
+    />
 
     <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true">
       <section class="nt-pop__sheet">

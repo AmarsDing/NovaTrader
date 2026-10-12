@@ -409,10 +409,39 @@
 
 .nt-terms__grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* S4：五格（事件流 TAPE / 运行日志 / 任务与准入 / 模型·GPU / 账本）。事件流给 1.5 份宽——
+   * 它的行最长（时分秒 + 域标签 + 内容 + 标识符），其余四格等分。 */
+  grid-template-columns: minmax(0, 1.5fr) repeat(4, minmax(0, 1fr));
   gap: 1px;
   height: 152px;
   background: var(--nt-border-1);
+}
+
+/* 格序用 order 固定，非交易日「任务调度扩为两格」时不必改文档顺序 */
+.nt-term--first {
+  order: 1;
+}
+
+.nt-term--log {
+  order: 2;
+}
+
+.nt-term--dispatch {
+  order: 3;
+}
+
+.nt-term--brain {
+  order: 4;
+}
+
+.nt-term--ledger {
+  order: 5;
+}
+
+/* §4.3 非交易日：任务与准入占掉事件流那一格，共 4 格占 5 列 */
+.nt-terms__grid.is-offday .nt-term--dispatch {
+  order: 1;
+  grid-column: span 2;
 }
 
 .nt-term {
@@ -445,6 +474,178 @@
   font-size: 9px;
   letter-spacing: 0.14em;
   color: var(--nt-text-3);
+}
+
+/* S4：事件流格头的暂停按钮与行数计数（暂停滚动是 §4.6 明写的交互） */
+.nt-term__btn {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 7px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nt-text-2);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.nt-term__btn:hover {
+  background: var(--nt-bg-2);
+  color: var(--nt-text-1);
+}
+
+.nt-term__btn[aria-pressed='true'] {
+  border-color: var(--nt-warn);
+  color: var(--nt-warn);
+}
+
+.nt-term__count {
+  flex: none;
+  font-family: var(--nt-font-mono);
+  font-size: 9px;
+  font-style: normal;
+  color: var(--nt-text-3);
+}
+
+/* ---- S4 事件流 TAPE（§4.6）---- */
+
+.nt-term--first .nt-tape {
+  gap: 1px;
+}
+
+.nt-term--first .nt-tape li {
+  display: block;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+}
+
+/* 新行入场：背景 300ms 淡出。不加 shadowBlur——发光预算只给那五个对象 */
+.nt-term--first .nt-tape li.is-enter {
+  animation: nt-tape-in 300ms ease-out;
+}
+
+@keyframes nt-tape-in {
+  from {
+    background: color-mix(in srgb, var(--nt-accent) 22%, transparent);
+  }
+
+  to {
+    background: transparent;
+  }
+}
+
+.nt-tape__row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 0 6px;
+  align-items: baseline;
+  width: 100%;
+  padding: 1px 4px 1px 2px;
+  border: 0;
+  background: transparent;
+  font-family: var(--nt-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--nt-text-2);
+}
+
+button.nt-tape__row {
+  font: inherit;
+  font-family: var(--nt-font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+button.nt-tape__row:hover {
+  background: var(--nt-bg-2);
+}
+
+.nt-tape__row em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--nt-text-3);
+}
+
+/* 域标签色：信号 accent、成交 up/down、风控 danger、告警 warn、数据 info、模型 accent-2 */
+.nt-tape__row i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--tape-tag) 45%, transparent);
+  color: var(--tape-tag);
+  white-space: nowrap;
+}
+
+.nt-tape__row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--nt-text-1);
+}
+
+.nt-tape__row b {
+  max-width: 92px;
+  overflow: hidden;
+  font-weight: 400;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--nt-text-3);
+}
+
+.nt-tape__row.is-signal {
+  --tape-tag: var(--nt-accent);
+}
+
+.nt-tape__row.is-risk {
+  --tape-tag: var(--nt-danger);
+}
+
+.nt-tape__row.is-alert {
+  --tape-tag: var(--nt-warn);
+}
+
+.nt-tape__row.is-data {
+  --tape-tag: var(--nt-info);
+}
+
+.nt-tape__row.is-model {
+  --tape-tag: var(--nt-accent-2);
+}
+
+/* 成交按方向着色（红涨绿跌）；方向读不出来用中性色，不默认红 */
+.nt-tape__row.is-fill {
+  --tape-tag: var(--nt-text-3);
+}
+
+.nt-tape__row.is-fill.tone-up {
+  --tape-tag: var(--nt-up);
+}
+
+.nt-tape__row.is-fill.tone-down {
+  --tape-tag: var(--nt-down);
+}
+
+/* 第一格里时段缺口的说明行（竞价异动流没有只读出口时点名接口） */
+.nt-term__gapline {
+  margin: 0 0 4px;
+  color: var(--nt-warn);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+/* §5.1：尾盘持仓 距止损 <2% 整行 warn 左边框，已触发 danger */
+.nt-term--first li[data-flag='warn'] {
+  border-left-color: var(--nt-warn);
+}
+
+.nt-term--first li[data-flag='danger'] {
+  border-left-color: var(--nt-danger);
 }
 
 .nt-term ul {
@@ -512,6 +713,19 @@
 .nt-term li i.is-warn {
   color: var(--nt-warn);
   border-color: var(--nt-warn);
+}
+
+/* 终端带正文里的钱（浮盈/半场盈亏）走红涨绿跌；距止损一类不是钱的数不套这两个色 */
+.nt-term li span.is-up {
+  color: var(--nt-up);
+}
+
+.nt-term li span.is-down {
+  color: var(--nt-down);
+}
+
+.nt-term li span.is-warn {
+  color: var(--nt-warn);
 }
 
 .nt-term__empty,
@@ -806,11 +1020,22 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     height: 240px;
   }
+
+  /* §11 第 5 行：五格塞不进两列 → 事件流（或非交易日的任务调度）整行铺开，其余四格 2×2 */
+  .nt-term--first,
+  .nt-terms__grid.is-offday .nt-term--dispatch {
+    grid-column: span 2;
+  }
 }
 
 @media (max-width: 720px) {
   .nt-terms__grid {
     grid-template-columns: minmax(0, 1fr);
     height: 320px;
+  }
+
+  .nt-term--first,
+  .nt-terms__grid.is-offday .nt-term--dispatch {
+    grid-column: auto;
   }
 }
