@@ -1,4 +1,4 @@
-import { amount, intText, signed } from '@/utils/format'
+import { amount, intText, phaseName, ratioPct, signed } from '@/utils/format'
 import type {
   ChildCard,
   Identifier,
@@ -98,7 +98,7 @@ function scanPost(input: MonitorInput): Pick<SceneNode, 'status' | 'detail' | 'o
   const sentiment = input.sentiment
   if (!sentiment || !sentiment.ok) return { status: 'gap', detail: '情绪接口无返回', outputs }
   if (sentiment.stale) return { status: 'gap', detail: `数据已过期，截至 ${sentiment.asOf || '未知时刻'}`, outputs }
-  const detail = `${sentiment.phase || '阶段未知'}，涨 ${intText(sentiment.up)} 跌 ${intText(sentiment.down)}`
+  const detail = `${phaseText(sentiment.phase, '阶段未知')}，涨 ${intText(sentiment.up)} 跌 ${intText(sentiment.down)}`
   return { status: sentiment.phase ? 'live' : 'idle', detail, outputs }
 }
 
@@ -240,6 +240,11 @@ function sourceFromItem(item: { id: string; name: string; status: string; detail
 const LOUD_PHASE = new Set(['HOT', 'FADE', 'ICE'])
 const CLOSED_ORDER = new Set(['filled', 'cancelled', 'canceled', 'rejected', 'expired'])
 
+/** 后端 phase 是英文枚举（HOT/WARM/…），牌面统一走 format.phaseName 的中文表 */
+function phaseText(phase: string, fallback: string): string {
+  return phase ? phaseName(phase) : fallback
+}
+
 const HIDDEN = new Set(['book:tape', 'post:model', 'post:news', 'post:capital', 'post:overseas'])
 
 function hideLegacy(node: SceneNode): SceneNode {
@@ -273,9 +278,9 @@ function tapeFace(input: MonitorInput): Pick<SceneNode, 'status' | 'detail' | 'r
   const stale = sentiment.stale
   return {
     status: stale ? 'gap' : 'live',
-    detail: stale ? `数据已过期，截至 ${sentiment.asOf || '未知时刻'}` : `${sentiment.phase}，涨 ${intText(sentiment.up)} 跌 ${intText(sentiment.down)}`,
+    detail: stale ? `数据已过期，截至 ${sentiment.asOf || '未知时刻'}` : `${phaseText(sentiment.phase, '阶段未知')}，涨 ${intText(sentiment.up)} 跌 ${intText(sentiment.down)}`,
     rank: 'focus',
-    face: stale ? '过期' : sentiment.phase || '阶段未知',
+    face: stale ? '过期' : phaseText(sentiment.phase, '阶段未知'),
     sub: `涨 ${intText(sentiment.up)} 跌 ${intText(sentiment.down)}`,
     tone: 'flat',
   }
@@ -308,7 +313,7 @@ function scanFace(input: MonitorInput): Pick<SceneNode, 'rank' | 'face' | 'sub' 
   const loud = input.sentiment.stale || LOUD_PHASE.has(input.sentiment.phase)
   return {
     rank: loud ? 'focus' : 'brief',
-    face: input.sentiment.stale ? '过期' : input.sentiment.phase || '未返回',
+    face: input.sentiment.stale ? '过期' : phaseText(input.sentiment.phase, '未返回'),
     sub: count ? `涨停 ${count}` : '',
     tone: 'flat',
   }
@@ -411,7 +416,7 @@ function tapeChildren(input: MonitorInput): ChildCard[] {
   const sentiment = input.sentiment?.ok ? input.sentiment : null
   const summary: ChildCard[] = sentiment
     ? [
-        { id: 'tape:broken', title: '破板率', face: sentiment.brokenRate == null ? '未返回' : `${sentiment.brokenRate.toFixed(2)}%`, sub: '', tone: 'flat' },
+        { id: 'tape:broken', title: '破板率', face: sentiment.brokenRate == null ? '未返回' : ratioPct(sentiment.brokenRate), sub: '', tone: 'flat' },
         { id: 'tape:height', title: '最高板', face: sentiment.maxHeight == null ? '未返回' : String(sentiment.maxHeight), sub: '', tone: 'flat' },
         { id: 'tape:amount', title: '成交额', face: amount(sentiment.amount ?? null), sub: sentiment.stale ? '过期' : '', tone: 'flat' },
       ]
@@ -699,7 +704,7 @@ function shadowChildren(input: MonitorInput): ChildCard[] {
     id: `shadow:${item.name}`,
     title: item.name || '影子',
     face: item.live == null ? '—' : String(item.live),
-    sub: item.shadow == null ? '' : `影子 ${item.shadow}`,
+    sub: item.shadow == null ? '' : `影子 ${ratioPct(item.shadow)}`,
     tone: 'flat' as const,
   }))
 }
@@ -748,7 +753,7 @@ function articleChildren(input: MonitorInput, id: string): ChildCard[] {
 function expertCards(input: MonitorInput, id: string): ChildCard[] {
   if (id === 'post:scan') {
     const limits = input.limits?.ok ? String(input.limits.rows.length) : '未返回'
-    const phase = input.sentiment?.ok ? input.sentiment.phase || '未返回' : '未返回'
+    const phase = input.sentiment?.ok ? phaseText(input.sentiment.phase, '未返回') : '未返回'
     return [
       { id: 'scan:in', title: '输入', face: phase, sub: '', tone: 'flat' },
       { id: 'scan:out', title: '输出', face: limits, sub: '涨停', tone: 'flat' },

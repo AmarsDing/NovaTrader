@@ -19,6 +19,8 @@ export interface BandSpec {
   focus: string
   /** 提升为焦点牌（画布内加宽）的节点 id；空串不提升 */
   promote: '' | 'post:scan' | 'book:center'
+  /** 这个时段要加粗的束线：into = 进入该节点的所有边，edges = 精确 `from>to` */
+  thicken: { into?: string[]; edges?: string[] }
   /** 画布整体压暗系数：1 常态；午休 0.75；盘后 0.5 */
   veil: number
   /** 停掉环境流向点 */
@@ -65,14 +67,14 @@ const SEGMENTS: Segment[] = [
 ]
 
 const SPECS: Record<BandKey, BandSpec> = {
-  preopen: { key: 'preopen', span: '08:30–09:15', focus: '数据链路 + 外围 + 昨日复盘', promote: '', veil: 1, calm: false, firstPane: 'review' },
-  auction: { key: 'auction', span: '09:15–09:25', focus: '竞价异动', promote: 'post:scan', veil: 1, calm: false, firstPane: 'auction' },
-  morning: { key: 'morning', span: '09:30–11:30', focus: '全链路', promote: '', veil: 1, calm: false, firstPane: 'tape' },
-  lunch: { key: 'lunch', span: '11:30–13:00', focus: '半场小结', promote: '', veil: 0.75, calm: true, firstPane: 'midday' },
-  afternoon: { key: 'afternoon', span: '13:00–14:30', focus: '全链路', promote: '', veil: 1, calm: false, firstPane: 'tape' },
-  closing: { key: 'closing', span: '14:30–15:00', focus: '持仓与平仓决策', promote: 'book:center', veil: 1, calm: false, firstPane: 'positions' },
-  postmarket: { key: 'postmarket', span: '15:00–17:00', focus: '复盘与自检', promote: '', veil: 0.5, calm: true, firstPane: 'review' },
-  offday: { key: 'offday', span: '', focus: '链路自检 + 回测任务', promote: '', veil: 1, calm: true, firstPane: 'dispatch' },
+  preopen: { key: 'preopen', span: '08:30–09:15', focus: '数据链路 + 外围 + 昨日复盘', promote: '', thicken: {}, veil: 1, calm: false, firstPane: 'review' },
+  auction: { key: 'auction', span: '09:15–09:25', focus: '竞价异动', promote: 'post:scan', thicken: { into: ['post:scan'] }, veil: 1, calm: false, firstPane: 'auction' },
+  morning: { key: 'morning', span: '09:30–11:30', focus: '全链路', promote: '', thicken: {}, veil: 1, calm: false, firstPane: 'tape' },
+  lunch: { key: 'lunch', span: '11:30–13:00', focus: '半场小结', promote: '', thicken: {}, veil: 0.75, calm: true, firstPane: 'midday' },
+  afternoon: { key: 'afternoon', span: '13:00–14:30', focus: '全链路', promote: '', thicken: {}, veil: 1, calm: false, firstPane: 'tape' },
+  closing: { key: 'closing', span: '14:30–15:00', focus: '持仓与平仓决策', promote: 'book:center', thicken: { edges: ['post:risk>book:center'] }, veil: 1, calm: false, firstPane: 'positions' },
+  postmarket: { key: 'postmarket', span: '15:00–17:00', focus: '复盘与自检', promote: '', thicken: {}, veil: 0.5, calm: true, firstPane: 'review' },
+  offday: { key: 'offday', span: '', focus: '链路自检 + 回测任务', promote: '', thicken: {}, veil: 1, calm: true, firstPane: 'dispatch' },
 }
 
 const DEFAULT_HUD: HudCellDef[] = [

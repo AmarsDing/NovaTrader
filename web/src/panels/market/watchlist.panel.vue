@@ -26,9 +26,11 @@ const droppedRows = computed(() =>
     .map(([rule, count]) => ({ rule, count }))
     .sort((a, b) => b.count - a.count),
 )
-/** misses: 代码 → 原因。 */
+/** misses: 原因代码 → 只数，按数量倒序（与 dropped 同一后端 map 形状）。 */
 const missRows = computed(() =>
-  Object.entries(lastScan.value?.misses ?? {}).map(([symbol, reason]) => ({ symbol, reason })),
+  Object.entries(lastScan.value?.misses ?? {})
+    .map(([rule, count]) => ({ rule, count }))
+    .sort((a, b) => b.count - a.count),
 )
 
 const SYMBOL_RE = /^\d{6}\.(SZ|SH|BJ)$/i
@@ -98,10 +100,6 @@ function openPool() {
   getWorkbench()?.openPanel('pool-manager')
 }
 
-function openMarket(symbol: string) {
-  getWorkbench()?.openPanel('market', { symbol })
-}
-
 onMounted(() => {})
 onBeforeUnmount(stopHeartbeat)
 </script>
@@ -150,11 +148,11 @@ onBeforeUnmount(stopHeartbeat)
       </template>
 
       <template v-if="missRows.length">
-        <h3 class="sub">通过规则但没进信号</h3>
+        <h3 class="sub">通过规则但没进信号（按原因）</h3>
         <ul class="kv">
-          <li v-for="row in missRows" :key="row.symbol">
-            <button type="button" class="sym" @click="openMarket(row.symbol)">{{ row.symbol }}</button>
-            <span>{{ missLabel(row.reason) }}</span>
+          <li v-for="row in missRows" :key="row.rule">
+            <span>{{ missLabel(row.rule) }}</span>
+            <b>{{ row.count }} 只</b>
           </li>
         </ul>
       </template>

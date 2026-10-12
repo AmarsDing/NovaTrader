@@ -57,37 +57,5 @@ export interface BacktestTrade {
   reason: string
 }
 
-export interface Introspection {
-  id: string
-  date: string
-  strategy: string
-  content: string
-  createdAt: string
-  [key: string]: unknown
-}
-
-export interface Proposal {
-  id: string
-  strategy: string
-  title: string
-  detail: string
-  status: string
-  createdAt: string
-  [key: string]: unknown
-}
-
-export interface ShadowStats {
-  strategy: string
-  trades: number | null
-  winRate: number | null
-  pnl: number | null
-  [key: string]: unknown
-}
-
-export interface AdmissionStatus {
-  eligible: boolean
-  paperDays: number | null
-  required: number | null
-  checks: Record<string, unknown>
-  [key: string]: unknown
-}
+/* 影子统计/自省/进化提案/模拟盘准入的 DTO 随适配器定义在 `../backtest.ts`
+   （ShadowStats / Introspection / Proposal / Admission），这里不再重复，避免两份口径漂移。 */

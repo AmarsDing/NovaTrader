@@ -181,6 +181,7 @@ export function missLabel(code: unknown): string {
 }
 
 const SIGNAL_STATUS: Record<string, string> = {
+  pending: '待审核',
   risk_checking: '风控审核',
   approved: '已通过',
   rejected: '已拦截',

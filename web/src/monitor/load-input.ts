@@ -204,7 +204,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
     shadow: shadow
       ? {
           ok: true,
-          items: shadow.horizons.map((item) => ({
+          items: (shadow.horizons ?? []).map((item) => ({
             name: `T+${item.horizon}`,
             live: item.count,
             shadow: item.avgReturn,

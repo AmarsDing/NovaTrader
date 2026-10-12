@@ -37,7 +37,7 @@ export async function scan(body: ScanBody): Promise<ScanReply> {
     signalIds: asList<string>(raw, 'signalIds', 'signal_ids'),
     sellSignalIds: asList<string>(raw, 'sellSignalIds', 'sell_signal_ids'),
     dropped: (raw.dropped && typeof raw.dropped === 'object' ? raw.dropped : {}) as Record<string, number>,
-    misses: (raw.misses && typeof raw.misses === 'object' ? raw.misses : {}) as Record<string, string>,
+    misses: (raw.misses && typeof raw.misses === 'object' ? raw.misses : {}) as Record<string, number>,
     killSwitch: !!(raw.killSwitch || raw.kill_switch),
     elapsedMs: num(pick(raw, 'elapsedMs', 'elapsed_ms')),
   }

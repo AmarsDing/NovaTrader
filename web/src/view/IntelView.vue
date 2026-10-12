@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
 import { listSectors, type SectorRow } from '@/api/market'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
-import { clock, messageOf, pnlClass } from '@/utils/format'
-import { consumePanelParams } from '@/workspace/panel-bus'
+import { clock, messageOf, pctText, pnlClass } from '@/utils/format'
+import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
 
 const symbol = ref('')
@@ -40,6 +40,8 @@ async function loadNews(codeOverride?: string) {
     return
   }
   symbol.value = code
+  // 手动加载（表单/热词）后旧的高亮不再适用，清掉避免错标记。
+  if (codeOverride === undefined || codeOverride !== '') highlight.value = ''
   loading.value = true
   error.value = ''
   try {
@@ -72,15 +74,23 @@ function openMarket(code: string) {
   getWorkbench()?.openPanel('market', { symbol: code })
 }
 
+/** 面板参数（symbol/highlight）统一入口：冷启动 consume + 已挂载时 openPanel 实时推送。 */
+function applyPanelParams(params: Record<string, unknown>) {
+  const code = typeof params.symbol === 'string' ? params.symbol : ''
+  if (!code) return
+  highlight.value = typeof params.highlight === 'string' ? params.highlight : ''
+  void loadNews(code)
+}
+
+const offPanelParams = onPanelParams('intel', applyPanelParams)
+
 onMounted(() => {
   void loadSide()
-  // 行情面板点消息带参进来：直接预填并加载时间线。
   const params = consumePanelParams('intel')
-  if (params && typeof params.symbol === 'string' && params.symbol) {
-    if (typeof params.highlight === 'string') highlight.value = params.highlight
-    void loadNews(params.symbol)
-  }
+  if (params) applyPanelParams(params)
 })
+
+onBeforeUnmount(() => offPanelParams())
 </script>
 
 <template>
@@ -136,11 +146,13 @@ onMounted(() => {
         </section>
         <section class="nt-panel">
           <h2 class="nt-panel__title">板块 / 外围</h2>
-          <NtTable :columns="sectorColumns" :rows="sectors" row-key="code" empty="板块未返回">
+          <NtTable :columns="sectorColumns" :rows="sectors" row-key="name" empty="板块未返回">
             <template #cell-avgPct="{ value }">
-              <span :class="pnlClass(value)">{{ value == null ? '—' : Number(value).toFixed(2) + '%' }}</span>
+              <span :class="pnlClass(value)">{{ pctText(value) }}</span>
             </template>
-            <template #cell-overseas="{ value }">{{ value ?? '—' }}</template>
+            <template #cell-overseas="{ value }">
+              <span :class="pnlClass(value)">{{ pctText(value) }}</span>
+            </template>
             <template #cell-leader="{ value }">
               <button v-if="value" type="button" class="word-link" @click="openMarket(String(value))">
                 {{ value }}

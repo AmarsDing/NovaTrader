@@ -12,12 +12,12 @@ function fixture(): MonitorInput {
   const input = emptyMonitorInput()
   input.sentiment = {
     ok: true,
-    phase: '尾盘',
+    phase: 'FADE',
     up: 812,
     down: 4330,
     asOf: new Date(2026, 9, 12, 14, 47).toISOString(),
     stale: false,
-    brokenRate: 41.2,
+    brokenRate: 0.412,
     maxHeight: 7,
   }
   input.limits = {
@@ -140,7 +140,8 @@ describe('resolveHud · 默认十格', () => {
   })
 
   it('阶段/涨停/炸板率读情绪与涨停接口', () => {
-    expect(cells[0].face).toBe('尾盘')
+    /* 后端给枚举码 FADE，牌面必须是中文「退潮」（format.phaseName 单一来源） */
+    expect(cells[0].face).toBe('退潮')
     expect(cells[0].sub).toBe('涨 812 跌 4330')
     expect(cells[1].face).toBe('2')
     expect(cells[1].sub).toBe('最高 7 板')
@@ -178,7 +179,7 @@ describe('resolveHud · 时段特化格', () => {
     expect(cells[0].sub).toContain('/v1/strategy/performance')
     expect(cells[2].key).toBe('overnight:overseas')
     expect(cells[2].face).toBe('固态电池')
-    expect(cells[2].sub).toBe('外围 1.2%')
+    expect(cells[2].sub).toBe('外围 1.20%')
   })
 
   it('竞价三格全部点名竞价接口', () => {

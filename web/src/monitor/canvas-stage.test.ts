@@ -75,14 +75,14 @@ describe('buildStage', () => {
     expect(stage.columns.map((item) => item.title)).toEqual(['01 接入', '02 研判', '03 裁决'])
   })
 
-  it('promote：被提升的节点加宽到 272 并向左生长，出边曲线跟随新矩形', () => {
+  it('promote：被提升的节点加宽到 280 并向左生长，出边曲线跟随新矩形', () => {
     const plain = buildStage(demoGraph())
     const scan = plain.nodes.find((item) => item.id === 'post:scan')!
     const promoted = buildStage(demoGraph(), { promote: 'post:scan' })
     const wide = promoted.nodes.find((item) => item.id === 'post:scan')!
     expect(wide.promoted).toBe(true)
-    expect(wide.rect.w).toBe(272)
-    expect(wide.rect.x).toBe(scan.rect.x - (272 - scan.rect.w))
+    expect(wide.rect.w).toBe(280)
+    expect(wide.rect.x).toBe(scan.rect.x - (280 - scan.rect.w))
     expect(wide.rect.y).toBe(scan.rect.y)
     /* 其余节点不动 */
     expect(promoted.nodes.find((item) => item.id === 'dim:tech')?.rect).toEqual(
@@ -96,6 +96,23 @@ describe('buildStage', () => {
   it('promote 指向不存在的节点时布局不变', () => {
     const stage = buildStage(demoGraph(), { promote: 'book:nope' })
     expect(stage.nodes.every((item) => !item.promoted)).toBe(true)
+  })
+
+  it('thicken.into：进入该节点的束线全部标粗，其余一条不标', () => {
+    const stage = buildStage(demoGraph(), { thicken: { into: ['post:scan'] } })
+    const into = stage.edges.filter((edge) => edge.to === 'post:scan')
+    expect(into.length).toBeGreaterThan(0)
+    expect(into.every((edge) => edge.thick === true)).toBe(true)
+    expect(stage.edges.filter((edge) => edge.to !== 'post:scan').every((edge) => edge.thick !== true)).toBe(true)
+  })
+
+  it('thicken.edges：只标精确的 from>to 边（尾盘 风控→账户）', () => {
+    const stage = buildStage(demoGraph(), { thicken: { edges: ['post:risk>book:center'] } })
+    expect(stage.edges.filter((edge) => edge.thick === true).map((edge) => edge.id)).toEqual(['post:risk>book:center'])
+  })
+
+  it('不传 thicken 时没有边被标粗（拓扑与常态观感不变）', () => {
+    expect(buildStage(demoGraph()).edges.every((edge) => !edge.thick)).toBe(true)
   })
 
   it('空场景也可布局：骨干节点都在，骨架边保留但没有数据源来线', () => {

@@ -10,7 +10,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import { clock, messageOf } from '@/utils/format'
-import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
+import { onPush, type WsPushMessage } from '@/ws/hub'
 
 const notify = useNotifyStore()
 
@@ -83,20 +83,18 @@ function onPushMessage(msg: WsPushMessage) {
   notify.markRead()
 }
 
+// alert 是 BASE_TOPIC，hub 常驻订阅，onPush 即可收到，无需再 subscribe。
 let offPush: (() => void) | undefined
-let unsubscribe: (() => void) | undefined
 
 onMounted(() => {
   void load()
   notify.start()
   notify.markRead()
-  unsubscribe = subscribe('alert')
   offPush = onPush(onPushMessage)
 })
 
 onBeforeUnmount(() => {
   offPush?.()
-  unsubscribe?.()
 })
 </script>
 

@@ -2,7 +2,7 @@
  * HUD 十格的牌面解析：时段（timeband.ts）给格子定义，这里把 MonitorInput
  * 解析成人读的主词/副行。纯函数，缺口格写明缺哪个接口（监控业务监控方案 §7 纪律）。
  */
-import { amount, signed } from '@/utils/format'
+import { amount, pctText, phaseName, ratioPct, signed } from '@/utils/format'
 import { bandCountdown, type HudCellDef, type SparkKey } from './timeband'
 import type { MonitorInput } from './types'
 
@@ -35,7 +35,9 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       if (!sentiment?.ok) return { face: '未返回', sub: '情绪接口无返回', tone: 'flat' }
       const up = sentiment.up == null ? '—' : String(sentiment.up)
       const down = sentiment.down == null ? '—' : String(sentiment.down)
-      return { face: sentiment.stale ? '过期' : sentiment.phase || '未返回', sub: `涨 ${up} 跌 ${down}`, tone: 'flat' }
+      /* 后端给的是枚举码（HOT/WARM/…），牌面统一走 format.phaseName 的中文表 */
+      const name = sentiment.phase ? phaseName(sentiment.phase) : '未返回'
+      return { face: sentiment.stale ? '过期' : name, sub: `涨 ${up} 跌 ${down}`, tone: 'flat' }
     }
     case 'limit': {
       const count = input.limits?.ok ? input.limits.rows.length : null
@@ -48,12 +50,13 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     }
     case 'broken': {
       const rate = input.sentiment?.ok ? input.sentiment.brokenRate : null
-      return { face: rate == null ? '未返回' : `${Math.round(rate)}%`, sub: '', tone: 'flat' }
+      /* brokenRate 是 0–1 比率（后端 BrokenCount/(UpCount+BrokenCount)），走 ratioPct */
+      return { face: rate == null ? '未返回' : ratioPct(rate, 0), sub: '', tone: 'flat' }
     }
     case 'mainline': {
       const top = input.sectors?.ok ? input.sectors.rows[0] : null
       if (!top) return { face: '未返回', sub: '板块接口无返回', tone: 'flat' }
-      return { face: top.name || '未命名', sub: top.avgPct == null ? '' : `板块均 ${top.avgPct}%`, tone: 'flat' }
+      return { face: top.name || '未命名', sub: top.avgPct == null ? '' : `板块均 ${pctText(top.avgPct)}`, tone: 'flat' }
     }
     case 'signal': {
       if (!input.signals?.ok) return { face: '信号未返回', sub: '', tone: 'flat' }
@@ -116,7 +119,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     case 'overnight:overseas': {
       const hit = input.sectors?.ok ? input.sectors.rows.find((row) => row.overseas != null) : null
       if (!hit) return { face: '未调用', sub: '', tone: 'flat' }
-      return { face: hit.name, sub: `外围 ${hit.overseas}%`, tone: 'flat' }
+      return { face: hit.name, sub: `外围 ${pctText(hit.overseas)}`, tone: 'flat' }
     }
     case 'gap:auction-amount':
     case 'gap:auction-limit':

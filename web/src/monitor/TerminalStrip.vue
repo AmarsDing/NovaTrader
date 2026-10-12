@@ -5,7 +5,7 @@
  * 数据全部来自 loadMonitorInput 已聚合的 24 个接口，本组件不另发请求。
  */
 import { computed } from 'vue'
-import { amount, intText, signed } from '@/utils/format'
+import { amount, intText, ratioPct, signed } from '@/utils/format'
 import { dutyOf, isLoud, statusDot } from './duty'
 import type { MonitorInput } from './types'
 
@@ -165,7 +165,7 @@ const openOrders = computed(() => {
         </div>
         <div v-if="shadows.length" class="nt-term__meter">
           <span>影子</span>
-          <b v-for="row in shadows" :key="row.name" class="nt-term__chip">{{ row.name }} {{ row.live ?? '—' }}/{{ row.shadow ?? '—' }}</b>
+          <b v-for="row in shadows" :key="row.name" class="nt-term__chip">{{ row.name }} {{ row.live ?? '—' }}/{{ row.shadow == null ? '—' : ratioPct(row.shadow) }}</b>
         </div>
       </section>
 

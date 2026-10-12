@@ -62,6 +62,14 @@ describe('bandSpec', () => {
     expect(bandSpec('afternoon').promote).toBe('')
   })
 
+  it('竞价加粗「数据源→扫描」，尾盘加粗「风控→账户」，其余时段不加粗', () => {
+    expect(bandSpec('auction').thicken).toEqual({ into: ['post:scan'] })
+    expect(bandSpec('closing').thicken).toEqual({ edges: ['post:risk>book:center'] })
+    for (const key of ['preopen', 'morning', 'lunch', 'afternoon', 'postmarket', 'offday'] as const) {
+      expect(bandSpec(key).thicken).toEqual({})
+    }
+  })
+
   it('午休与盘后压暗画布并停环境流向点', () => {
     expect(bandSpec('lunch')).toMatchObject({ veil: 0.75, calm: true })
     expect(bandSpec('postmarket')).toMatchObject({ veil: 0.5, calm: true })

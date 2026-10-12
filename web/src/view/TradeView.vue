@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { askConfirm } from '@/store/confirm'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
@@ -31,7 +31,7 @@ import {
   sideLabel,
 } from '@/utils/format'
 import { router } from '@/router'
-import { consumePanelParams } from '@/workspace/panel-bus'
+import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
 import { PAPER_DAYS_REQUIRED } from './decision-desk'
 
@@ -187,6 +187,13 @@ const positionRef = computed(() => {
 watch(
   account,
   (value) => {
+    // 实盘未达准入时不允许账本停在 LIVE：下拉 option 的 disabled 挡不住 v-model 赋值，
+    // 持久化的 book='LIVE' 会在挂载时写回来，这里统一纠回 SIM。
+    if (value === 'LIVE' && simPaperDays.value != null && !liveAllowed.value) {
+      hint.value = `模拟盘未满 ${PAPER_DAYS_REQUIRED} 个交易日，已切回 SIM`
+      account.value = 'SIM'
+      return
+    }
     accountStore.book = value
     void accountStore.refresh()
     void load()
@@ -209,6 +216,11 @@ async function load() {
   fills.value = fill.status === 'fulfilled' ? fill.value : []
   if (sim.status === 'fulfilled') simPaperDays.value = sim.value.paperDays
   void riskRes
+  // SIM 天数在挂载后才到：若此前账本被持久化的 LIVE 占住，此时纠回。
+  if (account.value === 'LIVE' && simPaperDays.value != null && !liveAllowed.value) {
+    account.value = 'SIM'
+    hint.value = `模拟盘未满 ${PAPER_DAYS_REQUIRED} 个交易日，已切回 SIM`
+  }
   const failed = [pos, ord, fill].find((item) => item.status === 'rejected')
   if (failed) error.value = messageOf((failed as PromiseRejectedResult).reason)
   loading.value = false
@@ -303,17 +315,33 @@ function openMarket(symbol: string) {
   getWorkbench()?.openPanel('market', { symbol })
 }
 
+/** 面板参数落表：挂载预填与已挂载时的实时推送共用。只应用 params 里带了的字段。 */
+function applyOrderParams(params: Record<string, unknown>) {
+  const symbol = params.symbol
+  const side = params.side
+  const px = params.price
+  if (typeof symbol === 'string' && symbol) form.symbol = symbol
+  if (side === 'buy' || side === 'sell') form.side = side
+  if (typeof px === 'string' && px) form.price = px
+}
+
+const offPanelParams = onPanelParams('trade', applyOrderParams)
+
 onMounted(() => {
   // 预填：面板参数优先；路由 query 兜底（面板不在 RouterView 下，勿用 useRoute）。
   const panelParams = consumePanelParams('trade') ?? {}
   const q = router.currentRoute.value.query
-  const symbol = panelParams.symbol ?? q.symbol
-  const side = panelParams.side ?? q.side
-  const px = panelParams.price ?? q.price
-  if (typeof symbol === 'string') form.symbol = symbol
-  if (side === 'buy' || side === 'sell') form.side = side
-  if (typeof px === 'string') form.price = px
+  applyOrderParams({
+    symbol: panelParams.symbol ?? q.symbol,
+    side: panelParams.side ?? q.side,
+    price: panelParams.price ?? q.price,
+  })
   if ((accountStore.book || 'SIM') !== account.value) account.value = accountStore.book
+})
+
+onBeforeUnmount(() => {
+  offPanelParams()
+  if (cancelAllTimer) clearTimeout(cancelAllTimer)
 })
 </script>
 

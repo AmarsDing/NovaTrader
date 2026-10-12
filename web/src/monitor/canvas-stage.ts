@@ -54,9 +54,18 @@ export interface StageNodeLayout {
   promoted?: boolean
 }
 
+export interface StageThicken {
+  /** 进入这些节点的所有束线加粗（竞价时段：['post:scan']） */
+  into?: string[]
+  /** 精确的边 id 加粗，格式 `from>to`（尾盘时段：['post:risk>book:center']） */
+  edges?: string[]
+}
+
 export interface StageOptions {
   /** 提升为焦点牌的节点 id；加宽并向左生长，不挪动其它节点（拓扑永不变） */
   promote?: string
+  /** 时段带要求加粗的束线 */
+  thicken?: StageThicken
 }
 
 export interface StageEdgeLayout {
@@ -71,6 +80,8 @@ export interface StageEdgeLayout {
   inCount: number
   /** 纤维束：同一逻辑边的 2 股错开曲线 */
   curves: CubicCurve[]
+  /** 时段带要求加粗的束线（竞价：进扫描；尾盘：风控→账户） */
+  thick?: boolean
 }
 
 export interface StageColumn {
@@ -107,8 +118,8 @@ const ACCOUNT_W = 216
 const ACCOUNT_H = 84
 
 const TOP_Y = 64
-/** 时段带焦点牌的加宽宽度（向左生长，避免压到右侧列） */
-const PROMOTE_W = 272
+/** 时段带焦点牌的加宽宽度（方案 §4.3「宽 280」；向左生长，避免压到右侧列） */
+const PROMOTE_W = 280
 const MODEL_ROW_Y = 46
 /** 四维块顶部。模型条在它上方 */
 const DIM_BLOCK_Y = 132
@@ -259,10 +270,18 @@ export function buildStage(graph: SceneGraph, options?: StageOptions): StageLayo
       inIndex,
       inCount: inList.length,
       curves: fiberCurves(from, to, outIndex, outList.length, inIndex, inList.length, edge.id),
+      thick: isThick(edge.id, edge.to, options?.thicken),
     })
   }
 
   return { nodes, edges, columns, bounds: stageBounds(nodes) }
+}
+
+/** 时段带加粗判定：命中「进入某节点」或精确边 id */
+function isThick(edgeId: string, to: string, thicken?: StageThicken): boolean {
+  if (!thicken) return false
+  if (thicken.into?.includes(to)) return true
+  return thicken.edges?.includes(edgeId) ?? false
 }
 
 /** 用户拖动叠加在基础布局之上 */

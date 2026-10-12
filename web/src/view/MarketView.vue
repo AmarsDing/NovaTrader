@@ -12,7 +12,7 @@ import NtKline, { type KlineMarker } from '@/viz/NtKline.vue'
 import { PALETTE } from '@/theme/tokens'
 import { clock, compactAmount, messageOf, pnlClass, price } from '@/utils/format'
 import { router } from '@/router'
-import { consumePanelParams } from '@/workspace/panel-bus'
+import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
 import { onPush, subscribe, type MarketSnapshotMeta, type WsPushMessage } from '@/ws/hub'
 
@@ -66,8 +66,8 @@ const markers = computed<KlineMarker[]>(() => {
   const fromNews: KlineMarker[] = news.value.map((item) => ({
     time: item.time,
     position: 'aboveBar',
-    // 红涨绿跌：利好红、利空绿
-    color: (item.sentiment ?? 0) >= 0 ? PALETTE.up : PALETTE.down,
+    // 红涨绿跌：利好红、利空绿；无评分的消息不涂色，避免误判成利好。
+    color: item.sentiment == null ? PALETTE.text3 : item.sentiment >= 0 ? PALETTE.up : PALETTE.down,
     shape: 'circle',
     text: (item.title || '消息').slice(0, 8),
   }))
@@ -93,21 +93,28 @@ const indicatorPoints = computed<IndicatorPoint[]>(() =>
     })),
 )
 
+/** 请求代际：旧的 load 结果不得覆盖新的（freq 切换/推送/手动刷新可能并发）。 */
+let loadSeq = 0
+
 async function load() {
   const code = symbol.value.trim()
   if (!code) {
     error.value = '请输入证券代码，例如 600519.SH'
     return
   }
+  const seq = ++loadSeq
+  const freqAt = freq.value
+  const accountAt = account.value
   loading.value = true
   loaded.value = true
   error.value = ''
   const [barRes, indRes, newsRes, fillRes] = await Promise.allSettled([
-    getBars(code, freq.value),
-    freq.value === '1d' ? getIndicators(code) : Promise.resolve([]),
+    getBars(code, freqAt),
+    freqAt === '1d' ? getIndicators(code) : Promise.resolve([]),
     timeline(code),
-    listFills(account.value),
+    listFills(accountAt),
   ])
+  if (seq !== loadSeq) return
   bars.value = barRes.status === 'fulfilled' ? barRes.value : []
   indicators.value = indRes.status === 'fulfilled' ? indRes.value : []
   news.value = newsRes.status === 'fulfilled' ? newsRes.value.items : []
@@ -138,6 +145,13 @@ watch(freq, () => {
 let offPush: (() => void) | undefined
 let unsubscribe: (() => void) | undefined
 let lastPush = 0
+/** 已挂载时 openPanel('market', {symbol}) 直接推过来。 */
+const offPanelParams = onPanelParams('market', (params) => {
+  const code = typeof params.symbol === 'string' ? params.symbol.trim() : ''
+  if (!code) return
+  symbol.value = code
+  void load()
+})
 
 /** 最近一轮快照批次信息（market 主题推的 SnapshotMeta），null = 还没收到过推送。 */
 const snapshot = ref<MarketSnapshotMeta | null>(null)
@@ -178,6 +192,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   offPush?.()
   unsubscribe?.()
+  offPanelParams()
 })
 </script>
 
