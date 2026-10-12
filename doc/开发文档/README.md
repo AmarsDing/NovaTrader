@@ -6,6 +6,10 @@
 | 日期 | 2026-10-08 |
 | 阅读方式 | 先读本页，再进对应模块目录。每个模块固定三份：`需求文档.md`、`设计文档.md`、`开发进度.md` |
 | 视觉规范 | `1.视觉需求.md`（M12 必须遵守） |
+| 个人交易 | `个人交易信息全览方案.md`（信息够不够、驾驶舱怎么摆） |
+| 外部参考 | `参考-ai-hedge-fund.md`（ai-hedge-fund 的功能、界面，以及能借鉴到本项目的部分） |
+| 实施顺序 | `优化实施总体方案.md`（全览、ai-hedge-fund、交易台编制，以及 Vibe-Trading、TradingAgents、freqtrade 里采纳的部分，收成 P0–P11） |
+| 监控驾驶舱 | `监控驾驶舱呈现方案.md`（第 0.5 节：ComfyUI 式可拖拽纤维画布 + 底部终端带）。`监控驾驶舱实施方案.md` 只保留路由和只读边界。`监控驾驶舱业务监控方案.md` 是业务数据与呈现深化的**提案**，未实施 |
 | 历史材料 | `doc/NovaTrader智脑方案.md`、`doc/RAG.md` 只作背景，与本目录冲突时以本目录为准 |
 
 2026-10-08 已确认：
@@ -63,7 +67,7 @@
 | Docker | 已安装，引擎未开。当前用本机 PostgreSQL / Redis，不依赖 Docker |
 | Rust / Tauri | Rust 1.99 GNU 工具链已装。`powershell -File web/scripts/tauri-dev.ps1` 可打开桌面壳，开发页在 `http://localhost:5173/` |
 | admin 服务 | 已在本机拉起。`http://127.0.0.1:2001/healthz` 返回 `{"status":"ok"}`。配置已去掉 TDengine 和 ChromaDB。仓库里的注册中心缺少核心包，7171 起不来，注册在后台重试 |
-| 桌面登录 | 账号 `owner`，口令 `nt-owner-2026`（主人）。只读账号 `viewer`，口令 `nt-viewer-2026`。详见 `M11-管理网关/开发进度.md` |
+| 桌面登录 | 账号 `admin`，口令 `123456`（管理员，owner 角色）。只读账号 `viewer`，口令 `nt-viewer-2026`。详见 `M11-管理网关/开发进度.md` |
 
 ## 仍待外部信息
 

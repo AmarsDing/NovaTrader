@@ -53,7 +53,7 @@ NovaTrader：部署在 NVIDIA DGX Spark 上的**私有化 A 股超短线量化�
 | 层 | 技术 | 说明 |
 |----|------|------|
 | 桌面壳 | Tauri (Rust) | 打包 Vue 前端为桌面应用，`web/src-tauri/` |
-| 前端 | Vue 3 + Vite + vue-router | `web/src/`，纯 JS（jsconfig，无 TS） |
+| 前端 | Vue 3 + Vite + TS + Pinia + dockview | `web/src/`，渐进 TS（vue-tsc 门槛），纯 JS 存量逐步迁移 |
 | 后端 | Go 1.24 + Kratos v2 | `backend/`，module 名 `server` |
 | API 定义 | Protobuf (proto3) | proto-first，`backend/api/<app>/v1/*.proto` |
 | 依赖注入 | google/wire | `cmd/wire.go` + `wire_gen.go` |
@@ -83,9 +83,11 @@ NovaTrader/
 │   ├── model/                ← 全局错误码定义
 │   ├── utils/                ← 工具包（log/websocket/casbin/aes...）
 │   └── third_party/          ← 第三方改造代码
-├── web/                      ← Vue3 前端 SPA
-│   ├── src/{api,router,store,view,layout,component,utils,style}
-│   └── src-tauri/            ← 【待建】Tauri Rust 桌面壳
+├── web/                      ← Vue3 + TS 前端（dockview 全驾驶舱工作台）
+│   ├── src/{api,ws,stores,theme,ui,viz,display,widgets,workspace,panels,view,dev,router,utils,style}
+│   ├── popout.html           ← dockview 弹窗宿主页（多页入口，无脚本）
+│   ├── eslint.config.js      ← flat config（js/ts/vue + prettier 兼容）
+│   └── src-tauri/            ← Tauri 2 Rust 桌面壳（托盘/通知/凭据/popout capability/CSP）
 ├── sql/init_db.sql           ← 历史 PG 建表脚本（仅参考，已被决策 2 取代）
 └── doc/                      ← 需求与设计文档（中文）
 ```
@@ -126,12 +128,15 @@ backend/ent/
 
 ## 6. 前端与桌面端规范
 
-- `web/` 是标准 Vite + Vue3 工程：`npm run dev` 开发，`npm run build` 产出 `web/dist/`。
-- Tauri 壳（待建）要点：
-  - `web/src-tauri/`（Rust），`tauri.conf.json` 的 `frontendDist` 指向 `../dist`；
-  - `npm run tauri dev` 联调，`npm run tauri build` 出安装包；
-  - 后端地址按环境区分：开发态直连本机 Go 服务（见第 7 节端口），地址集中配置在 `web/src/utils/request.js`。
-- 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`：深空黑 `#0A0E17` 基底、极光青 `#00E5FF` 主色、磨砂玻璃拟态面板；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线可用 lightweight-charts，其余图可用 ECharts。
+- `web/` 是标准 Vite + Vue3 + TS 工程：`npm run dev` 开发；`npm run build` = `vue-tsc --noEmit && eslint . && vite build`（**类型与 lint 是构建门槛**，逃生口 `build:fast`）；`npm run test`（vitest）；`npm run analyze` 出包体报告。
+- 组件三层：`ui/`（Nt* 基础控件）/ `viz/`（图表件）/ `display/`（业务展示件），**禁引 store/router**；业务面板在 `panels/<组>/*.panel.vue`（薄壳）+ `workspace/panel-registry.ts`（注册表，21 面板）。组件改动跑 `/dev/gallery`（仅 DEV）走查主题 × 密度矩阵。
+- Tauri 壳（已建）：
+  - `web/src-tauri/`（Rust，Tauri 2），`tauri.conf.json` 的 `frontendDist` 指向 `../dist`，`security.csp` 已收紧（白名单，见 M12 设计文档 §10）；
+  - `npm run tauri dev` 联调，`npm run tauri build` 出安装包；本机 Rust 构建配方：`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc CARGO_TARGET_DIR=C:\nt-target`（F:\股票 非 ASCII 路径会损坏 in-tree 产物）；
+  - 后端地址运行时可配（设置面板），拼接集中在 `web/src/utils/endpoint.ts`，HTTP 只走 `web/src/api/http.ts`；
+  - popout 多屏：`core:webview:allow-create-webview-window` capability + `popout.html` 宿主页 + `POPOUT_ALLOWED` 白名单（trade/settings/ops 禁弹）。
+- 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`（含第五节重构约定：**红涨绿跌**、发光预算——glow 只给 AI 高分信号/预警/Kill Switch、玻璃拟态只留 CommandBar/弹层/AlertCenter、密度可切）；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
+- CI 三道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test）。
 
 ## 7. 配置与端口
 
@@ -158,11 +163,10 @@ backend/ent/
 
 ## 9. 已知技术债（现状注意）
 
-- `backend/app/admin/internal/data/data.go` 引用了 `server/api/asset|cfgcenter|logcenter|monitoralarm/v1` 等**不存在的包**（模板残留），admin 服务当前无法编译，动手时需先裁剪这些模板代码。
-- `backend/api/admin/v1/` 下的 proto（airportinfo/ntp/snmp/dataForward/serviceMonitor 等）均为模板示例，与股票业务无关，待清理后重建业务 proto。
-- `web/` 仅有登录页+首页骨架，看板各模块（信号/持仓/舆情/回测/复盘/运维）均未实现。
+- `backend/api/admin/v1/` 下的模板 proto（airportinfo/ntp/snmp/dataForward/serviceMonitor 等）仍在，与股票业务无关，待清理后重建业务 proto（新增接口一律 proto-first，业务路由当前走 `internal/gateway` in-gate 聚合）。
 - `go.mod` 中 GORM/mysql、mongo、mssqld 等依赖待随业务替换逐步清理。
-- `backend/app/admin/cmd/main.go` 头部注释仍写着模板项目名 `weatherMaster-server`，属历史遗留。
+- `web/` 仍有少量纯 JS 存量（router/index.js、store/confirm.js 等门面），按渐进策略随触碰迁 TS。
+- 已清偿（勿再按旧账处理）：admin 服务编译（data.go 模板引用已裁剪）、main.go 头注释、web 登录页+骨架（P1–P6 重构完成，21 面板驾驶舱）。
 
 ## 10. 一句话总结
 
