@@ -19,9 +19,11 @@ import (
 )
 
 // AuditStore 把网关审计写进 audit_log。库连不上时 Enabled 为 false，admin 仍可启动。
+// 同一份连接配置也供 Backup（backend 侧的 pg_dump 导出）使用。
 type AuditStore struct {
 	client *ent.Client
 	db     *sql.DB
+	pg     *conf.Postgres
 }
 
 func NewAuditStore(pg *conf.Postgres, logger log.Logger) (*AuditStore, func(), error) {
@@ -57,7 +59,7 @@ func connectAudit(ctx context.Context, pg *conf.Postgres) (*AuditStore, func(), 
 	if err != nil {
 		return nil, nil, err
 	}
-	store := &AuditStore{client: conn.Client, db: conn.DB}
+	store := &AuditStore{client: conn.Client, db: conn.DB, pg: pg}
 	return store, func() { _ = conn.Close() }, nil
 }
 

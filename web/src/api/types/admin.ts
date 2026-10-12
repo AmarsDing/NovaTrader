@@ -17,12 +17,10 @@ export interface OpsStatus {
   resources: OpsNode[]
 }
 
-export interface AuditEntry {
-  id: string
+export interface BackupResult {
+  path: string
+  size: number | null
+  database: string
+  durationMs: number | null
   at: string
-  actor: string
-  action: string
-  target: string
-  detail: string
-  [key: string]: unknown
 }

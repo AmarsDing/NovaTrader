@@ -48,11 +48,29 @@ type AuditReader interface {
 	List(ctx context.Context, action string, limit int) ([]Row, error)
 }
 
+// BackupRunner 跑一次数据库备份；实现放在 data 层（pg_dump）。
+type BackupRunner interface {
+	Backup(ctx context.Context) (BackupResult, error)
+}
+
+// BackupResult 是一次备份的结果，字段直接回给前端。
+type BackupResult struct {
+	Path       string    `json:"path"`
+	Size       int64     `json:"size"`
+	Database   string    `json:"database"`
+	DurationMs int64     `json:"durationMs"`
+	At         time.Time `json:"at"`
+}
+
+// BackupConfirm 是备份的二次确认口令（FR-11-08）：前端必须原样提交，服务端强制校验。
+const BackupConfirm = "BACKUP"
+
 // Gate 是桌面端唯一的 HTTP 入口：登录、页面转发、运维汇总。
 type Gate struct {
 	Settings Settings
 	Audit    Auditor
 	Params   ParamStore
+	Backup   BackupRunner
 	Log      *log.Helper
 	NATSUp   func() bool
 	PingDB   func(context.Context) error
@@ -88,6 +106,8 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.login(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/status":
 		g.ops(w, r)
+	case r.Method == http.MethodPost && r.URL.Path == "/api/ops/backup":
+		g.backup(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/audit":
 		g.listAudit(w, r)
 	case r.URL.Path == "/api/config" && (r.Method == http.MethodGet || r.Method == http.MethodPut):
@@ -172,6 +192,58 @@ func (g *Gate) listAudit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
 }
 
+// backup 触发一次数据库备份：POST /api/ops/backup，仅 Owner，且必须带二次确认口令。
+// 备份是写盘动作，审计写不进去就不放行（与 config.save 同一口径）。
+func (g *Gate) backup(w http.ResponseWriter, r *http.Request) {
+	principal, ok := g.principal(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "未登录")
+		return
+	}
+	if !isOwner(principal.Role) {
+		writeErr(w, http.StatusForbidden, "需要 Owner")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "请求读不了")
+		return
+	}
+	var req struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "请求不是 JSON")
+		return
+	}
+	if strings.TrimSpace(req.Confirm) != BackupConfirm {
+		writeErr(w, http.StatusBadRequest, "备份需要输入 "+BackupConfirm+" 二次确认")
+		return
+	}
+	if g.Backup == nil {
+		writeErr(w, http.StatusServiceUnavailable, "备份未启用（数据库未配置）")
+		return
+	}
+	result, err := g.Backup.Backup(r.Context())
+	if err != nil {
+		_ = g.audit(r.Context(), Entry{
+			Actor: principal.Name, Role: principal.Role, Action: "ops.backup",
+			Target: clip(BackupConfirm, 32), OK: false, Detail: clip(err.Error(), 512),
+		})
+		writeErr(w, http.StatusServiceUnavailable, "备份失败："+clip(err.Error(), 200))
+		return
+	}
+	if err := g.audit(r.Context(), Entry{
+		Actor: principal.Name, Role: principal.Role, Action: "ops.backup",
+		Target: clip(result.Path, 256), OK: true,
+		Detail: result.Database + " " + strconv.FormatInt(result.Size, 10) + " bytes",
+	}); err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "审计写入失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (g *Gate) forward(w http.ResponseWriter, r *http.Request) {
 	principal, ok := g.principal(r)
 	if !ok {
@@ -244,7 +316,8 @@ func (e errString) Error() string { return string(e) }
 func sensitive(action string) bool {
 	switch action {
 	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params", "config.save",
-		"trade.order", "trade.cancel", "trade.confirm", "strategy.approve", "strategy.reject", "strategy.rollback":
+		"trade.order", "trade.cancel", "trade.confirm", "strategy.approve", "strategy.reject", "strategy.rollback",
+		"ops.backup":
 		return true
 	default:
 		return false

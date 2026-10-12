@@ -50,6 +50,7 @@ func NewHTTPServer(c *conf.Admin, settings gateway.Settings, audit *data.AuditSt
 		Settings: settings,
 		Audit:    audit,
 		Params:   audit,
+		Backup:   audit,
 		Log:      helper,
 		PingDB:   audit.Ping,
 	}

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { opsStatus, type OpsNode } from '@/api/ops'
+import { computed, onMounted, ref } from 'vue'
+import { BACKUP_CONFIRM, opsStatus, runBackup, type BackupResult, type OpsNode } from '@/api/ops'
+import { router } from '@/router'
 import NtButton from '@/ui/NtButton.vue'
+import NtInput from '@/ui/NtInput.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { messageOf } from '@/utils/format'
@@ -59,6 +61,58 @@ async function load() {
 }
 
 onMounted(load)
+
+function openMonitor() {
+  void router.push('/monitor')
+}
+
+// 备份是写盘动作（FR-11-08）：先要口令，再跑，成败都写审计。
+const asking = ref(false)
+const phrase = ref('')
+const busy = ref(false)
+const backupResult = ref<BackupResult | null>(null)
+const backupError = ref('')
+
+const canRun = computed(() => phrase.value.trim() === BACKUP_CONFIRM && !busy.value)
+const sizeText = computed(() => {
+  const size = backupResult.value?.size
+  if (size == null) return '大小未返回'
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1048576).toFixed(2)} MB`
+})
+const durationText = computed(() => {
+  const ms = backupResult.value?.durationMs
+  return ms == null ? '耗时未返回' : `${ms} ms`
+})
+
+function startBackup() {
+  backupError.value = ''
+  backupResult.value = null
+  phrase.value = ''
+  asking.value = true
+}
+
+function cancelBackup() {
+  if (busy.value) return
+  asking.value = false
+  phrase.value = ''
+}
+
+async function doBackup() {
+  if (!canRun.value) return
+  busy.value = true
+  backupError.value = ''
+  backupResult.value = null
+  try {
+    backupResult.value = await runBackup(phrase.value.trim())
+    asking.value = false
+    phrase.value = ''
+  } catch (err) {
+    backupError.value = messageOf(err)
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -68,7 +122,10 @@ onMounted(load)
         <h1 class="nt-title">运维</h1>
         <p class="nt-note">服务、数据源、模型和本机磁盘、显存。状态来自管理网关聚合。</p>
       </div>
-      <NtButton :loading="loading" @click="load">刷新</NtButton>
+      <div class="actions">
+        <NtButton size="sm" @click="openMonitor">打开监控大屏</NtButton>
+        <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+      </div>
     </header>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <section
@@ -95,10 +152,68 @@ onMounted(load)
         <template #cell-detail="{ value }">{{ value || '—' }}</template>
       </NtTable>
     </section>
+    <section>
+      <h2 class="nt-panel__title">数据库备份</h2>
+      <p class="nt-note">
+        在后端跑一次 pg_dump，写出到备份目录（NT_BACKUP_DIR，默认 backups/）。写盘动作，需要二次确认。
+      </p>
+      <div v-if="!asking" class="actions">
+        <NtButton size="sm" :disabled="busy" @click="startBackup">备份数据库</NtButton>
+      </div>
+      <div v-else class="confirm">
+        <NtInput
+          v-model="phrase"
+          :label="`输入 ${BACKUP_CONFIRM} 确认`"
+          :placeholder="BACKUP_CONFIRM"
+          mono
+          :disabled="busy"
+        />
+        <div class="actions">
+          <NtButton size="sm" variant="primary" :disabled="!canRun" :loading="busy" @click="doBackup">
+            执行备份
+          </NtButton>
+          <NtButton size="sm" :disabled="busy" @click="cancelBackup">取消</NtButton>
+        </div>
+      </div>
+      <p v-if="backupError" class="nt-err">{{ backupError }}</p>
+      <p v-if="backupResult" class="result">
+        已写出 <b>{{ backupResult.path }}</b>（{{ sizeText }}，{{ durationText }}，库
+        {{ backupResult.database }}）
+      </p>
+      <p class="nt-note">
+        服务重启的二次确认（FR-11-08 另一半）未做：admin 重启不了同级进程，需要外部进程管理器，当前部署没有；重启在机器上手动执行。
+      </p>
+    </section>
   </div>
 </template>
 
 <style scoped>
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+}
+
+.result {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--nt-text-2);
+  word-break: break-all;
+}
+
+.result b {
+  font-family: var(--nt-font-mono);
+  font-weight: 500;
+  color: var(--nt-text-1);
+}
+
 .cell-name {
   display: inline-flex;
   align-items: center;

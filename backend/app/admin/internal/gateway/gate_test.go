@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -379,6 +380,79 @@ func hasNode(rows []map[string]string, name, status string) bool {
 	return false
 }
 
+type memBackup struct {
+	calls  int
+	result BackupResult
+	err    error
+}
+
+func (m *memBackup) Backup(context.Context) (BackupResult, error) {
+	m.calls++
+	return m.result, m.err
+}
+
+// TestBackupNeedsOwnerAndConfirm 覆盖 FR-11-08：备份是写盘动作，
+// 必须登录 + Owner + 二次确认口令，且成败都留审计。
+func TestBackupNeedsOwnerAndConfirm(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit := &memAudit{}
+	runner := &memBackup{result: BackupResult{
+		Path:     "backups/novatrader-novatrader-20261012-090000.sql",
+		Size:     2048,
+		Database: "novatrader",
+		At:       time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC),
+	}}
+	gate := testGate(string(hash), audit)
+	gate.Backup = runner
+
+	if res := postJSON(t, gate, "/api/ops/backup", `{"confirm":"BACKUP"}`, ""); res.Code != http.StatusUnauthorized {
+		t.Fatalf("anon %d %s", res.Code, res.Body)
+	}
+	owner := login(t, gate, "ada", "pw")
+	viewer := login(t, gate, "bob", "pw")
+
+	if res := postJSON(t, gate, "/api/ops/backup", `{"confirm":"BACKUP"}`, viewer); res.Code != http.StatusForbidden {
+		t.Fatalf("viewer %d %s", res.Code, res.Body)
+	}
+	if res := postJSON(t, gate, "/api/ops/backup", `{"confirm":""}`, owner); res.Code != http.StatusBadRequest {
+		t.Fatalf("missing confirm %d %s", res.Code, res.Body)
+	}
+	if runner.calls != 0 {
+		t.Fatalf("runner ran %d times without confirm", runner.calls)
+	}
+
+	res := postJSON(t, gate, "/api/ops/backup", `{"confirm":"BACKUP"}`, owner)
+	if res.Code != http.StatusOK {
+		t.Fatalf("backup %d %s", res.Code, res.Body)
+	}
+	var body BackupResult
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Path != runner.result.Path || body.Size != 2048 || body.Database != "novatrader" {
+		t.Fatalf("body %s", res.Body)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("runner calls %d", runner.calls)
+	}
+	if !hasAction(audit, "ops.backup") {
+		t.Fatalf("audit %+v", audit.rows)
+	}
+
+	gate.Backup = &memBackup{err: errors.New("找不到 pg_dump（pg_dump）")}
+	res = postJSON(t, gate, "/api/ops/backup", `{"confirm":"BACKUP"}`, owner)
+	if res.Code != http.StatusServiceUnavailable {
+		t.Fatalf("fail %d %s", res.Code, res.Body)
+	}
+	last := audit.rows[len(audit.rows)-1]
+	if last.Action != "ops.backup" || last.OK {
+		t.Fatalf("audit failure row %+v", last)
+	}
+}
+
 type memAudit struct {
 	rows []Entry
 }
@@ -401,8 +475,8 @@ func (m *memAudit) List(_ context.Context, action string, limit int) ([]Row, err
 			continue
 		}
 		out = append(out, Row{
-			ID:     i + 1,
-			Actor:  e.Actor, Role: e.Role, Action: e.Action,
+			ID:    i + 1,
+			Actor: e.Actor, Role: e.Role, Action: e.Action,
 			Target: e.Target, Detail: e.Detail, OK: e.OK,
 			CreatedAt: time.Date(2026, 10, 9, 3, 0, i, 0, time.UTC),
 		})
