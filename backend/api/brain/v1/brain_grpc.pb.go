@@ -26,6 +26,9 @@ const (
 	Brain_Explain_FullMethodName          = "/brain.v1.Brain/Explain"
 	Brain_Ask_FullMethodName              = "/brain.v1.Brain/Ask"
 	Brain_Stats_FullMethodName            = "/brain.v1.Brain/Stats"
+	Brain_Usage_FullMethodName            = "/brain.v1.Brain/Usage"
+	Brain_Reasoning_FullMethodName        = "/brain.v1.Brain/Reasoning"
+	Brain_LatencyHistogram_FullMethodName = "/brain.v1.Brain/LatencyHistogram"
 )
 
 // BrainClient is the client API for Brain service.
@@ -47,6 +50,12 @@ type BrainClient interface {
 	Ask(ctx context.Context, in *AskRequest, opts ...grpc.CallOption) (*AskReply, error)
 	// 各档模型的延迟、排队和 KV 缓存占用。
 	Stats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsReply, error)
+	// 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
+	Usage(ctx context.Context, in *UsageRequest, opts ...grpc.CallOption) (*UsageReply, error)
+	// 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
+	Reasoning(ctx context.Context, in *ReasoningRequest, opts ...grpc.CallOption) (*ReasoningReply, error)
+	// 近 1 小时调用延迟直方图（8 桶）。
+	LatencyHistogram(ctx context.Context, in *LatencyHistogramRequest, opts ...grpc.CallOption) (*LatencyHistogramReply, error)
 }
 
 type brainClient struct {
@@ -127,6 +136,36 @@ func (c *brainClient) Stats(ctx context.Context, in *StatsRequest, opts ...grpc.
 	return out, nil
 }
 
+func (c *brainClient) Usage(ctx context.Context, in *UsageRequest, opts ...grpc.CallOption) (*UsageReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UsageReply)
+	err := c.cc.Invoke(ctx, Brain_Usage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brainClient) Reasoning(ctx context.Context, in *ReasoningRequest, opts ...grpc.CallOption) (*ReasoningReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReasoningReply)
+	err := c.cc.Invoke(ctx, Brain_Reasoning_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brainClient) LatencyHistogram(ctx context.Context, in *LatencyHistogramRequest, opts ...grpc.CallOption) (*LatencyHistogramReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LatencyHistogramReply)
+	err := c.cc.Invoke(ctx, Brain_LatencyHistogram_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BrainServer is the server API for Brain service.
 // All implementations must embed UnimplementedBrainServer
 // for forward compatibility.
@@ -146,6 +185,12 @@ type BrainServer interface {
 	Ask(context.Context, *AskRequest) (*AskReply, error)
 	// 各档模型的延迟、排队和 KV 缓存占用。
 	Stats(context.Context, *StatsRequest) (*StatsReply, error)
+	// 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
+	Usage(context.Context, *UsageRequest) (*UsageReply, error)
+	// 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
+	Reasoning(context.Context, *ReasoningRequest) (*ReasoningReply, error)
+	// 近 1 小时调用延迟直方图（8 桶）。
+	LatencyHistogram(context.Context, *LatencyHistogramRequest) (*LatencyHistogramReply, error)
 	mustEmbedUnimplementedBrainServer()
 }
 
@@ -176,6 +221,15 @@ func (UnimplementedBrainServer) Ask(context.Context, *AskRequest) (*AskReply, er
 }
 func (UnimplementedBrainServer) Stats(context.Context, *StatsRequest) (*StatsReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method Stats not implemented")
+}
+func (UnimplementedBrainServer) Usage(context.Context, *UsageRequest) (*UsageReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Usage not implemented")
+}
+func (UnimplementedBrainServer) Reasoning(context.Context, *ReasoningRequest) (*ReasoningReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Reasoning not implemented")
+}
+func (UnimplementedBrainServer) LatencyHistogram(context.Context, *LatencyHistogramRequest) (*LatencyHistogramReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method LatencyHistogram not implemented")
 }
 func (UnimplementedBrainServer) mustEmbedUnimplementedBrainServer() {}
 func (UnimplementedBrainServer) testEmbeddedByValue()               {}
@@ -324,6 +378,60 @@ func _Brain_Stats_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Brain_Usage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).Usage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_Usage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).Usage(ctx, req.(*UsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Brain_Reasoning_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReasoningRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).Reasoning(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_Reasoning_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).Reasoning(ctx, req.(*ReasoningRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Brain_LatencyHistogram_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LatencyHistogramRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).LatencyHistogram(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_LatencyHistogram_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).LatencyHistogram(ctx, req.(*LatencyHistogramRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Brain_ServiceDesc is the grpc.ServiceDesc for Brain service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -358,6 +466,18 @@ var Brain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Stats",
 			Handler:    _Brain_Stats_Handler,
+		},
+		{
+			MethodName: "Usage",
+			Handler:    _Brain_Usage_Handler,
+		},
+		{
+			MethodName: "Reasoning",
+			Handler:    _Brain_Reasoning_Handler,
+		},
+		{
+			MethodName: "LatencyHistogram",
+			Handler:    _Brain_LatencyHistogram_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

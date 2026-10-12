@@ -13,6 +13,7 @@ import { useOverlay } from '@/ui/useOverlay'
 import { configCategories, type ConfigField } from '@/view/config-catalog'
 import { isLive } from '@/ws/hub'
 import AlertCenter from '@/workspace/AlertCenter.vue'
+import { brainReasoning } from '@/api/brain'
 import { getIntelItem } from '@/api/intel'
 import { getRiskReport } from '@/api/risk'
 import CanvasStage from './CanvasStage.vue'
@@ -276,6 +277,7 @@ const serviceLogs = computed(() => {
 /* ---- S5 详情窗深化（§5.1–5.6）：懒加载的补充数据全部只读，失败如实写进面板 ---- */
 const killHistory = ref<DetailExtra['killHistory']>(null)
 const intelTitles = ref<Record<string, { title: string; source: string; time: string } | null>>({})
+const signalReasoning = ref<Record<string, { found: boolean; excerpt: string; latencyMs: number; model: string; createdAt: string } | null>>({})
 /** 换牌时作废旧请求：用这个令牌比对，晚到的响应直接丢 */
 let detailToken = 0
 
@@ -283,6 +285,7 @@ const detailExtra = computed<DetailExtra>(() => ({
   equityPoints: sparks.day.points(),
   killHistory: killHistory.value,
   intel: intelTitles.value,
+  reasoning: signalReasoning.value,
 }))
 const detailPanel = computed(() => (selectedId.value ? buildDetail(input.value, selectedId.value, nowMs.value, detailExtra.value) : null))
 
@@ -325,14 +328,32 @@ watch(selectedId, (id) => {
   detailToken += 1
   const token = detailToken
   killHistory.value = null
-  const panel = id ? buildDetail(input.value, id, nowMs.value, { intel: intelTitles.value }) : null
+  const panel = id ? buildDetail(input.value, id, nowMs.value, { intel: intelTitles.value, reasoning: signalReasoning.value }) : null
   if (panel?.kind === 'risk') void loadKillHistory(token)
   if (panel?.kind === 'signal') {
     const symbol = id!.startsWith('symbol:') ? id!.slice('symbol:'.length) : ''
     const signal = input.value.signals?.ok ? input.value.signals.items.find((item) => item.symbol === symbol) : undefined
-    if (signal) void loadIntelTitles(intelIdsOf(signal.evidence), token)
+    if (signal) {
+      void loadIntelTitles(intelIdsOf(signal.evidence), token)
+      void loadReasoning(signal.id, token)
+    }
   }
 })
+
+/** S7：单只信号的研判正文摘录（GET /api/brain/reasoning?signal_id=），取不到记 null → 面板写「未接入」 */
+async function loadReasoning(signalId: string, token: number) {
+  if (signalReasoning.value[signalId] !== undefined) return
+  try {
+    const item = await brainReasoning(Number(signalId))
+    if (token !== detailToken) return
+    signalReasoning.value = {
+      ...signalReasoning.value,
+      [signalId]: { found: item.found, excerpt: item.excerpt, latencyMs: item.latencyMs, model: item.model, createdAt: item.createdAt },
+    }
+  } catch {
+    if (token === detailToken) signalReasoning.value = { ...signalReasoning.value, [signalId]: null }
+  }
+}
 
 watch(selectedId, (id) => {
   configMsg.value = ''

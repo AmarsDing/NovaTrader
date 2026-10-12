@@ -211,3 +211,61 @@ func (s *BrainService) Stats(ctx context.Context, _ *v1.StatsRequest) (*v1.Stats
 	}
 	return out, nil
 }
+
+func (s *BrainService) Usage(ctx context.Context, req *v1.UsageRequest) (*v1.UsageReply, error) {
+	sum, err := s.uc.Usage(ctx, req.GetWindow())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.UsageReply{Window: sum.Window, Since: sum.Since.Format(time.RFC3339)}
+	for _, t := range sum.Tiers {
+		out.Tiers = append(out.Tiers, &v1.TierUsage{
+			Tier: t.Tier, Model: t.Model, PromptTokens: t.PromptTokens,
+			CompletionTokens: t.CompletionTokens, TotalTokens: t.TotalTokens,
+			Calls: t.Calls, Failures: t.Failures,
+		})
+	}
+	out.Total = &v1.TierUsage{
+		Tier: sum.Total.Tier, PromptTokens: sum.Total.PromptTokens,
+		CompletionTokens: sum.Total.CompletionTokens, TotalTokens: sum.Total.TotalTokens,
+		Calls: sum.Total.Calls, Failures: sum.Total.Failures,
+	}
+	return out, nil
+}
+
+func (s *BrainService) Reasoning(ctx context.Context, req *v1.ReasoningRequest) (*v1.ReasoningReply, error) {
+	ex, err := s.uc.Reasoning(ctx, int(req.GetSignalId()), int(req.GetDecisionId()))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.ReasoningReply{Found: ex.Found}
+	if !ex.Found {
+		return out, nil
+	}
+	out.DecisionId = int64(ex.DecisionID)
+	out.TraceId = ex.TraceID
+	out.Excerpt = ex.Excerpt
+	out.LatencyMs = int64(ex.LatencyMS)
+	out.Tier = ex.Tier
+	out.Model = ex.Model
+	out.Task = ex.Task
+	if !ex.CreatedAt.IsZero() {
+		out.CreatedAt = ex.CreatedAt.Format(time.RFC3339)
+	}
+	return out, nil
+}
+
+func (s *BrainService) LatencyHistogram(ctx context.Context, req *v1.LatencyHistogramRequest) (*v1.LatencyHistogramReply, error) {
+	h, err := s.uc.LatencyHistogram(ctx, int(req.GetWindowMinutes()))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.LatencyHistogramReply{
+		WindowMinutes: int32(h.WindowMinutes), Total: h.Total,
+		P50Ms: h.P50Ms, P95Ms: h.P95Ms,
+	}
+	for _, b := range h.Buckets {
+		out.Buckets = append(out.Buckets, &v1.LatencyBucket{LeMs: b.LeMs, Count: b.Count})
+	}
+	return out, nil
+}

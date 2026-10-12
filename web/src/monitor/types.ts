@@ -334,5 +334,22 @@ export interface MonitorInput {
     rejects?: { rule: string; name: string; count: number | null }[]
     events?: { kind: string; active: boolean; mode: string; source: string; reason: string; operator: string; at: string }[]
   } | null
+  /** S7：脑服务只读聚合（GET /api/brain/usage + latency-histogram）。拉不到时 ok=false，界面仍写「未接入」。 */
+  brainP1?: {
+    ok: boolean
+    usage?: {
+      window: string
+      since: string
+      total: { promptTokens: number; completionTokens: number; totalTokens: number; calls: number; failures: number }
+      tiers: { tier: string; model: string; promptTokens: number; completionTokens: number; totalTokens: number; calls: number; failures: number }[]
+    } | null
+    latency?: {
+      windowMinutes: number
+      total: number
+      p50Ms: number
+      p95Ms: number
+      buckets: { leMs: number; count: number }[]
+    } | null
+  } | null
   pulses: Pulse[]
 }

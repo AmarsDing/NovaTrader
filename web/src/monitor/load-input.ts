@@ -1,5 +1,5 @@
 import { listAudit } from '@/api/audit'
-import { brainStats, getBriefing } from '@/api/brain'
+import { brainLatencyHistogram, brainStats, brainUsage, getBriefing } from '@/api/brain'
 import { getAdmission, getReport, getShadowStats, listTasks } from '@/api/backtest'
 import { getQuality, listSources } from '@/api/datahub'
 import { hotWords, timeline as fetchTimeline } from '@/api/intel'
@@ -21,7 +21,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
 
-  const [account, positions, orders, fills, risk, report, ops, sources, quality, sentiment, sectors, limits, signals, candidates, briefing, words, stats, tasks, admission, shadow, notices, audit, tape, factors] =
+  const [account, positions, orders, fills, risk, report, ops, sources, quality, sentiment, sectors, limits, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors] =
     await Promise.all([
       quiet(() => getAccount(book)),
       quiet(() => listPositions(book)),
@@ -40,6 +40,8 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       quiet(() => getBriefing('')),
       quiet(() => hotWords()),
       quiet(() => brainStats()),
+      quiet(() => brainUsage('today')),
+      quiet(() => brainLatencyHistogram(60)),
       quiet(() => listTasks()),
       quiet(() => getAdmission()),
       quiet(() => getShadowStats()),
@@ -330,6 +332,30 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
           events: report.events,
         }
       : { ok: false, summary: '' },
+    /* S7：脑服务只读聚合；两个接口任一通了就算 ok，界面按字段出，缺的仍写「未接入」 */
+    brainP1:
+      usage || latency
+        ? {
+            ok: true,
+            usage: usage
+              ? {
+                  window: usage.window,
+                  since: usage.since,
+                  total: usage.total,
+                  tiers: usage.tiers,
+                }
+              : null,
+            latency: latency
+              ? {
+                  windowMinutes: latency.windowMinutes,
+                  total: latency.total,
+                  p50Ms: latency.p50Ms,
+                  p95Ms: latency.p95Ms,
+                  buckets: latency.buckets,
+                }
+              : null,
+          }
+        : { ok: false },
   }
 }
 

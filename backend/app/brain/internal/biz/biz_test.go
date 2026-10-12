@@ -136,6 +136,21 @@ func (p *fakeProgress) Publish(_ context.Context, ev ProgressEvent) {
 	p.mu.Unlock()
 }
 
+// stubLlmCalls 是 LlmCallRepo 的空实现：研判用例不读用量表。
+type stubLlmCalls struct{}
+
+func (stubLlmCalls) Usage(context.Context, time.Time) ([]TierUsage, error) { return nil, nil }
+func (stubLlmCalls) ReasoningByTrace(context.Context, string) (*ReasoningExcerpt, error) {
+	return &ReasoningExcerpt{}, nil
+}
+func (stubLlmCalls) ReasoningByDecision(context.Context, int) (*ReasoningExcerpt, error) {
+	return &ReasoningExcerpt{}, nil
+}
+func (stubLlmCalls) LatencyHistogram(context.Context, time.Time) (*LatencyHistogram, error) {
+	return &LatencyHistogram{}, nil
+}
+func (stubLlmCalls) SignalTrace(context.Context, int) (string, error) { return "", nil }
+
 func risingBars(n int) []Bar {
 	out := make([]Bar, n)
 	start := time.Date(2026, 9, 1, 0, 0, 0, 0, tradecal.Shanghai())
@@ -185,7 +200,7 @@ func newEnv(reply func(llm.Request) (string, error)) *env {
 		briefings: &fakeBriefings{},
 		progress:  &fakeProgress{},
 	}
-	e.uc = NewUsecase(NewSettings(nil), e.llm, e.market, e.decisions, e.briefings, e.progress, log.DefaultLogger)
+	e.uc = NewUsecase(NewSettings(nil), e.llm, e.market, e.decisions, e.briefings, stubLlmCalls{}, e.progress, log.DefaultLogger)
 	e.uc.now = func() time.Time { return time.Date(2026, 10, 8, 10, 0, 0, 0, tradecal.Shanghai()) }
 	return e
 }

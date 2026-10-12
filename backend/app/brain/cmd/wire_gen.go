@@ -31,13 +31,14 @@ func wireApp(brain *conf.Brain, postgres *conf.Postgres, nats *conf.Nats, logger
 	marketRepo := data.NewMarketRepo(client)
 	decisionRepo := data.NewDecisionRepo(client)
 	briefingRepo := data.NewBriefingRepo(client)
+	llmCallRepo := data.NewLlmCallRepo(client)
 	bus, cleanup2, err := data.NewBus(nats)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
 	progress := data.NewProgress(bus, logger)
-	usecase := biz.NewUsecase(settings, gateway, marketRepo, decisionRepo, briefingRepo, progress, logger)
+	usecase := biz.NewUsecase(settings, gateway, marketRepo, decisionRepo, briefingRepo, llmCallRepo, progress, logger)
 	brainService := service.NewBrainService(usecase)
 	httpServer := server.NewHTTPServer(brain, brainService, logger)
 	grpcServer := server.NewGRPCServer(brain, brainService, logger)

@@ -132,3 +132,98 @@ function normalizeTier(raw: RawRecord): TierStats {
     waiting: num(pick(raw, 'waiting')),
   }
 }
+
+/* ---------- 监控驾驶舱 P1：令牌用量 / 推理摘录 / 延迟直方图 ---------- */
+
+export interface BrainTierUsage {
+  tier: string
+  model: string
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  calls: number
+  failures: number
+}
+
+export interface BrainUsage {
+  window: string
+  since: string
+  tiers: BrainTierUsage[]
+  total: BrainTierUsage
+}
+
+function normalizeTierUsage(raw: RawRecord): BrainTierUsage {
+  return {
+    tier: pick<string>(raw, 'tier') || '',
+    model: pick<string>(raw, 'model') || '',
+    promptTokens: num(pick(raw, 'promptTokens', 'prompt_tokens')) ?? 0,
+    completionTokens: num(pick(raw, 'completionTokens', 'completion_tokens')) ?? 0,
+    totalTokens: num(pick(raw, 'totalTokens', 'total_tokens')) ?? 0,
+    calls: num(pick(raw, 'calls')) ?? 0,
+    failures: num(pick(raw, 'failures')) ?? 0,
+  }
+}
+
+export async function brainUsage(window: 'today' | '1h' | '24h' = 'today'): Promise<BrainUsage> {
+  const data = (await request('/api/brain/usage', { query: { window } })) as RawRecord
+  return {
+    window: pick<string>(data, 'window') || window,
+    since: pick<string>(data, 'since') || '',
+    tiers: asList(data, 'tiers').map(normalizeTierUsage),
+    total: normalizeTierUsage((data.total as RawRecord) ?? {}),
+  }
+}
+
+export interface BrainReasoning {
+  found: boolean
+  decisionId: number
+  traceId: string
+  excerpt: string
+  latencyMs: number
+  tier: string
+  model: string
+  task: string
+  createdAt: string
+}
+
+export async function brainReasoning(signalId: number): Promise<BrainReasoning> {
+  const data = (await request('/api/brain/reasoning', { query: { signal_id: signalId } })) as RawRecord
+  return {
+    found: !!data.found,
+    decisionId: num(pick(data, 'decisionId', 'decision_id')) ?? 0,
+    traceId: pick<string>(data, 'traceId', 'trace_id') || '',
+    excerpt: pick<string>(data, 'excerpt') || '',
+    latencyMs: num(pick(data, 'latencyMs', 'latency_ms')) ?? 0,
+    tier: pick<string>(data, 'tier') || '',
+    model: pick<string>(data, 'model') || '',
+    task: pick<string>(data, 'task') || '',
+    createdAt: pick<string>(data, 'createdAt', 'created_at') || '',
+  }
+}
+
+export interface BrainLatencyBucket {
+  leMs: number
+  count: number
+}
+
+export interface BrainLatencyHistogram {
+  windowMinutes: number
+  total: number
+  p50Ms: number
+  p95Ms: number
+  buckets: BrainLatencyBucket[]
+}
+
+export async function brainLatencyHistogram(windowMinutes = 60): Promise<BrainLatencyHistogram> {
+  const data = (await request('/api/brain/latency-histogram', { query: { window_minutes: windowMinutes } })) as RawRecord
+  return {
+    windowMinutes: num(pick(data, 'windowMinutes', 'window_minutes')) ?? windowMinutes,
+    total: num(pick(data, 'total')) ?? 0,
+    p50Ms: num(pick(data, 'p50Ms', 'p50_ms')) ?? 0,
+    p95Ms: num(pick(data, 'p95Ms', 'p95_ms')) ?? 0,
+    buckets: asList(data, 'buckets').map((b) => ({
+      leMs: num(pick(b, 'leMs', 'le_ms')) ?? 0,
+      count: num(pick(b, 'count')) ?? 0,
+    })),
+  }
+}

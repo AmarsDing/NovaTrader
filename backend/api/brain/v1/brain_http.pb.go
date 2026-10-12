@@ -25,7 +25,10 @@ const OperationBrainAsk = "/brain.v1.Brain/Ask"
 const OperationBrainExplain = "/brain.v1.Brain/Explain"
 const OperationBrainGenerateBriefing = "/brain.v1.Brain/GenerateBriefing"
 const OperationBrainGetBriefing = "/brain.v1.Brain/GetBriefing"
+const OperationBrainLatencyHistogram = "/brain.v1.Brain/LatencyHistogram"
+const OperationBrainReasoning = "/brain.v1.Brain/Reasoning"
 const OperationBrainStats = "/brain.v1.Brain/Stats"
+const OperationBrainUsage = "/brain.v1.Brain/Usage"
 
 type BrainHTTPServer interface {
 	// Analyze 单只候选四维研判。模型不可用时返回 rule_score 并标 ai_degraded。
@@ -39,8 +42,14 @@ type BrainHTTPServer interface {
 	// GenerateBriefing 生成或重新生成某日晨报。
 	GenerateBriefing(context.Context, *GenerateBriefingRequest) (*Briefing, error)
 	GetBriefing(context.Context, *GetBriefingRequest) (*Briefing, error)
+	// LatencyHistogram 近 1 小时调用延迟直方图（8 桶）。
+	LatencyHistogram(context.Context, *LatencyHistogramRequest) (*LatencyHistogramReply, error)
+	// Reasoning 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
+	Reasoning(context.Context, *ReasoningRequest) (*ReasoningReply, error)
 	// Stats 各档模型的延迟、排队和 KV 缓存占用。
 	Stats(context.Context, *StatsRequest) (*StatsReply, error)
+	// Usage 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
+	Usage(context.Context, *UsageRequest) (*UsageReply, error)
 }
 
 func RegisterBrainHTTPServer(s *http.Server, srv BrainHTTPServer) {
@@ -52,6 +61,9 @@ func RegisterBrainHTTPServer(s *http.Server, srv BrainHTTPServer) {
 	r.POST("/v1/brain/explain", _Brain_Explain0_HTTP_Handler(srv))
 	r.POST("/v1/brain/ask", _Brain_Ask0_HTTP_Handler(srv))
 	r.GET("/v1/brain/stats", _Brain_Stats0_HTTP_Handler(srv))
+	r.GET("/v1/brain/usage", _Brain_Usage0_HTTP_Handler(srv))
+	r.GET("/v1/brain/reasoning", _Brain_Reasoning0_HTTP_Handler(srv))
+	r.GET("/v1/brain/latency-histogram", _Brain_LatencyHistogram0_HTTP_Handler(srv))
 }
 
 func _Brain_Analyze0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
@@ -205,6 +217,63 @@ func _Brain_Stats0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) erro
 	}
 }
 
+func _Brain_Usage0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UsageRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainUsage)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.Usage(ctx, req.(*UsageRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*UsageReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Brain_Reasoning0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ReasoningRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainReasoning)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.Reasoning(ctx, req.(*ReasoningRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ReasoningReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Brain_LatencyHistogram0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in LatencyHistogramRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainLatencyHistogram)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.LatencyHistogram(ctx, req.(*LatencyHistogramRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*LatencyHistogramReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type BrainHTTPClient interface {
 	// Analyze 单只候选四维研判。模型不可用时返回 rule_score 并标 ai_degraded。
 	Analyze(ctx context.Context, req *AnalyzeRequest, opts ...http.CallOption) (rsp *Analysis, err error)
@@ -217,8 +286,14 @@ type BrainHTTPClient interface {
 	// GenerateBriefing 生成或重新生成某日晨报。
 	GenerateBriefing(ctx context.Context, req *GenerateBriefingRequest, opts ...http.CallOption) (rsp *Briefing, err error)
 	GetBriefing(ctx context.Context, req *GetBriefingRequest, opts ...http.CallOption) (rsp *Briefing, err error)
+	// LatencyHistogram 近 1 小时调用延迟直方图（8 桶）。
+	LatencyHistogram(ctx context.Context, req *LatencyHistogramRequest, opts ...http.CallOption) (rsp *LatencyHistogramReply, err error)
+	// Reasoning 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
+	Reasoning(ctx context.Context, req *ReasoningRequest, opts ...http.CallOption) (rsp *ReasoningReply, err error)
 	// Stats 各档模型的延迟、排队和 KV 缓存占用。
 	Stats(ctx context.Context, req *StatsRequest, opts ...http.CallOption) (rsp *StatsReply, err error)
+	// Usage 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
+	Usage(ctx context.Context, req *UsageRequest, opts ...http.CallOption) (rsp *UsageReply, err error)
 }
 
 type BrainHTTPClientImpl struct {
@@ -312,12 +387,54 @@ func (c *BrainHTTPClientImpl) GetBriefing(ctx context.Context, in *GetBriefingRe
 	return &out, nil
 }
 
+// LatencyHistogram 近 1 小时调用延迟直方图（8 桶）。
+func (c *BrainHTTPClientImpl) LatencyHistogram(ctx context.Context, in *LatencyHistogramRequest, opts ...http.CallOption) (*LatencyHistogramReply, error) {
+	var out LatencyHistogramReply
+	pattern := "/v1/brain/latency-histogram"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBrainLatencyHistogram))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Reasoning 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
+func (c *BrainHTTPClientImpl) Reasoning(ctx context.Context, in *ReasoningRequest, opts ...http.CallOption) (*ReasoningReply, error) {
+	var out ReasoningReply
+	pattern := "/v1/brain/reasoning"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBrainReasoning))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // Stats 各档模型的延迟、排队和 KV 缓存占用。
 func (c *BrainHTTPClientImpl) Stats(ctx context.Context, in *StatsRequest, opts ...http.CallOption) (*StatsReply, error) {
 	var out StatsReply
 	pattern := "/v1/brain/stats"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationBrainStats))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Usage 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
+func (c *BrainHTTPClientImpl) Usage(ctx context.Context, in *UsageRequest, opts ...http.CallOption) (*UsageReply, error) {
+	var out UsageReply
+	pattern := "/v1/brain/usage"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBrainUsage))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

@@ -1671,6 +1671,545 @@ func (x *StatsReply) GetTiers() []*TierStats {
 	return nil
 }
 
+type UsageRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 聚合窗口：today（默认，自然日）/ 1h / 24h
+	Window        string `protobuf:"bytes,1,opt,name=window,proto3" json:"window,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UsageRequest) Reset() {
+	*x = UsageRequest{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UsageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UsageRequest) ProtoMessage() {}
+
+func (x *UsageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UsageRequest.ProtoReflect.Descriptor instead.
+func (*UsageRequest) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *UsageRequest) GetWindow() string {
+	if x != nil {
+		return x.Window
+	}
+	return ""
+}
+
+type TierUsage struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Tier             string                 `protobuf:"bytes,1,opt,name=tier,proto3" json:"tier,omitempty"`
+	Model            string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	PromptTokens     int64                  `protobuf:"varint,3,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens int64                  `protobuf:"varint,4,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	TotalTokens      int64                  `protobuf:"varint,5,opt,name=total_tokens,json=totalTokens,proto3" json:"total_tokens,omitempty"`
+	Calls            int64                  `protobuf:"varint,6,opt,name=calls,proto3" json:"calls,omitempty"`
+	Failures         int64                  `protobuf:"varint,7,opt,name=failures,proto3" json:"failures,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *TierUsage) Reset() {
+	*x = TierUsage{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TierUsage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TierUsage) ProtoMessage() {}
+
+func (x *TierUsage) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TierUsage.ProtoReflect.Descriptor instead.
+func (*TierUsage) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *TierUsage) GetTier() string {
+	if x != nil {
+		return x.Tier
+	}
+	return ""
+}
+
+func (x *TierUsage) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *TierUsage) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *TierUsage) GetCompletionTokens() int64 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *TierUsage) GetTotalTokens() int64 {
+	if x != nil {
+		return x.TotalTokens
+	}
+	return 0
+}
+
+func (x *TierUsage) GetCalls() int64 {
+	if x != nil {
+		return x.Calls
+	}
+	return 0
+}
+
+func (x *TierUsage) GetFailures() int64 {
+	if x != nil {
+		return x.Failures
+	}
+	return 0
+}
+
+type UsageReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Window        string                 `protobuf:"bytes,1,opt,name=window,proto3" json:"window,omitempty"`
+	Since         string                 `protobuf:"bytes,2,opt,name=since,proto3" json:"since,omitempty"` // RFC3339，窗口起点
+	Tiers         []*TierUsage           `protobuf:"bytes,3,rep,name=tiers,proto3" json:"tiers,omitempty"`
+	Total         *TierUsage             `protobuf:"bytes,4,opt,name=total,proto3" json:"total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UsageReply) Reset() {
+	*x = UsageReply{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UsageReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UsageReply) ProtoMessage() {}
+
+func (x *UsageReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UsageReply.ProtoReflect.Descriptor instead.
+func (*UsageReply) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *UsageReply) GetWindow() string {
+	if x != nil {
+		return x.Window
+	}
+	return ""
+}
+
+func (x *UsageReply) GetSince() string {
+	if x != nil {
+		return x.Since
+	}
+	return ""
+}
+
+func (x *UsageReply) GetTiers() []*TierUsage {
+	if x != nil {
+		return x.Tiers
+	}
+	return nil
+}
+
+func (x *UsageReply) GetTotal() *TierUsage {
+	if x != nil {
+		return x.Total
+	}
+	return nil
+}
+
+type ReasoningRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// trade_signals.id；与 decision_id 二选一，signal_id 优先
+	SignalId      int64 `protobuf:"varint,1,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
+	DecisionId    int64 `protobuf:"varint,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReasoningRequest) Reset() {
+	*x = ReasoningRequest{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReasoningRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReasoningRequest) ProtoMessage() {}
+
+func (x *ReasoningRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReasoningRequest.ProtoReflect.Descriptor instead.
+func (*ReasoningRequest) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ReasoningRequest) GetSignalId() int64 {
+	if x != nil {
+		return x.SignalId
+	}
+	return 0
+}
+
+func (x *ReasoningRequest) GetDecisionId() int64 {
+	if x != nil {
+		return x.DecisionId
+	}
+	return 0
+}
+
+type ReasoningReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"` // 没找到对应调用记录时为 false，其余字段为零值
+	DecisionId    int64                  `protobuf:"varint,2,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	TraceId       string                 `protobuf:"bytes,3,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	Excerpt       string                 `protobuf:"bytes,4,opt,name=excerpt,proto3" json:"excerpt,omitempty"` // 输出首段，≤200 字
+	LatencyMs     int64                  `protobuf:"varint,5,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	Tier          string                 `protobuf:"bytes,6,opt,name=tier,proto3" json:"tier,omitempty"`
+	Model         string                 `protobuf:"bytes,7,opt,name=model,proto3" json:"model,omitempty"`
+	Task          string                 `protobuf:"bytes,8,opt,name=task,proto3" json:"task,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // RFC3339
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReasoningReply) Reset() {
+	*x = ReasoningReply{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReasoningReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReasoningReply) ProtoMessage() {}
+
+func (x *ReasoningReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReasoningReply.ProtoReflect.Descriptor instead.
+func (*ReasoningReply) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ReasoningReply) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *ReasoningReply) GetDecisionId() int64 {
+	if x != nil {
+		return x.DecisionId
+	}
+	return 0
+}
+
+func (x *ReasoningReply) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
+	}
+	return ""
+}
+
+func (x *ReasoningReply) GetExcerpt() string {
+	if x != nil {
+		return x.Excerpt
+	}
+	return ""
+}
+
+func (x *ReasoningReply) GetLatencyMs() int64 {
+	if x != nil {
+		return x.LatencyMs
+	}
+	return 0
+}
+
+func (x *ReasoningReply) GetTier() string {
+	if x != nil {
+		return x.Tier
+	}
+	return ""
+}
+
+func (x *ReasoningReply) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ReasoningReply) GetTask() string {
+	if x != nil {
+		return x.Task
+	}
+	return ""
+}
+
+func (x *ReasoningReply) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type LatencyHistogramRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 窗口分钟数，默认 60，上限 24*60
+	WindowMinutes int32 `protobuf:"varint,1,opt,name=window_minutes,json=windowMinutes,proto3" json:"window_minutes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LatencyHistogramRequest) Reset() {
+	*x = LatencyHistogramRequest{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LatencyHistogramRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LatencyHistogramRequest) ProtoMessage() {}
+
+func (x *LatencyHistogramRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LatencyHistogramRequest.ProtoReflect.Descriptor instead.
+func (*LatencyHistogramRequest) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *LatencyHistogramRequest) GetWindowMinutes() int32 {
+	if x != nil {
+		return x.WindowMinutes
+	}
+	return 0
+}
+
+type LatencyBucket struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LeMs          float64                `protobuf:"fixed64,1,opt,name=le_ms,json=leMs,proto3" json:"le_ms,omitempty"` // 桶上沿（毫秒）；最后一桶为 +Inf 语义，回一个很大的数
+	Count         int64                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LatencyBucket) Reset() {
+	*x = LatencyBucket{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LatencyBucket) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LatencyBucket) ProtoMessage() {}
+
+func (x *LatencyBucket) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LatencyBucket.ProtoReflect.Descriptor instead.
+func (*LatencyBucket) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *LatencyBucket) GetLeMs() float64 {
+	if x != nil {
+		return x.LeMs
+	}
+	return 0
+}
+
+func (x *LatencyBucket) GetCount() int64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+type LatencyHistogramReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WindowMinutes int32                  `protobuf:"varint,1,opt,name=window_minutes,json=windowMinutes,proto3" json:"window_minutes,omitempty"`
+	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	P50Ms         float64                `protobuf:"fixed64,3,opt,name=p50_ms,json=p50Ms,proto3" json:"p50_ms,omitempty"`
+	P95Ms         float64                `protobuf:"fixed64,4,opt,name=p95_ms,json=p95Ms,proto3" json:"p95_ms,omitempty"`
+	Buckets       []*LatencyBucket       `protobuf:"bytes,5,rep,name=buckets,proto3" json:"buckets,omitempty"` // 固定 8 桶
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LatencyHistogramReply) Reset() {
+	*x = LatencyHistogramReply{}
+	mi := &file_api_brain_v1_brain_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LatencyHistogramReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LatencyHistogramReply) ProtoMessage() {}
+
+func (x *LatencyHistogramReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_brain_v1_brain_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LatencyHistogramReply.ProtoReflect.Descriptor instead.
+func (*LatencyHistogramReply) Descriptor() ([]byte, []int) {
+	return file_api_brain_v1_brain_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *LatencyHistogramReply) GetWindowMinutes() int32 {
+	if x != nil {
+		return x.WindowMinutes
+	}
+	return 0
+}
+
+func (x *LatencyHistogramReply) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *LatencyHistogramReply) GetP50Ms() float64 {
+	if x != nil {
+		return x.P50Ms
+	}
+	return 0
+}
+
+func (x *LatencyHistogramReply) GetP95Ms() float64 {
+	if x != nil {
+		return x.P95Ms
+	}
+	return 0
+}
+
+func (x *LatencyHistogramReply) GetBuckets() []*LatencyBucket {
+	if x != nil {
+		return x.Buckets
+	}
+	return nil
+}
+
 var File_api_brain_v1_brain_proto protoreflect.FileDescriptor
 
 const file_api_brain_v1_brain_proto_rawDesc = "" +
@@ -1825,7 +2364,51 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\awaiting\x18\r \x01(\x01R\awaiting\"7\n" +
 	"\n" +
 	"StatsReply\x12)\n" +
-	"\x05tiers\x18\x01 \x03(\v2\x13.brain.v1.TierStatsR\x05tiers*o\n" +
+	"\x05tiers\x18\x01 \x03(\v2\x13.brain.v1.TierStatsR\x05tiers\"&\n" +
+	"\fUsageRequest\x12\x16\n" +
+	"\x06window\x18\x01 \x01(\tR\x06window\"\xdc\x01\n" +
+	"\tTierUsage\x12\x12\n" +
+	"\x04tier\x18\x01 \x01(\tR\x04tier\x12\x14\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x12#\n" +
+	"\rprompt_tokens\x18\x03 \x01(\x03R\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\x04 \x01(\x03R\x10completionTokens\x12!\n" +
+	"\ftotal_tokens\x18\x05 \x01(\x03R\vtotalTokens\x12\x14\n" +
+	"\x05calls\x18\x06 \x01(\x03R\x05calls\x12\x1a\n" +
+	"\bfailures\x18\a \x01(\x03R\bfailures\"\x90\x01\n" +
+	"\n" +
+	"UsageReply\x12\x16\n" +
+	"\x06window\x18\x01 \x01(\tR\x06window\x12\x14\n" +
+	"\x05since\x18\x02 \x01(\tR\x05since\x12)\n" +
+	"\x05tiers\x18\x03 \x03(\v2\x13.brain.v1.TierUsageR\x05tiers\x12)\n" +
+	"\x05total\x18\x04 \x01(\v2\x13.brain.v1.TierUsageR\x05total\"P\n" +
+	"\x10ReasoningRequest\x12\x1b\n" +
+	"\tsignal_id\x18\x01 \x01(\x03R\bsignalId\x12\x1f\n" +
+	"\vdecision_id\x18\x02 \x01(\x03R\n" +
+	"decisionId\"\xf8\x01\n" +
+	"\x0eReasoningReply\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x1f\n" +
+	"\vdecision_id\x18\x02 \x01(\x03R\n" +
+	"decisionId\x12\x19\n" +
+	"\btrace_id\x18\x03 \x01(\tR\atraceId\x12\x18\n" +
+	"\aexcerpt\x18\x04 \x01(\tR\aexcerpt\x12\x1d\n" +
+	"\n" +
+	"latency_ms\x18\x05 \x01(\x03R\tlatencyMs\x12\x12\n" +
+	"\x04tier\x18\x06 \x01(\tR\x04tier\x12\x14\n" +
+	"\x05model\x18\a \x01(\tR\x05model\x12\x12\n" +
+	"\x04task\x18\b \x01(\tR\x04task\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\t \x01(\tR\tcreatedAt\"@\n" +
+	"\x17LatencyHistogramRequest\x12%\n" +
+	"\x0ewindow_minutes\x18\x01 \x01(\x05R\rwindowMinutes\":\n" +
+	"\rLatencyBucket\x12\x13\n" +
+	"\x05le_ms\x18\x01 \x01(\x01R\x04leMs\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x03R\x05count\"\xb5\x01\n" +
+	"\x15LatencyHistogramReply\x12%\n" +
+	"\x0ewindow_minutes\x18\x01 \x01(\x05R\rwindowMinutes\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x15\n" +
+	"\x06p50_ms\x18\x03 \x01(\x01R\x05p50Ms\x12\x15\n" +
+	"\x06p95_ms\x18\x04 \x01(\x01R\x05p95Ms\x121\n" +
+	"\abuckets\x18\x05 \x03(\v2\x17.brain.v1.LatencyBucketR\abuckets*o\n" +
 	"\bPriority\x12\x18\n" +
 	"\x14PRIORITY_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rPOSITION_RISK\x10\x01\x12\f\n" +
@@ -1834,7 +2417,7 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\n" +
 	"NEWS_BATCH\x10\x04\x12\n" +
 	"\n" +
-	"\x06REVIEW\x10\x052\x91\x05\n" +
+	"\x06REVIEW\x10\x052\xbe\a\n" +
 	"\x05Brain\x12U\n" +
 	"\aAnalyze\x12\x18.brain.v1.AnalyzeRequest\x1a\x12.brain.v1.Analysis\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/brain/analyze\x12n\n" +
 	"\fAnalyzeBatch\x12\x1d.brain.v1.AnalyzeBatchRequest\x1a\x1b.brain.v1.AnalyzeBatchReply\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/brain/analyze/batch\x12h\n" +
@@ -1842,7 +2425,10 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\vGetBriefing\x12\x1c.brain.v1.GetBriefingRequest\x1a\x12.brain.v1.Briefing\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/brain/briefing/{date}\x12X\n" +
 	"\aExplain\x12\x18.brain.v1.ExplainRequest\x1a\x15.brain.v1.Explanation\"\x1c\x82\xd3\xe4\x93\x02\x16:\x01*\"\x11/v1/brain/explain\x12I\n" +
 	"\x03Ask\x12\x14.brain.v1.AskRequest\x1a\x12.brain.v1.AskReply\"\x18\x82\xd3\xe4\x93\x02\x12:\x01*\"\r/v1/brain/ask\x12N\n" +
-	"\x05Stats\x12\x16.brain.v1.StatsRequest\x1a\x14.brain.v1.StatsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/brain/statsB\x18Z\x16server/api/brain/v1;v1b\x06proto3"
+	"\x05Stats\x12\x16.brain.v1.StatsRequest\x1a\x14.brain.v1.StatsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/brain/stats\x12N\n" +
+	"\x05Usage\x12\x16.brain.v1.UsageRequest\x1a\x14.brain.v1.UsageReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/brain/usage\x12^\n" +
+	"\tReasoning\x12\x1a.brain.v1.ReasoningRequest\x1a\x18.brain.v1.ReasoningReply\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/brain/reasoning\x12{\n" +
+	"\x10LatencyHistogram\x12!.brain.v1.LatencyHistogramRequest\x1a\x1f.brain.v1.LatencyHistogramReply\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/brain/latency-histogramB\x18Z\x16server/api/brain/v1;v1b\x06proto3"
 
 var (
 	file_api_brain_v1_brain_proto_rawDescOnce sync.Once
@@ -1857,7 +2443,7 @@ func file_api_brain_v1_brain_proto_rawDescGZIP() []byte {
 }
 
 var file_api_brain_v1_brain_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_brain_v1_brain_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_api_brain_v1_brain_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_api_brain_v1_brain_proto_goTypes = []any{
 	(Priority)(0),                   // 0: brain.v1.Priority
 	(*Fact)(nil),                    // 1: brain.v1.Fact
@@ -1881,6 +2467,14 @@ var file_api_brain_v1_brain_proto_goTypes = []any{
 	(*StatsRequest)(nil),            // 19: brain.v1.StatsRequest
 	(*TierStats)(nil),               // 20: brain.v1.TierStats
 	(*StatsReply)(nil),              // 21: brain.v1.StatsReply
+	(*UsageRequest)(nil),            // 22: brain.v1.UsageRequest
+	(*TierUsage)(nil),               // 23: brain.v1.TierUsage
+	(*UsageReply)(nil),              // 24: brain.v1.UsageReply
+	(*ReasoningRequest)(nil),        // 25: brain.v1.ReasoningRequest
+	(*ReasoningReply)(nil),          // 26: brain.v1.ReasoningReply
+	(*LatencyHistogramRequest)(nil), // 27: brain.v1.LatencyHistogramRequest
+	(*LatencyBucket)(nil),           // 28: brain.v1.LatencyBucket
+	(*LatencyHistogramReply)(nil),   // 29: brain.v1.LatencyHistogramReply
 }
 var file_api_brain_v1_brain_proto_depIdxs = []int32{
 	0,  // 0: brain.v1.AnalyzeRequest.priority:type_name -> brain.v1.Priority
@@ -1895,25 +2489,34 @@ var file_api_brain_v1_brain_proto_depIdxs = []int32{
 	13, // 9: brain.v1.Briefing.news:type_name -> brain.v1.NewsLine
 	1,  // 10: brain.v1.ExplainRequest.facts:type_name -> brain.v1.Fact
 	20, // 11: brain.v1.StatsReply.tiers:type_name -> brain.v1.TierStats
-	3,  // 12: brain.v1.Brain.Analyze:input_type -> brain.v1.AnalyzeRequest
-	7,  // 13: brain.v1.Brain.AnalyzeBatch:input_type -> brain.v1.AnalyzeBatchRequest
-	9,  // 14: brain.v1.Brain.GenerateBriefing:input_type -> brain.v1.GenerateBriefingRequest
-	10, // 15: brain.v1.Brain.GetBriefing:input_type -> brain.v1.GetBriefingRequest
-	15, // 16: brain.v1.Brain.Explain:input_type -> brain.v1.ExplainRequest
-	17, // 17: brain.v1.Brain.Ask:input_type -> brain.v1.AskRequest
-	19, // 18: brain.v1.Brain.Stats:input_type -> brain.v1.StatsRequest
-	6,  // 19: brain.v1.Brain.Analyze:output_type -> brain.v1.Analysis
-	8,  // 20: brain.v1.Brain.AnalyzeBatch:output_type -> brain.v1.AnalyzeBatchReply
-	14, // 21: brain.v1.Brain.GenerateBriefing:output_type -> brain.v1.Briefing
-	14, // 22: brain.v1.Brain.GetBriefing:output_type -> brain.v1.Briefing
-	16, // 23: brain.v1.Brain.Explain:output_type -> brain.v1.Explanation
-	18, // 24: brain.v1.Brain.Ask:output_type -> brain.v1.AskReply
-	21, // 25: brain.v1.Brain.Stats:output_type -> brain.v1.StatsReply
-	19, // [19:26] is the sub-list for method output_type
-	12, // [12:19] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	23, // 12: brain.v1.UsageReply.tiers:type_name -> brain.v1.TierUsage
+	23, // 13: brain.v1.UsageReply.total:type_name -> brain.v1.TierUsage
+	28, // 14: brain.v1.LatencyHistogramReply.buckets:type_name -> brain.v1.LatencyBucket
+	3,  // 15: brain.v1.Brain.Analyze:input_type -> brain.v1.AnalyzeRequest
+	7,  // 16: brain.v1.Brain.AnalyzeBatch:input_type -> brain.v1.AnalyzeBatchRequest
+	9,  // 17: brain.v1.Brain.GenerateBriefing:input_type -> brain.v1.GenerateBriefingRequest
+	10, // 18: brain.v1.Brain.GetBriefing:input_type -> brain.v1.GetBriefingRequest
+	15, // 19: brain.v1.Brain.Explain:input_type -> brain.v1.ExplainRequest
+	17, // 20: brain.v1.Brain.Ask:input_type -> brain.v1.AskRequest
+	19, // 21: brain.v1.Brain.Stats:input_type -> brain.v1.StatsRequest
+	22, // 22: brain.v1.Brain.Usage:input_type -> brain.v1.UsageRequest
+	25, // 23: brain.v1.Brain.Reasoning:input_type -> brain.v1.ReasoningRequest
+	27, // 24: brain.v1.Brain.LatencyHistogram:input_type -> brain.v1.LatencyHistogramRequest
+	6,  // 25: brain.v1.Brain.Analyze:output_type -> brain.v1.Analysis
+	8,  // 26: brain.v1.Brain.AnalyzeBatch:output_type -> brain.v1.AnalyzeBatchReply
+	14, // 27: brain.v1.Brain.GenerateBriefing:output_type -> brain.v1.Briefing
+	14, // 28: brain.v1.Brain.GetBriefing:output_type -> brain.v1.Briefing
+	16, // 29: brain.v1.Brain.Explain:output_type -> brain.v1.Explanation
+	18, // 30: brain.v1.Brain.Ask:output_type -> brain.v1.AskReply
+	21, // 31: brain.v1.Brain.Stats:output_type -> brain.v1.StatsReply
+	24, // 32: brain.v1.Brain.Usage:output_type -> brain.v1.UsageReply
+	26, // 33: brain.v1.Brain.Reasoning:output_type -> brain.v1.ReasoningReply
+	29, // 34: brain.v1.Brain.LatencyHistogram:output_type -> brain.v1.LatencyHistogramReply
+	25, // [25:35] is the sub-list for method output_type
+	15, // [15:25] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_api_brain_v1_brain_proto_init() }
@@ -1927,7 +2530,7 @@ func file_api_brain_v1_brain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_brain_v1_brain_proto_rawDesc), len(file_api_brain_v1_brain_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   21,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

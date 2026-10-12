@@ -35,6 +35,18 @@ service Brain {
   rpc Stats(StatsRequest) returns (StatsReply) {
     option (google.api.http) = {get: "/v1/brain/stats"};
   }
+  // 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
+  rpc Usage(UsageRequest) returns (UsageReply) {
+    option (google.api.http) = {get: "/v1/brain/usage"};
+  }
+  // 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
+  rpc Reasoning(ReasoningRequest) returns (ReasoningReply) {
+    option (google.api.http) = {get: "/v1/brain/reasoning"};
+  }
+  // 近 1 小时调用延迟直方图（8 桶）。
+  rpc LatencyHistogram(LatencyHistogramRequest) returns (LatencyHistogramReply) {
+    option (google.api.http) = {get: "/v1/brain/latency-histogram"};
+  }
 }
 
 enum Priority {
@@ -213,4 +225,64 @@ message TierStats {
 
 message StatsReply {
   repeated TierStats tiers = 1;
+}
+
+/* ---------- 监控驾驶舱 P1 只读聚合（llm_call_log） ---------- */
+
+message UsageRequest {
+  // 聚合窗口：today（默认，自然日）/ 1h / 24h
+  string window = 1;
+}
+
+message TierUsage {
+  string tier = 1;
+  string model = 2;
+  int64 prompt_tokens = 3;
+  int64 completion_tokens = 4;
+  int64 total_tokens = 5;
+  int64 calls = 6;
+  int64 failures = 7;
+}
+
+message UsageReply {
+  string window = 1;
+  string since = 2; // RFC3339，窗口起点
+  repeated TierUsage tiers = 3;
+  TierUsage total = 4;
+}
+
+message ReasoningRequest {
+  // trade_signals.id；与 decision_id 二选一，signal_id 优先
+  int64 signal_id = 1;
+  int64 decision_id = 2;
+}
+
+message ReasoningReply {
+  bool found = 1;           // 没找到对应调用记录时为 false，其余字段为零值
+  int64 decision_id = 2;
+  string trace_id = 3;
+  string excerpt = 4;       // 输出首段，≤200 字
+  int64 latency_ms = 5;
+  string tier = 6;
+  string model = 7;
+  string task = 8;
+  string created_at = 9;    // RFC3339
+}
+
+message LatencyHistogramRequest {
+  // 窗口分钟数，默认 60，上限 24*60
+  int32 window_minutes = 1;
+}
+
+message LatencyBucket {
+  double le_ms = 1;   // 桶上沿（毫秒）；最后一桶为 +Inf 语义，回一个很大的数
+  int64 count = 2;
+}
+
+message LatencyHistogramReply {
+  int32 window_minutes = 1;
+  int64 total = 2;
+  double p50_ms = 3;
+  double p95_ms = 4;
+  repeated LatencyBucket buckets = 5; // 固定 8 桶
 }

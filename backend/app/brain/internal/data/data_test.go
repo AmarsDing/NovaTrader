@@ -164,7 +164,7 @@ func TestBrainAgainstPostgres(t *testing.T) {
 		llm.Large: {BaseURL: srv.URL + "/v1", Model: "big"},
 		llm.Small: {BaseURL: srv.URL + "/v1", Model: "small"},
 	}, llm.EntRecorder{Client: client})
-	uc := biz.NewUsecase(biz.NewSettings(nil), gw, NewMarketRepo(client), NewDecisionRepo(client), NewBriefingRepo(client), noProgress{}, logger)
+	uc := biz.NewUsecase(biz.NewSettings(nil), gw, NewMarketRepo(client), NewDecisionRepo(client), NewBriefingRepo(client), NewLlmCallRepo(client), noProgress{}, logger)
 
 	res, err := uc.Analyze(ctx, biz.AnalyzeInput{Symbol: testSymbol, RuleScore: 55, Phase: "WARM"})
 	if err != nil {

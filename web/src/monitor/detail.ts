@@ -81,6 +81,8 @@ export interface DetailExtra {
   killHistory?: { date: string; ok: boolean; events: RiskEvent[] }[] | null
   /** 证据链 N:123 的情报标题（GET /api/intel/items/{id}），取不到为 null */
   intel?: Record<string, { title: string; source: string; time: string } | null>
+  /** S7：单只信号的研判正文摘录（GET /api/brain/reasoning?signal_id=），按 signal.id 键；取不到为 null */
+  reasoning?: Record<string, { found: boolean; excerpt: string; latencyMs: number; model: string; createdAt: string } | null>
 }
 
 export interface RiskEvent {
@@ -530,6 +532,16 @@ function signalPanel(input: MonitorInput, id: string, now: number, extra: Detail
     })
   }
 
+  /* S7：研判正文摘录；extra.reasoning 按 signal.id 给，没有则仍写「未接入」 */
+  const reasoning = focus ? extra.reasoning?.[focus.id] : undefined
+  const reasoningRows: DetailRow[] = reasoning
+    ? reasoning.found
+      ? [
+          { key: 'reason', label: '研判正文（首段）', value: reasoning.excerpt || '空', note: `${reasoning.model || '模型未返回'}，耗时 ${reasoning.latencyMs} ms，${reasoning.createdAt || ''}` },
+        ]
+      : [{ key: 'reason', label: '研判正文', value: '该信号没有挂到成功的模型调用', note: 'trace_id 为空或 llm_call_log 无 ok 行' }]
+    : [{ key: 'reason', label: '研判正文', value: GAP_REASONING, tone: 'warn' }]
+
   return {
     kind: 'signal',
     sections: [
@@ -537,7 +549,7 @@ function signalPanel(input: MonitorInput, id: string, now: number, extra: Detail
       drill,
       radarSection,
       evidence,
-      { key: 'reason', title: '推理摘录', rows: [{ key: 'reason', label: '研判正文', value: GAP_REASONING, tone: 'warn' }], foot: '接口未通前绝不编造研判内容（§5.2）。' },
+      { key: 'reason', title: '推理摘录', rows: reasoningRows, foot: reasoning ? undefined : '接口未通前绝不编造研判内容（§5.2）。' },
       { key: 'compare', title: '规则分对比', rows: compareRows },
       { key: 'history', title: '同类历史', rows: [{ key: 'hist', label: '同策略模板近 20 次（胜率/平均盈亏/最大单笔亏损）', value: GAP_PERF, tone: 'warn' }] },
     ],
@@ -875,18 +887,71 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
     ],
   }
 
+  /* S7：延迟直方图（真实 8 桶）与令牌用量（按档 + 合计）；拉不到仍写「未接入」 */
+  const brainP1 = input.brainP1?.ok ? input.brainP1 : null
+  const latency = brainP1?.latency ?? null
+  const usage = brainP1?.usage ?? null
+
+  const latencyRows: DetailRow[] = latency
+    ? [
+        { key: 'win', label: '窗口', value: `近 ${latency.windowMinutes} 分钟，${latency.total} 次成功调用` },
+        { key: 'p50', label: 'P50', value: `${Math.round(latency.p50Ms)} ms` },
+        { key: 'p95', label: 'P95', value: `${Math.round(latency.p95Ms)} ms` },
+      ]
+    : [{ key: 'hist', label: '近 1 小时 8 桶（桶宽按 P95 自适应）', value: GAP_LATENCY_HIST, tone: 'warn' }]
+  const latencySection: DetailSection = {
+    key: 'latency',
+    title: '延迟直方图',
+    bars: latency && latency.total > 0
+      ? latency.buckets.map((b) => ({ label: `≤${Math.round(b.leMs)}ms`, count: b.count }))
+      : undefined,
+    rows: latencyRows,
+  }
+
+  const tokenRows: DetailRow[] = usage
+    ? usage.tiers.map((t) => ({
+        key: `u-${t.tier}`,
+        label: `${t.tier}${t.model ? `（${t.model}）` : ''}`,
+        value: `${t.promptTokens} / ${t.completionTokens} / ${t.totalTokens}`,
+        note: `prompt / completion / 合计，窗口 ${usage.window}，调用 ${t.calls} 次失败 ${t.failures} 次`,
+      }))
+    : []
+  const tokenSection: DetailSection = {
+    key: 'token',
+    title: '令牌',
+    rows: usage
+      ? [
+          ...tokenRows,
+          {
+            key: 'u-total',
+            label: '合计',
+            value: `${usage.total.promptTokens} / ${usage.total.completionTokens} / ${usage.total.totalTokens}`,
+            note: `窗口起点 ${usage.since || '未返回'}`,
+          },
+        ]
+      : [{ key: 'token', label: 'prompt / completion / 合计', value: GAP_TOKEN, tone: 'warn' }],
+    foot: usage ? undefined : '接口未做前固定写「令牌未接入」：不写 0，也不用调用次数折算金额（§5.5）。',
+  }
+
   return {
     kind: 'model',
     sections: [
       tierSection,
-      { key: 'latency', title: '延迟直方图', rows: [{ key: 'hist', label: '近 1 小时 8 桶（桶宽按 P95 自适应）', value: GAP_LATENCY_HIST, tone: 'warn' }] },
+      latencySection,
       { key: 'failures', title: '失败原因 Top5', rows: [{ key: 'top', label: '失败原因分组', value: '未接入', note: 'BrainStats 只有失败计数，没有原因分组（需要 brain 补 failure_reason 统计）' }] },
-      { key: 'token', title: '令牌', rows: [{ key: 'token', label: 'prompt / completion / 合计', value: GAP_TOKEN, tone: 'warn' }], foot: '接口未做前固定写「令牌未接入」：不写 0，也不用调用次数折算金额（§5.5）。' },
+      tokenSection,
       {
         key: 'throughput',
         title: '吞吐',
         rows: [
-          { key: 'tps', label: 'tokens/s（输入/输出分开）', value: GAP_TOKEN, tone: 'warn', note: '需要令牌计数与时间窗' },
+          usage && usage.total.calls > 0
+            ? {
+                key: 'tps',
+                label: 'tokens/s（输出）',
+                value: tokensPerSecond(usage),
+                note: `按窗口 ${usage.window} 平均`,
+              }
+            : { key: 'tps', label: 'tokens/s（输入/输出分开）', value: GAP_TOKEN, tone: 'warn', note: '需要令牌计数与时间窗' },
           { key: 'gpu', label: 'GPU 利用率 / 温度 / 功耗', value: GAP_GPU, tone: 'warn' },
           { key: 'vram', label: '显存', value: gpu ? gpu.text : '未返回', note: gpu ? `占用 ${gpu.pct}%（ops 资源节点文本解析）` : 'ops 资源节点没有显存信息' },
         ],
@@ -895,6 +960,15 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
       selfSection,
     ],
   }
+}
+
+/** 窗口内平均输出 tokens/s；没有 usage 或窗口为 0 时返回 null */
+function tokensPerSecond(usage: { window: string; since: string; total: { completionTokens: number } }): string {
+  const since = Date.parse(usage.since)
+  if (!Number.isFinite(since)) return '未返回'
+  const seconds = (Date.now() - since) / 1000
+  if (seconds <= 0) return '未返回'
+  return `${(usage.total.completionTokens / seconds).toFixed(1)} tok/s`
 }
 
 /** 评分分布 0–100 十桶 */

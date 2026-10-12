@@ -22,7 +22,7 @@ import (
 
 var ProviderSet = wire.NewSet(
 	NewEntClient, scheduler.NewEntStore, outbox.NewDispatcher, NewBus, NewGateway,
-	NewMarketRepo, NewDecisionRepo, NewBriefingRepo, NewProgress,
+	NewMarketRepo, NewDecisionRepo, NewBriefingRepo, NewProgress, NewLlmCallRepo,
 	wire.Bind(new(biz.LLM), new(*llm.Gateway)),
 )
 
