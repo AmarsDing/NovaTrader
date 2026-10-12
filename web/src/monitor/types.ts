@@ -85,6 +85,8 @@ export interface SceneGraph {
   /** 检视栏用。无焦点时为空串 */
   focusId: string
   truncated: boolean
+  /** S3 漏斗光带（§4.4.2）：六层数字与侧漏，scene-model 构建时算好 */
+  funnel?: import('./funnel').FunnelModel
 }
 
 export interface MonitorAccount {
@@ -190,7 +192,10 @@ export interface MonitorInput {
   } | null
   orders?: { ok: boolean; items: { id: string; symbol: string; side: string; status: string; price: number | null; volume: number | null; reason: string }[] } | null
   fills?: { ok: boolean; items: { id: string; symbol: string; side: string; price: number | null; qty: number | null; time: string }[] } | null
-  candidates?: { ok: boolean; items: { symbol: string; name: string; strategy: string; missReason: string; finalScore: number | null }[] } | null
+  candidates?: {
+    ok: boolean
+    items: { symbol: string; name: string; strategy: string; stage: string; missReason: string; ruleScore: number | null; aiScore: number | null; finalScore: number | null }[]
+  } | null
   quality?: { ok: boolean; items: { domain: string; tradeDate: string; missing: number | null; stale: number | null; detail: string }[] } | null
   admission?: { ok: boolean; ready: boolean; tradingDays: number | null; requiredDays: number | null; items: { label: string; status: string; detail: string }[] } | null
   shadow?: { ok: boolean; items: { name: string; live: number | null; shadow: number | null }[] } | null

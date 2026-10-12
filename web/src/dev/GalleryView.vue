@@ -227,6 +227,35 @@ const stageGraph = buildScene(
     },
     account: { ok: true, book: 'SIM', equity: 1284902.44, cash: 412205.1, dayPnl: 18204.1, positions: [{ symbol: '600519', quantity: 100, avgCost: 1680, lastPrice: 1683.5 }] },
     risk: { ok: true, mode: 'LIVE', killActive: false, killReason: '', buysToday: 2, marketBreaker: '' },
+    /* S3 漏斗光带静态示例数据：初筛 12 → AI≥70 5 → 风控通过 2 → 已下单 2 → 成交 1，
+     * 侧漏两组（没进模型前 30 ×4 + 没有行情 ×3；综合分低于 75 ×3）+ 未成交 ×1；
+     * 全市场层没有只读出口，恒画「未返回」虚线段。 */
+    candidates: {
+      ok: true,
+      items: [
+        { symbol: '600519', name: '贵州茅台', strategy: 'limit_up', stage: 'selected', missReason: '', ruleScore: 86, aiScore: 91, finalScore: 88 },
+        { symbol: '000001', name: '平安银行', strategy: 'limit_up', stage: 'selected', missReason: '', ruleScore: 80, aiScore: 88, finalScore: 84 },
+        { symbol: '300750', name: '宁德时代', strategy: 'limit_up', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 72, aiScore: 81, finalScore: 76 },
+        { symbol: '601318', name: '中国平安', strategy: 'limit_up', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 70, aiScore: 74, finalScore: 71 },
+        { symbol: '002466', name: '天齐锂业', strategy: 'limit_up', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 68, aiScore: 72, finalScore: 69 },
+        { symbol: '600036', name: '招商银行', strategy: 'limit_up', stage: 'ranked', missReason: 'not_in_ai_top', ruleScore: 66, aiScore: null, finalScore: null },
+        { symbol: '601899', name: '紫金矿业', strategy: 'limit_up', stage: 'ranked', missReason: 'not_in_ai_top', ruleScore: 64, aiScore: null, finalScore: null },
+        { symbol: '000628', name: '高新发展', strategy: 'limit_up', stage: 'ranked', missReason: 'not_in_ai_top', ruleScore: 62, aiScore: null, finalScore: null },
+        { symbol: '600900', name: '长江电力', strategy: 'limit_up', stage: 'ranked', missReason: 'not_in_ai_top', ruleScore: 61, aiScore: null, finalScore: null },
+        { symbol: '601088', name: '中国神华', strategy: 'limit_up', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+        { symbol: '600028', name: '中国石化', strategy: 'limit_up', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+        { symbol: '601857', name: '中国石油', strategy: 'limit_up', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+      ],
+    },
+    orders: {
+      ok: true,
+      items: [
+        { id: 'go1', symbol: '600519', side: 'buy', status: 'FILLED', price: 1682, volume: 100, reason: 'signal:s1' },
+        { id: 'go2', symbol: '000001', side: 'buy', status: 'PARTIAL', price: 11.2, volume: 500, reason: 'signal:s2' },
+        { id: 'go3', symbol: '600519', side: 'sell', status: 'FILLED', price: 1690, volume: 100, reason: 'take_profit' },
+      ],
+    },
+    fills: { ok: true, items: [{ id: 'gf1', symbol: '600519', side: 'buy', price: 1682, qty: 100, time: '' }] },
     brainStats: {
       ok: true,
       tiers: [
@@ -682,10 +711,15 @@ const demoSparks: Record<string, (number | null)[]> = {
     </section>
 
     <section class="g-sec">
-      <h2>监控画布（CanvasStage · 静态场景，可拖拽/缩放，已贴 S2 角标与活动条）</h2>
+      <h2>监控画布（CanvasStage · 静态场景，可拖拽/缩放，已贴 S2 角标活动条 + S3 漏斗光带）</h2>
       <div class="g-stage">
         <CanvasStage :graph="stageGraphS2" :selected-id="stageSelected" :hot-ids="[]" :paused="false" @select="stageSelected = $event" />
       </div>
+      <p class="g-activity__note">
+        S3 漏斗光带：六层「全市场→初筛→AI≥70→风控通过→已下单→成交」横贯 02/03 之间，主干厚 = sqrt(数量) 12..96px，青色渐变 α0.18→0.30（浅色主题统一 0.12）。
+        全市场层没有只读出口 → 画 --nt-text-3 α0.15 虚线段标「未返回」，不 0 填充不跳过；侧漏 --nt-warn α0.25 虚线 [3,3] 汇入「漏选」牌，标签是该层最大过滤原因。
+        点光带 = 选中扫描牌（详情窗里有同一组六层数字，含 DOM 等价读出）。旧主干束线（扫描→四维→综合→信号）压暗为兜底。
+      </p>
     </section>
 
     <NtModal v-model:open="modalOpen" title="示例 Modal" width="420px">

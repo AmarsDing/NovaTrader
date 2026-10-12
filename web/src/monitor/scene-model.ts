@@ -1,4 +1,5 @@
-import { amount, intText, phaseName, ratioPct, signed } from '@/utils/format'
+import { amount, intText, missLabel, phaseName, ratioPct, signed } from '@/utils/format'
+import { buildFunnel, funnelCountText, funnelRate } from './funnel'
 import type {
   ChildCard,
   Identifier,
@@ -69,6 +70,7 @@ export function buildScene(input: MonitorInput, now: number): SceneGraph {
     terminals: buildTerminals(input, signals),
     focusId: '',
     truncated: sourceCut || serviceCut,
+    funnel: buildFunnel(input, missLabel),
   }
 }
 
@@ -752,13 +754,25 @@ function articleChildren(input: MonitorInput, id: string): ChildCard[] {
 
 function expertCards(input: MonitorInput, id: string): ChildCard[] {
   if (id === 'post:scan') {
-    const limits = input.limits?.ok ? String(input.limits.rows.length) : '未返回'
+    const funnel = buildFunnel(input, missLabel)
+    /* 六层数字卡（与画布光带同源，DOM 侧等价物），加输入与正文共 8 张 */
+    const layers = funnel.layers.map((layer, index) => {
+      const rate = funnelRate(layer.count, funnel.layers[index - 1]?.count ?? null)
+      const leak = funnel.leaks.find((item) => item.at === index)
+      const bits = [rate ? `转化 ${rate}` : '', leak ? `侧漏 ${leak.count} · ${leak.label}` : ''].filter(Boolean)
+      return {
+        id: `scan:layer:${layer.key}`,
+        title: layer.name,
+        face: funnelCountText(layer.count),
+        sub: bits.join(' · '),
+        tone: 'flat' as const,
+      }
+    })
     const phase = input.sentiment?.ok ? phaseText(input.sentiment.phase, '未返回') : '未返回'
     return [
       { id: 'scan:in', title: '输入', face: phase, sub: '', tone: 'flat' },
-      { id: 'scan:out', title: '输出', face: limits, sub: '涨停', tone: 'flat' },
-      { id: 'scan:act', title: '动作', face: input.signals?.ok ? String(input.signals.items.length) : '未返回', sub: '漏斗留下', tone: 'flat' },
-      { id: 'scan:body', title: '正文', face: '研判正文未接入', sub: '', tone: 'flat' },
+      ...layers,
+      { id: 'scan:body', title: '正文', face: '研判正文未接入', sub: funnel.note, tone: 'flat' },
     ]
   }
   const dim = id === 'dim:synth' ? { title: '综合', keys: [] as string[] } : DIM_LANES.find((item) => item.id === id)

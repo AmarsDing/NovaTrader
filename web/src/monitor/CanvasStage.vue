@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { NodeStatus, Pulse, SceneGraph } from './types'
 import { ACTIVITY_OFF_ALPHA, ACTIVITY_ON_ALPHA } from './activity'
+import { funnelCountText } from './funnel'
 import {
   applyOffsets,
   buildStage,
@@ -52,6 +53,8 @@ const emit = defineEmits<{ select: [id: string] }>()
 const host = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const hoverId = ref('')
+/** S3：指针悬停在漏斗光带上（点它 = 选中扫描牌，详情窗里有同一组六层数字） */
+const funnelHover = ref(false)
 const failed = ref(false)
 const dragState = ref<{ id: string; moved: boolean } | null>(null)
 
@@ -69,7 +72,7 @@ let frame = 0
 let stopped = false
 let observer: ResizeObserver | null = null
 let themeObserver: MutationObserver | null = null
-let pointer: { x: number; y: number; worldX: number; worldY: number; mode: '' | 'pan' | 'node'; id: string; startX: number; startY: number; baseX: number; baseY: number } = {
+let pointer: { x: number; y: number; worldX: number; worldY: number; mode: '' | 'pan' | 'node' | 'band'; id: string; startX: number; startY: number; baseX: number; baseY: number } = {
   x: 0,
   y: 0,
   worldX: 0,
@@ -292,12 +295,14 @@ function onPointerDown(event: PointerEvent) {
   const point = localPoint(event)
   const world = screenToWorld(view, point)
   const id = hitNode(nodes, world)
+  /* S3：光带也是可点目标（选中扫描牌），但不可拖动 */
+  const onBand = !id && inRect(world, layout.funnel?.hit ?? null)
   pointer = {
     x: point.x,
     y: point.y,
     worldX: world.x,
     worldY: world.y,
-    mode: id ? 'node' : 'pan',
+    mode: id ? 'node' : onBand ? 'band' : 'pan',
     id,
     startX: point.x,
     startY: point.y,
@@ -307,16 +312,23 @@ function onPointerDown(event: PointerEvent) {
   if (id) dragState.value = { id, moved: false }
 }
 
+function inRect(point: StagePoint, rect: StageRect | null): boolean {
+  if (!rect) return false
+  return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h
+}
+
 function onPointerMove(event: PointerEvent) {
   const point = localPoint(event)
   const world = screenToWorld(view, point)
   if (!pointer.mode) {
     hoverId.value = hitNode(nodes, world)
+    funnelHover.value = !hoverId.value && inRect(world, layout.funnel?.hit ?? null)
     return
   }
   const dx = point.x - pointer.startX
   const dy = point.y - pointer.startY
-  if (pointer.mode === 'pan') {
+  if (pointer.mode === 'pan' || pointer.mode === 'band') {
+    /* band 模式也允许拖出平移：按下后移动超过阈值就转成平移，松手不触发选中 */
     view = { ...view, x: pointer.baseX + dx, y: pointer.baseY + dy }
     return
   }
@@ -336,13 +348,15 @@ function onPointerUp(event: PointerEvent) {
   const moved = Math.abs(point.x - pointer.startX) + Math.abs(point.y - pointer.startY)
   const id = pointer.id
   const wasNodeClick = pointer.mode === 'node' && moved <= 4
-  const wasEmptyClick = moved <= 4 && !id
+  const wasBandClick = pointer.mode === 'band' && moved <= 4
+  const wasEmptyClick = moved <= 4 && !id && pointer.mode === 'pan'
   const draggedNode = pointer.mode === 'node' && moved > 4
   pointer.mode = ''
   pointer.id = ''
   dragState.value = null
   if (draggedNode) persistOffsets()
   if (wasNodeClick && id) emit('select', id)
+  else if (wasBandClick && layout.funnel) emit('select', layout.funnel.selectId)
   else if (wasEmptyClick) emit('select', '')
 }
 
@@ -367,6 +381,7 @@ function draw() {
   drawGrid(context)
   drawColumns(context)
   drawEdges(context)
+  drawFunnel(context)
   drawAmbient(context)
   drawPulses(context)
   drawNodes(context)
@@ -422,16 +437,17 @@ function drawEdges(context: CanvasRenderingContext2D) {
   for (const edge of layout.edges) {
     const curves = edgeCurves.get(edge.id)
     if (!curves) continue
-    const lit = edgeLit(edge)
+    /* S3：主干被漏斗光带取代时旧束线压暗兜底（§4.4.3），不参与选中提亮 */
+    const lit = edge.fallback ? false : edgeLit(edge)
     const color = theme.domain[edge.domain] || theme.fiber
     /* 时段带加粗：竞价把「数据源→扫描」抬亮，尾盘把「风控→账户」抬亮。
      * 只加线宽和透明度，不加 shadowBlur——glow 预算留给异常与高分信号。 */
-    const boost = edge.thick === true
+    const boost = edge.thick === true && !edge.fallback
     curves.forEach((curve, index) => {
       context.beginPath()
       context.moveTo(curve[0], curve[1])
       context.bezierCurveTo(curve[2], curve[3], curve[4], curve[5], curve[6], curve[7])
-      const alpha = lit ? (index === 0 ? 0.34 : 0.2) : 0.07
+      const alpha = edge.fallback ? 0.05 : lit ? (index === 0 ? 0.34 : 0.2) : 0.07
       context.strokeStyle = withAlpha(color, boost ? Math.min(0.85, alpha + 0.28) : alpha)
       context.lineWidth = boost ? (index === 0 ? 2.6 : 1.8) : index === 0 ? 1.3 : 0.9
       context.stroke()
@@ -439,10 +455,117 @@ function drawEdges(context: CanvasRenderingContext2D) {
   }
 }
 
+/* ---------------- S3 漏斗光带渲染（方案 §4.4.2） ---------------- */
+
+function isLightTheme(): boolean {
+  if (typeof document === 'undefined') return false
+  const attr = document.documentElement.getAttribute('data-theme')
+  if (attr) return attr === 'light'
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: light)').matches === true
+}
+
+function strokePolyline(context: CanvasRenderingContext2D, points: StagePoint[]) {
+  if (points.length < 2) return
+  context.beginPath()
+  context.moveTo(points[0].x, points[0].y)
+  for (let index = 1; index < points.length; index += 1) context.lineTo(points[index].x, points[index].y)
+  context.stroke()
+}
+
+function drawFunnel(context: CanvasRenderingContext2D) {
+  const funnel = layout.funnel
+  if (!funnel) return
+  const light = isLightTheme()
+  const accent = theme.fiberActive
+  const on = props.selectedId === funnel.selectId
+
+  /* 主干六段：青色渐变 alpha 0.18→0.30（浅色主题统一压到 0.12，§9/§11）；
+   * 缺失层画 --nt-text-3 alpha 0.15 虚线段并标「未返回」，不 0 填充不跳过 */
+  funnel.segments.forEach((segment, index) => {
+    const { rect } = segment
+    if (segment.missing) {
+      context.save()
+      context.setLineDash([4, 3])
+      context.fillStyle = withAlpha(theme.text3, 0.05)
+      context.fillRect(rect.x, rect.y, rect.w, rect.h)
+      context.strokeStyle = withAlpha(theme.text3, 0.15)
+      context.lineWidth = 1
+      context.strokeRect(rect.x, rect.y, rect.w, rect.h)
+      context.restore()
+      return
+    }
+    const spread = funnel.segments.length > 1 ? index / (funnel.segments.length - 1) : 0
+    const grad = context.createLinearGradient(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h)
+    if (light) {
+      grad.addColorStop(0, withAlpha(accent, 0.12))
+      grad.addColorStop(1, withAlpha(accent, 0.12))
+    } else {
+      grad.addColorStop(0, withAlpha(accent, 0.18 + spread * 0.04))
+      grad.addColorStop(1, withAlpha(accent, 0.26 + spread * 0.04))
+    }
+    context.beginPath()
+    roundedRect(context, rect.x, rect.y, rect.w, rect.h, 3)
+    context.fillStyle = grad
+    context.fill()
+    context.strokeStyle = withAlpha(accent, light ? 0.3 : on ? 0.6 : 0.4)
+    context.lineWidth = 1
+    context.stroke()
+  })
+
+  /* 层标签：段内计数（mono 10px），段下「名称 · 转化率」；交界处读法 = 数量 / 转化率 */
+  context.save()
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  for (const segment of funnel.segments) {
+    const cx = segment.rect.x + segment.rect.w / 2
+    if (segment.missing) {
+      context.font = `9px ${theme.fontMono}`
+      context.fillStyle = theme.text3
+      context.fillText('未返回', cx, segment.rect.y + segment.rect.h / 2)
+    } else {
+      context.font = `10px ${theme.fontMono}`
+      context.fillStyle = theme.text1
+      context.fillText(funnelCountText(segment.count), cx, segment.rect.y + segment.rect.h / 2)
+    }
+    const sub = [segment.name, segment.rate].filter(Boolean).join(' · ')
+    if (sub) {
+      context.font = `9px ${theme.fontSans}`
+      context.fillStyle = theme.text2
+      context.fillText(clipText(context, sub, segment.rect.w + 8), cx, segment.rect.y + segment.rect.h + 11)
+    }
+  }
+  context.restore()
+
+  /* 侧漏：--nt-warn alpha 0.25 虚线 [3,3]，从交界下折汇入「漏选」牌；标签 = 只数 + 最大过滤原因 */
+  const warn = theme.domain.miss
+  context.save()
+  context.setLineDash([3, 3])
+  context.strokeStyle = withAlpha(warn, 0.25)
+  context.lineWidth = 1
+  for (const leak of funnel.leaks) strokePolyline(context, leak.stub)
+  if (funnel.collector) strokePolyline(context, funnel.collector)
+  context.restore()
+  context.font = `9px ${theme.fontMono}`
+  context.textBaseline = 'alphabetic'
+  context.fillStyle = withAlpha(warn, 0.75)
+  for (const leak of funnel.leaks) {
+    const joint = leak.stub[1]
+    context.fillText(`${funnelCountText(leak.count)} ${leak.label}`, joint.x + 5, joint.y - 3)
+  }
+
+  /* 口径提醒（候选上限 200 之类）写在光带左下，让开侧漏横线区 */
+  if (funnel.note) {
+    context.font = `9px ${theme.fontSans}`
+    context.fillStyle = theme.text3
+    context.fillText(funnel.note, funnel.band.x, funnel.band.y + funnel.band.h + 30 + funnel.leaks.length * 8)
+  }
+}
+
 function drawAmbient(context: CanvasRenderingContext2D) {
   if (props.calm) return
   const now = performance.now()
   for (const edge of layout.edges) {
+    if (edge.fallback) continue
     if (!edgeLit(edge)) continue
     const curves = edgeCurves.get(edge.id)
     if (!curves || curves.length === 0) continue
@@ -673,7 +796,7 @@ defineExpose({ resetLayout })
 
 <template>
   <div ref="host" class="nt-stage" :class="{ 'is-dragging': dragState != null }">
-    <canvas v-show="!failed" ref="canvas" :style="{ cursor: dragState ? 'grabbing' : hoverId ? 'pointer' : 'grab' }"></canvas>
+    <canvas v-show="!failed" ref="canvas" :style="{ cursor: dragState ? 'grabbing' : hoverId || funnelHover ? 'pointer' : 'grab' }"></canvas>
     <div v-if="failed" class="nt-stage__failed">画布不可用，监控链路改读侧栏与终端带</div>
   </div>
 </template>

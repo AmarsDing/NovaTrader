@@ -72,9 +72,9 @@ function fixture(): MonitorInput {
   input.candidates = {
     ok: true,
     items: [
-      { symbol: 'SZ300001', name: '漏选甲', strategy: 's', missReason: '评分 84 未过线', finalScore: 84 },
-      { symbol: 'SZ300002', name: '漏选乙', strategy: 's', missReason: '评分 84 未过线', finalScore: 84 },
-      { symbol: 'SZ300003', name: '漏选丙', strategy: 's', missReason: '涨停后才入选', finalScore: 88 },
+      { symbol: 'SZ300001', name: '漏选甲', strategy: 's', stage: 'ai_scored', missReason: '评分 84 未过线', ruleScore: null, aiScore: null, finalScore: 84 },
+      { symbol: 'SZ300002', name: '漏选乙', strategy: 's', stage: 'ai_scored', missReason: '评分 84 未过线', ruleScore: null, aiScore: null, finalScore: 84 },
+      { symbol: 'SZ300003', name: '漏选丙', strategy: 's', stage: 'ai_scored', missReason: '涨停后才入选', ruleScore: null, aiScore: null, finalScore: 88 },
     ],
   }
   input.risk = { ok: true, mode: 'SIM', killActive: false, killReason: '', buysToday: 2, marketBreaker: '' }

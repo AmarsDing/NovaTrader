@@ -6,6 +6,7 @@ import {
   fitTransform,
   hash01,
   hitNode,
+  isTrunkEdge,
   reCurve,
   screenToWorld,
   stagePulse,
@@ -243,5 +244,141 @@ describe('命中与脉冲', () => {
     const curve: [number, number, number, number, number, number, number, number] = [0, 0, 10, 0, 20, 10, 30, 10]
     expect(cubicPoint(curve, 0)).toEqual({ x: 0, y: 0 })
     expect(cubicPoint(curve, 1)).toEqual({ x: 30, y: 10 })
+  })
+})
+
+/* ---------------- S3 漏斗光带 ---------------- */
+
+function funnelGraph(): SceneGraph {
+  return buildScene(
+    {
+      ...emptyInput(),
+      sources: { ok: true, items: [{ id: 'tdx', name: '通达信', status: 'open', detail: '', lastAt: '' }] },
+      candidates: {
+        ok: true,
+        items: [
+          { symbol: '600001', name: '甲', strategy: 's', stage: 'selected', missReason: '', ruleScore: 82, aiScore: 91, finalScore: 88 },
+          { symbol: '600002', name: '乙', strategy: 's', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 70, aiScore: 74, finalScore: 72 },
+          { symbol: '600003', name: '丙', strategy: 's', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+          { symbol: '600004', name: '丁', strategy: 's', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+        ],
+      },
+      orders: { ok: true, items: [{ id: 'o1', symbol: '600001', side: 'buy', status: 'FILLED', price: 10, volume: 100, reason: '' }] },
+      fills: { ok: true, items: [{ id: 'f1', symbol: '600001', side: 'buy', price: 10, qty: 100, time: '' }] },
+    },
+    1_000_000,
+  )
+}
+
+describe('S3 漏斗光带布局', () => {
+  it('六层段从左到右排在 02/03 之间，层名与顺序固定', () => {
+    const stage = buildStage(funnelGraph())
+    const funnel = stage.funnel
+    expect(funnel).not.toBeNull()
+    if (!funnel) return
+    expect(funnel.segments.map((segment) => segment.key)).toEqual(['universe', 'screened', 'ai', 'risk', 'ordered', 'filled'])
+    for (let index = 1; index < funnel.segments.length; index += 1) {
+      expect(funnel.segments[index].rect.x).toBeGreaterThan(funnel.segments[index - 1].rect.x)
+    }
+    expect(funnel.segments[0].rect.x).toBe(560)
+    const last = funnel.segments[5].rect
+    expect(last.x + last.w).toBeLessThanOrEqual(1040)
+  })
+
+  it('缺失层画虚线段：missing 标记 + 固定厚 26，不 0 填充不跳过', () => {
+    const stage = buildStage(funnelGraph())
+    const universe = stage.funnel?.segments[0]
+    expect(universe?.missing).toBe(true)
+    expect(universe?.count).toBeNull()
+    expect(universe?.rect.h).toBe(26)
+    expect(universe?.rate).toBe('')
+  })
+
+  it('有数层：厚度 = sqrt 映射，数字最大的层最厚；交界处有转化率', () => {
+    const stage = buildStage(funnelGraph())
+    const funnel = stage.funnel
+    if (!funnel) return expect.fail('无光带')
+    /* 初筛 4 > AI 2 > 风控 1 = 已下单 1 = 成交 1 */
+    expect(funnel.segments[1].count).toBe(4)
+    expect(funnel.segments[2].count).toBe(2)
+    expect(funnel.segments[3].count).toBe(1)
+    expect(funnel.segments[1].rect.h).toBeGreaterThan(funnel.segments[2].rect.h)
+    expect(funnel.segments[2].rect.h).toBeGreaterThan(funnel.segments[3].rect.h)
+    expect(funnel.segments[2].rate).toBe('50.0%')
+    /* 全市场缺失 → 初筛不编率 */
+    expect(funnel.segments[1].rate).toBe('')
+  })
+
+  it('侧漏从交界处折出，收集线汇入「漏选」牌；标签是过滤原因中文口径', () => {
+    const stage = buildStage(funnelGraph())
+    const funnel = stage.funnel
+    if (!funnel) return expect.fail('无光带')
+    /* no_quote×2（没进模型）+ below_threshold×1（规则拦） */
+    expect(funnel.leaks.length).toBe(2)
+    const preAI = funnel.leaks.find((leak) => leak.label === '没有行情')
+    expect(preAI?.count).toBe(2)
+    const rule = funnel.leaks.find((leak) => leak.label === '综合分低于 75')
+    expect(rule?.count).toBe(1)
+    for (const leak of funnel.leaks) {
+      expect(leak.stub[0].x).toBeGreaterThanOrEqual(560)
+      expect(leak.stub[leak.stub.length - 1].x).toBe(1056)
+    }
+    const miss = stage.nodes.find((item) => item.id === 'post:miss')
+    expect(miss).toBeTruthy()
+    const collector = funnel.collector
+    expect(collector).not.toBeNull()
+    if (!collector || !miss) return
+    const entry = collector[collector.length - 1]
+    expect(entry.x).toBe(miss.rect.x)
+    expect(entry.y).toBe(miss.rect.y + miss.rect.h / 2)
+  })
+
+  it('光带在台上时旧主干束线标 fallback 兜底，其余束线不标', () => {
+    const stage = buildStage(funnelGraph())
+    const fallback = stage.edges.filter((edge) => edge.fallback === true).map((edge) => `${edge.from}>${edge.to}`)
+    expect(fallback).toContain('post:scan>dim:tech')
+    expect(fallback).toContain('dim:synth>post:desk')
+    expect(fallback.every((id) => isTrunkEdge(id.split('>')[0], id.split('>')[1]))).toBe(true)
+    expect(stage.edges.filter((edge) => edge.from === 'source:tdx').every((edge) => !edge.fallback)).toBe(true)
+    expect(stage.edges.find((edge) => edge.id === 'post:risk>book:center')?.fallback).toBeFalsy()
+  })
+
+  it('graph.funnel 缺失（外部构造场景）时不产光带，束线保持原样', () => {
+    const graph = funnelGraph()
+    delete graph.funnel
+    const stage = buildStage(graph)
+    expect(stage.funnel).toBeNull()
+    expect(stage.edges.every((edge) => !edge.fallback)).toBe(true)
+  })
+
+  it('光带纳入取景：bounds 覆盖光带底缘与侧漏收集线', () => {
+    const withFunnel = buildStage(funnelGraph())
+    const graph = funnelGraph()
+    delete graph.funnel
+    const without = buildStage(graph)
+    expect(withFunnel.bounds.h).toBeGreaterThan(without.bounds.h)
+    const funnel = withFunnel.funnel
+    if (!funnel) return
+    expect(withFunnel.bounds.y + withFunnel.bounds.h).toBeGreaterThan(funnel.band.y + funnel.band.h)
+    expect(withFunnel.bounds.x + withFunnel.bounds.w).toBeGreaterThan(1056)
+  })
+
+  it('点击区包住光带与侧漏区，选中目标是扫描牌', () => {
+    const funnel = buildStage(funnelGraph()).funnel
+    if (!funnel) return expect.fail('无光带')
+    expect(funnel.selectId).toBe('post:scan')
+    for (const segment of funnel.segments) {
+      expect(funnel.hit.x).toBeLessThanOrEqual(segment.rect.x)
+      expect(funnel.hit.y).toBeLessThanOrEqual(segment.rect.y)
+      expect(funnel.hit.x + funnel.hit.w).toBeGreaterThanOrEqual(segment.rect.x + segment.rect.w)
+      expect(funnel.hit.y + funnel.hit.h).toBeGreaterThanOrEqual(segment.rect.y + segment.rect.h)
+    }
+  })
+
+  it('同一输入两次构建的光带一致（确定性，含侧漏）', () => {
+    const a = buildStage(funnelGraph())
+    const b = buildStage(funnelGraph())
+    expect(JSON.stringify(a.funnel)).toBe(JSON.stringify(b.funnel))
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
 })

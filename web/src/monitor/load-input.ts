@@ -191,7 +191,19 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
     orders: orders ? { ok: true, items: orders.map((item) => ({ id: item.id, symbol: item.symbol, side: item.side, status: item.status, price: item.price, volume: item.volume, reason: item.reason })) } : { ok: false, items: [] },
     fills: fills ? { ok: true, items: fills.map((item) => ({ id: item.id, symbol: item.symbol, side: item.side, price: item.price, qty: item.qty, time: item.time })) } : { ok: false, items: [] },
     candidates: candidates
-      ? { ok: true, items: candidates.map((item) => ({ symbol: item.symbol, name: item.name, strategy: item.strategy, missReason: item.missReason, finalScore: item.finalScore })) }
+      ? {
+          ok: true,
+          items: candidates.map((item) => ({
+            symbol: item.symbol,
+            name: item.name,
+            strategy: item.strategy,
+            stage: item.stage,
+            missReason: item.missReason,
+            ruleScore: item.ruleScore,
+            aiScore: item.aiScore,
+            finalScore: item.finalScore,
+          })),
+        }
       : { ok: false, items: [] },
     quality: quality
       ? { ok: true, items: quality.map((item) => ({ domain: item.domain, tradeDate: item.tradeDate, missing: item.missing, stale: item.stale, detail: item.detail })) }

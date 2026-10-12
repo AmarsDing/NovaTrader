@@ -5,6 +5,7 @@
  * 世界坐标约定：y 向下增长，单位是「未缩放的 CSS 像素」。
  * 视口变换：screen = world * scale + offset。
  */
+import { funnelRate, funnelWidths, FUNNEL_MIN_W, type FunnelModel } from './funnel'
 import type { NodeStatus, Pulse, SceneGraph, SceneNode } from './types'
 
 export interface StagePoint {
@@ -82,6 +83,40 @@ export interface StageEdgeLayout {
   curves: CubicCurve[]
   /** 时段带要求加粗的束线（竞价：进扫描；尾盘：风控→账户） */
   thick?: boolean
+  /** S3：主干被漏斗光带取代的旧束线（扫描→四维→综合→信号），压暗兜底（§4.4.3） */
+  fallback?: boolean
+}
+
+/* ---------------- S3 漏斗光带布局 ---------------- */
+
+export interface StageFunnelSegment {
+  key: string
+  name: string
+  count: number | null
+  rect: StageRect
+  /** 交界处转化率（本层 / 上一层），算不出为空串 */
+  rate: string
+  /** 数据缺失层：画 --nt-text-3 α0.15 虚线段并标「未返回」，不 0 填充不跳过 */
+  missing: boolean
+}
+
+export interface StageFunnelLeak {
+  /** 侧漏水平支线：主干右端 → 收集竖线 */
+  stub: StagePoint[]
+  label: string
+  count: number | null
+}
+
+export interface StageFunnelLayout {
+  segments: StageFunnelSegment[]
+  leaks: StageFunnelLeak[]
+  /** 汇入「漏选」牌的收集线（竖线 + 入牌横线）；漏选牌不在台上或没有侧漏时为 null */
+  collector: StagePoint[] | null
+  band: StageRect
+  note: string
+  /** 点击光带 = 选中扫描牌（详情窗里有同一组六层数字） */
+  hit: StageRect
+  selectId: string
 }
 
 export interface StageColumn {
@@ -94,6 +129,8 @@ export interface StageLayout {
   edges: StageEdgeLayout[]
   columns: StageColumn[]
   bounds: StageRect
+  /** S3 漏斗光带；graph.funnel 缺失（如外部构造的场景）时为 null，旧束线保持原样 */
+  funnel: StageFunnelLayout | null
 }
 
 /* ---------------- 列与节点尺寸 ---------------- */
@@ -123,6 +160,21 @@ const PROMOTE_W = 280
 const MODEL_ROW_Y = 46
 /** 四维块顶部。模型条在它上方 */
 const DIM_BLOCK_Y = 132
+
+/* S3 漏斗光带几何常量（方案 §4.4.2 / §4.1）：横贯「02 研判」与「03 裁决」之间 */
+const FUNNEL_X0 = COL_DIM_X
+const FUNNEL_X1 = COL_VERDICT_X - 40
+/** 光带顶缘：四维块底缘下方留空（主干最厚 96px 也不压块） */
+const FUNNEL_BAND_OFFSET = 30
+/** 段与段之间的缝 */
+const FUNNEL_GAP = 6
+/** 缺失层画多厚的虚线段 */
+const FUNNEL_MISSING_H = 26
+/** 侧漏收集线离主干右端的距离（绕过裁决列右侧通道，不穿牌） */
+const FUNNEL_COLLECTOR_DX = 16
+/** 段下缘到侧漏横线 / 标签区的间距 */
+const FUNNEL_LEAK_DROP = 34
+const FUNNEL_LABEL_DROP = 20
 
 const ROLE: Record<string, string> = {
   'model:large': '消息 · 外围 · 综合',
@@ -246,6 +298,9 @@ export function buildStage(graph: SceneGraph, options?: StageOptions): StageLayo
     if (rectOf.has(from) && rectOf.has(to)) raw.push({ id: `${from}>${to}`, from, to })
   }
 
+  /* S3：漏斗光带在台上时，扫描→四维→综合→信号的旧束线降为兜底（§4.4.3 束线只在光带缺失时兜底） */
+  const funnel = graph.funnel ? buildFunnelLayout(graph.funnel, rectOf, DIM_BLOCK_Y + dimBlockH + FUNNEL_BAND_OFFSET) : null
+
   /* 同一出口的线扇出：按 from / to 分组编号，端口沿边错开 */
   const outGroups = new Map<string, string[]>()
   const inGroups = new Map<string, string[]>()
@@ -271,10 +326,87 @@ export function buildStage(graph: SceneGraph, options?: StageOptions): StageLayo
       inCount: inList.length,
       curves: fiberCurves(from, to, outIndex, outList.length, inIndex, inList.length, edge.id),
       thick: isThick(edge.id, edge.to, options?.thicken),
+      fallback: funnel != null && isTrunkEdge(edge.from, edge.to),
     })
   }
 
-  return { nodes, edges, columns, bounds: stageBounds(nodes) }
+  return { nodes, edges, columns, bounds: stageBounds(nodes, funnel), funnel }
+}
+
+/** 主干束线判定：被漏斗光带取代的三段（扫描→四维、四维→综合、综合→信号） */
+export function isTrunkEdge(from: string, to: string): boolean {
+  if (from === 'post:scan' && to.startsWith('dim:')) return true
+  if (from.startsWith('dim:') && to === 'dim:synth') return true
+  return from === 'dim:synth' && to === 'post:desk'
+}
+
+/* ---------------- S3 漏斗光带布局 ---------------- */
+
+/**
+ * 六层光带几何（方案 §4.4.2）：横贯 02/03 之间，段厚 = sqrt 映射（12..96px），
+ * 垂直居中对齐，形成向右收窄的阶梯剪影。缺失层画 FUNNEL_MISSING_H 厚的虚线段，不 0 填充不跳过。
+ * 侧漏从交界处下折，经主干右端外侧的通道绕行汇入「漏选」牌右缘（不穿裁决列的牌）。
+ */
+export function buildFunnelLayout(funnel: FunnelModel, rectOf: ReadonlyMap<string, StageRect>, bandTop: number): StageFunnelLayout {
+  const counts = funnel.layers.map((layer) => layer.count)
+  const widths = funnelWidths(counts)
+  const maxH = Math.max(FUNNEL_MIN_W, ...widths.map((width) => width ?? 0))
+  const centerY = bandTop + FUNNEL_BAND_OFFSET / 2 + maxH / 2
+
+  const step = (FUNNEL_X1 - FUNNEL_X0 + FUNNEL_GAP) / funnel.layers.length
+  const segments: StageFunnelSegment[] = funnel.layers.map((layer, index) => {
+    const x = FUNNEL_X0 + index * step
+    const h = layer.count == null ? FUNNEL_MISSING_H : Math.max(FUNNEL_MIN_W, widths[index] ?? FUNNEL_MIN_W)
+    return {
+      key: layer.key,
+      name: layer.name,
+      count: layer.count,
+      rect: { x, y: centerY - h / 2, w: Math.max(8, step - FUNNEL_GAP), h },
+      rate: funnelRate(layer.count, index > 0 ? counts[index - 1] : null) ?? '',
+      missing: layer.count == null,
+    }
+  })
+  const band: StageRect = { x: FUNNEL_X0, y: bandTop, w: FUNNEL_X1 - FUNNEL_X0, h: maxH + FUNNEL_LABEL_DROP }
+
+  /* 侧漏：junction = 段 at 的左缘（层 at-1 → 层 at 的交界），从主干下缘折到各自的收集横线（逐条错开 8px 不叠线） */
+  const leakBaseY = centerY + maxH / 2 + FUNNEL_LEAK_DROP
+  const collectorX = FUNNEL_X1 + FUNNEL_COLLECTOR_DX
+  const leaks: StageFunnelLeak[] = []
+  for (const leak of funnel.leaks) {
+    if (leak.count == null || leak.count <= 0 || !leak.label) continue
+    const next = segments[leak.at]
+    if (!next) continue
+    const leakY = leakBaseY + leaks.length * 8
+    const x = next.rect.x
+    const startY = next.missing ? centerY : next.rect.y + next.rect.h
+    leaks.push({ stub: [{ x, y: startY }, { x, y: leakY }, { x: collectorX, y: leakY }], label: leak.label, count: leak.count })
+  }
+
+  /* 收集线：竖线沿裁决列左侧通道上行，从「漏选」牌左缘入牌；牌不在台上或没有侧漏时为 null。
+   * 注意用的是基础矩形——拖动漏选牌后收集线不跟随（S3 范围外，拖动本就少用）。 */
+  let collector: StagePoint[] | null = null
+  if (leaks.length > 0) {
+    const lastY = leaks[leaks.length - 1].stub[1].y
+    const miss = rectOf.get('post:miss')
+    collector = miss
+      ? [
+          { x: collectorX, y: lastY },
+          { x: collectorX, y: miss.y + miss.h / 2 },
+          { x: miss.x, y: miss.y + miss.h / 2 },
+        ]
+      : [{ x: collectorX, y: lastY }]
+  }
+
+  const leakBottom = leaks.length > 0 ? leaks[leaks.length - 1].stub[1].y : band.y + band.h
+  return {
+    segments,
+    leaks,
+    collector,
+    band,
+    note: funnel.note,
+    hit: { x: band.x - 8, y: band.y - 12, w: band.w + FUNNEL_COLLECTOR_DX + 24, h: Math.max(band.h + 12, leakBottom - band.y + 16) },
+    selectId: 'post:scan',
+  }
 }
 
 /** 时段带加粗判定：命中「进入某节点」或精确边 id */
@@ -302,7 +434,7 @@ export function reCurve(edge: StageEdgeLayout, rects: ReadonlyMap<string, StageR
   return fiberCurves(from, to, edge.outIndex, edge.outCount, edge.inIndex, edge.inCount, edge.id)
 }
 
-function stageBounds(nodes: StageNodeLayout[]): StageRect {
+function stageBounds(nodes: StageNodeLayout[], funnel?: StageFunnelLayout | null): StageRect {
   if (nodes.length === 0) return { x: 0, y: 0, w: 1280, h: 560 }
   let minX = Infinity
   let minY = Infinity
@@ -313,6 +445,12 @@ function stageBounds(nodes: StageNodeLayout[]): StageRect {
     minY = Math.min(minY, item.rect.y)
     maxX = Math.max(maxX, item.rect.x + item.rect.w)
     maxY = Math.max(maxY, item.rect.y + item.rect.h)
+  }
+  /* S3：光带与侧漏收集线纳入取景，避免被裁出画面 */
+  if (funnel) {
+    minX = Math.min(minX, funnel.band.x)
+    maxX = Math.max(maxX, funnel.band.x + funnel.band.w + FUNNEL_COLLECTOR_DX)
+    maxY = Math.max(maxY, funnel.band.y + funnel.band.h + FUNNEL_LEAK_DROP)
   }
   return { x: minX - 32, y: minY - 56, w: maxX - minX + 64, h: maxY - minY + 96 }
 }
