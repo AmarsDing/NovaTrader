@@ -4,9 +4,7 @@ import { inTauri } from './tauri'
 export async function deskNotify(title: unknown, body?: unknown): Promise<boolean> {
   if (!inTauri() || !title) return false
   try {
-    const { isPermissionGranted, requestPermission, sendNotification } = await import(
-      '@tauri-apps/plugin-notification'
-    )
+    const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification')
     let allowed = await isPermissionGranted()
     if (!allowed) {
       const perm = await requestPermission()

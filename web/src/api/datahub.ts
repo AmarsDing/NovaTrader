@@ -1,6 +1,6 @@
 import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
-import type { BackfillTask, DataSource, QualityReport } from './types/datahub'
+import type { DataSource, QualityReport } from './types/datahub'
 
 export type { BackfillTask, DataSource, QualityReport } from './types/datahub'
 
@@ -37,14 +37,32 @@ export async function getQuality(query: Record<string, unknown> = {}): Promise<Q
   }))
 }
 
+function optionalNum(raw: RawRecord, ...keys: string[]): number | null {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(raw, key) && raw[key] != null && raw[key] !== '') return num(raw[key])
+  }
+  return null
+}
+
 function normalizeSource(raw: RawRecord): DataSource {
+  const source = pick<string>(raw, 'source', 'name', 'id') || ''
+  const domain = pick<string>(raw, 'domain', 'kind', 'type') || ''
+  const state = pick<string>(raw, 'state', 'status') || ''
+  const lastError = pick<string>(raw, 'lastError', 'last_error', 'detail', 'message') || ''
   return {
-    id: pick<string>(raw, 'id', 'name') || '',
-    name: pick<string>(raw, 'name') || '',
-    kind: pick<string>(raw, 'kind', 'type') || '',
-    enabled: raw.enabled !== false,
-    status: pick<string>(raw, 'status') || '',
-    detail: pick<string>(raw, 'detail', 'message') || '',
-    lastAt: pick<string>(raw, 'lastAt', 'last_at', 'lastCollectAt', 'last_collect_at') || '',
+    id: domain ? `${domain}:${source}` : source,
+    name: source,
+    kind: domain,
+    enabled: raw.enabled === true,
+    status: state,
+    detail: lastError || state,
+    successRate: optionalNum(raw, 'successRate', 'success_rate'),
+    latencyMs: optionalNum(raw, 'lastLatencyMs', 'last_latency_ms', 'avgLatencyMs', 'avg_latency_ms'),
+    quotaUsed: optionalNum(raw, 'quotaUsed', 'quota_used'),
+    quotaLimit: optionalNum(raw, 'quotaLimit', 'quota_limit'),
+    active: raw.active === true,
+    lastAt:
+      pick<string>(raw, 'lastSuccessAt', 'last_success_at', 'lastAt', 'last_at', 'lastFailureAt', 'last_failure_at') ||
+      '',
   }
 }

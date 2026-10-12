@@ -8,6 +8,11 @@ export interface DataSource {
   status: string
   detail: string
   lastAt: string
+  successRate?: number | null
+  latencyMs?: number | null
+  quotaUsed?: number | null
+  quotaLimit?: number | null
+  active?: boolean
   [key: string]: unknown
 }
 

@@ -71,10 +71,7 @@ export async function request<T = unknown>(path: string, options: RequestOptions
     }
     if (!res.ok) {
       const record = data && typeof data === 'object' ? (data as Record<string, unknown>) : null
-      const msg =
-        record && (record.message || record.msg)
-          ? String(record.message || record.msg)
-          : res.statusText
+      const msg = record && (record.message || record.msg) ? String(record.message || record.msg) : res.statusText
       if (res.status === 401 && token && !path.includes('/login')) onUnauthorized()
       throw new ApiError(msg || '请求失败', res.status)
     }

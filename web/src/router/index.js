@@ -15,6 +15,7 @@ const routes = [
   // 深链：开对应面板后把地址剥回 `/`（见 WorkbenchView.consumeDeepLink）
   { path: '/panel/:id', name: 'panel', component: workbench },
   { path: '/settings', redirect: '/panel/settings' },
+  { path: '/monitor', name: 'monitor', component: () => import('@/monitor/MonitorView.vue') },
   // 旧侧栏路径兼容（P3 前的 /signals、/market…）
   {
     path: '/:legacy(signals|market|trade|intel|backtest|ops|overview)',
@@ -22,6 +23,16 @@ const routes = [
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
+
+// 组件矩阵走查页：仅 DEV 构建注册（生产 bundle 不含 gallery 代码）
+if (import.meta.env.DEV) {
+  routes.push({
+    path: '/dev/gallery',
+    name: 'gallery',
+    component: () => import('@/dev/GalleryView.vue'),
+    meta: { public: true },
+  })
+}
 
 export const router = createRouter({
   history: createWebHistory(),

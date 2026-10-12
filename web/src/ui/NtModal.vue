@@ -41,12 +41,7 @@ function close() {
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      class="nt-modal"
-      :style="{ zIndex: overlay.zIndex.value }"
-      @mousedown.self="closable && close()"
-    >
+    <div v-if="open" class="nt-modal" :style="{ zIndex: overlay.zIndex.value }" @mousedown.self="closable && close()">
       <section
         class="nt-modal__sheet"
         :style="{ width: `min(${width}, 100%)` }"

@@ -31,7 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function hydrate() {
     const legacy = takeLegacyToken()
-    let t = ''
+    let t: string
     try {
       t = await readToken()
     } catch {
@@ -61,6 +61,8 @@ export const useAuthStore = defineStore('auth', () => {
     } else {
       user.value = t ? getStoredUser() : null
     }
+    // 刷新后令牌还在，但登录回调不会再走。这里把 2003 实时通道拉起来，否则顶栏一直停在「未连接」。
+    if (t) startLink()
   }
 
   async function clear() {

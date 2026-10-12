@@ -12,6 +12,7 @@ withDefaults(
     mono?: boolean
     invalid?: boolean
     hint?: string
+    disabled?: boolean
   }>(),
   {
     modelValue: '',
@@ -22,6 +23,7 @@ withDefaults(
     mono: false,
     invalid: false,
     hint: '',
+    disabled: false,
   },
 )
 
@@ -41,6 +43,8 @@ function onInput(event: Event) {
         :type="type"
         :value="modelValue"
         :placeholder="placeholder"
+        :disabled="disabled"
+        :step="type === 'number' ? 'any' : undefined"
         :class="{ 'nt-input__field--mono': mono }"
         @input="onInput"
       />
@@ -66,17 +70,21 @@ function onInput(event: Event) {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 32px;
   padding: 0 10px;
   background: var(--nt-bg-0);
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-s);
   color: var(--nt-text-3);
-  transition: border-color var(--nt-transition), box-shadow var(--nt-transition);
+  transition: border-color var(--nt-transition);
 }
 
 .nt-input__box:focus-within {
-  border-color: rgba(0, 229, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+  border-color: rgba(0, 229, 255, 0.7);
+}
+
+.nt-input__box:has(input:focus-visible) {
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.28);
 }
 
 .nt-input__box--invalid {
@@ -85,15 +93,20 @@ function onInput(event: Event) {
 
 .nt-input__box input {
   flex: 1;
+  width: 100%;
   min-width: 0;
-  min-height: 32px;
+  height: 30px;
+  min-height: 0;
   padding: 0;
   font: inherit;
   font-size: 13px;
+  line-height: 30px;
   color: var(--nt-text-1);
   background: transparent;
-  border: none;
+  border: 0;
+  border-radius: 0;
   outline: none;
+  box-shadow: none;
 }
 
 .nt-input__field--mono {

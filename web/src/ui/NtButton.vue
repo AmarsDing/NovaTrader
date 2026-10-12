@@ -1,30 +1,39 @@
 <script setup lang="ts">
+import { useAttrs } from 'vue'
 import NtIcon from './NtIcon.vue'
 import type { IconName } from './icons'
 
+defineOptions({ inheritAttrs: false })
+
 export type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'success' | 'quiet'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     variant?: ButtonVariant
     icon?: IconName | null
     size?: 'sm' | 'md'
     loading?: boolean
     block?: boolean
+    disabled?: boolean
+    /** 默认 button；表单内主操作传 submit */
+    type?: 'button' | 'submit' | 'reset'
   }>(),
-  { variant: 'ghost', icon: null, size: 'md', loading: false, block: false },
+  { variant: 'ghost', icon: null, size: 'md', loading: false, block: false, disabled: false, type: 'button' },
 )
+
+const attrs = useAttrs()
 </script>
 
 <template>
   <button
-    type="button"
+    v-bind="attrs"
+    :type="props.type"
     class="nt-btn"
-    :class="[`nt-btn--${variant}`, { 'nt-btn--sm': size === 'sm', 'nt-btn--block': block }]"
-    :disabled="loading || $attrs.disabled !== undefined && !!($attrs.disabled as boolean)"
+    :class="[`nt-btn--${props.variant}`, { 'nt-btn--sm': props.size === 'sm', 'nt-btn--block': props.block }]"
+    :disabled="props.loading || props.disabled"
   >
-    <span v-if="loading" class="nt-btn__spin" aria-hidden="true" />
-    <NtIcon v-else-if="icon" :name="icon" />
+    <span v-if="props.loading" class="nt-btn__spin" aria-hidden="true" />
+    <NtIcon v-else-if="props.icon" :name="props.icon" />
     <span class="nt-btn__label"><slot /></span>
   </button>
 </template>

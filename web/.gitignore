@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# P6 工程化产物
+bundle-stats.html
+coverage

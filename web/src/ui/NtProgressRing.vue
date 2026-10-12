@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(
-  defineProps<{ value?: number | null; size?: number; hot?: boolean; label?: string }>(),
-  { value: null, size: 56, hot: false, label: '' },
-)
+const props = withDefaults(defineProps<{ value?: number | null; size?: number; hot?: boolean; label?: string }>(), {
+  value: null,
+  size: 56,
+  hot: false,
+  label: '',
+})
 
 const clamped = computed(() => {
   const v = Number(props.value)

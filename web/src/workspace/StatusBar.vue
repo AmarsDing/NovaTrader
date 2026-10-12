@@ -42,14 +42,10 @@ onBeforeUnmount(() => clearInterval(timer))
       行情通道 2003 · {{ link.ws === 'open' ? '已连接' : '中断' }}
     </div>
     <div class="cell">模式 {{ risk.mode || '—' }}</div>
-    <div class="cell" :class="{ warn: risk.killActive }">
-      Kill Switch {{ risk.killActive ? '已触发' : '未触发' }}
-    </div>
+    <div class="cell" :class="{ warn: risk.killActive }">Kill Switch {{ risk.killActive ? '已触发' : '未触发' }}</div>
     <div class="cell dim">{{ isLive() ? '数据实时' : '不是实时' }}</div>
     <div class="cell topics" :title="topics">订阅 {{ topics }}</div>
-    <div class="cell clock">
-      {{ sessionText }} · {{ clockText }}
-    </div>
+    <div class="cell clock">{{ sessionText }} · {{ clockText }}</div>
   </footer>
 </template>
 

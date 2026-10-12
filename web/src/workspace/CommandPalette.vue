@@ -11,7 +11,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { useOverlay } from '@/ui/useOverlay'
 import { restartLink } from '@/ws/hub'
 import { refreshAll } from './connection-watchdog'
-import { useWorkbench } from './inject'
+import { getWorkbench } from './inject'
 
 type PaletteMode = 'panel' | 'command'
 
@@ -28,8 +28,6 @@ const router = useRouter()
 const auth = useAuthStore()
 const layout = useLayoutStore()
 const settings = useSettingsStore()
-const workbench = useWorkbench()
-
 const overlay = useOverlay(() => close())
 const query = ref('')
 const active = ref(0)
@@ -55,14 +53,27 @@ function score(target: string, term: string): number {
   return -1
 }
 
+const PINNED_PANELS = ['limit-ladder', 'market', 'signals', 'trade', 'risk-chain']
+
 const allItems = computed<Item[]>(() => {
-  const panels: Item[] = (workbench?.panels ?? []).map((def) => ({
+  const wb = getWorkbench()
+  const panels: Item[] = (wb?.panels ?? [])
+    .slice()
+    .sort((a, b) => {
+      const ia = PINNED_PANELS.indexOf(a.id)
+      const ib = PINNED_PANELS.indexOf(b.id)
+      if (ia === -1 && ib === -1) return 0
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+    .map((def) => ({
     id: `panel:${def.id}`,
     label: def.title,
     hint: '打开面板',
     keywords: `${def.id} ${def.group}`,
     kind: 'panel',
-    run: () => workbench?.openPanel(def.id),
+    run: () => getWorkbench()?.openPanel(def.id),
   }))
 
   const presets: Item[] = Object.keys(layout.presets).map((name) => ({
@@ -70,12 +81,50 @@ const allItems = computed<Item[]>(() => {
     label: name,
     hint: '套用预设布局',
     kind: 'preset',
-    run: () => workbench?.applyLayout(layout.presets[name]),
+    run: () => getWorkbench()?.applyLayout(layout.presets[name]),
   }))
 
   const commands: Item[] = [
-    { id: 'cmd:refresh', label: '刷新账户 / 行情 / 风控', hint: '立即拉取', keywords: 'reload', kind: 'command', run: () => void refreshAll() },
-    { id: 'cmd:reconnect', label: '重连行情通道', hint: 'WebSocket 2003', keywords: 'ws reconnect', kind: 'command', run: () => restartLink() },
+    {
+      id: 'cmd:config',
+      label: '打开配置',
+      hint: '按分类修改参数',
+      keywords: 'settings config 设置',
+      kind: 'command',
+      run: () => window.dispatchEvent(new CustomEvent('nt:open-config')),
+    },
+    {
+      id: 'cmd:refresh',
+      label: '刷新账户 / 行情 / 风控',
+      hint: '立即拉取',
+      keywords: 'reload',
+      kind: 'command',
+      run: () => void refreshAll(),
+    },
+    {
+      id: 'cmd:monitor',
+      label: '打开监控驾驶舱',
+      hint: '三维只读',
+      keywords: 'monitor 3d 监控',
+      kind: 'command',
+      run: () => void router.push('/monitor'),
+    },
+    {
+      id: 'cmd:reconnect',
+      label: '重连行情通道',
+      hint: 'WebSocket 2003',
+      keywords: 'ws reconnect',
+      kind: 'command',
+      run: () => restartLink(),
+    },
+    {
+      id: 'cmd:hotkeys',
+      label: '热键：B/S 买卖、Shift+K 急停、Shift+T 交易、Shift+M 涨停、Shift+R 风控、1-9 切面板',
+      hint: '参考',
+      keywords: 'hotkey shortcut key',
+      kind: 'command',
+      run: () => getWorkbench()?.openPanel('settings'),
+    },
     {
       id: 'cmd:theme',
       label: settings.theme === 'dark' ? '切换为亮色主题' : '切换为暗色主题',
@@ -92,7 +141,14 @@ const allItems = computed<Item[]>(() => {
       kind: 'command',
       run: () => settings.setDensity(settings.density === 'compact' ? 'normal' : 'compact'),
     },
-    { id: 'cmd:reset-layout', label: '重置工作台布局', hint: '回默认预设', keywords: 'layout reset', kind: 'command', run: () => workbench?.resetToDefault() },
+    {
+      id: 'cmd:reset-layout',
+      label: '重置工作台布局',
+      hint: '回默认预设',
+      keywords: 'layout reset',
+      kind: 'command',
+      run: () => getWorkbench()?.resetToDefault(),
+    },
     {
       id: 'cmd:logout',
       label: '退出登录',

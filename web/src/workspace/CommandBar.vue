@@ -13,15 +13,14 @@ import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { amount, pnlClass, signed } from '@/utils/format'
 import { isLive } from '@/ws/hub'
-import { useWorkbench } from './inject'
+import { getWorkbench } from './inject'
 
-const emit = defineEmits<{ (e: 'palette'): void }>()
+const emit = defineEmits<{ (e: 'palette'): void; (e: 'config'): void }>()
 
 const router = useRouter()
 const auth = useAuthStore()
 const account = useAccountStore()
 const layout = useLayoutStore()
-const workbench = useWorkbench()
 
 const displayName = computed(() => auth.user?.displayName || auth.user?.name || '交易员')
 const pnl = computed(() => (account.dayPnl != null ? account.dayPnl : account.unrealized))
@@ -29,6 +28,11 @@ const pnlLabel = computed(() => (account.dayPnl != null ? '当日盈亏' : '浮�
 
 const menuOpen = ref(false)
 const newName = ref('')
+const nameInput = ref<HTMLInputElement | null>(null)
+const savedHint = ref('')
+let hintTimer: ReturnType<typeof setTimeout> | null = null
+const renaming = ref('')
+const renameText = ref('')
 const fileEl = ref<HTMLInputElement | null>(null)
 const presetNames = computed(() => Object.keys(layout.presets))
 
@@ -38,36 +42,87 @@ function toggleMenu() {
 
 function onDocDown(event: MouseEvent) {
   const target = event.target as HTMLElement | null
-  if (target?.closest?.('.preset-wrap')) return
+  if (target?.closest?.('.preset-wrap') || target?.closest?.('.preset-menu')) return
   menuOpen.value = false
 }
 
+function onDocKey(event: KeyboardEvent) {
+  if (event.key === 'Escape') menuOpen.value = false
+}
+
 watch(menuOpen, (open) => {
-  if (open) document.addEventListener('mousedown', onDocDown)
-  else document.removeEventListener('mousedown', onDocDown)
+  if (open) {
+    document.addEventListener('mousedown', onDocDown)
+    document.addEventListener('keydown', onDocKey)
+  } else {
+    document.removeEventListener('mousedown', onDocDown)
+    document.removeEventListener('keydown', onDocKey)
+    cancelRename()
+  }
 })
 
-onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown))
+onBeforeUnmount(() => {
+  document.removeEventListener('mousedown', onDocDown)
+  document.removeEventListener('keydown', onDocKey)
+  if (hintTimer) clearTimeout(hintTimer)
+})
+
+function openSave() {
+  menuOpen.value = true
+  savedHint.value = ''
+  requestAnimationFrame(() => nameInput.value?.focus())
+}
 
 function savePreset() {
   const name = newName.value.trim()
-  if (!name || !workbench) return
-  layout.savePreset(name, workbench.captureLayout())
+  const wb = getWorkbench()
+  if (!name || !wb) return
+  layout.savePreset(name, wb.captureLayout())
   newName.value = ''
+  savedHint.value = `已保存「${name}」。点名称即可切回这个模板。`
+  if (hintTimer) clearTimeout(hintTimer)
+  hintTimer = setTimeout(() => {
+    savedHint.value = ''
+    hintTimer = null
+  }, 2500)
 }
 
 function applyPreset(name: string) {
   menuOpen.value = false
-  workbench?.applyLayout(layout.presets[name])
+  getWorkbench()?.applyLayout(layout.presets[name])
 }
 
 function dropPreset(name: string) {
   layout.removePreset(name)
 }
 
+/** 重命名 = 删旧键 + 存新键（预设值原样迁移）。 */
+function startRename(name: string) {
+  renaming.value = name
+  renameText.value = name
+}
+
+function cancelRename() {
+  renaming.value = ''
+  renameText.value = ''
+}
+
+function commitRename(name: string) {
+  const next = renameText.value.trim()
+  if (renaming.value !== name) return
+  if (!next || next === name) {
+    cancelRename()
+    return
+  }
+  const value = layout.presets[name]
+  layout.removePreset(name)
+  layout.savePreset(next, value)
+  cancelRename()
+}
+
 function resetLayout() {
   menuOpen.value = false
-  workbench?.resetToDefault()
+  getWorkbench()?.resetToDefault()
 }
 
 function exportPresets() {
@@ -128,23 +183,50 @@ function logout() {
 
     <div class="actions">
       <KillSwitchBar />
+      <NtButton size="sm" title="打开三维监控驾驶舱" @click="router.push('/monitor')">监控</NtButton>
+      <NtButton size="sm" title="回到决策台默认排列，已保存的模板还在" @click="resetLayout">恢复盘中</NtButton>
+      <NtButton size="sm" title="给当前面板排列起名，存成可切换的模板" @click="openSave">保存布局</NtButton>
+      <NtButton size="sm" title="按分类配置选股、风控、情绪和外观" @click="emit('config')">配置</NtButton>
       <NtButton size="sm" title="Ctrl+K" @click="emit('palette')">命令面板</NtButton>
       <div class="preset-wrap">
-        <NtButton size="sm" @click="toggleMenu">布局预设</NtButton>
-        <div v-if="menuOpen" class="menu">
-          <p v-if="!presetNames.length" class="menu-empty">还没有保存的预设</p>
-          <div v-for="name in presetNames" :key="name" class="menu-row">
-            <button type="button" class="menu-name" @click="applyPreset(name)">{{ name }}</button>
-            <button type="button" class="menu-del" title="删除预设" @click="dropPreset(name)">×</button>
+        <NtButton size="sm" :aria-expanded="menuOpen" @click="toggleMenu">布局预设</NtButton>
+        <div v-if="menuOpen" class="preset-menu" role="dialog" aria-label="布局预设">
+          <p class="preset-menu__label">已保存</p>
+          <p v-if="!presetNames.length" class="preset-menu__empty">还没有保存的预设</p>
+          <div v-for="name in presetNames" :key="name" class="preset-menu__row">
+            <template v-if="renaming === name">
+              <input
+                v-model="renameText"
+                class="preset-menu__input"
+                @keydown.enter="commitRename(name)"
+                @keydown.esc="cancelRename"
+                @blur="commitRename(name)"
+              />
+            </template>
+            <template v-else>
+              <button type="button" class="preset-menu__name" @click="applyPreset(name)">{{ name }}</button>
+              <button type="button" class="preset-menu__icon" title="重命名" @click="startRename(name)">✎</button>
+              <button type="button" class="preset-menu__icon" title="删除预设" @click="dropPreset(name)">×</button>
+            </template>
           </div>
-          <div class="menu-new">
-            <input v-model="newName" class="menu-input" placeholder="新预设名称" @keydown.enter="savePreset" />
-            <NtButton size="sm" :disabled="!newName.trim()" @click="savePreset">保存</NtButton>
+          <p class="preset-menu__empty">拖好面板后起个名字。没起名的当前排列会自动记住；起名后才是可切换的模板。</p>
+          <p v-if="savedHint" class="preset-menu__hint">{{ savedHint }}</p>
+          <div class="preset-menu__save">
+            <input
+              ref="nameInput"
+              v-model="newName"
+              class="preset-menu__input"
+              placeholder="模板名称"
+              @keydown.enter="savePreset"
+            />
+            <button type="button" class="preset-menu__savebtn" :disabled="!newName.trim()" @click="savePreset">
+              保存为模板
+            </button>
           </div>
-          <div class="menu-foot">
-            <button type="button" class="menu-link" @click="resetLayout">重置为默认</button>
-            <button type="button" class="menu-link" @click="exportPresets">导出</button>
-            <button type="button" class="menu-link" @click="pickImport">导入</button>
+          <div class="preset-menu__foot">
+            <button type="button" @click="resetLayout">重置为默认</button>
+            <button type="button" @click="exportPresets">导出</button>
+            <button type="button" @click="pickImport">导入</button>
           </div>
           <input ref="fileEl" type="file" accept="application/json" hidden @change="onImport" />
         </div>
@@ -157,6 +239,8 @@ function logout() {
 
 <style scoped>
 .bar {
+  position: relative;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 12px 20px;
@@ -231,88 +315,125 @@ function logout() {
   position: relative;
 }
 
-.menu {
+.preset-menu {
   position: absolute;
   right: 0;
-  top: calc(100% + 6px);
-  min-width: 230px;
-  padding: 8px;
-  z-index: 60;
-  background: var(--nt-bg-glass);
-  backdrop-filter: blur(10px);
+  left: auto;
+  top: calc(100% + 8px);
+  width: 280px;
+  padding: 10px;
+  z-index: 80;
+  background: var(--nt-bg-2);
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-m);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
 
-.menu-row {
+.preset-menu button {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 28px;
+  color: var(--nt-text-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--nt-radius-s);
+  white-space: nowrap;
+}
+
+.preset-menu__label,
+.preset-menu__empty {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.preset-menu__label {
+  color: var(--nt-text-3);
+}
+
+.preset-menu__empty,
+.preset-menu__hint {
+  margin-top: 4px;
+  color: var(--nt-text-2);
+}
+
+.preset-menu__hint {
+  color: var(--nt-accent);
+}
+
+.preset-menu__row,
+.preset-menu__save,
+.preset-menu__foot {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.menu-name {
+.preset-menu__row {
+  margin-top: 4px;
+}
+
+.preset-menu__name {
   flex: 1;
+  justify-content: flex-start;
   text-align: left;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--nt-radius-s);
-  background: transparent;
   color: var(--nt-text-1);
-  font-size: 12.5px;
-  cursor: pointer;
 }
 
-.menu-name:hover {
-  background: rgba(0, 229, 255, 0.1);
+.preset-menu__name:hover,
+.preset-menu__foot button:hover {
+  color: var(--nt-accent);
+  background: rgba(0, 229, 255, 0.08);
 }
 
-.menu-del,
-.menu-link {
-  border: none;
-  background: transparent;
+.preset-menu__icon {
+  width: 28px;
+  padding: 0;
   color: var(--nt-text-3);
-  cursor: pointer;
-  font-size: 12px;
 }
 
-.menu-del:hover {
+.preset-menu__icon:hover {
   color: var(--nt-danger);
 }
 
-.menu-new {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
+.preset-menu__save {
+  margin-top: 8px;
 }
 
-.menu-input {
+.preset-menu__input {
   flex: 1;
   min-width: 0;
-  padding: 5px 8px;
+  height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-s);
   background: var(--nt-bg-0);
   color: var(--nt-text-1);
-  font-size: 12.5px;
+  font-size: 12px;
   outline: none;
 }
 
-.menu-foot {
-  display: flex;
-  gap: 12px;
+.preset-menu__savebtn {
+  color: var(--nt-bg-0);
+  background: var(--nt-accent);
+}
+
+.preset-menu__savebtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.preset-menu__foot {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--nt-border-1);
 }
 
-.menu-link:hover {
-  color: var(--nt-accent);
-}
-
-.menu-empty {
-  margin: 4px 0 8px;
-  font-size: 12px;
-  color: var(--nt-text-3);
+.preset-menu__foot button:first-child {
+  margin-right: auto;
 }
 </style>

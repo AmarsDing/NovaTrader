@@ -34,6 +34,8 @@ export interface Sentiment {
   amount: number | null
   /** ICE / RECOVER / WARM / HOT / FADE */
   phase: string
+  /** 风险等级 0–3（M02 §6）。 */
+  riskLevel: number | null
   scoreCoef: number | null
   positionScale: number | null
   stale: boolean

@@ -32,5 +32,16 @@ function normalizeSignal(raw: RawRecord): SignalItem {
     status: pick<string>(raw, 'status') || '',
     dims: raw.dims && typeof raw.dims === 'object' ? (raw.dims as Record<string, unknown>) : {},
     time: pick<string>(raw, 'signalTime', 'signal_time') || '',
+    atr: num(pick(raw, 'atr')),
+    positionPct: num(pick(raw, 'positionPct', 'position_pct')),
+    validUntil: pick<string>(raw, 'validUntil', 'valid_until') || '',
+    holdDaysMax: num(pick(raw, 'holdDaysMax', 'hold_days_max')),
+    exitKind: pick<string>(raw, 'exitKind', 'exit_kind') || '',
+    exitPrice: num(pick(raw, 'exitPrice', 'exit_price')),
+    pnlPct: num(pick(raw, 'pnlPct', 'pnl_pct')),
+    hasPnl: !!(raw.hasPnl || raw.has_pnl),
+    holdingDays: num(pick(raw, 'holdingDays', 'holding_days')),
+    traceId: pick<string>(raw, 'traceId', 'trace_id') || '',
+    closedAt: pick<string>(raw, 'closedAt', 'closed_at') || '',
   }
 }

@@ -13,14 +13,17 @@ const KEY = 'nt.settings.v1'
 export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<ThemeName>('dark')
   const density = ref<DensityName>('normal')
+  /** 极端预警声（AlertCenter 未确认期间循环响）；默认开。 */
+  const sound = ref(true)
 
   function load() {
     try {
       const raw = localStorage.getItem(KEY)
       if (!raw) return
-      const data = JSON.parse(raw) as { theme?: ThemeName; density?: DensityName }
+      const data = JSON.parse(raw) as { theme?: ThemeName; density?: DensityName; sound?: boolean }
       if (data.theme === 'dark' || data.theme === 'light') theme.value = data.theme
       if (data.density === 'normal' || data.density === 'compact') density.value = data.density
+      if (typeof data.sound === 'boolean') sound.value = data.sound
     } catch {
       // 损坏偏好直接回默认。
     }
@@ -28,7 +31,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function persist() {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ theme: theme.value, density: density.value }))
+      localStorage.setItem(KEY, JSON.stringify({ theme: theme.value, density: density.value, sound: sound.value }))
     } catch {
       /* 忽略 */
     }
@@ -51,10 +54,15 @@ export const useSettingsStore = defineStore('settings', () => {
     applyAll()
   }
 
+  function setSound(value: boolean) {
+    sound.value = value
+    persist()
+  }
+
   function init() {
     load()
     applyAll()
   }
 
-  return { theme, density, init, load, applyAll, setTheme, setDensity }
+  return { theme, density, sound, init, load, applyAll, setTheme, setDensity, setSound }
 })

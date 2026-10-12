@@ -1,88 +1,70 @@
-/** M05 本地大模型智脑。经 admin 代理 /api/brain/*。 */
+/** M05 智脑：晨报 / 分析 / 统计（camelCase 归一化 DTO）。 */
 
+/** 四维评分。 */
 export interface DimensionScore {
-  dim: string
+  name: string
   score: number | null
+  comment: string
+}
+
+/** POST /api/brain/analyze 结果。 */
+export interface Analysis {
+  symbol: string
+  name: string
+  score: number | null
+  verdict: string
+  dimensions: DimensionScore[]
   reasons: string[]
   risks: string[]
-  /** model / rule / failed */
-  source: string
+  generatedAt: string
   model: string
 }
 
-export interface Analysis {
-  decisionId: string
-  traceId: string
+/** POST /api/brain/explain 结果。 */
+export interface Explanation {
   symbol: string
-  dimensions: DimensionScore[]
-  compositeScore: number | null
-  weightedScore: number | null
-  phase: string
-  phaseCoef: number | null
-  summary: string
-  summaryEvidence: string
-  aiDegraded: boolean
-  discarded: boolean
-  reason: string
-  latencyMs: number | null
-  ruleScore: number | null
+  text: string
+  reasons: string[]
+  generatedAt: string
+  model: string
 }
 
-export interface WatchItem {
-  symbol: string
-  name: string
-  reason: string
-  score: number | null
+/** POST /api/brain/ask 结果。 */
+export interface AskReply {
+  answer: string
+  citations: string[]
+  generatedAt: string
+  model: string
 }
 
-export interface PositionView {
-  symbol: string
-  name: string
-  advice: string
-  risk: string
-}
-
-export interface NewsLine {
+/** 晨报条目（开盘前必读）。 */
+export interface BriefingItem {
+  kind: string
   title: string
-  source: string
-  sentiment: string
-  time: string
+  body: string
+  symbol: string
 }
 
+/** GET /api/brain/briefing/{date} 结果。 */
 export interface Briefing {
   date: string
-  degraded: boolean
-  headline: string
-  marketView: string
-  risks: string[]
-  watchlist: WatchItem[]
-  positions: PositionView[]
-  news: NewsLine[]
-  decisionId: string
-  createdAt: string
-  reason: string
-}
-
-export interface Explanation {
-  decisionId: string
   summary: string
-  impact: string
-  risks: string[]
-  evidence: string
-  aiDegraded: boolean
-  discarded: boolean
-  reason: string
+  items: BriefingItem[]
+  generatedAt: string
+  stale: boolean
 }
 
-export interface AskReply {
-  decisionId: string
-  answer: string
-  evidence: string
-  aiDegraded: boolean
-  discarded: boolean
-  reason: string
+/** 推理进度（brain-monitor 面板展示）。 */
+export interface AnalyzeProgress {
+  symbol: string
+  stage: string
+  done: number | null
+  total: number | null
+  message: string
+  at: string
 }
 
+/** GET /api/brain/stats 每层级（tier）运行统计。 */
 export interface TierStats {
   tier: string
   model: string
@@ -94,7 +76,6 @@ export interface TierStats {
   inFlight: number | null
   queued: number | null
   circuitOpen: boolean
-  /** -1 表示未知 */
   kvCacheUsage: number | null
   running: number | null
   waiting: number | null

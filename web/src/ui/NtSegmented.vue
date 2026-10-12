@@ -57,7 +57,9 @@ function pick(value: string | number) {
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: color var(--nt-transition), background var(--nt-transition);
+  transition:
+    color var(--nt-transition),
+    background var(--nt-transition);
 }
 
 .nt-seg--sm .nt-seg__item {

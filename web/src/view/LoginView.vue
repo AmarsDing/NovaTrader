@@ -72,7 +72,7 @@ onMounted(check)
 
         <p v-if="auth.error" class="err">{{ auth.error }}</p>
 
-        <NtButton variant="primary" block :loading="auth.loading">
+        <NtButton type="submit" variant="primary" block :loading="auth.loading">
           {{ auth.loading ? '验证中…' : '进入驾驶舱' }}
         </NtButton>
         <NtButton v-if="auth.canLocal" block @click="onLocal">仍进入驾驶舱（本地会话）</NtButton>

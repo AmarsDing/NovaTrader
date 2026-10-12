@@ -1,8 +1,7 @@
 /** M06 策略信号与扫描。经 admin 代理 /api/strategy/*。 */
 
 export type SignalStatus =
-  | 'risk_checking' | 'approved' | 'rejected' | 'executing'
-  | 'done' | 'closed' | 'expired' | 'cancelled' | string
+  'risk_checking' | 'approved' | 'rejected' | 'executing' | 'done' | 'closed' | 'expired' | 'cancelled' | string
 
 export interface Signal {
   id: string
@@ -88,6 +87,22 @@ export interface SignalItem {
   status: string
   dims: Record<string, unknown>
   time: string
+  /** ATR14，仓位与止损的度量单位。 */
+  atr: number | null
+  /** 建议仓位比率（0–1）。 */
+  positionPct: number | null
+  /** 有效期止；过期信号界面置灰。 */
+  validUntil: string
+  holdDaysMax: number | null
+  /** 平仓方式（stop/take/timeout…），未平仓为空。 */
+  exitKind: string
+  exitPrice: number | null
+  /** 后验盈亏比率（0–1），hasPnl 为真才有效。 */
+  pnlPct: number | null
+  hasPnl: boolean
+  holdingDays: number | null
+  traceId: string
+  closedAt: string
 }
 
 export interface ScanReply {

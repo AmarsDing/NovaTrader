@@ -11,8 +11,9 @@ const props = withDefaults(
     options?: SelectOption[]
     label?: string
     placeholder?: string
+    disabled?: boolean
   }>(),
-  { modelValue: '', options: () => [], label: '', placeholder: '' },
+  { modelValue: '', options: () => [], label: '', placeholder: '', disabled: false },
 )
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string | number): void }>()
@@ -27,7 +28,7 @@ function onChange(event: Event) {
 <template>
   <label class="nt-select">
     <span v-if="label" class="nt-select__label">{{ label }}</span>
-    <select :value="String(modelValue ?? '')" @change="onChange">
+    <select :value="String(modelValue ?? '')" :disabled="disabled" @change="onChange">
       <option v-if="placeholder" value="" disabled>{{ placeholder }}</option>
       <option v-for="opt in options" :key="String(opt.value)" :value="String(opt.value)" :disabled="opt.disabled">
         {{ opt.label }}
@@ -51,6 +52,7 @@ function onChange(event: Event) {
 
 .nt-select select {
   appearance: none;
+  height: 32px;
   min-height: 32px;
   padding: 0 28px 0 10px;
   font-size: 13px;
@@ -73,8 +75,17 @@ function onChange(event: Event) {
   transition: border-color var(--nt-transition);
 }
 
+.nt-select select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .nt-select select:focus {
-  border-color: rgba(0, 229, 255, 0.55);
-  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.15);
+  border-color: rgba(0, 229, 255, 0.7);
+  box-shadow: none;
+}
+
+.nt-select select:focus-visible {
+  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.28);
 }
 </style>

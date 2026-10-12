@@ -62,6 +62,22 @@ const tradeColumns: NtTableColumn<TradeRow>[] = [
   { key: 'pnl', title: '盈亏', align: 'right' },
 ]
 
+function taskStatus(row: BacktestTask): string {
+  const labels: Record<string, string> = {
+    pending: '排队',
+    queued: '排队',
+    running: '运行中',
+    done: '完成',
+    success: '完成',
+    failed: '失败',
+    cancelled: '已取消',
+    canceled: '已取消',
+  }
+  const label = labels[String(row.status || '').toLowerCase()] || row.status || '—'
+  const message = row.message && row.message !== label ? row.message : ''
+  return [label, message].filter(Boolean).join(' · ')
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -149,15 +165,10 @@ onMounted(load)
     <p v-if="error" class="nt-err">{{ error }}</p>
     <p v-if="hint" class="nt-note">{{ hint }}</p>
 
-    <NtTable
-      :columns="taskColumns"
-      :rows="tasks as TaskRow[]"
-      row-key="id"
-      :empty="loading ? '读取中…' : '暂无任务'"
-    >
+    <NtTable :columns="taskColumns" :rows="tasks as TaskRow[]" row-key="id" :empty="loading ? '读取中…' : '暂无任务'">
       <template #cell-name="{ row }">{{ row.name || row.id }}</template>
       <template #cell-strategy="{ row }">{{ row.strategy }} · {{ row.freq }}</template>
-      <template #cell-status="{ row }">{{ row.status }} {{ row.message }}</template>
+      <template #cell-status="{ row }">{{ taskStatus(row) }}</template>
       <template #cell-totalReturn="{ value }">{{ ratioPct(value) }}</template>
       <template #cell-maxDrawdown="{ value }">{{ ratioPct(value) }}</template>
       <template #cell-winRate="{ value }">{{ ratioPct(value) }}</template>
@@ -178,12 +189,7 @@ onMounted(load)
       </div>
       <NtEquityCurve v-if="report" :points="report.equity" height="280px" />
       <p v-for="(line, index) in report?.warnings || []" :key="index" class="nt-note">{{ line }}</p>
-      <NtTable
-        :columns="tradeColumns"
-        :rows="trades as TradeRow[]"
-        :row-key="'seq'"
-        empty="暂无成交"
-      >
+      <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="暂无成交">
         <template #cell-price="{ value }">{{ price(value) }}</template>
         <template #cell-pnl="{ value }">{{ signed(value) }}</template>
       </NtTable>

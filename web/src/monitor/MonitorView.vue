@@ -1,0 +1,450 @@
+<script setup lang="ts">
+/**
+ * 监控驾驶舱。只读：不挂 dock，不写订单、不触发急停、不改模式。
+ *
+ * 版面：顶部 HUD 数字带 + 中间可拖拽画布（接入 → 研判 → 裁决）+ 底部终端带。
+ * 画布只认 scene-model 产出的 SceneGraph，本文件不再自己排坐标。
+ */
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { getConfigValues, saveConfigValues } from '@/api/config'
+import { ApiError } from '@/api/http'
+import { useOverlay } from '@/ui/useOverlay'
+import { configCategories, type ConfigField } from '@/view/config-catalog'
+import { isLive } from '@/ws/hub'
+import AlertCenter from '@/workspace/AlertCenter.vue'
+import CanvasStage from './CanvasStage.vue'
+import { dutyOf } from './duty'
+import { computeHealth } from './health'
+import { resolveHud } from './hud'
+import { emptyMonitorInput, loadMonitorInput } from './load-input'
+import { bindPulses } from './pulses'
+import { RingSeries } from './sampler'
+import { buildChildren, buildScene, pushPulse } from './scene-model'
+import Sparkline from './Sparkline.vue'
+import TerminalStrip from './TerminalStrip.vue'
+import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells } from './timeband'
+import type { Pulse } from './types'
+import './monitor.css'
+
+const router = useRouter()
+const stage = ref<InstanceType<typeof CanvasStage> | null>(null)
+const input = ref(emptyMonitorInput())
+const selectedId = ref('')
+const paused = ref(typeof document !== 'undefined' && document.hidden)
+
+const graph = computed(() => buildScene(input.value, input.value.now || Date.now()))
+const cards = computed(() => buildChildren(input.value, selectedId.value))
+const picked = computed(() => graph.value.nodes.find((node) => node.id === selectedId.value) ?? null)
+
+const AGENT = new Set(['post:scan', 'dim:tech', 'dim:news', 'dim:capital', 'dim:overseas', 'dim:synth'])
+
+/** 选中一张卡时，与它相连的卡也保持亮，其余压暗。 */
+const hotIds = computed(() => {
+  const id = selectedId.value
+  if (!id) return []
+  const ids = new Set<string>()
+  for (const edge of graph.value.edges) {
+    if (edge.from === id) ids.add(edge.to)
+    if (edge.to === id) ids.add(edge.from)
+  }
+  return [...ids]
+})
+
+const detailWhere = computed(() => {
+  const id = selectedId.value
+  if (AGENT.has(id)) return 'agent'
+  if (id.startsWith('source:') && id !== 'source:quality') return 'source'
+  if (id.startsWith('model:')) return 'model'
+  if (id.startsWith('service:') || id.startsWith('resource:') || id === 'source:quality') return 'runtime'
+  return id ? 'verdict' : ''
+})
+
+/* ---- 时段带：焦点随交易时段切换，拓扑永不变（timeband.ts） ---- */
+
+const nowMs = computed(() => input.value.now || Date.now())
+const bandKey = computed(() => detectBand(new Date(nowMs.value)))
+const spec = computed(() => bandSpec(bandKey.value))
+const segments = computed(() => bandSegments(bandKey.value))
+const countdown = computed(() => bandCountdown(new Date(nowMs.value), bandKey.value))
+const offday = computed(() => bandKey.value === 'offday')
+
+/* ---- 健康总分：五项等权、扣分可解释（health.ts） ---- */
+
+const health = computed(() => computeHealth(input.value, nowMs.value))
+const healthOpen = ref(false)
+
+/* ---- 顶部 HUD：时段决定十格，格内容来自 resolveHud ---- */
+
+const hud = computed(() => resolveHud(input.value, hudCells(bandKey.value), nowMs.value))
+
+const sparks = {
+  limit: new RingSeries(30),
+  broken: new RingSeries(30),
+  signal: new RingSeries(30),
+  p95: new RingSeries(30),
+  equity: new RingSeries(30),
+}
+
+function sparkPoints(key: string): (number | null)[] {
+  if (key === 'limit' || key === 'broken' || key === 'signal' || key === 'p95' || key === 'equity') {
+    return sparks[key].points()
+  }
+  return []
+}
+
+/** 每次轮询末尾给五条 sparkline 各推一个点；接口没返回推 null（断线不画） */
+function sampleSparks() {
+  const data = input.value
+  sparks.limit.push(data.limits?.ok ? data.limits.rows.length : null)
+  sparks.broken.push(data.sentiment?.ok && data.sentiment.brokenRate != null ? data.sentiment.brokenRate : null)
+  sparks.signal.push(
+    data.signals?.ok ? data.signals.items.filter((item) => item.status === 'approved' || item.status === 'risk_checking').length : null,
+  )
+  sparks.p95.push(data.brainStats?.ok ? Math.max(0, ...data.brainStats.tiers.map((tier) => tier.p95Ms ?? 0)) : null)
+  sparks.equity.push(data.account?.ok ? data.account.dayPnl : null)
+}
+
+const sampled = computed(() => {
+  const at = input.value.now
+  if (!at) return ''
+  const date = new Date(at)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+})
+
+const STATUS_WORD: Record<string, string> = { live: '在线', idle: '空闲', gap: '未返回', down: '中断', attention: '要注意' }
+
+/* ---- 详情弹层 ---- */
+
+const draft = ref<Record<string, string>>({})
+const configMsg = ref('')
+const saving = ref(false)
+const configFields = computed(() => fieldsFor(selectedId.value, picked.value?.title || ''))
+const serviceLogs = computed(() => {
+  if (detailWhere.value !== 'runtime' || !picked.value) return []
+  const key = picked.value.title.trim().toLowerCase()
+  const items = input.value.audit?.ok ? input.value.audit.items : []
+  return items.filter((item) => `${item.action} ${item.target}`.toLowerCase().includes(key)).slice(0, 8)
+})
+
+watch(selectedId, (id) => {
+  configMsg.value = ''
+  const fields = fieldsFor(id, graph.value.nodes.find((node) => node.id === id)?.title || '')
+  if (fields.length === 0) {
+    draft.value = {}
+    return
+  }
+  void loadDraft(fields)
+})
+
+function fieldsFor(id: string, title: string): ConfigField[] {
+  const all = configCategories.flatMap((category) => category.fields)
+  return keysFor(id, title)
+    .map((key) => all.find((field) => field.key === key))
+    .filter((field): field is ConfigField => field != null)
+}
+
+function keysFor(id: string, title: string): string[] {
+  if (id === 'model:large') return ['app.brain.large.url', 'app.brain.large.model', 'app.brain.large.key']
+  if (id === 'model:small') return ['app.brain.small.url', 'app.brain.small.model', 'app.brain.small.key']
+  if (id === 'dim:tech') return ['app.agent.technical', 'app.agent.w.technical']
+  if (id === 'dim:capital') return ['app.agent.capital', 'app.agent.w.capital']
+  if (id === 'dim:news') return ['app.agent.news', 'app.agent.w.news']
+  if (id === 'dim:overseas') return ['app.agent.external', 'app.agent.w.external']
+  if (id === 'dim:synth') return ['app.agent.synthesis']
+  const name = title.toLowerCase()
+  if (name.includes('tushare')) return ['app.ds.tushare.on', 'app.ds.tushare.token']
+  if (name.includes('tavily')) return ['app.ds.tavily.on', 'app.ds.tavily.token', 'app.ds.tavily.feeds']
+  if (name.includes('通达信') || name.includes('tdx') || name.includes('akshare')) return ['app.ds.pyworker', 'app.ds.tdx_local.on', 'app.ds.tdx_file.on', 'app.ds.akshare.on']
+  if (name.includes('东方财富')) return ['app.ds.eastmoney.on']
+  if (name.includes('巨潮')) return ['app.ds.cninfo.on']
+  if (name.includes('rss')) return ['app.ds.rss.on', 'app.ds.rss.feeds']
+  if (id === 'service:notify' || name === 'notify') return ['app.notify.webhook', 'app.notify.secret']
+  return []
+}
+
+async function loadDraft(fields: ConfigField[]) {
+  try {
+    const values = await getConfigValues()
+    const next: Record<string, string> = {}
+    for (const field of fields) next[field.key] = values[field.key] ?? field.fallback
+    draft.value = next
+  } catch (error) {
+    configMsg.value = error instanceof ApiError ? error.message : '配置没有读到'
+  }
+}
+
+async function saveDraft() {
+  const values: Record<string, string> = {}
+  for (const [key, value] of Object.entries(draft.value)) {
+    if (value.trim()) values[key] = value.trim()
+  }
+  if (Object.keys(values).length === 0) {
+    configMsg.value = '没有要保存的内容'
+    return
+  }
+  saving.value = true
+  try {
+    await saveConfigValues(values)
+    configMsg.value = '已保存，几秒内生效'
+    void pull()
+  } catch (error) {
+    configMsg.value = error instanceof ApiError ? error.message : '保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+
+function resetView() {
+  stage.value?.resetLayout()
+}
+
+/* ---- 数据轮询与实时脉冲 ---- */
+
+const overlay = useOverlay(() => {
+  if (selectedId.value) selectedId.value = ''
+  else void router.push('/')
+})
+
+let poll = 0
+let flush = 0
+let pulling = false
+let again = false
+let pending: Pulse[] = []
+let unbind = () => {}
+
+onMounted(() => {
+  overlay.open()
+  document.addEventListener('visibilitychange', onVisibility)
+  startPoll()
+  unbind = bindPulses(
+    (pulse) => enqueue(pulse),
+    () => void pull(),
+  )
+})
+
+onBeforeUnmount(() => {
+  overlay.close()
+  document.removeEventListener('visibilitychange', onVisibility)
+  stopPoll()
+  if (flush) window.clearTimeout(flush)
+  unbind()
+})
+
+function startPoll() {
+  stopPoll()
+  void pull()
+  poll = window.setInterval(() => void pull(), 10_000)
+}
+
+function stopPoll() {
+  if (poll) window.clearInterval(poll)
+  poll = 0
+}
+
+function onVisibility() {
+  paused.value = document.hidden
+  if (document.hidden) stopPoll()
+  else startPoll()
+}
+
+async function pull() {
+  if (paused.value) return
+  if (pulling) {
+    again = true
+    return
+  }
+  pulling = true
+  try {
+    do {
+      again = false
+      const requested = input.value.focusSymbol
+      const next = await loadMonitorInput(requested, input.value.pulses)
+      if (input.value.focusSymbol !== requested) {
+        again = true
+        continue
+      }
+      next.pulses = input.value.pulses
+      input.value = next
+      sampleSparks()
+    } while (again)
+  } finally {
+    pulling = false
+  }
+}
+
+function enqueue(pulse: Pulse) {
+  pending.push(pulse)
+  if (flush) return
+  flush = window.setTimeout(() => {
+    let list = input.value.pulses
+    const now = Date.now()
+    for (const item of pending) list = pushPulse(list, item, now)
+    pending = []
+    flush = 0
+    input.value = { ...input.value, pulses: list, now }
+  }, 300)
+}
+
+function select(id: string) {
+  if (id === 'action:trade') {
+    void router.push('/panel/trade')
+    return
+  }
+  // 空白处点一下（id 为空）和再点同一张牌，都是取消选中
+  if (!id || id === selectedId.value) {
+    selectedId.value = ''
+    return
+  }
+  if (!id.startsWith('symbol:') && buildChildren(input.value, id).length === 0) return
+  selectedId.value = id
+  if (!id.startsWith('symbol:')) return
+  const symbol = id.slice('symbol:'.length)
+  if (!symbol || input.value.focusSymbol === symbol) return
+  input.value = { ...input.value, focusSymbol: symbol }
+  void pull()
+}
+</script>
+
+<template>
+  <div class="nt-monitor">
+    <header class="nt-monitor__bar">
+      <button type="button" class="nt-link" @click="router.push('/')">交易台</button>
+      <h1>监控驾驶舱</h1>
+      <button type="button" class="nt-link" @click="resetView">重置视图</button>
+      <div class="nt-health">
+        <button type="button" class="nt-health__badge" :data-tone="health.tone" @click="healthOpen = !healthOpen">
+          健康 {{ health.score }}<i class="dot" :class="`is-${health.tone}`"></i>
+        </button>
+        <section v-if="healthOpen" class="nt-health__pop" role="dialog" aria-label="健康分明细">
+          <h3>健康分 {{ health.score }} · 五项各 20 分起扣</h3>
+          <ul>
+            <li v-for="part in health.parts" :key="part.key" :data-measured="part.measured">
+              <span>{{ part.label }}</span>
+              <strong v-if="part.measured" :data-deduct="part.deduction > 0">{{ part.deduction > 0 ? `−${part.deduction}` : '满分' }}</strong>
+              <strong v-else>未判定</strong>
+              <small>{{ part.note }}</small>
+            </li>
+          </ul>
+        </section>
+      </div>
+      <span v-if="sampled" class="nt-monitor__hint">采样 {{ sampled }}</span>
+      <span class="nt-live" :class="{ 'is-on': isLive() }">
+        <i class="dot" :class="isLive() ? 'is-live' : 'is-gap'"></i>
+        {{ isLive() ? '实时' : '不是实时' }}
+      </span>
+    </header>
+
+    <nav class="nt-band" :data-band="bandKey" aria-label="交易时段">
+      <template v-if="!offday">
+        <span
+          v-for="segment in segments"
+          :key="segment.key"
+          class="nt-band__seg"
+          :data-state="segment.state"
+          :data-key="segment.key"
+        >
+          {{ segment.label }}
+        </span>
+        <span class="nt-band__focus">{{ spec.focus }}</span>
+      </template>
+      <span v-else class="nt-band__seg" data-state="now">今日休市</span>
+      <span v-if="countdown" class="nt-band__count">{{ countdown }}</span>
+    </nav>
+
+    <section class="nt-hud" aria-label="总览">
+      <button
+        v-for="cell in hud"
+        :key="cell.key"
+        type="button"
+        :class="{ 'is-hero': cell.hero }"
+        :title="cell.sub"
+        @click="select(cell.select)"
+      >
+        <span>{{ cell.label }}</span>
+        <strong :class="cell.tone">{{ cell.face }}</strong>
+        <Sparkline
+          v-if="cell.spark"
+          class="nt-hud__spark"
+          :points="sparkPoints(cell.spark)"
+          :tone="cell.spark === 'equity' ? cell.tone : 'flat'"
+        />
+        <small v-if="cell.sub">{{ cell.sub }}</small>
+      </button>
+    </section>
+
+    <div class="nt-monitor__stage">
+      <CanvasStage
+        ref="stage"
+        :graph="graph"
+        :selected-id="selectedId"
+        :hot-ids="hotIds"
+        :paused="paused"
+        :promote="spec.promote || undefined"
+        :veil="spec.veil"
+        :calm="spec.calm"
+        :band-key="bandKey"
+        @select="select"
+      />
+      <p v-if="offday" class="nt-monitor__offday">今日休市，链路自检中</p>
+    </div>
+
+    <TerminalStrip :input="input" @select="select" />
+
+    <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true">
+      <section class="nt-pop__sheet">
+        <header>
+          <i class="dot" :class="`is-${picked.status}`"></i>
+          <div>
+            <h2>{{ detailWhere === 'runtime' ? dutyOf(picked.title).name : picked.title }}</h2>
+            <p>{{ detailWhere === 'runtime' ? dutyOf(picked.title).role : picked.sub || picked.detail }}</p>
+          </div>
+          <button type="button" @click="selectedId = ''">关闭</button>
+        </header>
+        <p class="nt-pop__face" :class="picked.tone">{{ picked.face || STATUS_WORD[picked.status] || '未返回' }}</p>
+        <div class="nt-pop__grid">
+          <article v-for="card in cards" :key="card.id">
+            <span>{{ card.title }}</span>
+            <strong :class="card.tone">{{ card.face }}</strong>
+            <small v-if="card.sub">{{ card.sub }}</small>
+            <button
+              v-if="card.id.startsWith('symbol:') || card.id === 'action:trade' || card.id.startsWith('book:')"
+              type="button"
+              @click="select(card.id)"
+            >
+              打开
+            </button>
+          </article>
+        </div>
+        <form v-if="configFields.length" class="nt-pop__form" @submit.prevent="saveDraft">
+          <h3>配置</h3>
+          <label v-for="field in configFields" :key="field.key">
+            <span>{{ field.label }}</span>
+            <select v-if="field.kind === 'select'" v-model="draft[field.key]">
+              <option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option>
+            </select>
+            <select v-else-if="field.kind === 'bool'" v-model="draft[field.key]">
+              <option value="true">打开</option>
+              <option value="false">关闭</option>
+            </select>
+            <input v-else v-model="draft[field.key]" :type="field.kind === 'secret' ? 'password' : 'text'" :placeholder="field.hint" />
+          </label>
+          <button type="submit" :disabled="saving">{{ saving ? '保存中' : '保存配置' }}</button>
+          <small>{{ configMsg || '留空的项不会覆盖原来的配置' }}</small>
+        </form>
+        <section v-if="detailWhere === 'runtime'" class="nt-pop__log">
+          <h3>运行记录</h3>
+          <p>当前 {{ STATUS_WORD[picked.status] || picked.status }} · {{ cards[0]?.sub || '没有更多状态' }}</p>
+          <p v-if="serviceLogs.length === 0">审计里没有这条服务的操作记录。这里只能重新检查它是否在线，没有启停开关。</p>
+          <ul v-else>
+            <li v-for="item in serviceLogs" :key="item.id">{{ item.time }} {{ item.action }} {{ item.target }}</li>
+          </ul>
+          <button type="button" @click="pull">重新检查</button>
+        </section>
+      </section>
+    </div>
+
+    <AlertCenter />
+  </div>
+</template>

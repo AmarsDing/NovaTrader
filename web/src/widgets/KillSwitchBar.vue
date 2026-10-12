@@ -4,7 +4,7 @@
  * 触发/恢复二合一弹层，恢复必须输入 CONFIRM；查看角色锁定。
  * 玻璃+发光只在此弹层与按钮 hot 态（发光预算允许）。
  */
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { messageOf } from '@/utils/format'
@@ -20,6 +20,14 @@ const reason = ref('手动急停')
 const confirmWord = ref('')
 const error = ref('')
 const busy = ref(false)
+
+/** Shift+K 热键从工作台打开本弹层（查看角色也能打开看说明）。 */
+function onHotkeyOpen() {
+  open.value = true
+}
+
+onMounted(() => window.addEventListener('nt:kill-switch', onHotkeyOpen))
+onBeforeUnmount(() => window.removeEventListener('nt:kill-switch', onHotkeyOpen))
 
 async function submit() {
   if (auth.isViewer() || busy.value) return
@@ -64,13 +72,7 @@ async function submit() {
       }}
     </p>
     <NtInput v-model="reason" label="原因" />
-    <NtInput
-      v-if="risk.killActive"
-      v-model="confirmWord"
-      label="确认字样"
-      placeholder="CONFIRM"
-      mono
-    />
+    <NtInput v-if="risk.killActive" v-model="confirmWord" label="确认字样" placeholder="CONFIRM" mono />
     <p v-if="auth.isViewer()" class="nt-err">当前是查看角色，不能操作 Kill Switch。</p>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <template #footer>

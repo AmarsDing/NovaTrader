@@ -33,7 +33,7 @@ export async function scan(body: ScanBody): Promise<ScanReply> {
     matched: num(pick(raw, 'matched')),
     ranked: num(pick(raw, 'ranked')),
     aiCalls: num(pick(raw, 'aiCalls', 'ai_calls')),
-    degraded: !!(raw.degraded),
+    degraded: !!raw.degraded,
     signalIds: asList<string>(raw, 'signalIds', 'signal_ids'),
     sellSignalIds: asList<string>(raw, 'sellSignalIds', 'sell_signal_ids'),
     dropped: (raw.dropped && typeof raw.dropped === 'object' ? raw.dropped : {}) as Record<string, number>,

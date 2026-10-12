@@ -4,22 +4,42 @@
  */
 
 export type IconName =
-  | 'dashboard' | 'chart' | 'signal' | 'trade' | 'position' | 'globe' | 'intel'
-  | 'backtest' | 'brain' | 'shield' | 'bell' | 'server' | 'settings' | 'search'
-  | 'close' | 'plus' | 'check' | 'warning' | 'refresh' | 'link' | 'expand'
-  | 'pin' | 'clock' | 'up' | 'down' | 'menu' | 'terminal'
+  | 'dashboard'
+  | 'chart'
+  | 'signal'
+  | 'trade'
+  | 'position'
+  | 'globe'
+  | 'intel'
+  | 'backtest'
+  | 'brain'
+  | 'shield'
+  | 'bell'
+  | 'server'
+  | 'settings'
+  | 'search'
+  | 'close'
+  | 'plus'
+  | 'check'
+  | 'warning'
+  | 'refresh'
+  | 'link'
+  | 'expand'
+  | 'pin'
+  | 'clock'
+  | 'up'
+  | 'down'
+  | 'menu'
+  | 'terminal'
 
 export const ICONS: Record<IconName, string> = {
   dashboard:
     '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   chart:
     '<path d="M7 4v3M7 17v3"/><path d="M6.2 7h1.6v10H6.2z"/><path d="M15 6v2M15 16v2"/><path d="M14.2 8h1.6v8h-1.6z"/>',
-  signal:
-    '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
-  trade:
-    '<path d="M4 8h13l-3-3"/><path d="M20 16H7l3 3"/>',
-  position:
-    '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  signal: '<path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/>',
+  trade: '<path d="M4 8h13l-3-3"/><path d="M20 16H7l3 3"/>',
+  position: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   globe:
     '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.7 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/>',
   intel:
@@ -28,10 +48,8 @@ export const ICONS: Record<IconName, string> = {
     '<path d="M9 3h6"/><path d="M10 3v5.2L5.6 17.6A2 2 0 0 0 7.4 20.5h9.2a2 2 0 0 0 1.8-2.9L14 8.2V3"/><path d="M7.5 14h9"/>',
   brain:
     '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/><rect x="10" y="10" width="4" height="4"/>',
-  shield:
-    '<path d="M12 3l8 3v6c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>',
-  bell:
-    '<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.2 7.7-8 9-4.8-1.3-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>',
+  bell: '<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/>',
   server:
     '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   settings:

@@ -53,9 +53,7 @@ function seriesRows(): (Bar & { time: string | number })[] {
 function apply() {
   if (!candle || !volume || !ma5 || !ma10 || !ma20) return
   const data = seriesRows()
-  candle.setData(
-    data.map(({ time, open, high, low, close }) => ({ time: time as Time, open, high, low, close })),
-  )
+  candle.setData(data.map(({ time, open, high, low, close }) => ({ time: time as Time, open, high, low, close })))
   volume.setData(
     data.map((row) => ({
       time: row.time as Time,

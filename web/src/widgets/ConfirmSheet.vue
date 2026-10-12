@@ -40,11 +40,26 @@ function sideClass(side: unknown): string {
     <p class="tag">实盘确认 · LIVE</p>
     <h2 class="headline">{{ confirmState.seconds }} 秒内未确认则作废</h2>
     <dl class="fields">
-      <div><dt>标的</dt><dd>{{ order.symbol || '—' }}</dd></div>
-      <div><dt>方向</dt><dd :class="sideClass(order.side)">{{ sideText(order.side) }}</dd></div>
-      <div><dt>价格</dt><dd>{{ price(order.price) }}</dd></div>
-      <div><dt>数量</dt><dd>{{ order.volume ?? order.qty ?? '—' }}</dd></div>
-      <div><dt>账户</dt><dd>LIVE</dd></div>
+      <div>
+        <dt>标的</dt>
+        <dd>{{ order.symbol || '—' }}</dd>
+      </div>
+      <div>
+        <dt>方向</dt>
+        <dd :class="sideClass(order.side)">{{ sideText(order.side) }}</dd>
+      </div>
+      <div>
+        <dt>价格</dt>
+        <dd>{{ price(order.price) }}</dd>
+      </div>
+      <div>
+        <dt>数量</dt>
+        <dd>{{ order.volume ?? order.qty ?? '—' }}</dd>
+      </div>
+      <div>
+        <dt>账户</dt>
+        <dd>LIVE</dd>
+      </div>
     </dl>
     <p v-if="locked" class="nt-err">当前是查看角色，不能确认实盘委托。</p>
     <p v-if="confirmState.error" class="nt-err">{{ confirmState.error }}</p>

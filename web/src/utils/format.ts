@@ -86,11 +86,12 @@ export function clock(value: unknown): string {
   return formatClock(value)
 }
 
+// 与 panels/market/SentimentStages.vue 的五阶段口径一致，全仓只用这一套中文。
 const PHASE: Record<string, string> = {
   ICE: '冰点',
   RECOVER: '修复',
-  WARM: '温和',
-  HOT: '过热',
+  WARM: '升温',
+  HOT: '高潮',
   FADE: '退潮',
 }
 
@@ -116,13 +117,124 @@ export function dimValue(dims: unknown, label: string): number | null {
   return null
 }
 
+const ORDER_STATUS: Record<string, string> = {
+  new: '待报',
+  pending: '待报',
+  accepted: '已报',
+  partial: '部成',
+  filled: '已成',
+  cancelled: '已撤',
+  canceled: '已撤',
+  rejected: '已拒绝',
+  expired: '已过期',
+}
+
+/** 委托方向中文。红涨绿跌由调用方加 .up / .down。 */
+export function sideLabel(side: unknown): string {
+  const key = String(side || '').toLowerCase()
+  if (key === 'buy') return '买入'
+  if (key === 'sell') return '卖出'
+  return key || '—'
+}
+
+export function orderStatusLabel(status: unknown): string {
+  const key = String(status || '').toLowerCase()
+  return ORDER_STATUS[key] || (key ? key : '—')
+}
+
+/** 只有未终态委托可以撤。 */
+export function canCancelOrder(status: unknown): boolean {
+  const key = String(status || '').toLowerCase()
+  return key === 'new' || key === 'pending' || key === 'accepted' || key === 'partial'
+}
+
+const STRATEGY_LABEL: Record<string, string> = {
+  first_board_weak2strong: '首板弱转强',
+  pullback_dip: '强势回踩',
+}
+
+/** 策略模板代码 → 中文。 */
+export function strategyLabel(code: unknown): string {
+  const key = String(code || '')
+  if (!key) return '—'
+  return STRATEGY_LABEL[key] || key
+}
+
+const MISS_LABEL: Record<string, string> = {
+  held: '已持仓',
+  cooldown: '冷却中',
+  not_in_ai_top: '没进模型前 30',
+  ai_invalid: '模型结果作废',
+  below_threshold: '综合分低于 75',
+  daily_cap: '当日买入已满 5 只',
+  price_invalid: '价格不合法',
+  killswitch: '急停中',
+  after_cutoff: '已过 14:50',
+  no_quote: '没有行情',
+}
+
+/** 漏斗漏选原因代码 → 中文。 */
+export function missLabel(code: unknown): string {
+  const key = String(code || '')
+  if (!key) return '—'
+  return MISS_LABEL[key] || key
+}
+
+const SIGNAL_STATUS: Record<string, string> = {
+  risk_checking: '风控审核',
+  approved: '已通过',
+  rejected: '已拦截',
+  executing: '执行中',
+  done: '已执行',
+  closed: '已平仓',
+  expired: '已过期',
+  cancelled: '已取消',
+  canceled: '已取消',
+}
+
+/** 信号状态机代码 → 中文。 */
+export function signalStatusLabel(status: unknown): string {
+  const key = String(status || '').toLowerCase()
+  return SIGNAL_STATUS[key] || (key ? key : '—')
+}
+
+/** 有效期剩余的文字；已结束返回空串，由调用方改显「已过期」。 */
+export function validRemainText(validUntil: unknown, now = Date.now()): string {
+  if (!validUntil) return ''
+  const ts = new Date(String(validUntil)).getTime()
+  if (!Number.isFinite(ts)) return ''
+  const ms = ts - now
+  if (ms <= 0) return ''
+  const minutes = Math.ceil(ms / 60000)
+  if (minutes >= 60) return `剩 ${Math.floor(minutes / 60)} 时 ${minutes % 60} 分`
+  return `剩 ${minutes} 分`
+}
+
+export function isValidExpired(validUntil: unknown, now = Date.now()): boolean {
+  if (!validUntil) return false
+  const ts = new Date(String(validUntil)).getTime()
+  if (!Number.isFinite(ts)) return false
+  return ts <= now
+}
+
 export function messageOf(error: unknown): string {
   if (!error) return ''
   const raw = error instanceof Error ? error.message : String(error)
   const status = (error as { status?: number })?.status
-  if (status === 404) return raw && raw !== 'Not Found' ? raw : '管理网关尚未提供该接口'
+  if (status === 404) {
+    const cleaned = raw.replace(/^not found:?\s*/i, '').trim()
+    return cleaned && !/^not found$/i.test(raw) ? cleaned : '还没有这份记录'
+  }
   if (status === 0) return raw || '无法连接 admin（2001）'
-  return raw || '请求失败'
+  const text = raw
+    .replace(/^invalid:\s*/i, '')
+    .replace(/^bad request:\s*/i, '')
+    .replace(/^not found:?\s*/i, '')
+    .trim()
+  if (/rejected/i.test(text) && /撤/.test(text)) return '这笔委托已拒绝，不能再撤'
+  if (/filled/i.test(text) && /撤/.test(text)) return '这笔委托已成交，不能再撤'
+  if (/cancel/i.test(text) && /撤/.test(text)) return '这笔委托已撤销'
+  return text || '请求失败'
 }
 
 export function chartTime(value: unknown, freq = '1d'): string | number | null {

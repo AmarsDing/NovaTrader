@@ -45,28 +45,35 @@
 .nt-form {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 14px;
+  gap: 8px 10px;
   align-items: flex-end;
 }
 
-.nt-form label {
+.nt-form > label,
+.nt-form > .nt-select {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  min-width: 140px;
+  gap: 4px;
+  min-width: 120px;
   font-size: 11.5px;
   color: var(--nt-text-3);
 }
 
-.nt-form label.grow {
-  flex: 1;
-  min-width: 220px;
+.nt-form > label.grow {
+  flex: 1 1 180px;
+  min-width: 160px;
 }
 
 .nt-split {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
+}
+
+@container (min-width: 760px) {
+  .nt-split {
+    grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  }
 }
 
 .nt-panel {

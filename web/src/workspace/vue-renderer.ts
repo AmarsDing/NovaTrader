@@ -1,11 +1,12 @@
 /**
  * Vue ↔ dockview 桥：把 Vue 组件包装成 dockview 的 IContentRenderer / ITabRenderer /
  * IWatermarkRenderer（有意不用 dockview-vue，自己控 renderer 与主题）。
- * - 每个面板/标签页/水印各自挂一个独立 Vue app，并继承 DockHost 的 appContext，
- *   因此面板内 pinia / router / provide 与整机一致；
- * - dispose() 反挂载，面板关掉即释放 watcher 与 ECharts 实例。
+ * - 每个面板/标签页/水印各自挂一个独立 Vue app；
+ * - 共享宿主 provides（pinia 等），并显式桥接当前路由（面板不在 RouterView 子树内，
+ *   直接复用宿主 _context 时 useRoute() 会拿不到 Symbol(route location)）。
  */
-import { createApp, defineAsyncComponent, h, type App, type AppContext, type Component } from 'vue'
+import { createApp, defineAsyncComponent, h, reactive, watch, type App, type AppContext, type Component } from 'vue'
+import { routeLocationKey, routerKey } from 'vue-router'
 import type {
   GroupPanelPartInitParameters,
   IContentRenderer,
@@ -14,6 +15,7 @@ import type {
   TabPartInitParameters,
   WatermarkRendererInitParameters,
 } from 'dockview-core'
+import { router } from '@/router'
 import { getPanel } from './panel-registry'
 import PanelTab from './PanelTab.vue'
 import DockWatermark from './DockWatermark.vue'
@@ -30,6 +32,19 @@ function componentFor(name: string): Component | null {
   return comp
 }
 
+/** 给面板用的可变路由代理，属性始终跟 router.currentRoute 对齐。 */
+function bridgeRoute() {
+  const state = reactive({ ...router.currentRoute.value })
+  watch(
+    router.currentRoute,
+    (to) => {
+      Object.assign(state, to)
+    },
+    { flush: 'sync' },
+  )
+  return state
+}
+
 /** 单个 Vue 子应用的生命周期包装。 */
 class VueMount {
   readonly element: HTMLElement
@@ -41,8 +56,21 @@ class VueMount {
 
   mount(ctx: AppContext, root: Component, props: Record<string, unknown>) {
     const app = createApp({ render: () => h(root, props) })
-    // 继承宿主上下文：全局组件、插件、provide/inject 与主应用一致。
-    ;(app as unknown as { _context: AppContext })._context = ctx
+    const dest = app._context as AppContext & {
+      provides: object
+      components: AppContext['components']
+      directives: AppContext['directives']
+      mixins: AppContext['mixins']
+    }
+    const src = ctx as typeof dest
+    // 原型链挂上宿主 provides，本地 provide 不污染主应用。
+    dest.provides = Object.create(src.provides) as object
+    dest.config = src.config
+    dest.components = src.components
+    dest.directives = src.directives
+    dest.mixins = src.mixins
+    app.provide(routerKey, router)
+    app.provide(routeLocationKey, bridgeRoute())
     app.mount(this.element)
     this.app = app
   }

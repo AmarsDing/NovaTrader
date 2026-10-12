@@ -52,6 +52,87 @@ export function triggerKillSwitch(body: KillBody): Promise<unknown> {
   return request('/api/risk/killswitch', { method: 'POST', json: body })
 }
 
+/* ---------- R01–R15 规则链预检（M08） ---------- */
+
+export interface RuleHit {
+  code: string
+  name: string
+  pass: boolean
+  detail: string
+}
+
+export interface CheckReply {
+  pass: boolean
+  rule: string
+  detail: string
+  hits: RuleHit[]
+  traceId: string
+}
+
+export interface CheckBody {
+  symbol?: string
+  side?: string
+  price?: number
+  qty?: number
+  account?: string
+  [key: string]: unknown
+}
+
+export async function checkOrder(body: CheckBody): Promise<CheckReply> {
+  const raw = (await request('/api/risk/check', { method: 'POST', json: body })) as RawRecord
+  const record = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
+  const hits = Array.isArray(record.results)
+    ? record.results
+    : Array.isArray(record.hits)
+      ? record.hits
+      : Array.isArray(record.rules)
+        ? record.rules
+        : []
+  return {
+    pass: !!(record.approved ?? record.pass ?? record.ok ?? record.allowed),
+    rule: pick<string>(record, 'rule', 'blockedBy', 'blocked_by') || '',
+    detail: pick<string>(record, 'reason', 'detail', 'message') || '',
+    hits: (hits as RawRecord[]).map((h) => ({
+      code: pick<string>(h, 'rule', 'code', 'id') || '',
+      name: pick<string>(h, 'name', 'title') || '',
+      pass: !!(h.pass ?? h.ok),
+      detail: pick<string>(h, 'note', 'detail', 'reason', 'message') || '',
+    })),
+    traceId: pick<string>(record, 'traceId', 'trace_id') || '',
+  }
+}
+
+/* ---------- 风控日报（M08） ---------- */
+
+export interface RiskReportRow {
+  metric: string
+  value: string
+  note: string
+}
+
+export interface RiskReport {
+  date: string
+  rows: RiskReportRow[]
+  summary: string
+  generatedAt: string
+}
+
+export async function getRiskReport(): Promise<RiskReport> {
+  const raw = await request('/api/risk/report')
+  const record = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
+  const rows = Array.isArray(record.rows) ? record.rows : Array.isArray(record.items) ? record.items : []
+  return {
+    date: pick<string>(record, 'date', 'tradeDate', 'trade_date') || '',
+    rows: (rows as RawRecord[]).map((r) => ({
+      metric: pick<string>(r, 'metric', 'name', 'key') || '',
+      value: pick<string>(r, 'value', 'val') || '',
+      note: pick<string>(r, 'note', 'comment') || '',
+    })),
+    summary: pick<string>(record, 'summary', 'digest') || '',
+    generatedAt: pick<string>(record, 'generatedAt', 'generated_at', 'asOf', 'as_of') || '',
+  }
+}
+
 export function resetKillSwitch(body: KillBody): Promise<unknown> {
   return request('/api/risk/killswitch/reset', { method: 'POST', json: body })
 }

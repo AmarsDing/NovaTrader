@@ -38,7 +38,10 @@ const option = computed<EChartsCoreOption | null>(() => {
       { type: 'category', data: props.points.map((point) => point.time), gridIndex: 0, ...axis() },
       { type: 'category', data: props.points.map((point) => point.time), gridIndex: 1, ...axis() },
     ],
-    yAxis: [{ gridIndex: 0, scale: true, ...axis() }, { gridIndex: 1, scale: true, ...axis() }],
+    yAxis: [
+      { gridIndex: 0, scale: true, ...axis() },
+      { gridIndex: 1, scale: true, ...axis() },
+    ],
     series: [
       {
         name: 'MACD',

@@ -5,22 +5,24 @@
  * - 布局：onDidLayoutChange 防抖 500ms → localStorage（stores/layout，按账号分键）；
  * - 无存储 / 存储损坏 → 默认预设；浮窗开启，popout 关（P5 再开能力）。
  */
-import { getCurrentInstance, onBeforeUnmount, onMounted, provide, ref } from 'vue'
+import { getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue'
 import { createDockview, type DockviewApi, type DockviewTheme } from 'dockview-core'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
-import { WorkbenchKey, type WorkbenchApi } from './inject'
+import { registerWorkbench, unregisterWorkbench, type WorkbenchApi } from './inject'
 import { stagePanelParams } from './panel-bus'
-import { getPanel, listPanels } from './panel-registry'
+import { getPanel, listPanels, canPopout } from './panel-registry'
 import { createVueRenderers } from './vue-renderer'
 
 const SAVE_DEBOUNCE_MS = 500
 
-/** 默认预设：总览居中，行情右侧同组标签，交易在下。 */
+/** 盘中全览：中决策台，右涨停/行情/信号/情报同组，下交易。布局版本升级后旧布局作废。 */
 const DEFAULT_LAYOUT: { id: string; ref?: string; direction?: 'right' | 'below' | 'within' }[] = [
   { id: 'overview' },
-  { id: 'market', ref: 'overview', direction: 'right' },
-  { id: 'signals', ref: 'market', direction: 'within' },
+  { id: 'limit-ladder', ref: 'overview', direction: 'right' },
+  { id: 'market', ref: 'limit-ladder', direction: 'within' },
+  { id: 'signals', ref: 'limit-ladder', direction: 'within' },
+  { id: 'intel', ref: 'limit-ladder', direction: 'within' },
   { id: 'trade', ref: 'overview', direction: 'below' },
 ]
 
@@ -89,6 +91,14 @@ function scheduleSave() {
   }, SAVE_DEBOUNCE_MS)
 }
 
+/** 丢弃存储布局里已下线/未知的面板，避免开出一堆「未知面板」。 */
+function pruneUnknownPanels() {
+  if (!api) return
+  for (const panel of [...api.panels]) {
+    if (!getPanel(panel.id)) panel.api.close()
+  }
+}
+
 function applyLayout(next: unknown, opts: { persist?: boolean } = {}) {
   if (!api) return
   applying = true
@@ -98,6 +108,7 @@ function applyLayout(next: unknown, opts: { persist?: boolean } = {}) {
     api.clear()
     buildDefault(api)
   }
+  pruneUnknownPanels()
   applying = false
   if (!api.panels.length) buildDefault(api)
   if (opts.persist !== false) persist()
@@ -115,11 +126,32 @@ const workbench: WorkbenchApi = {
   captureLayout: () => api?.toJSON() ?? null,
   applyLayout,
   resetToDefault,
+  popoutPanel: (id: string) => void popoutPanel(id),
   panels: listPanels(),
 }
 
-provide(WorkbenchKey, workbench)
-defineExpose({ openPanel, applyLayout, resetToDefault, captureLayout: workbench.captureLayout })
+/** 把面板弹成独立窗口（dockview popout）；不允许的面板静默拒绝。 */
+async function popoutPanel(id: string): Promise<boolean> {
+  if (!api || !canPopout(id)) return false
+  const panel = api.getPanel(id)
+  if (!panel) return false
+  try {
+    return await api.addPopoutGroup(panel)
+  } catch {
+    return false
+  }
+}
+
+// 模块级注册：须在 setup 同步完成，供同页先挂载的 CommandBar 等懒取。
+registerWorkbench(workbench)
+defineExpose({
+  openPanel,
+  applyLayout,
+  resetToDefault,
+  captureLayout: workbench.captureLayout,
+  /** 热键等宿主逻辑用：拿 dockview 实例（可能还没建好）。 */
+  getApi: () => api,
+})
 
 onMounted(() => {
   if (!host.value) return
@@ -135,6 +167,7 @@ onMounted(() => {
     createTabComponent: renderers.createTabComponent,
     createWatermarkComponent: renderers.createWatermarkComponent,
     disableFloatingGroups: false,
+    popoutUrl: '/popout.html',
   })
 
   const stored = layout.load(accountKey())
@@ -152,6 +185,7 @@ onBeforeUnmount(() => {
   offLayoutChange = null
   api?.dispose()
   api = null
+  unregisterWorkbench(workbench)
 })
 </script>
 

@@ -7,7 +7,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export const LAYOUT_STORAGE_VERSION = 1
+export const LAYOUT_STORAGE_VERSION = 3
+/** 布局版本升级时，把上一版当前排列收成这个模板，不直接丢掉。 */
+export const ARCHIVED_LAYOUT_NAME = '升级前的布局'
 export const LAYOUT_PREFIX = 'nt.layout.v1'
 const PRESET_KEY = 'nt.layout.presets.v1'
 
@@ -45,9 +47,23 @@ export const useLayoutStore = defineStore('layout', () => {
     }
   }
 
-  /** 版本迁移入口：当前只有 v1，低版本/异形直接丢弃（回默认预设）。 */
+  /**
+   * 版本迁移：低版本里那份当前排列收成「升级前的布局」，然后回默认屏。
+   * 未来版本和空信封不收，避免把读不懂的结构写进模板。
+   */
   function migrate(payload: Partial<StoredLayout>): unknown | null {
-    void payload
+    const version = payload.version
+    if (
+      typeof version === 'number' &&
+      version >= 1 &&
+      version < LAYOUT_STORAGE_VERSION &&
+      payload.layout != null
+    ) {
+      loadPresets()
+      if (!Object.prototype.hasOwnProperty.call(presets.value, ARCHIVED_LAYOUT_NAME)) {
+        savePreset(ARCHIVED_LAYOUT_NAME, payload.layout)
+      }
+    }
     return null
   }
 

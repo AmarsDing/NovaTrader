@@ -29,9 +29,14 @@ defineProps<{ tiers: LadderTier[]; empty?: string }>()
           <span>{{ tier.stocks.length }} 只</span>
         </header>
         <ul class="nt-ladder__stocks">
-          <li v-for="s in tier.stocks" :key="s.symbol" class="nt-ladder__stock" :class="{ broken: s.status === 'BROKEN' }">
+          <li
+            v-for="s in tier.stocks"
+            :key="s.symbol"
+            class="nt-ladder__stock"
+            :class="{ broken: s.status === 'BROKEN' }"
+          >
             <span class="nt-ladder__name">{{ s.name || s.symbol }}</span>
-            <span class="nt-ladder__symbol">{{ s.symbol }}</span>
+            <span v-if="s.name && s.name !== s.symbol" class="nt-ladder__symbol">{{ s.symbol }}</span>
           </li>
         </ul>
       </section>

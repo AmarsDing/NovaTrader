@@ -4,10 +4,10 @@ export interface TabItem {
   label: string
 }
 
-withDefaults(
-  defineProps<{ modelValue?: string | number | null; items?: TabItem[] }>(),
-  { modelValue: '', items: () => [] },
-)
+withDefaults(defineProps<{ modelValue?: string | number | null; items?: TabItem[] }>(), {
+  modelValue: '',
+  items: () => [],
+})
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: string | number): void }>()
 </script>
