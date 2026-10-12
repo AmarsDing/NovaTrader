@@ -17,7 +17,7 @@ import (
 
 // Injectors from wire.go:
 
-func wireApp(admin *conf.Admin, discovery *conf.Discovery, nats *conf.Nats, settings gateway.Settings, postgres *conf.Postgres, logger log.Logger) (*kratos.App, func(), error) {
+func wireApp(admin *conf.Admin, nats *conf.Nats, settings gateway.Settings, postgres *conf.Postgres, logger log.Logger) (*kratos.App, func(), error) {
 	auditStore, cleanup, err := data.NewAuditStore(postgres, logger)
 	if err != nil {
 		return nil, nil, err
@@ -25,7 +25,7 @@ func wireApp(admin *conf.Admin, discovery *conf.Discovery, nats *conf.Nats, sett
 	hub := gateway.NewHub(logger)
 	httpServer := server.NewHTTPServer(admin, settings, auditStore, hub, logger)
 	grpcServer := server.NewGRPCServer(admin, logger)
-	registrar := server.NewRegistrar(discovery)
+	registrar := server.NewRegistrar()
 	websocketServer := server.NewWebsocketServer(admin, nats, settings, hub, logger)
 	app := newApp(logger, httpServer, grpcServer, registrar, websocketServer)
 	return app, func() {

@@ -78,7 +78,7 @@ func main() {
 	if bc.GetRedis() != nil {
 		settings.RedisAddr = bc.GetRedis().GetAddr()
 	}
-	app, cleanup, err := wireApp(bc.GetAdmin(), bc.GetDiscovery(), bc.GetNats(), settings, bc.GetPostgres(), logger)
+	app, cleanup, err := wireApp(bc.GetAdmin(), bc.GetNats(), settings, bc.GetPostgres(), logger)
 	if err != nil {
 		panic(err)
 	}
