@@ -3,7 +3,7 @@ import { brainLatencyHistogram, brainStats, brainUsage, getBriefing } from '@/ap
 import { getAdmission, getReport, getShadowStats, listTasks } from '@/api/backtest'
 import { getQuality, listSources } from '@/api/datahub'
 import { hotWords, timeline as fetchTimeline } from '@/api/intel'
-import { getFactors, getSentimentDetail, listLimits, listSectors } from '@/api/market'
+import { getAuction, getFactors, getLadder, getSentimentDetail, listLimits, listSectors } from '@/api/market'
 import { listMessages } from '@/api/notify'
 import { opsStatus } from '@/api/ops'
 import { getRiskLimits, getRiskReport, getRiskState } from '@/api/risk'
@@ -21,7 +21,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
 
-  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter] =
+  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter, auction, ladder] =
     await Promise.all([
       quiet(() => getAccount(book)),
       quiet(() => listPositions(book)),
@@ -52,6 +52,8 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       focus ? quiet(() => getFactors(focus, 'capital')) : Promise.resolve(null),
       quiet(() => getStrategyPerformance(20)),
       quiet(() => getScoreVsPnl(50)),
+      quiet(() => getAuction(10)),
+      quiet(() => getLadder(5)),
     ])
 
   void accountStore.refresh()
@@ -367,6 +369,15 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
             ok: true,
             performance: perf ?? null,
             scatter: scatter ?? null,
+          }
+        : { ok: false },
+    /* S7：竞价截面与连板梯队；任一通了就算 ok，缺的字段界面写「未接入」 */
+    marketP1:
+      auction || ladder
+        ? {
+            ok: true,
+            auction: auction ?? null,
+            ladder: ladder ?? null,
           }
         : { ok: false },
   }

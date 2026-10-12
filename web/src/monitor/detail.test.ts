@@ -191,7 +191,7 @@ describe('§5.1 账户牌', () => {
     expect(curve?.foot).toContain('仅本次会话')
     expect(curve?.rows?.find((r) => r.key === 'bench')?.value).toContain('未接入')
   })
-  it('持仓表带距止损/距止盈/持有天数，今日高低点名 ladder 缺口', () => {
+  it('持仓表带距止损/距止盈/持有天数，今日高低仍写未接入（不用现价冒充）', () => {
     const table = panel?.sections[2].table
     expect(table?.columns).toContain('距止损')
     const row = table?.rows[0]
@@ -199,7 +199,7 @@ describe('§5.1 账户牌', () => {
     expect(row?.[8]).toBe('2.9%')
     expect(row?.[9]).toBe('4.8%')
     expect(row?.[7]).toBe('3 天')
-    expect(row?.[10]).toContain('/v1/market/ladder')
+    expect(row?.[10]).toContain('未接入')
   })
   it('距止损 <2% 整行 warn、已触发 danger', () => {
     const input = fixture()

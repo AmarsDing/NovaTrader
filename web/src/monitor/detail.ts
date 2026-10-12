@@ -319,7 +319,8 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
       signal?.holdingDays != null ? `${signal.holdingDays} 天` : '未接入：持仓表没有建仓日期',
       stopText,
       takeText,
-      GAP_LADDER,
+      // 今日高/低：日级快照不在只读接口里，仍写未接入，不用现价冒充
+      '未接入：需要日内高低快照',
     ])
     posFlags.push(flag)
   }
@@ -1175,5 +1176,66 @@ function scanSections(input: MonitorInput): DetailSection[] {
     foot: '只做事实陈述，不做「本该赚多少」的假设收益——策略没入场，没有成交价（§5.6）。',
   }
 
-  return [layersSection, ...reasonSections, missSection, reviewSection]
+  /* S7：连板梯队晋级率（GET /api/market/ladder）与集合竞价截面（GET /api/market/auction） */
+  const marketP1 = input.marketP1?.ok ? input.marketP1 : null
+  const ladder = marketP1?.ladder ?? null
+  const ladderSection: DetailSection = ladder
+    ? {
+        key: 'ladder',
+        title: '连板梯队（近 5 日）',
+        table: {
+          key: 'lad',
+          columns: ['晋级', '样本', '成功', '晋级率'],
+          rows: ladder.total.map((step) => [
+            `${step.fromHeight} 进 ${step.fromHeight >= 3 ? '4+' : step.fromHeight + 1}`,
+            step.sample === 0 ? '无样本' : `${step.sample} 只`,
+            step.sample === 0 ? '—' : `${step.succeeded} 只`,
+            step.sample === 0 ? '—' : pctText(step.rate * 100, 0),
+          ]),
+          empty: '近 5 日没有连板样本',
+        },
+        foot: ladder.days[0] ? `最近考察日 ${ladder.days[0].tradeDate}；基准日无连板数据的日期不纳入统计（M02 跨日对比）。` : '',
+      }
+    : {
+        key: 'ladder',
+        title: '连板梯队（近 5 日）',
+        rows: [{ key: 'lad', label: '梯队', value: GAP_LADDER, tone: 'warn' }],
+      }
+
+  const auction = marketP1?.auction ?? null
+  const auctionSection: DetailSection = auction
+    ? auction.found
+      ? {
+          key: 'auction',
+          title: '集合竞价',
+          rows: [
+            { key: 'total', label: '竞价总额', value: compactAmount(auction.totalAmount), note: `截面 ${auction.asOf || '09:25'}` },
+            { key: 'limit', label: '竞价涨停', value: `${auction.limitUpCount} 家`, note: auction.limitUps.slice(0, 5).map((row) => row.symbol).join('、') },
+          ],
+          table: {
+            key: 'rush',
+            columns: ['代码', '竞价涨幅', '竞价金额', '竞价量比', '竞价换手'],
+            rows: auction.topRush.map((row) => [
+              row.symbol,
+              pctText(row.auctionPct, 2),
+              compactAmount(row.auctionAmount),
+              row.auctionVolRatio.toFixed(1),
+              pctText(row.auctionTurnover, 2),
+            ]),
+            empty: '当日没有竞价截面行',
+          },
+          foot: '抢筹按竞价金额倒序取前 10（stock_factor kind=auction，09:25 落库）。',
+        }
+      : {
+          key: 'auction',
+          title: '集合竞价',
+          rows: [{ key: 'a', label: '竞价', value: `当日无竞价截面（${auction.tradeDate || '今日'} 09:25 因子未落库）`, tone: 'warn' }],
+        }
+    : {
+        key: 'auction',
+        title: '集合竞价',
+        rows: [{ key: 'a', label: '竞价', value: '未接入：需要 GET /v1/market/auction', tone: 'warn' }],
+      }
+
+  return [auctionSection, ladderSection, layersSection, ...reasonSections, missSection, reviewSection]
 }

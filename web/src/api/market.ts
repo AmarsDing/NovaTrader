@@ -1,5 +1,5 @@
 import { request } from '@/api/http'
-import { asList, num, pick } from '@/utils/format'
+import { asList, num, pick, type RawRecord } from '@/utils/format'
 import type { Bar, LimitBoard, MarketIndicator, SectorRow, Sentiment, SentimentView } from './types/market'
 
 export type { Bar, LimitBoard, MarketIndicator, SectorRow, Sentiment, SentimentView }
@@ -127,4 +127,92 @@ export async function listLimits(direction: 'UP' | 'DOWN' = 'UP'): Promise<Limit
     consecutive: num(pick(raw, 'consecutive')),
     asOf: pick<string>(raw, 'asOf', 'as_of') || '',
   }))
+}
+
+/* ---------- S7 P1：集合竞价截面与连板梯队（只读） ---------- */
+
+export interface AuctionRow {
+  symbol: string
+  auctionPct: number
+  auctionAmount: number
+  auctionVolRatio: number
+  auctionTurnover: number
+  auctionLimitUp: boolean
+  auctionUnmatched: number
+}
+
+export interface AuctionSummary {
+  tradeDate: string
+  found: boolean
+  totalAmount: number
+  limitUpCount: number
+  limitUps: AuctionRow[]
+  topRush: AuctionRow[]
+  asOf: string
+}
+
+function normalizeAuctionRow(raw: RawRecord): AuctionRow {
+  return {
+    symbol: pick<string>(raw, 'symbol') || '',
+    auctionPct: num(pick(raw, 'auctionPct', 'auction_pct')) ?? 0,
+    auctionAmount: num(pick(raw, 'auctionAmount', 'auction_amount')) ?? 0,
+    auctionVolRatio: num(pick(raw, 'auctionVolRatio', 'auction_vol_ratio')) ?? 0,
+    auctionTurnover: num(pick(raw, 'auctionTurnover', 'auction_turnover')) ?? 0,
+    auctionLimitUp: !!(raw.auctionLimitUp ?? raw.auction_limit_up),
+    auctionUnmatched: num(pick(raw, 'auctionUnmatched', 'auction_unmatched')) ?? 0,
+  }
+}
+
+/** 集合竞价截面（M02，09:25 落库）。found=false 表示当日还没有竞价因子。 */
+export async function getAuction(top = 10): Promise<AuctionSummary> {
+  const data = await request('/api/market/auction', { query: { top } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    found: !!raw.found,
+    totalAmount: num(pick(raw, 'totalAmount', 'total_amount')) ?? 0,
+    limitUpCount: num(pick(raw, 'limitUpCount', 'limit_up_count')) ?? 0,
+    limitUps: asList<RawRecord>(raw, 'limitUps', 'limit_ups').map(normalizeAuctionRow),
+    topRush: asList<RawRecord>(raw, 'topRush', 'top_rush').map(normalizeAuctionRow),
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+  }
+}
+
+export interface LadderStep {
+  fromHeight: number
+  sample: number
+  succeeded: number
+  rate: number
+}
+
+export interface LadderDay {
+  tradeDate: string
+  steps: LadderStep[]
+}
+
+export interface LadderSummary {
+  days: LadderDay[]
+  total: LadderStep[]
+}
+
+function normalizeLadderStep(raw: RawRecord): LadderStep {
+  return {
+    fromHeight: num(pick(raw, 'fromHeight', 'from_height')) ?? 0,
+    sample: num(pick(raw, 'sample')) ?? 0,
+    succeeded: num(pick(raw, 'succeeded')) ?? 0,
+    rate: num(pick(raw, 'rate')) ?? 0,
+  }
+}
+
+/** 连板梯队晋级率（M02 跨日对比）。sample=0 的档由界面写「无样本」。 */
+export async function getLadder(days = 5): Promise<LadderSummary> {
+  const data = await request('/api/market/ladder', { query: { days } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    days: asList<RawRecord>(raw, 'days').map((d) => ({
+      tradeDate: pick<string>(d, 'tradeDate', 'trade_date') || '',
+      steps: asList<RawRecord>(d, 'steps').map(normalizeLadderStep),
+    })),
+    total: asList<RawRecord>(raw, 'total').map(normalizeLadderStep),
+  }
 }

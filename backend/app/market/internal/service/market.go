@@ -310,3 +310,70 @@ func (s *MarketService) SetWatchlist(ctx context.Context, req *v1.SetWatchlistRe
 	exp := s.uc.SetWatchlist(owner, syms, ttl)
 	return &v1.SetWatchlistReply{Count: int32(len(syms)), ExpiresAt: fmtTime(exp)}, nil
 }
+
+// GetAuction 返回集合竞价截面汇总（监控驾驶舱 P1，只读）。
+func (s *MarketService) GetAuction(ctx context.Context, req *v1.GetAuctionRequest) (*v1.GetAuctionReply, error) {
+	day, err := parseDay(req.GetTradeDate())
+	if err != nil {
+		return nil, err
+	}
+	summary, err := s.uc.AuctionCross(ctx, day, int(req.GetTop()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetAuctionReply{
+		TradeDate: fmtDay(summary.Day), Found: summary.Found, TotalAmount: summary.TotalAmount,
+		LimitUpCount: int32(summary.LimitUpCount), AsOf: fmtTime(summary.AsOf),
+	}
+	toRow := func(r biz.AuctionRow) *v1.AuctionRow {
+		return &v1.AuctionRow{
+			Symbol: r.Symbol, AuctionPct: r.Pct, AuctionAmount: r.Amount, AuctionVolRatio: r.VolRatio,
+			AuctionTurnover: r.Turnover, AuctionLimitUp: r.LimitUp, AuctionUnmatched: r.Unmatched,
+		}
+	}
+	for _, r := range summary.LimitUps {
+		reply.LimitUps = append(reply.LimitUps, toRow(r))
+	}
+	for _, r := range summary.TopRush {
+		reply.TopRush = append(reply.TopRush, toRow(r))
+	}
+	return reply, nil
+}
+
+// GetLadder 返回连板梯队晋级率（监控驾驶舱 P1，只读）。to 为空时取最近已收盘交易日。
+func (s *MarketService) GetLadder(ctx context.Context, req *v1.GetLadderRequest) (*v1.GetLadderReply, error) {
+	var to time.Time
+	if raw := strings.TrimSpace(req.GetTo()); raw != "" {
+		var err error
+		to, err = parseDay(raw)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// 默认最近一个已收盘交易日：今天 15:30 前看昨天
+		last, err := tradecal.Default.LastClosedDay(time.Now())
+		if err != nil {
+			return nil, internal(err)
+		}
+		to = last
+	}
+	days, totals, err := s.uc.Ladder(ctx, to, int(req.GetDays()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	toStep := func(st biz.LadderStep) *v1.LadderStep {
+		return &v1.LadderStep{FromHeight: int32(st.From), Sample: int32(st.Sample), Succeeded: int32(st.Succeeded), Rate: st.Rate}
+	}
+	reply := &v1.GetLadderReply{}
+	for _, d := range days {
+		item := &v1.LadderDay{TradeDate: fmtDay(d.Day)}
+		for _, st := range d.Steps {
+			item.Steps = append(item.Steps, toStep(st))
+		}
+		reply.Days = append(reply.Days, item)
+	}
+	for _, st := range totals {
+		reply.Total = append(reply.Total, toStep(st))
+	}
+	return reply, nil
+}

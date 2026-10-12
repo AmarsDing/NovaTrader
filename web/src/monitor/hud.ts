@@ -2,7 +2,7 @@
  * HUD 十格的牌面解析：时段（timeband.ts）给格子定义，这里把 MonitorInput
  * 解析成人读的主词/副行。纯函数，缺口格写明缺哪个接口（监控业务监控方案 §7 纪律）。
  */
-import { amount, pctText, phaseName, ratioPct, signed } from '@/utils/format'
+import { amount, compactAmount, pctText, phaseName, ratioPct, signed } from '@/utils/format'
 import { bandCountdown, type HudCellDef, type SparkKey } from './timeband'
 import type { MonitorInput } from './types'
 
@@ -137,10 +137,25 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       if (!hit) return { face: '未调用', sub: '', tone: 'flat' }
       return { face: hit.name, sub: `外围 ${pctText(hit.overseas)}`, tone: 'flat' }
     }
-    case 'gap:auction-amount':
-    case 'gap:auction-limit':
-    case 'gap:auction-rush':
-      return { face: '未接入', sub: GAP_AUCTION, tone: 'flat' }
+    case 'gap:auction-amount': {
+      const auction = input.marketP1?.ok ? input.marketP1.auction : null
+      if (!auction) return { face: '未接入', sub: GAP_AUCTION, tone: 'flat' }
+      if (!auction.found) return { face: '无截面', sub: '09:25 竞价因子未落库', tone: 'flat' }
+      return { face: compactAmount(auction.totalAmount), sub: '竞价总额', tone: 'flat' }
+    }
+    case 'gap:auction-limit': {
+      const auction = input.marketP1?.ok ? input.marketP1.auction : null
+      if (!auction) return { face: '未接入', sub: GAP_AUCTION, tone: 'flat' }
+      if (!auction.found) return { face: '无截面', sub: '09:25 竞价因子未落库', tone: 'flat' }
+      return { face: String(auction.limitUpCount), sub: '竞价涨停家数', tone: 'flat' }
+    }
+    case 'gap:auction-rush': {
+      const auction = input.marketP1?.ok ? input.marketP1.auction : null
+      if (!auction) return { face: '未接入', sub: GAP_AUCTION, tone: 'flat' }
+      if (!auction.found || auction.topRush.length === 0) return { face: '无截面', sub: '09:25 竞价因子未落库', tone: 'flat' }
+      const top = auction.topRush[0]
+      return { face: top.symbol, sub: `抢筹第一 · ${compactAmount(top.auctionAmount)}`, tone: 'flat' }
+    }
     case 'midday:pnl': {
       const pnl = input.account?.ok ? input.account.dayPnl : null
       return { face: pnl == null ? '账户未返回' : signed(pnl), sub: '半场盈亏', tone: pnl == null || pnl === 0 ? 'flat' : pnl > 0 ? 'up' : 'down' }

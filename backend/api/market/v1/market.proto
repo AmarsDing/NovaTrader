@@ -52,6 +52,18 @@ service Market {
       body: "*"
     };
   }
+  // 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
+  rpc GetAuction(GetAuctionRequest) returns (GetAuctionReply) {
+    option (google.api.http) = {
+      get: "/v1/market/auction"
+    };
+  }
+  // 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
+  rpc GetLadder(GetLadderRequest) returns (GetLadderReply) {
+    option (google.api.http) = {
+      get: "/v1/market/ladder"
+    };
+  }
 }
 
 // 复权方式。NONE：价格不复权，指标为每天当时看到的值；QFQ：前复权（以区间最后一天为基准）；HFQ：后复权。
@@ -223,4 +235,54 @@ message SetWatchlistRequest {
 message SetWatchlistReply {
   int32 count = 1;
   string expires_at = 2;
+}
+
+// GetAuctionRequest 集合竞价截面。trade_date 默认今天；数据是 09:25 落的 stock_factor(kind=auction)。
+message GetAuctionRequest {
+  string trade_date = 1; // 2006-01-02，空为今天
+  int32 top = 2;         // 抢筹前 N（按竞价金额），默认 10，上限 50
+}
+
+message AuctionRow {
+  string symbol = 1;
+  double auction_pct = 2;        // 竞价涨幅 %
+  double auction_amount = 3;     // 竞价成交额（元）
+  double auction_vol_ratio = 4;  // 竞价量比
+  double auction_turnover = 5;   // 竞价换手 %
+  bool auction_limit_up = 6;     // 竞价涨停
+  double auction_unmatched = 7;  // 未匹配量（股）
+}
+
+// GetAuctionReply found=false 表示该日还没有竞价因子（非交易日或 09:26 前），total_amount 等全为 0。
+message GetAuctionReply {
+  string trade_date = 1;
+  bool found = 2;
+  double total_amount = 3;           // 全市场竞价总额（元）
+  int32 limit_up_count = 4;          // 竞价涨停家数
+  repeated AuctionRow limit_ups = 5; // 竞价涨停清单（按金额倒序）
+  repeated AuctionRow top_rush = 6;  // 抢筹前 N（按竞价金额倒序）
+  string as_of = 7;                  // 截面时刻（09:25）
+}
+
+// GetLadderRequest 连板梯队。to 默认最近一个已收盘交易日。
+message GetLadderRequest {
+  string to = 1; // 2006-01-02，空为今天（今天未收盘时后端回退到上一交易日）
+  int32 days = 2; // 往前看几个交易日的样本，默认 5，上限 20
+}
+
+message LadderStep {
+  int32 from_height = 1; // N 板
+  int32 sample = 2;      // 样本：前一日收盘 N 连板家数
+  int32 succeeded = 3;   // 其中次日封住 N+1 的家数
+  double rate = 4;       // succeeded/sample；sample=0 时为 0，由前端写「无样本」
+}
+
+message LadderDay {
+  string trade_date = 1; // 考察的「次日」
+  repeated LadderStep steps = 2; // 1进2、2进3、3进4（更高的板合并进 3进4+ 不拆）
+}
+
+message GetLadderReply {
+  repeated LadderDay days = 1; // 按交易日倒序
+  repeated LadderStep total = 2; // 全部样本合计
 }

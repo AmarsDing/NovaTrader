@@ -373,5 +373,22 @@ export interface MonitorInput {
       sample: number
     } | null
   } | null
+  /** S7：竞价截面与连板梯队（GET /api/market/auction + ladder）。auction.found=false 表示当日无竞价因子。 */
+  marketP1?: {
+    ok: boolean
+    auction?: {
+      tradeDate: string
+      found: boolean
+      totalAmount: number
+      limitUpCount: number
+      limitUps: { symbol: string; auctionPct: number; auctionAmount: number; auctionVolRatio: number; auctionTurnover: number; auctionLimitUp: boolean; auctionUnmatched: number }[]
+      topRush: { symbol: string; auctionPct: number; auctionAmount: number; auctionVolRatio: number; auctionTurnover: number; auctionLimitUp: boolean; auctionUnmatched: number }[]
+      asOf: string
+    } | null
+    ladder?: {
+      days: { tradeDate: string; steps: { fromHeight: number; sample: number; succeeded: number; rate: number }[] }[]
+      total: { fromHeight: number; sample: number; succeeded: number; rate: number }[]
+    } | null
+  } | null
   pulses: Pulse[]
 }
