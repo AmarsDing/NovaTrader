@@ -98,8 +98,13 @@ func NewUsecase(repo Repo, model Model, c *conf.Intel, logger log.Logger) *Useca
 		log:    log.NewHelper(log.With(logger, "module", "intel/biz")),
 		Now:    time.Now,
 	}
-	if l := c.GetLlm(); l.GetEnabled() && model != nil {
-		u.llm = NewLLMScorer(model, l.GetSmallModel() != "", l.GetLargeModel() != "", int(l.GetReviewImportance()))
+	if model != nil {
+		var llmConf *conf.IntelLLM
+		if c != nil {
+			llmConf = c.GetLlm()
+		}
+		review := int(llmConf.GetReviewImportance())
+		u.llm = NewLLMScorer(model, llmConf.GetEnabled(), llmConf.GetSmallModel() != "", llmConf.GetLargeModel() != "", review)
 	}
 	u.dict.Store(BuildDictionary(nil, nil))
 	return u

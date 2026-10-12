@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"server/app/datahub/internal/biz"
+	"server/pkg/appcfg"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 )
@@ -128,20 +129,39 @@ func NewTavily(key string, queries []string, opt HTTPOptions) *Tavily {
 
 func (t *Tavily) Name() string { return biz.SourceTavily }
 
+func splitList(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == '，' || r == '\n' })
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 func (t *Tavily) Intel(ctx context.Context, kind string, q biz.IntelQuery) ([]biz.Intel, error) {
 	if kind != biz.KindNews {
 		return nil, biz.ErrUnsupported
 	}
-	if t.key == "" {
-		return nil, biz.Unavailable(biz.SourceTavily, "未配置 API key（datahub.sources.tavily.token）")
+	key := strings.TrimSpace(appcfg.Get(ctx, "app.ds.tavily.token"))
+	if key == "" {
+		key = t.key
 	}
-	if len(t.queries) == 0 {
-		return nil, biz.Unavailable(biz.SourceTavily, "未配置查询词（datahub.sources.tavily.feeds）")
+	queries := t.queries
+	if raw := strings.TrimSpace(appcfg.Get(ctx, "app.ds.tavily.feeds")); raw != "" {
+		queries = splitList(raw)
+	}
+	if key == "" {
+		return nil, biz.Unavailable(biz.SourceTavily, "未配置 API key（配置页或 datahub.sources.tavily.token）")
+	}
+	if len(queries) == 0 {
+		return nil, biz.Unavailable(biz.SourceTavily, "未配置查询词（配置页或 datahub.sources.tavily.feeds）")
 	}
 	var items []biz.Intel
-	for _, query := range t.queries {
+	for _, query := range queries {
 		b, err := t.hc.postJSON(ctx, "https://api.tavily.com/search", map[string]any{
-			"api_key": t.key, "query": query, "topic": "news", "days": 1, "max_results": 20,
+			"api_key": key, "query": query, "topic": "news", "days": 1, "max_results": 20,
 		})
 		if err != nil {
 			var he *httpError
@@ -188,12 +208,16 @@ func (r *RSS) Intel(ctx context.Context, kind string, q biz.IntelQuery) ([]biz.I
 	if kind != biz.KindNews {
 		return nil, biz.ErrUnsupported
 	}
-	if len(r.feeds) == 0 {
-		return nil, biz.Unavailable(biz.SourceRSS, "未配置订阅地址（datahub.sources.rss.feeds）")
+	feeds := r.feeds
+	if raw := strings.TrimSpace(appcfg.Get(ctx, "app.ds.rss.feeds")); raw != "" {
+		feeds = splitList(raw)
+	}
+	if len(feeds) == 0 {
+		return nil, biz.Unavailable(biz.SourceRSS, "未配置订阅地址（配置页或 datahub.sources.rss.feeds）")
 	}
 	var items []biz.Intel
 	var errs []string
-	for _, f := range r.feeds {
+	for _, f := range feeds {
 		b, err := r.hc.get(ctx, f)
 		if err != nil {
 			errs = append(errs, err.Error())

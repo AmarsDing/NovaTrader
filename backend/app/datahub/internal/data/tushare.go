@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"server/app/datahub/internal/biz"
+	"server/pkg/appcfg"
 	"server/pkg/symbol"
 )
 
@@ -53,10 +55,14 @@ func (tb tsTable) rows() []map[string]any {
 }
 
 func (t *Tushare) query(ctx context.Context, api string, params map[string]any, fields string) ([]map[string]any, error) {
-	if t.token == "" {
-		return nil, biz.Unavailable(biz.SourceTushare, "未配置令牌（datahub.sources.tushare.token）")
+	token := strings.TrimSpace(appcfg.Get(ctx, "app.ds.tushare.token"))
+	if token == "" {
+		token = t.token
 	}
-	b, err := t.hc.postJSON(ctx, t.url, map[string]any{"api_name": api, "token": t.token, "params": params, "fields": fields})
+	if token == "" {
+		return nil, biz.Unavailable(biz.SourceTushare, "未配置令牌（配置页或 datahub.sources.tushare.token）")
+	}
+	b, err := t.hc.postJSON(ctx, t.url, map[string]any{"api_name": api, "token": token, "params": params, "fields": fields})
 	if err != nil {
 		return nil, err
 	}

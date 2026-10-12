@@ -122,6 +122,7 @@ func (u *Usecase) Sentiment(ctx context.Context, day, asOf time.Time) (market.Se
 }
 
 // LimitBoards 返回涨跌停列表。
+// 盘中引擎若尚未吃到快照（Boards 为空），回退读库 / M01 limit_pool，避免桌面端整天空表。
 func (u *Usecase) LimitBoards(ctx context.Context, day time.Time, direction, status string) ([]market.LimitBoard, error) {
 	if eng, ok := u.live(day, time.Time{}); ok {
 		var out []market.LimitBoard
@@ -130,7 +131,9 @@ func (u *Usecase) LimitBoards(ctx context.Context, day time.Time, direction, sta
 				out = append(out, b)
 			}
 		}
-		return out, nil
+		if len(out) > 0 {
+			return out, nil
+		}
 	}
 	return u.repo.Boards(ctx, day, direction, status)
 }

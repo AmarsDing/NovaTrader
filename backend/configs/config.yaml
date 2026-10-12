@@ -12,12 +12,12 @@ admin:
   timeOut: 600 #超时时间，单位秒
   # /api/* 需要登录。回测转发到 M07。
   backtest_upstream: http://127.0.0.1:2071
-  # 本地账号。password_hash 是 bcrypt。默认口令见开发进度，上线前必须换掉。
+  # 本地账号。password_hash 是 bcrypt。上线前必须换掉。
   users:
-    - name: owner
-      display_name: 主人
+    - name: admin
+      display_name: 管理员
       role: owner
-      password_hash: "$2a$10$2oXApevKwzfBZsenpO25suwkfUwlsCUH.XCZnfIeinhogKCOfvPnS"
+      password_hash: "$2a$10$2psNkvTkpR.6Via6N.Zw0uOMjpcDkdwbM6U4tWQhP8xNWcZRQrPmO"
     - name: viewer
       display_name: 观察
       role: viewer

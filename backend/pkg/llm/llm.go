@@ -129,11 +129,21 @@ type tier struct {
 	openUntil time.Time
 }
 
+// Overlay 是配置页写进参数表后，某一档模型要盖过启动配置的部分。空字段保持原值。
+type Overlay struct {
+	BaseURL string
+	Model   string
+	APIKey  string
+}
+
 type Gateway struct {
 	tiers map[Tier]*tier
 	rec   Recorder
 	http  *http.Client
 	now   func() time.Time
+
+	liveMu sync.RWMutex
+	live   func(Tier) Overlay
 }
 
 // New 建立网关。BaseURL 为空的档位视为未配置，调用直接返回 ErrUnavailable。rec 可为 nil。
@@ -158,6 +168,36 @@ func New(models map[Tier]ModelConfig, rec Recorder) *Gateway {
 	return g
 }
 
+// SetLive 在每次调用前读取配置页里的地址、模型名和密钥。
+func (g *Gateway) SetLive(fn func(Tier) Overlay) {
+	if g == nil {
+		return
+	}
+	g.liveMu.Lock()
+	g.live = fn
+	g.liveMu.Unlock()
+}
+
+func (g *Gateway) overlay(t Tier, cfg ModelConfig) ModelConfig {
+	g.liveMu.RLock()
+	fn := g.live
+	g.liveMu.RUnlock()
+	if fn == nil {
+		return cfg
+	}
+	over := fn(t)
+	if over.BaseURL != "" {
+		cfg.BaseURL = strings.TrimRight(strings.TrimSpace(over.BaseURL), "/")
+	}
+	if over.Model != "" {
+		cfg.Model = strings.TrimSpace(over.Model)
+	}
+	if over.APIKey != "" {
+		cfg.APIKey = over.APIKey
+	}
+	return cfg
+}
+
 // Configured 表示该档位填了地址。
 func (g *Gateway) Configured(t Tier) bool {
 	tr, ok := g.tiers[t]
@@ -177,10 +217,14 @@ func (g *Gateway) Chat(ctx context.Context, req Request) (Response, error) {
 	rec.InputDigest, rec.InputExcerpt = digest(req.Messages)
 
 	tr, ok := g.tiers[req.Tier]
-	if !ok || tr.cfg.BaseURL == "" {
+	cfg := ModelConfig{}
+	if ok {
+		cfg = g.overlay(req.Tier, tr.cfg)
+	}
+	if !ok || cfg.BaseURL == "" {
 		return Response{}, g.fail(ctx, &rec, statusUnavailable, fmt.Errorf("%w: tier %q not configured", ErrUnavailable, req.Tier))
 	}
-	rec.Model = tr.cfg.Model
+	rec.Model = cfg.Model
 	if tr.breakerOpen(g.now()) {
 		return Response{}, g.fail(ctx, &rec, statusUnavailable, fmt.Errorf("%w: circuit open", ErrUnavailable))
 	}
@@ -193,7 +237,7 @@ func (g *Gateway) Chat(ctx context.Context, req Request) (Response, error) {
 	wait := g.now().Sub(queued)
 	rec.QueueMS = int(wait.Milliseconds())
 	started := g.now()
-	resp, err := g.post(ctx, tr.cfg, req.Messages)
+	resp, err := g.post(ctx, cfg, req.Messages)
 	tr.queue.release()
 	resp.QueueWait = wait
 	resp.Latency = g.now().Sub(started)

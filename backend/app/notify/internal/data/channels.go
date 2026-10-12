@@ -12,6 +12,7 @@ import (
 
 	"server/app/notify/internal/biz"
 	"server/conf"
+	"server/pkg/appcfg"
 	"server/pkg/events"
 )
 
@@ -51,10 +52,21 @@ func NewFeishu(c *conf.Notify) *Feishu {
 }
 
 func (f *Feishu) Send(ctx context.Context, text string) error {
-	if f == nil || f.webhook == "" {
+	if f == nil {
 		return biz.ErrSkipped
 	}
-	body, err := biz.FeishuBody(text, f.secret, f.now())
+	webhook := f.webhook
+	if v := strings.TrimSpace(appcfg.Get(ctx, "app.notify.webhook")); v != "" {
+		webhook = v
+	}
+	secret := f.secret
+	if v := appcfg.Get(ctx, "app.notify.secret"); v != "" {
+		secret = v
+	}
+	if webhook == "" {
+		return biz.ErrSkipped
+	}
+	body, err := biz.FeishuBody(text, secret, f.now())
 	if err != nil {
 		return err
 	}

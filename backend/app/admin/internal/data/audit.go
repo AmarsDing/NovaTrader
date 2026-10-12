@@ -10,8 +10,10 @@ import (
 	"server/app/admin/internal/gateway"
 	"server/conf"
 	"server/ent"
+	"server/ent/auditlog"
 	"server/pkg/dbinit"
 	"server/pkg/entclient"
+	"server/pkg/params"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -88,6 +90,67 @@ func (s *AuditStore) Write(ctx context.Context, e gateway.Entry) error {
 		return fmt.Errorf("audit: %w", err)
 	}
 	return nil
+}
+
+// List 按动作/时间倒序翻页读审计；action 为空 = 全部动作。
+func (s *AuditStore) List(ctx context.Context, action string, limit int) ([]gateway.Row, error) {
+	if !s.Enabled() {
+		return nil, errors.New("audit disabled")
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	q := s.client.AuditLog.Query()
+	if action != "" {
+		q = q.Where(auditlog.ActionEQ(action))
+	}
+	rows, err := q.Order(ent.Desc(auditlog.FieldID)).Limit(limit).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("audit list: %w", err)
+	}
+	out := make([]gateway.Row, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, gateway.Row{
+			ID:        r.ID,
+			Actor:     r.Actor,
+			Role:      r.Role,
+			Action:    r.Action,
+			Target:    r.Target,
+			Detail:    r.Detail,
+			OK:        r.Ok,
+			CreatedAt: r.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+// LoadParams 读出 strategy_config 的当前值。配置页用它显示选股和行情阈值。
+func (s *AuditStore) LoadParams(ctx context.Context) (map[string]string, error) {
+	if !s.Enabled() {
+		return nil, errors.New("config disabled")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	rows, err := s.client.StrategyConfig.Query().All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("config load: %w", err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		out[row.ConfigKey] = row.ConfigValue
+	}
+	return out, nil
+}
+
+// SaveParams 把配置页提交的键写入 strategy_config，并生成一个新版本。
+func (s *AuditStore) SaveParams(ctx context.Context, values map[string]string) error {
+	if !s.Enabled() {
+		return errors.New("config disabled")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, _, err := params.PutMany(ctx, s.client, values, "string", "配置页")
+	return err
 }
 
 func clip(s string, n int) string {

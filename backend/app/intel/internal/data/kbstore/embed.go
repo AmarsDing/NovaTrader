@@ -14,6 +14,7 @@ import (
 
 	"server/app/intel/internal/biz/kb"
 	"server/conf"
+	"server/pkg/appcfg"
 )
 
 // Dims 是 kb_chunk.embedding 的列宽。配置的维度必须与之相等。
@@ -25,8 +26,19 @@ const HashModel = "dev-hash-1024"
 // bgeQueryInstruction 是 bge 中文模型推荐的检索查询前缀，文档侧不加。
 const bgeQueryInstruction = "为这个句子生成表示以用于检索相关文章："
 
-// NewEmbedder 按配置返回嵌入客户端。provider 为空或 none 时返回 nil，检索只走关键词。
+// NewEmbedder 按配置返回嵌入客户端。provider 为空或 none 时仍返回客户端，方便配置页事后打开。
 func NewEmbedder(c *conf.Kb) (kb.Embedder, error) {
+	if c == nil {
+		c = &conf.Kb{}
+	}
+	base, err := buildEmbedder(c)
+	if err != nil {
+		return nil, err
+	}
+	return &liveEmbedder{file: c, base: base}, nil
+}
+
+func buildEmbedder(c *conf.Kb) (kb.Embedder, error) {
 	dims := int(c.GetEmbedDims())
 	if dims == 0 {
 		dims = Dims
@@ -70,6 +82,77 @@ func NewEmbedder(c *conf.Kb) (kb.Embedder, error) {
 	default:
 		return nil, fmt.Errorf("kbstore: unknown embed_provider %q", c.GetEmbedProvider())
 	}
+}
+
+type liveEmbedder struct {
+	file *conf.Kb
+	base kb.Embedder
+}
+
+func (e *liveEmbedder) current() kb.Embedder {
+	switch strings.ToLower(strings.TrimSpace(appcfg.Get(context.Background(), "app.kb.provider"))) {
+	case "":
+		return e.base
+	case "none":
+		return nil
+	case "hash":
+		return hashEmbedder{}
+	case "openai":
+		endpoint := firstText(appcfg.Get(context.Background(), "app.kb.endpoint"), e.file.GetEmbedEndpoint())
+		model := firstText(appcfg.Get(context.Background(), "app.kb.model"), e.file.GetEmbedModel())
+		if endpoint == "" || model == "" {
+			return e.base
+		}
+		endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+		if strings.HasSuffix(endpoint, "/v1") {
+			endpoint += "/embeddings"
+		} else if !strings.HasSuffix(endpoint, "/embeddings") {
+			endpoint += "/v1/embeddings"
+		}
+		key := appcfg.Get(context.Background(), "app.kb.key")
+		if key == "" {
+			key = e.file.GetEmbedApiKey()
+		}
+		return &openAIEmbedder{
+			url: endpoint, model: model, apiKey: key, instruction: bgeQueryInstruction,
+			http: &http.Client{Timeout: 30 * time.Second},
+		}
+	default:
+		return e.base
+	}
+}
+
+func firstText(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return strings.TrimSpace(a)
+	}
+	return strings.TrimSpace(b)
+}
+
+func (e *liveEmbedder) Model() string {
+	cur := e.current()
+	if cur == nil {
+		return ""
+	}
+	return cur.Model()
+}
+
+func (e *liveEmbedder) Dims() int { return Dims }
+
+func (e *liveEmbedder) EmbedDocuments(ctx context.Context, texts []string) ([][]float32, error) {
+	cur := e.current()
+	if cur == nil {
+		return nil, kb.ErrEmbedOff
+	}
+	return cur.EmbedDocuments(ctx, texts)
+}
+
+func (e *liveEmbedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
+	cur := e.current()
+	if cur == nil {
+		return nil, kb.ErrEmbedOff
+	}
+	return cur.EmbedQuery(ctx, text)
 }
 
 type openAIEmbedder struct {

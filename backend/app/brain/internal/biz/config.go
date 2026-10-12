@@ -1,6 +1,8 @@
 package biz
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,6 +83,69 @@ func NewSettings(c *conf.Brain) Settings {
 			s.BriefingCron = c.GetBriefingCron()
 		}
 	}
+	return normalizeWeights(s)
+}
+
+// ApplyApp 用配置页的智能体档位和权重盖过启动配置。权重有改动时重新归一。
+func ApplyApp(s Settings, rows map[string]string) Settings {
+	if len(rows) == 0 {
+		return s
+	}
+	s.Routes = cloneRoutes(s.Routes)
+	s.Weights = cloneWeights(s.Weights)
+	tasks := []string{"technical", "capital", "news", "external", "synthesis", "briefing", "explain", "ask"}
+	for _, task := range tasks {
+		switch strings.ToLower(strings.TrimSpace(rows["app.agent."+task])) {
+		case "small":
+			s.Routes[task] = llm.Small
+		case "large":
+			s.Routes[task] = llm.Large
+		}
+	}
+	changed := false
+	for _, d := range Dims {
+		raw := strings.TrimSpace(rows["app.agent.w."+string(d)])
+		if raw == "" {
+			continue
+		}
+		v, err := parseWeight(raw)
+		if err != nil {
+			continue
+		}
+		s.Weights[d] = v
+		changed = true
+	}
+	if changed {
+		s = normalizeWeights(s)
+	}
+	return s
+}
+
+func cloneRoutes(in map[string]llm.Tier) map[string]llm.Tier {
+	out := make(map[string]llm.Tier, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneWeights(in map[Dim]float64) map[Dim]float64 {
+	out := make(map[Dim]float64, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func parseWeight(raw string) (float64, error) {
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil || v < 0 {
+		return 0, fmt.Errorf("weight")
+	}
+	return v, nil
+}
+
+func normalizeWeights(s Settings) Settings {
 	var sum float64
 	for _, d := range Dims {
 		sum += s.Weights[d]

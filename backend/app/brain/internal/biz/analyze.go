@@ -102,7 +102,7 @@ func (uc *Usecase) Analyze(ctx context.Context, in AnalyzeInput) (*Analysis, err
 	if res.Phase == "" {
 		res.Phase = pack.Phase
 	}
-	res.PhaseCoef = uc.cfg.coef(res.Phase)
+	res.PhaseCoef = uc.settings().coef(res.Phase)
 	uc.emit(ctx, ProgressEvent{TraceID: trace, Symbol: sym, Stage: stageFacts, OK: perr == nil && len(pack.Facts) > 0})
 	var prompts []string
 	var models []string
@@ -216,7 +216,7 @@ func (uc *Usecase) scoreDims(ctx context.Context, pack *FactPack, res *Analysis,
 	for _, s := range scores {
 		byDim[s.Dim] = s.Score
 	}
-	res.Weighted, res.Composite = composite(byDim, uc.cfg.Weights, res.PhaseCoef)
+	res.Weighted, res.Composite = composite(byDim, uc.settings().Weights, res.PhaseCoef)
 	return prompts, models
 }
 

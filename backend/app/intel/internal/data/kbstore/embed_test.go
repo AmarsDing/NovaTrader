@@ -13,8 +13,12 @@ import (
 )
 
 func TestNewEmbedderConfig(t *testing.T) {
-	if e, err := NewEmbedder(&conf.Kb{}); err != nil || e != nil {
+	e, err := NewEmbedder(&conf.Kb{})
+	if err != nil || e == nil {
 		t.Fatalf("empty provider = %v, %v", e, err)
+	}
+	if _, err := e.EmbedQuery(context.Background(), "x"); err == nil {
+		t.Fatal("empty provider should stay off")
 	}
 	if _, err := NewEmbedder(&conf.Kb{EmbedProvider: "hash", EmbedDims: 768}); err == nil {
 		t.Fatal("dims mismatch must fail")

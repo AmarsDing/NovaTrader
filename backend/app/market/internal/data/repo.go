@@ -569,6 +569,62 @@ func (r *Repo) Boards(ctx context.Context, day time.Time, direction, status stri
 		}
 		out = append(out, b)
 	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	return r.boardsFromPool(ctx, day, direction, status)
+}
+
+// boardsFromPool 用 M01 的 limit_pool 顶一下空的 limit_board（开发态或引擎未跑时）。
+func (r *Repo) boardsFromPool(ctx context.Context, day time.Time, direction, status string) ([]market.LimitBoard, error) {
+	q := r.db.LimitPool.Query().Where(limitpool.TradeDateEQ(pgDay(day)))
+	switch direction {
+	case market.DirUp:
+		if status == market.StatusBroken {
+			q = q.Where(limitpool.PoolEQ("broken"))
+		} else if status == market.StatusSealed {
+			q = q.Where(limitpool.PoolEQ("up"))
+		} else {
+			q = q.Where(limitpool.PoolIn("up", "broken"))
+		}
+	case market.DirDown:
+		q = q.Where(limitpool.PoolEQ("down"))
+	}
+	rows, err := q.Order(limitpool.BySymbol()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]market.LimitBoard, 0, len(rows))
+	for _, row := range rows {
+		dir := market.DirUp
+		st := market.StatusSealed
+		switch row.Pool {
+		case "down":
+			dir = market.DirDown
+		case "broken":
+			st = market.StatusBroken
+		}
+		if direction != "" && dir != direction {
+			continue
+		}
+		if status != "" && st != status {
+			continue
+		}
+		b := market.LimitBoard{
+			Symbol: row.Symbol, TradeDate: fromPgDay(row.TradeDate), Direction: dir, Status: st,
+			OpenCount: row.OpenCount, SealAmount: row.SealAmount, Consecutive: row.Consecutive, AsOf: row.AsOf,
+		}
+		if row.Close != nil {
+			b.LimitPrice = *row.Close
+		}
+		if row.FirstSealAt != nil {
+			b.FirstSealAt = *row.FirstSealAt
+		}
+		if row.LastSealAt != nil {
+			b.LastSealAt = *row.LastSealAt
+		}
+		out = append(out, b)
+	}
 	return out, nil
 }
 

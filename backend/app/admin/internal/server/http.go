@@ -49,6 +49,7 @@ func NewHTTPServer(c *conf.Admin, settings gateway.Settings, audit *data.AuditSt
 	gate := &gateway.Gate{
 		Settings: settings,
 		Audit:    audit,
+		Params:   audit,
 		Log:      helper,
 		PingDB:   audit.Ping,
 	}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,16 +25,34 @@ type Entry struct {
 	OK     bool
 }
 
+// Row 是审计查询返回的一行（带主键与入库时间）。
+type Row struct {
+	ID        int       `json:"id"`
+	Actor     string    `json:"actor"`
+	Role      string    `json:"role"`
+	Action    string    `json:"action"`
+	Target    string    `json:"target"`
+	Detail    string    `json:"detail"`
+	OK        bool      `json:"ok"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Auditor 把审计写入数据库。没连上库时 Enabled 为 false。
 type Auditor interface {
 	Enabled() bool
 	Write(ctx context.Context, e Entry) error
 }
 
+// AuditReader 是审计查询能力；实现可选，没接库时不实现。
+type AuditReader interface {
+	List(ctx context.Context, action string, limit int) ([]Row, error)
+}
+
 // Gate 是桌面端唯一的 HTTP 入口：登录、页面转发、运维汇总。
 type Gate struct {
 	Settings Settings
 	Audit    Auditor
+	Params   ParamStore
 	Log      *log.Helper
 	NATSUp   func() bool
 	PingDB   func(context.Context) error
@@ -69,6 +88,10 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.login(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/status":
 		g.ops(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/audit":
+		g.listAudit(w, r)
+	case r.URL.Path == "/api/config" && (r.Method == http.MethodGet || r.Method == http.MethodPut):
+		g.config(w, r)
 	default:
 		g.forward(w, r)
 	}
@@ -123,6 +146,30 @@ func (g *Gate) login(w http.ResponseWriter, r *http.Request) {
 			"role":         user.Role,
 		},
 	})
+}
+
+// listAudit 读取审计日志：GET /api/v1/audit?action=&limit=，需登录。
+func (g *Gate) listAudit(w http.ResponseWriter, r *http.Request) {
+	if _, ok := g.principal(r); !ok {
+		writeErr(w, http.StatusUnauthorized, "未登录")
+		return
+	}
+	reader, ok := g.Audit.(AuditReader)
+	if !ok || reader == nil {
+		writeErr(w, http.StatusServiceUnavailable, "审计未启用")
+		return
+	}
+	action := strings.TrimSpace(r.URL.Query().Get("action"))
+	limit, err := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	if err != nil {
+		limit = 100
+	}
+	rows, err := reader.List(r.Context(), action, limit)
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "审计读取失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
 }
 
 func (g *Gate) forward(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +243,7 @@ func (e errString) Error() string { return string(e) }
 
 func sensitive(action string) bool {
 	switch action {
-	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params",
+	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params", "config.save",
 		"trade.order", "trade.cancel", "trade.confirm", "strategy.approve", "strategy.reject", "strategy.rollback":
 		return true
 	default:
@@ -292,7 +339,7 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 func writeCORS(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("Access-Control-Allow-Origin", "*")
-	h.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 	h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-User")
 	h.Set("Access-Control-Max-Age", "86400")
 }

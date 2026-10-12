@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
+
+	"server/pkg/appcfg"
 )
 
 // SourceConfig 是一个源的开关和配额。
@@ -209,6 +212,7 @@ func Run[T any](ctx context.Context, p *Pipeline, domain string, opt RunOptions,
 		return zero, "", fmt.Errorf("datahub: domain %s is disabled", domain)
 	}
 	ctx = context.WithValue(ctx, domainKey{}, domain)
+	applySourceSwitches(ctx, p)
 	failed := map[string]string{}
 	for _, e := range ds.entries {
 		st := e.state
@@ -256,6 +260,20 @@ func Run[T any](ctx context.Context, p *Pipeline, domain string, opt RunOptions,
 		failed[name] = err.Error()
 	}
 	return zero, "", &NoSourceError{Domain: domain, Errors: failed}
+}
+
+func applySourceSwitches(ctx context.Context, p *Pipeline) {
+	if p == nil {
+		return
+	}
+	for name, st := range p.sources {
+		switch strings.TrimSpace(appcfg.Get(ctx, "app.ds."+name+".on")) {
+		case "true":
+			st.enabled.Store(true)
+		case "false":
+			st.enabled.Store(false)
+		}
+	}
 }
 
 func call[T any](ctx context.Context, st *sourceState, limit time.Duration,

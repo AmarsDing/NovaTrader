@@ -238,6 +238,9 @@ func (uc *KnowledgeUsecase) embedNew(ctx context.Context, ids []int, chunks []Ch
 		items[i] = ChunkText{ID: id, Text: chunks[i].EmbedText()}
 	}
 	if err := uc.embedItems(ctx, items); err != nil {
+		if errors.Is(err, ErrEmbedOff) {
+			return false
+		}
 		uc.log.WithContext(ctx).Warnf("embed later: %v", err)
 		return false
 	}
@@ -272,7 +275,7 @@ func (uc *KnowledgeUsecase) embedItems(ctx context.Context, items []ChunkText) e
 
 // EmbedPending 补齐缺向量或模型不一致的分块。嵌入服务没配置时什么也不做。
 func (uc *KnowledgeUsecase) EmbedPending(ctx context.Context) (int, error) {
-	if uc.embed == nil {
+	if uc.embed == nil || uc.embed.Model() == "" {
 		return 0, nil
 	}
 	total := 0
@@ -286,6 +289,9 @@ func (uc *KnowledgeUsecase) EmbedPending(ctx context.Context) (int, error) {
 			items[i] = ChunkText{ID: c.ID, Text: Chunk{Heading: c.Heading, Content: c.Content}.EmbedText()}
 		}
 		if err := uc.embedItems(ctx, items); err != nil {
+			if errors.Is(err, ErrEmbedOff) {
+				return total, nil
+			}
 			return total, err
 		}
 		total += len(items)
@@ -342,11 +348,13 @@ func (uc *KnowledgeUsecase) hybrid(ctx context.Context, query string, f SearchFi
 		}
 		kw = ids
 	}
-	degraded := uc.embed == nil
+	degraded := uc.embed == nil || uc.embed.Model() == ""
 	if !degraded {
 		qv, err := uc.embed.EmbedQuery(ctx, query)
 		if err != nil {
-			uc.log.WithContext(ctx).Warnf("query embedding failed, keyword only: %v", err)
+			if !errors.Is(err, ErrEmbedOff) {
+				uc.log.WithContext(ctx).Warnf("query embedding failed, keyword only: %v", err)
+			}
 			degraded = true
 		} else {
 			ids, err := uc.repo.VectorSearch(ctx, uc.embed.Model(), qv, f, pathLimit)
@@ -443,7 +451,7 @@ func (uc *KnowledgeUsecase) SimilarCases(ctx context.Context, in SimilarInput) (
 			docIDs = append(docIDs, *c.DocID)
 		}
 	}
-	out := &SimilarResult{Degraded: uc.embed == nil}
+	out := &SimilarResult{Degraded: uc.embed == nil || uc.embed.Model() == ""}
 	if len(docIDs) == 0 {
 		return out, nil
 	}

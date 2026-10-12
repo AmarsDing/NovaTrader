@@ -215,6 +215,152 @@ func login(t *testing.T, gate *Gate, name, password string) string {
 	return body.Token
 }
 
+func TestAuditListEndpoint(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit := &memAudit{}
+	gate := testGate(string(hash), audit)
+
+	// 未登录 → 401
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit", nil)
+	res := httptest.NewRecorder()
+	gate.ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("anon %d %s", res.Code, res.Body)
+	}
+
+	token := login(t, gate, "ada", "pw")
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/audit?action=login&limit=5", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	res = httptest.NewRecorder()
+	gate.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("list %d %s", res.Code, res.Body)
+	}
+	var body struct {
+		Items []Row `json:"items"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Items) == 0 {
+		t.Fatal("no rows returned")
+	}
+	for _, row := range body.Items {
+		if row.Action != "login" {
+			t.Fatalf("filter leaked %q", row.Action)
+		}
+	}
+}
+
+func TestNormalizeConfig(t *testing.T) {
+	got, err := normalizeConfig(map[string]string{" m06.select_score ": " 75 "})
+	if err != nil || got["m06.select_score"] != "75" {
+		t.Fatalf("m06 %+v %v", got, err)
+	}
+	if _, err := normalizeConfig(map[string]string{"market.sentiment.rules": `{"hot_min_up":80}`}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := normalizeConfig(map[string]string{"risk.max_single_pct": "0.05"}); err == nil {
+		t.Fatal("risk key accepted")
+	}
+	if _, err := normalizeConfig(map[string]string{"m06.select_score": "x"}); err == nil {
+		t.Fatal("bad number accepted")
+	}
+	if _, err := normalizeConfig(map[string]string{"market.sentiment.rules": "[]"}); err == nil {
+		t.Fatal("array accepted")
+	}
+	if _, err := normalizeConfig(map[string]string{"app.ds.tushare.token": "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := normalizeConfig(map[string]string{"app.agent.technical": "small"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := normalizeConfig(map[string]string{"app.agent.technical": "gpt"}); err == nil {
+		t.Fatal("bad tier accepted")
+	}
+	if _, err := normalizeConfig(map[string]string{"other": "1"}); err == nil {
+		t.Fatal("unknown key accepted")
+	}
+}
+
+func TestConfigEndpoint(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("pw"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit := &memAudit{}
+	store := &memParams{on: true, rows: map[string]string{}}
+	gate := testGate(string(hash), audit)
+	gate.Params = store
+
+	res := httptest.NewRecorder()
+	gate.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/api/config", nil))
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("anon %d", res.Code)
+	}
+
+	owner := login(t, gate, "ada", "pw")
+	viewer := login(t, gate, "bob", "pw")
+	res = putJSON(t, gate, "/api/config", `{"values":{"m06.select_score":"80"}}`, viewer)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("viewer %d %s", res.Code, res.Body)
+	}
+	res = putJSON(t, gate, "/api/config", `{"values":{"m06.select_score":"80"}}`, owner)
+	if res.Code != http.StatusOK {
+		t.Fatalf("save %d %s", res.Code, res.Body)
+	}
+	if store.rows["m06.select_score"] != "80" {
+		t.Fatalf("stored %+v", store.rows)
+	}
+	if !hasAction(audit, "config.save") {
+		t.Fatal("audit missing")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	req.Header.Set("Authorization", "Bearer "+owner)
+	res = httptest.NewRecorder()
+	gate.ServeHTTP(res, req)
+	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"m06.select_score":"80"`) {
+		t.Fatalf("load %d %s", res.Code, res.Body)
+	}
+}
+
+func putJSON(t *testing.T, gate *Gate, path, raw, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(raw))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	res := httptest.NewRecorder()
+	gate.ServeHTTP(res, req)
+	return res
+}
+
+type memParams struct {
+	on   bool
+	rows map[string]string
+}
+
+func (m *memParams) Enabled() bool { return m.on }
+
+func (m *memParams) LoadParams(context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(m.rows))
+	for k, v := range m.rows {
+		out[k] = v
+	}
+	return out, nil
+}
+
+func (m *memParams) SaveParams(_ context.Context, values map[string]string) error {
+	for k, v := range values {
+		m.rows[k] = v
+	}
+	return nil
+}
+
 func hasAction(a *memAudit, action string) bool {
 	for _, row := range a.rows {
 		if row.Action == action && row.OK {
@@ -242,4 +388,24 @@ func (m *memAudit) Enabled() bool { return true }
 func (m *memAudit) Write(_ context.Context, e Entry) error {
 	m.rows = append(m.rows, e)
 	return nil
+}
+
+func (m *memAudit) List(_ context.Context, action string, limit int) ([]Row, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	out := make([]Row, 0, len(m.rows))
+	for i := len(m.rows) - 1; i >= 0 && len(out) < limit; i-- {
+		e := m.rows[i]
+		if action != "" && e.Action != action {
+			continue
+		}
+		out = append(out, Row{
+			ID:     i + 1,
+			Actor:  e.Actor, Role: e.Role, Action: e.Action,
+			Target: e.Target, Detail: e.Detail, OK: e.OK,
+			CreatedAt: time.Date(2026, 10, 9, 3, 0, i, 0, time.UTC),
+		})
+	}
+	return out, nil
 }

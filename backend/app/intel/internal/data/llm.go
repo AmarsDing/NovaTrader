@@ -2,25 +2,34 @@ package data
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"server/app/intel/internal/biz"
 	"server/conf"
 	"server/ent"
+	"server/pkg/appcfg"
 	"server/pkg/events"
 	"server/pkg/llm"
 )
 
 // gatewayModel 把情报打分接到 M05 的模型网关。调用记录进 llm_call_log，排队和熔断由网关负责。
 type gatewayModel struct {
-	gw *llm.Gateway
+	gw     *llm.Gateway
+	yamlOn bool
 }
 
-// NewModel 在 llm.enabled 为假时返回 nil，业务层只用规则打分。
-// base_url 为空时网关会返回不可用，流水线退回规则分并标 degraded。
+// NewModel 在配置页或 yaml 打开模型时接入网关。两边都没打开且没有数据库时返回 nil。
 func NewModel(c *conf.Intel, client *ent.Client) biz.Model {
+	if c == nil {
+		return nil
+	}
 	l := c.GetLlm()
-	if !l.GetEnabled() {
+	if l == nil {
+		l = &conf.IntelLLM{}
+	}
+	if !l.GetEnabled() && client == nil {
 		return nil
 	}
 	timeout := 20 * time.Second
@@ -37,12 +46,40 @@ func NewModel(c *conf.Intel, client *ent.Client) biz.Model {
 		large.Model = l.GetLargeModel()
 		large.APIKey = l.GetApiKey()
 	}
-	return &gatewayModel{gw: llm.New(map[llm.Tier]llm.ModelConfig{llm.Small: small, llm.Large: large}, llm.EntRecorder{Client: client})}
+	gw := llm.New(map[llm.Tier]llm.ModelConfig{llm.Small: small, llm.Large: large}, llm.EntRecorder{Client: client})
+	gw.SetLive(func(t llm.Tier) llm.Overlay {
+		model := appcfg.Get(context.Background(), "app.intel.small")
+		if t == llm.Large {
+			model = appcfg.Get(context.Background(), "app.intel.large")
+		}
+		return llm.Overlay{
+			BaseURL: appcfg.Get(context.Background(), "app.intel.url"),
+			Model:   model,
+			APIKey:  appcfg.Get(context.Background(), "app.intel.key"),
+		}
+	})
+	return &gatewayModel{gw: gw, yamlOn: l.GetEnabled()}
 }
 
 const promptVersion = "intel-score-v1"
 
+func (m *gatewayModel) on() bool {
+	switch strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.enabled")) {
+	case "true":
+		return true
+	case "false":
+		return false
+	}
+	if m.yamlOn {
+		return true
+	}
+	return m.gw != nil && (m.gw.Configured(llm.Small) || m.gw.Configured(llm.Large))
+}
+
 func (m *gatewayModel) Complete(ctx context.Context, tier, system, user string) (string, error) {
+	if m == nil || m.gw == nil || !m.on() {
+		return "", fmt.Errorf("llm: disabled")
+	}
 	resp, err := m.gw.Chat(ctx, llm.Request{
 		Task:          "intel.score",
 		Tier:          llm.Tier(tier),

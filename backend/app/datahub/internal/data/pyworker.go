@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"server/app/datahub/internal/biz"
+	"server/pkg/appcfg"
 	"server/pkg/market"
 )
 
@@ -38,10 +39,14 @@ type pyError struct {
 }
 
 func (p pyworker) call(ctx context.Context, method, path string, body any, out any) error {
-	if p.base == "" {
+	base := p.base
+	if v := strings.TrimRight(strings.TrimSpace(appcfg.Get(ctx, "app.ds.pyworker")), "/"); v != "" {
+		base = v
+	}
+	if base == "" {
 		return biz.Unavailable(p.name, "未配置 pyworker 地址")
 	}
-	u := p.base + path
+	u := base + path
 	req, err := newRequest(ctx, method, u, body)
 	if err != nil {
 		return err

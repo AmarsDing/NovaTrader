@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"server/ent"
+	"server/pkg/appcfg"
 	"server/pkg/dbinit"
 	"server/pkg/migrate"
 
@@ -82,5 +83,6 @@ func Open(ctx context.Context, cfg Config) (*Conn, error) {
 		db.SetMaxIdleConns(cfg.MaxIdleConns)
 	}
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	appcfg.Bind(client)
 	return &Conn{Client: client, DB: db}, nil
 }

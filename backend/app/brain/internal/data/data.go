@@ -8,6 +8,7 @@ import (
 	"server/app/brain/internal/biz"
 	"server/conf"
 	"server/ent"
+	"server/pkg/appcfg"
 	"server/pkg/dbinit"
 	"server/pkg/entclient"
 	"server/pkg/events"
@@ -88,5 +89,17 @@ func NewGateway(c *conf.Brain, client *ent.Client) *llm.Gateway {
 		}
 		models[llm.Tier(name)] = cfg
 	}
-	return llm.New(models, llm.EntRecorder{Client: client})
+	gw := llm.New(models, llm.EntRecorder{Client: client})
+	gw.SetLive(func(t llm.Tier) llm.Overlay {
+		prefix := "app.brain.small."
+		if t == llm.Large {
+			prefix = "app.brain.large."
+		}
+		return llm.Overlay{
+			BaseURL: appcfg.Get(context.Background(), prefix+"url"),
+			Model:   appcfg.Get(context.Background(), prefix+"model"),
+			APIKey:  appcfg.Get(context.Background(), prefix+"key"),
+		}
+	})
+	return gw
 }

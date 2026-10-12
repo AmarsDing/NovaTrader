@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"server/pkg/appcfg"
 	"server/pkg/llm"
 	"server/pkg/tradecal"
 
@@ -45,7 +46,11 @@ func NewUsecase(cfg Settings, l LLM, market MarketRepo, decisions DecisionRepo, 
 	}
 }
 
-func (uc *Usecase) Settings() Settings { return uc.cfg }
+func (uc *Usecase) Settings() Settings { return uc.settings() }
+
+func (uc *Usecase) settings() Settings {
+	return ApplyApp(uc.cfg, appcfg.Snapshot(context.Background()))
+}
 
 func (uc *Usecase) Stats(ctx context.Context) []llm.TierStats { return uc.llm.Stats(ctx) }
 
@@ -85,7 +90,7 @@ func callJSON[T any](ctx context.Context, uc *Usecase, spec callSpec, check func
 	for attempt := 1; ; attempt++ {
 		var cur T
 		resp, err := uc.llm.Chat(ctx, llm.Request{
-			Task: spec.task, Tier: uc.cfg.tier(spec.task), Priority: spec.prio, Messages: msgs,
+			Task: spec.task, Tier: uc.settings().tier(spec.task), Priority: spec.prio, Messages: msgs,
 			TraceID: spec.trace, PromptVersion: spec.prompt.Tag(), PromptHash: spec.prompt.Hash(),
 			Attempt: attempt, DecisionID: decision,
 			Validate: func(content string) error {

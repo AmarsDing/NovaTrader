@@ -7,6 +7,8 @@ import (
 	"math"
 	"sort"
 	"strings"
+
+	"server/pkg/appcfg"
 )
 
 // Model 是 OpenAI 兼容的对话接口。实现放在 data 层。
@@ -18,15 +20,16 @@ type Model interface {
 // tier 取 small、large，具体模型名在网关配置里。
 type LLMScorer struct {
 	model            Model
+	enabled          bool
 	small, large     bool
 	reviewImportance int
 }
 
-func NewLLMScorer(m Model, small, large bool, reviewImportance int) *LLMScorer {
+func NewLLMScorer(m Model, enabled, smallName, largeName bool, reviewImportance int) *LLMScorer {
 	if reviewImportance <= 0 {
 		reviewImportance = 4
 	}
-	return &LLMScorer{model: m, small: small, large: large, reviewImportance: reviewImportance}
+	return &LLMScorer{model: m, enabled: enabled, small: smallName, large: largeName, reviewImportance: reviewImportance}
 }
 
 const promptContentLimit = 2000
@@ -60,9 +63,29 @@ type modelOutput struct {
 	Reason     string   `json:"reason"`
 }
 
+func (s *LLMScorer) ready() (small, large bool) {
+	on := s.enabled
+	switch strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.enabled")) {
+	case "true":
+		on = true
+	case "false":
+		on = false
+	}
+	if !on {
+		return false, false
+	}
+	small = s.small || strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.small")) != ""
+	large = s.large || strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.large")) != ""
+	return small, large
+}
+
 // Score 返回模型评分。任何一步失败都返回错误，由调用方回退到规则分。
 func (s *LLMScorer) Score(ctx context.Context, it *Item, rule Score) (Score, error) {
-	if s == nil || s.model == nil || !s.small {
+	small, large := false, false
+	if s != nil {
+		small, large = s.ready()
+	}
+	if s == nil || s.model == nil || !small {
 		return Score{}, fmt.Errorf("llm: not configured")
 	}
 	got, err := s.ask(ctx, "small", it, rule)
@@ -70,7 +93,7 @@ func (s *LLMScorer) Score(ctx context.Context, it *Item, rule Score) (Score, err
 		return Score{}, err
 	}
 	got.Scorer = ScorerSmall
-	if !s.large || got.Importance < s.reviewImportance {
+	if !large || got.Importance < s.reviewImportance {
 		return got, nil
 	}
 	reviewed, err := s.ask(ctx, "large", it, got)

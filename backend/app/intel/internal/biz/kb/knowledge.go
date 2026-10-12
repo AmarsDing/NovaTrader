@@ -3,6 +3,7 @@ package kb
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"server/pkg/pgext"
@@ -189,6 +190,9 @@ type KnowledgeRepo interface {
 	// Purge 把已过 expires_at 的在用文档标成 expired，再删除 cutoff 之前就已失效的文档。
 	Purge(ctx context.Context, now, cutoff time.Time) (int, error)
 }
+
+// ErrEmbedOff 表示嵌入没打开。检索退回关键词，不当成失败。
+var ErrEmbedOff = errors.New("kb: embed off")
 
 // Embedder 是嵌入服务。没有配置时为 nil，检索退化为只用关键词。
 type Embedder interface {
