@@ -15,6 +15,8 @@ export const useAccountStore = defineStore('account', () => {
   const openHalted = ref(false)
   const haltReason = ref('')
   const positions = ref<Position[]>([])
+  /** 持仓接口有没有读到。false 时界面不能把账面写成空仓。 */
+  const positionsOk = ref(true)
 
   async function refresh() {
     const b = book.value || 'SIM'
@@ -29,6 +31,7 @@ export const useAccountStore = defineStore('account', () => {
       openHalted.value = acc.openHalted
       haltReason.value = acc.haltReason
     }
+    positionsOk.value = pos != null
     if (pos) positions.value = pos
   }
 
@@ -43,6 +46,7 @@ export const useAccountStore = defineStore('account', () => {
     openHalted,
     haltReason,
     positions,
+    positionsOk,
     refresh,
   }
 })

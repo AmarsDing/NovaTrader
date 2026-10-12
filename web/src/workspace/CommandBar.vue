@@ -3,7 +3,7 @@
  * 顶栏 chrome（不进 dock）：品牌 + 权益/盈亏 + Kill Switch + 命令面板入口 + 布局预设 + 用户。
  * 玻璃拟态允许出现的位置之一（另两处：弹层、AlertCenter）。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import NovaStatusPulse from '@/component/NovaStatusPulse.vue'
 import KillSwitchBar from '@/widgets/KillSwitchBar.vue'
@@ -11,8 +11,10 @@ import NtButton from '@/ui/NtButton.vue'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
+import { useSignalsStore } from '@/stores/signals'
 import { amount, pnlClass, signed } from '@/utils/format'
 import { isLive } from '@/ws/hub'
+import { isPendingStatus } from '@/view/decision-desk'
 import { getWorkbench } from './inject'
 
 const emit = defineEmits<{ (e: 'palette'): void; (e: 'config'): void }>()
@@ -25,6 +27,15 @@ const layout = useLayoutStore()
 const displayName = computed(() => auth.user?.displayName || auth.user?.name || '交易员')
 const pnl = computed(() => (account.dayPnl != null ? account.dayPnl : account.unrealized))
 const pnlLabel = computed(() => (account.dayPnl != null ? '当日盈亏' : '浮动盈亏'))
+
+/* P3：「待执行 N」与决策台左栏同一口径，30 秒一拍；点击聚焦决策台面板 */
+const signals = useSignalsStore()
+const pendingCount = computed(() => signals.items.filter((item) => isPendingStatus(item.status)).length)
+let signalTimer: ReturnType<typeof setInterval> | null = null
+
+function focusDesk() {
+  getWorkbench()?.openPanel('overview')
+}
 
 const menuOpen = ref(false)
 const newName = ref('')
@@ -61,10 +72,16 @@ watch(menuOpen, (open) => {
   }
 })
 
+onMounted(() => {
+  void signals.refresh()
+  signalTimer = setInterval(() => void signals.refresh(), 30_000)
+})
+
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onDocDown)
   document.removeEventListener('keydown', onDocKey)
   if (hintTimer) clearTimeout(hintTimer)
+  if (signalTimer) clearInterval(signalTimer)
 })
 
 function openSave() {
@@ -179,6 +196,10 @@ function logout() {
         <span class="label">{{ pnlLabel }}</span>
         <span class="value nt-holo-num">{{ signed(pnl) }}</span>
       </div>
+      <button type="button" class="metric pending" :class="{ hot: pendingCount > 0 }" title="待执行信号，点击聚焦决策台" @click="focusDesk">
+        <span class="label">待执行</span>
+        <span class="value nt-holo-num">{{ pendingCount }}</span>
+      </button>
     </div>
 
     <div class="actions">
@@ -300,6 +321,29 @@ function logout() {
 
 .metric.down .value {
   color: var(--nt-down);
+}
+
+/* 「待执行 N」是可点的 metric：平时与权益同款，有待执行时数值进 accent */
+button.metric {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.metric.pending .value {
+  color: var(--nt-text-2);
+}
+
+.metric.pending.hot .value {
+  color: var(--nt-accent);
+}
+
+.metric.pending:hover .label {
+  color: var(--nt-accent);
 }
 
 .actions {

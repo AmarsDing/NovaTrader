@@ -14,7 +14,9 @@ import { configCategories, type ConfigField } from '@/view/config-catalog'
 import { isLive } from '@/ws/hub'
 import AlertCenter from '@/workspace/AlertCenter.vue'
 import CanvasStage from './CanvasStage.vue'
+import { ActivityLog } from './activity'
 import { dutyOf } from './duty'
+import { cardFreshness, cardSilence, channelSilence, decorate, observeGraph } from './freshness'
 import { computeHealth } from './health'
 import { resolveHud } from './hud'
 import { emptyMonitorInput, loadMonitorInput } from './load-input'
@@ -33,7 +35,29 @@ const input = ref(emptyMonitorInput())
 const selectedId = ref('')
 const paused = ref(typeof document !== 'undefined' && document.hidden)
 
-const graph = computed(() => buildScene(input.value, input.value.now || Date.now()))
+/* ---- 时段带：焦点随交易时段切换，拓扑永不变（timeband.ts） ---- */
+
+/* S2：1 秒一拍的前端时钟。轮询停了这个钟也照走，角标年龄跟着涨，这才回答得出「多久没读到」 */
+const clockMs = ref(Date.now())
+const nowMs = computed(() => clockMs.value || input.value.now || Date.now())
+const bandKey = computed(() => detectBand(new Date(nowMs.value)))
+const spec = computed(() => bandSpec(bandKey.value))
+const segments = computed(() => bandSegments(bandKey.value))
+const countdown = computed(() => bandCountdown(new Date(nowMs.value), bandKey.value))
+const offday = computed(() => bandKey.value === 'offday')
+
+/* S2：活动条与角标只在内存里（activity.ts / freshness.ts），不落库不上传 */
+const activity = new ActivityLog()
+
+const graph = computed(() => {
+  const base = buildScene(input.value, nowMs.value)
+  const trading = !offday.value
+  const fresh = cardFreshness(input.value, nowMs.value, trading)
+  const silence = cardSilence(input.value, { now: nowMs.value, trading, activity })
+  const cells = new Map<string, (boolean | null)[]>()
+  for (const node of base.nodes) cells.set(node.id, activity.cells(node.id, nowMs.value))
+  return decorate(base, fresh, silence, cells)
+})
 const cards = computed(() => buildChildren(input.value, selectedId.value))
 const picked = computed(() => graph.value.nodes.find((node) => node.id === selectedId.value) ?? null)
 
@@ -60,19 +84,28 @@ const detailWhere = computed(() => {
   return id ? 'verdict' : ''
 })
 
-/* ---- 时段带：焦点随交易时段切换，拓扑永不变（timeband.ts） ---- */
-
-const nowMs = computed(() => input.value.now || Date.now())
-const bandKey = computed(() => detectBand(new Date(nowMs.value)))
-const spec = computed(() => bandSpec(bandKey.value))
-const segments = computed(() => bandSegments(bandKey.value))
-const countdown = computed(() => bandCountdown(new Date(nowMs.value), bandKey.value))
-const offday = computed(() => bandKey.value === 'offday')
-
 /* ---- 健康总分：五项等权、扣分可解释（health.ts） ---- */
 
 const health = computed(() => computeHealth(input.value, nowMs.value))
 const healthOpen = ref(false)
+
+/* 健康分明细是全页唯一的轻弹层：Esc 要先关它，而不是直接把监控页退掉；
+ * 点弹层外也关。挂进 useOverlay 的 z 栈，Esc 只派发给栈顶。 */
+const healthOverlay = useOverlay(() => {
+  healthOpen.value = false
+})
+
+watch(healthOpen, (open) => {
+  if (open) healthOverlay.open()
+  else healthOverlay.close()
+})
+
+function onDocPointerDown(event: PointerEvent) {
+  if (!healthOpen.value) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('.nt-health')) return
+  healthOpen.value = false
+}
 
 /* ---- 顶部 HUD：时段决定十格，格内容来自 resolveHud ---- */
 
@@ -202,6 +235,25 @@ function resetView() {
 
 /* ---- 数据轮询与实时脉冲 ---- */
 
+/* S2：1 秒时钟 + 交易通道静默巡检（§6.1：60 秒没成交且委托挂着 → 升告警） */
+let ticker = 0
+let hiddenAt = 0
+const channelAlert = ref<{ id: string; title: string; body: string; at: string } | null>(null)
+const channelSeen = new Set<string>()
+
+function tick() {
+  clockMs.value = Date.now()
+  const hit = channelSilence(input.value, activity, clockMs.value, !offday.value)
+  if (!hit || channelSeen.has(hit.orderId)) return
+  channelSeen.add(hit.orderId)
+  channelAlert.value = {
+    id: `channel:${hit.orderId}:${clockMs.value}`,
+    title: '交易通道静默',
+    body: hit.text,
+    at: new Date(clockMs.value).toISOString(),
+  }
+}
+
 const overlay = useOverlay(() => {
   if (selectedId.value) selectedId.value = ''
   else void router.push('/')
@@ -217,7 +269,9 @@ let unbind = () => {}
 onMounted(() => {
   overlay.open()
   document.addEventListener('visibilitychange', onVisibility)
+  document.addEventListener('pointerdown', onDocPointerDown)
   startPoll()
+  ticker = window.setInterval(tick, 1000)
   unbind = bindPulses(
     (pulse) => enqueue(pulse),
     () => void pull(),
@@ -226,8 +280,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   overlay.close()
+  healthOverlay.close()
   document.removeEventListener('visibilitychange', onVisibility)
+  document.removeEventListener('pointerdown', onDocPointerDown)
   stopPoll()
+  if (ticker) window.clearInterval(ticker)
   if (flush) window.clearTimeout(flush)
   unbind()
 })
@@ -245,8 +302,15 @@ function stopPoll() {
 
 function onVisibility() {
   paused.value = document.hidden
-  if (document.hidden) stopPoll()
-  else startPoll()
+  if (document.hidden) {
+    stopPoll()
+    hiddenAt = Date.now()
+  } else {
+    /* 页面藏起这段时间没有任何观测：记成 hole，格子画未知，静默时钟从这里重新起算 */
+    if (hiddenAt) activity.hole(hiddenAt, Date.now())
+    hiddenAt = 0
+    startPoll()
+  }
 }
 
 async function pull() {
@@ -268,6 +332,8 @@ async function pull() {
       next.pulses = input.value.pulses
       input.value = next
       sampleSparks()
+      /* S2：这一轮读到的牌面喂给活动条（签名只含状态/主词/副行，见 freshness.observeGraph） */
+      observeGraph(activity, buildScene(next, Date.now()), next, Date.now())
     } while (again)
   } finally {
     pulling = false
@@ -383,6 +449,7 @@ function select(id: string) {
         :hot-ids="hotIds"
         :paused="paused"
         :promote="spec.promote || undefined"
+        :thicken="spec.thicken"
         :veil="spec.veil"
         :calm="spec.calm"
         :band-key="bandKey"
@@ -446,6 +513,6 @@ function select(id: string) {
       </section>
     </div>
 
-    <AlertCenter />
+    <AlertCenter :extra="channelAlert" />
   </div>
 </template>

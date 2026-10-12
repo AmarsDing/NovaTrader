@@ -6,6 +6,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { NodeStatus, Pulse, SceneGraph } from './types'
+import { ACTIVITY_OFF_ALPHA, ACTIVITY_ON_ALPHA } from './activity'
 import {
   applyOffsets,
   buildStage,
@@ -26,6 +27,7 @@ import {
   type StagePoint,
   type StageRect,
   type StageTheme,
+  type StageThicken,
   type ViewTransform,
 } from './canvas-stage'
 
@@ -36,6 +38,8 @@ const props = defineProps<{
   paused: boolean
   /** 时段带提升的焦点牌（竞价→post:scan，尾盘→book:center） */
   promote?: string
+  /** 时段带要加粗的束线 */
+  thicken?: StageThicken
   /** 画布压暗系数：1 常态；午休 0.75；盘后 0.5 */
   veil?: number
   /** 休市/午休/盘后停掉环境流向点 */
@@ -53,7 +57,7 @@ const dragState = ref<{ id: string; moved: boolean } | null>(null)
 
 let ctx: CanvasRenderingContext2D | null = null
 let theme: StageTheme = readStageThemeSafe()
-let layout: StageLayout = buildStage(props.graph, { promote: props.promote })
+let layout: StageLayout = buildStage(props.graph, { promote: props.promote, thicken: props.thicken })
 let nodes: StageNodeLayout[] = layout.nodes
 let edgeCurves = new Map<string, CubicCurve[]>()
 let rects = new Map<string, StageRect>()
@@ -127,24 +131,28 @@ function readStageThemeSafe(): StageTheme {
 }
 
 function rebuild() {
-  layout = buildStage(props.graph, { promote: props.promote })
+  layout = buildStage(props.graph, { promote: props.promote, thicken: props.thicken })
   nodes = applyOffsets(layout.nodes, offsets)
   syncGeometry()
 }
 
 /* ---------------- 时段感知的拖动持久化 ----------------
  * 每个时段一套偏移：竞价盯扫描、尾盘盯账本，各自记住各自的摆法。
- * 换时段先存旧的再取新的；localStorage 失败（隐私模式/配额）静默降级为内存态。 */
+ * 关键：写盘用的是「当前内存偏移属于哪个时段」（savedBand），不是 props.bandKey——
+ * watcher 触发时 props.bandKey 已经是新值，用它会把旧时段的摆法写进新时段的键里。
+ * localStorage 失败（隐私模式/配额）静默降级为内存态。 */
 
-function offsetsStorageKey(): string {
-  return `nt-monitor:offsets:v1:${props.bandKey ?? ''}`
+let savedBand = props.bandKey ?? ''
+
+function offsetsStorageKey(band: string): string {
+  return `nt-monitor:offsets:v1:${band}`
 }
 
 function persistOffsets() {
   try {
     const data: Record<string, StagePoint> = {}
     for (const [id, point] of offsets) data[id] = point
-    localStorage.setItem(offsetsStorageKey(), JSON.stringify(data))
+    localStorage.setItem(offsetsStorageKey(savedBand), JSON.stringify(data))
   } catch {
     /* 静默：拖动只在本次会话生效 */
   }
@@ -152,8 +160,9 @@ function persistOffsets() {
 
 function loadOffsets() {
   offsets.clear()
+  savedBand = props.bandKey ?? ''
   try {
-    const raw = localStorage.getItem(offsetsStorageKey())
+    const raw = localStorage.getItem(offsetsStorageKey(savedBand))
     if (!raw) return
     const data = JSON.parse(raw) as Record<string, unknown>
     for (const [id, point] of Object.entries(data)) {
@@ -245,7 +254,7 @@ watch(
 )
 
 watch(
-  () => props.promote,
+  () => [props.promote, props.thicken] as const,
   () => rebuild(),
 )
 
@@ -415,12 +424,16 @@ function drawEdges(context: CanvasRenderingContext2D) {
     if (!curves) continue
     const lit = edgeLit(edge)
     const color = theme.domain[edge.domain] || theme.fiber
+    /* 时段带加粗：竞价把「数据源→扫描」抬亮，尾盘把「风控→账户」抬亮。
+     * 只加线宽和透明度，不加 shadowBlur——glow 预算留给异常与高分信号。 */
+    const boost = edge.thick === true
     curves.forEach((curve, index) => {
       context.beginPath()
       context.moveTo(curve[0], curve[1])
       context.bezierCurveTo(curve[2], curve[3], curve[4], curve[5], curve[6], curve[7])
-      context.strokeStyle = withAlpha(color, lit ? (index === 0 ? 0.34 : 0.2) : 0.07)
-      context.lineWidth = index === 0 ? 1.3 : 0.9
+      const alpha = lit ? (index === 0 ? 0.34 : 0.2) : 0.07
+      context.strokeStyle = withAlpha(color, boost ? Math.min(0.85, alpha + 0.28) : alpha)
+      context.lineWidth = boost ? (index === 0 ? 2.6 : 1.8) : index === 0 ? 1.3 : 0.9
       context.stroke()
     })
   }
@@ -562,13 +575,38 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   /* 牌面主词与副行 */
   const faceSize = focus ? 20 : 15
   const faceY = rect.y + bandH + (rect.h - bandH) / 2 - (node.sub ? 6 : 0)
+  /* S2 新鲜度角标占住主词行右缘，主词给它让位 */
+  let badgeWidth = 0
+  if (node.fresh?.text) {
+    context.font = `9px ${theme.fontMono}`
+    badgeWidth = context.measureText(node.fresh.text).width + 10
+  }
   context.font = `${focus ? 700 : 600} ${faceSize}px ${theme.fontMono}`
   context.fillStyle = faceColor(item)
-  context.fillText(clipText(context, node.face || '—', rect.w - 20), rect.x + 10, faceY)
+  context.fillText(clipText(context, node.face || '—', rect.w - 20 - badgeWidth), rect.x + 10, faceY)
+  if (node.fresh?.text) {
+    context.font = `9px ${theme.fontMono}`
+    context.fillStyle = node.fresh.tone === 'danger' ? theme.status.down : node.fresh.tone === 'warn' ? theme.status.gap : theme.text3
+    context.fillText(node.fresh.text, rect.x + rect.w - badgeWidth, faceY)
+  }
   if (node.sub) {
     context.font = `9.5px ${theme.fontSans}`
     context.fillStyle = theme.text3
     context.fillText(clipText(context, node.sub, rect.w - 20), rect.x + 10, faceY + (focus ? 16 : 13))
+  }
+
+  /* S2 活动条：底缘 2px，60 格每格 1 秒（§4.4.1）。null 格（没观测到）留白 */
+  if (node.activity && node.activity.length > 0) {
+    const inset = 8
+    const pitch = Math.max(1.2, (rect.w - inset * 2) / node.activity.length)
+    const cellW = Math.max(0.8, pitch - 0.4)
+    const barY = rect.y + rect.h - 4
+    for (let index = 0; index < node.activity.length; index += 1) {
+      const cell = node.activity[index]
+      if (cell === null) continue
+      context.fillStyle = withAlpha(theme.fiberActive, cell ? ACTIVITY_ON_ALPHA : ACTIVITY_OFF_ALPHA)
+      context.fillRect(rect.x + inset + index * pitch, barY, cellW, 2)
+    }
   }
 
   /* 端口 */

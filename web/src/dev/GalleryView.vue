@@ -34,6 +34,7 @@ import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import CanvasStage from '@/monitor/CanvasStage.vue'
+import { demoActivityCells } from '@/monitor/activity'
 import { computeHealth } from '@/monitor/health'
 import { resolveHud } from '@/monitor/hud'
 import { emptyMonitorInput } from '@/monitor/load-input'
@@ -242,6 +243,28 @@ const stageGraph = buildScene(
   stageNow,
 )
 
+/* S2 静态示例：给画布牌贴新鲜度角标与 60 格活动条（走真实渲染路径，不是平行实现） */
+const demoCellsBusy = demoActivityCells('busy')
+const demoCellsQuiet = demoActivityCells('quiet')
+const stageGraphS2 = {
+  ...stageGraph,
+  nodes: stageGraph.nodes.map((node) => {
+    if (node.id === 'source:tdx') return { ...node, fresh: { text: '3s 前', tone: 'ok' as const }, activity: demoCellsBusy }
+    if (node.id === 'book:center') return { ...node, fresh: { text: '5s 前', tone: 'ok' as const }, activity: demoCellsBusy }
+    if (node.id === 'post:scan') return { ...node, fresh: { text: '2m 前', tone: 'warn' as const }, activity: demoCellsQuiet }
+    if (node.id === 'model:large') return { ...node, fresh: { text: '12m 前', tone: 'danger' as const }, activity: demoCellsQuiet }
+    if (node.id === 'source:overseas') return { ...node, fresh: { text: '上一交易日', tone: 'warn' as const }, activity: demoCellsQuiet }
+    return node
+  }),
+}
+
+/* S2 原语对照表：活动条三态 × 角标三档 */
+const demoActivityRows = [
+  { label: '在跑（连续有活动）', cells: demoCellsBusy, badge: '3s 前', tone: 'ok' },
+  { label: '一顿一顿（零星活动）', cells: demoCellsQuiet, badge: '2m 前', tone: 'warn' },
+  { label: '静默（全灰）+ 变红角标', cells: demoCellsQuiet.map(() => false as const), badge: '12m 前', tone: 'danger' },
+]
+
 /* ---------- 监控 S1 原语：时段带 / 健康分 / 十格 HUD（静态） ---------- */
 const demoNow = new Date(2026, 9, 12, 10, 24).getTime()
 const demoInput = {
@@ -254,7 +277,7 @@ const demoInput = {
     down: 1502,
     asOf: new Date(demoNow - 4000).toISOString(),
     stale: false,
-    brokenRate: 32.4,
+    brokenRate: 0.324,
     maxHeight: 5,
   },
   limits: {
@@ -645,9 +668,23 @@ const demoSparks: Record<string, (number | null)[]> = {
     </section>
 
     <section class="g-sec">
-      <h2>监控画布（CanvasStage · 静态场景，可拖拽/缩放）</h2>
+      <h2>监控 S2 原语（活动条 60 格 / 新鲜度角标 · 静态）</h2>
+      <div class="g-activity">
+        <div v-for="demo in demoActivityRows" :key="demo.label" class="g-activity__row">
+          <span class="g-activity__label">{{ demo.label }}</span>
+          <span class="g-activity__bar" aria-hidden="true">
+            <i v-for="(cell, index) in demo.cells" :key="index" :class="{ on: cell === true, off: cell === false }"></i>
+          </span>
+          <span class="g-activity__badge" :data-tone="demo.tone">{{ demo.badge }}</span>
+        </div>
+        <p class="g-activity__note">牌底缘 2px、60 格每格 1 秒；亮格 --nt-accent α0.55，静默格 α0.06，没观测到的格留白。角标三档：正常 / 变橙 / 变红。</p>
+      </div>
+    </section>
+
+    <section class="g-sec">
+      <h2>监控画布（CanvasStage · 静态场景，可拖拽/缩放，已贴 S2 角标与活动条）</h2>
       <div class="g-stage">
-        <CanvasStage :graph="stageGraph" :selected-id="stageSelected" :hot-ids="[]" :paused="false" @select="stageSelected = $event" />
+        <CanvasStage :graph="stageGraphS2" :selected-id="stageSelected" :hot-ids="[]" :paused="false" @select="stageSelected = $event" />
       </div>
     </section>
 
@@ -848,6 +885,70 @@ const demoSparks: Record<string, (number | null)[]> = {
   border-radius: var(--nt-radius-m);
   background: var(--nt-bg-1);
   overflow: hidden;
+}
+
+.g-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-m);
+}
+
+.g-activity__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.g-activity__label {
+  flex: 0 0 170px;
+  font-size: 12px;
+  color: var(--nt-text-2);
+}
+
+.g-activity__bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 10px;
+}
+
+.g-activity__bar i {
+  width: 3px;
+  height: 8px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.g-activity__bar i.on {
+  background: color-mix(in srgb, var(--nt-accent) 55%, transparent);
+}
+
+.g-activity__bar i.off {
+  background: color-mix(in srgb, var(--nt-accent) 6%, transparent);
+}
+
+.g-activity__badge {
+  font-family: var(--nt-font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--nt-text-3);
+}
+
+.g-activity__badge[data-tone='warn'] {
+  color: var(--nt-warn);
+}
+
+.g-activity__badge[data-tone='danger'] {
+  color: var(--nt-danger);
+}
+
+.g-activity__note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--nt-text-3);
 }
 
 .g-modal-body {

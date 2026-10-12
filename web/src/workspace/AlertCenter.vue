@@ -24,6 +24,18 @@ interface AlertEvent {
   at: string
 }
 
+/** 页面级告警入口（如监控 S2 的交易通道静默）。外部只给一条新事件，这里按 id 入队一次。 */
+interface ExtraAlert {
+  id: string
+  kind?: string
+  source?: string
+  title: string
+  body: string
+  at: string
+}
+
+const props = defineProps<{ extra?: ExtraAlert | null }>()
+
 const risk = useRiskStore()
 const settings = useSettingsStore()
 
@@ -88,6 +100,15 @@ watch(
     }
   },
   { immediate: true },
+)
+
+watch(
+  () => props.extra?.id,
+  (id) => {
+    const item = props.extra
+    if (!id || !item) return
+    push(item.kind || 'silence', item.source || 'monitor', item.title, item.body, item.at)
+  },
 )
 
 watch(current, (item) => {

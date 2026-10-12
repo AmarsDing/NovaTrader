@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
  * 决策台：一屏看清今天能不能做、做什么、为什么没选上。
+ * P3：左栏三列（待执行 / 已执行 / 漏选），右栏一张票的正文。
  * 账户 / 情绪 / 风控仍走 store；信号、候选、晨报、热词、数据源在本页取。
+ * 票的拼接规则全在 decision-desk.ts（纯函数），本页不编理由、不新开模型调用。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getBriefing, type Briefing } from '@/api/brain'
+import { getConfigValues } from '@/api/config'
 import { listSources, type DataSource } from '@/api/datahub'
 import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
 import { listSignals, type SignalItem } from '@/api/signals'
@@ -20,7 +23,16 @@ import { amount, clock, messageOf, phaseName, pnlClass, price, ratioPct, sideLab
 import { isLive, onPush, type WsPushMessage } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
 import type { Position } from '@/api/trade'
-import { buildGaps, countBlockedSources, missLabel, strategyLabel, type DeskGap } from './decision-desk'
+import {
+  buildGaps,
+  buildMissed,
+  buildTickets,
+  countBlockedSources,
+  missLabel,
+  strategyLabel,
+  type DeskGap,
+  type DeskTicket,
+} from './decision-desk'
 
 const REFRESH_MS = 30_000
 
@@ -42,6 +54,12 @@ const intelSentiment = ref<number | null>(null)
 const error = ref('')
 const loading = ref(false)
 const pulse = ref('')
+/** 风控参数（risk.max_single_pct）。读不到就传 null，票上写「以风控实检为准」 */
+const maxSinglePct = ref<number | null>(null)
+/** 当前展开的那张票 */
+const selectedId = ref('')
+/** 异议点到的维，四维行高亮 */
+const focusDim = ref('')
 
 let timer: ReturnType<typeof setInterval> | null = null
 let offPush: (() => void) | undefined
@@ -59,16 +77,12 @@ const chartRows = computed(() =>
     .filter((row) => row.avgPct != null)
     .map((row) => ({ name: row.name, avgPct: Number((row.avgPct as number).toFixed(2)) })),
 )
-const actionRows = computed(() =>
-  [...signals.value].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 6),
-)
-const missRows = computed(() =>
-  candidates.value
-    .filter((row) => row.stage !== 'selected' && row.missReason)
-    .sort((a, b) => (b.ruleScore ?? 0) - (a.ruleScore ?? 0))
-    .slice(0, 8),
-)
+const tickets = computed(() => buildTickets(signals.value, maxSinglePct.value))
+const missed = computed(() => buildMissed(candidates.value))
 const selectedCount = computed(() => candidates.value.filter((row) => row.stage === 'selected').length)
+const selected = computed<DeskTicket | null>(
+  () => tickets.value.pending.find((item) => item.id === selectedId.value) ?? tickets.value.executed.find((item) => item.id === selectedId.value) ?? null,
+)
 const gaps = computed<DeskGap[]>(() =>
   buildGaps({
     sourcesFailed: sourcesFailed.value,
@@ -83,6 +97,22 @@ const gaps = computed<DeskGap[]>(() =>
     live: isLive(),
   }),
 )
+
+/* 选中的票没了（被执行/被撤）就回落到待执行第一张；没有选中项时默认展开第一张待执行 */
+watch(tickets, (next) => {
+  if (selected.value) return
+  selectedId.value = next.pending[0]?.id ?? next.executed[0]?.id ?? ''
+})
+
+function pick(id: string) {
+  focusDim.value = ''
+  selectedId.value = selectedId.value === id ? '' : id
+}
+
+/** 异议点到反对的那一维 */
+function pointDim(key: string) {
+  focusDim.value = focusDim.value === key ? '' : key
+}
 
 function weight(position: Position): string {
   if (!account.equity || !position.lastPrice || !position.quantity) return ''
@@ -106,6 +136,15 @@ function openPulse() {
 
 function openPanel(id: string, params?: Record<string, unknown>) {
   getWorkbench()?.openPanel(id, params)
+}
+
+function openMarket(symbol: string) {
+  openPanel('market', { symbol })
+}
+
+/** 下单仍进交易面板，带上这张票的代码、方向和入场价。交易面板在 P4 才拦截 */
+function openTrade(ticket: DeskTicket) {
+  openPanel('trade', { symbol: ticket.symbol, side: ticket.side, price: ticket.entry ?? '' })
 }
 
 async function loadFocus(symbol: string) {
@@ -161,6 +200,16 @@ async function load(manual = false) {
   loading.value = false
 }
 
+async function loadRiskParams() {
+  try {
+    const values = await getConfigValues()
+    const parsed = Number(values['risk.max_single_pct'])
+    maxSinglePct.value = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  } catch {
+    maxSinglePct.value = null
+  }
+}
+
 function onPushMessage(msg: WsPushMessage) {
   if (msg.topic !== 'signal' && msg.topic !== 'alert') return
   const data = msg.data && typeof msg.data === 'object' ? (msg.data as Record<string, unknown>) : {}
@@ -174,6 +223,7 @@ function onPushMessage(msg: WsPushMessage) {
 
 onMounted(() => {
   void load(true)
+  void loadRiskParams()
   timer = setInterval(() => void load(false), REFRESH_MS)
   offPush = onPush(onPushMessage)
 })
@@ -189,7 +239,7 @@ onBeforeUnmount(() => {
     <header class="nt-head">
       <div>
         <h1 class="nt-title">决策台</h1>
-        <p class="nt-note">一屏看缺口、今日动作、漏选原因和持仓。没有读到的项保持为「—」，不把空数据当成平静。</p>
+        <p class="nt-note">左栏三列收票，右栏读一张票的正文。没读到的项保持为「—」，不把空数据当成平静。</p>
       </div>
       <NtButton :loading="loading" @click="load(true)">刷新</NtButton>
     </header>
@@ -237,35 +287,137 @@ onBeforeUnmount(() => {
       />
     </section>
 
-    <div class="nt-split desk-split">
-      <section class="nt-panel">
-        <h2 class="nt-panel__title">今日动作</h2>
-        <p v-if="!actionRows.length" class="nt-empty">今日没有信号。模板只有首板弱转强和强势回踩，而且要有日线和快照才会出。</p>
-        <ul v-else class="rows">
-          <li v-for="item in actionRows" :key="item.id || item.symbol + item.time">
-            <span class="tm">{{ clock(item.time) }}</span>
-            <button type="button" class="sym" @click="openPanel('market', { symbol: item.symbol })">
-              {{ item.symbol }}
-            </button>
-            <span class="name">{{ item.name || strategyLabel(item.strategy) }}</span>
-            <em :class="item.side === 'buy' ? 'up' : item.side === 'sell' ? 'down' : ''">{{ sideLabel(item.side) }}</em>
-            <b :class="{ hot: item.highValue }">{{ item.score ?? '—' }}</b>
-            <span class="px">{{ price(item.entryLow) }}–{{ price(item.entryHigh) }} / 止损 {{ price(item.stop) }}</span>
-            <span class="valid" :class="{ warn: !item.validUntil }">
-              {{ item.validUntil ? validRemainText(item.validUntil) || '已过期' : '无有效期' }}
-            </span>
-            <span v-if="item.positionPct != null" class="pos">仓位 {{ (item.positionPct * 100).toFixed(0) }}%</span>
-            <button type="button" class="link" @click="loadFocus(item.symbol)">情报</button>
-            <button type="button" class="link" @click="openPanel('trade', { symbol: item.symbol, side: item.side, price: item.entry || '' })">
-              下单
-            </button>
-          </li>
-        </ul>
-        <p v-if="actionRows.length" class="nt-note more">
-          <button type="button" class="link" @click="openPanel('signals')">打开信号中枢</button>
-        </p>
-      </section>
+    <!-- P3 一张票：左栏三列，右栏正文 -->
+    <section class="nt-panel desk">
+      <div class="desk__lanes">
+        <div class="lane">
+          <h3>待执行 <b>{{ tickets.pending.length }}</b></h3>
+          <p v-if="!tickets.pending.length" class="nt-empty">没有待执行信号。</p>
+          <ul v-else>
+            <li
+              v-for="ticket in tickets.pending"
+              :key="ticket.id"
+              :class="{ on: selectedId === ticket.id }"
+              @click="pick(ticket.id)"
+            >
+              <span class="tm">{{ clock(ticket.time) }}</span>
+              <span class="sym mono">{{ ticket.symbol }}</span>
+              <span class="name">{{ ticket.name || strategyLabel(ticket.strategy) }}</span>
+              <em v-if="ticket.degraded" class="tag">规则分</em>
+              <b :class="{ hot: ticket.highValue }">{{ ticket.degraded ? (ticket.ruleScore ?? '—') : (ticket.score ?? '—') }}</b>
+            </li>
+          </ul>
+        </div>
+        <div class="lane">
+          <h3>已执行 <b>{{ tickets.executed.length }}</b></h3>
+          <p v-if="!tickets.executed.length" class="nt-empty">今天还没有执行的票。</p>
+          <ul v-else>
+            <li
+              v-for="ticket in tickets.executed"
+              :key="ticket.id"
+              :class="{ on: selectedId === ticket.id }"
+              @click="pick(ticket.id)"
+            >
+              <span class="tm">{{ clock(ticket.time) }}</span>
+              <span class="sym mono">{{ ticket.symbol }}</span>
+              <span class="name">{{ ticket.name || strategyLabel(ticket.strategy) }}</span>
+              <span class="done">{{ ticket.closedNote || '已执行' }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="lane">
+          <h3>漏选 <b>{{ missed.length }}</b></h3>
+          <p class="nt-note">候选 {{ candidates.length }} · 入选 {{ selectedCount }}。</p>
+          <p v-if="!missed.length" class="nt-empty">没有漏选记录。</p>
+          <ul v-else>
+            <li v-for="row in missed" :key="row.symbol + row.strategy">
+              <button type="button" class="sym mono link" @click="openMarket(row.symbol)">{{ row.symbol }}</button>
+              <span class="name">{{ row.name || strategyLabel(row.strategy) }}</span>
+              <span class="miss">{{ missLabel(row.reason) }}</span>
+              <b>规则 {{ row.ruleScore ?? '—' }}</b>
+            </li>
+          </ul>
+        </div>
+      </div>
 
+      <div class="desk__body">
+        <template v-if="selected">
+          <header class="ticket__head">
+            <button type="button" class="sym mono link big" @click="openMarket(selected.symbol)">{{ selected.symbol }}</button>
+            <strong>{{ selected.name || strategyLabel(selected.strategy) }}</strong>
+            <em :class="selected.side === 'buy' ? 'up' : selected.side === 'sell' ? 'down' : ''">{{ sideLabel(selected.side) }}</em>
+            <span class="date">形成日 {{ selected.tradeDate || '—' }}</span>
+            <span v-if="selected.degraded" class="tag">规则分 {{ selected.ruleScore ?? '—' }}</span>
+            <b v-else class="score" :class="{ hot: selected.highValue }">{{ selected.score ?? '—' }}</b>
+            <span v-if="selected.lane === 'executed'" class="done">{{ selected.closedNote || '已执行' }}</span>
+          </header>
+
+          <div class="ticket__grid">
+            <div class="ticket__block">
+              <h4>价格</h4>
+              <p class="px">
+                入场 {{ price(selected.entryLow) }}–{{ price(selected.entryHigh) }} · 止损 {{ price(selected.stop) }} · 止盈 {{ price(selected.take) }}
+              </p>
+              <p class="valid" :class="{ warn: !selected.validUntil }">
+                {{ selected.validUntil ? validRemainText(selected.validUntil) || '已过期' : '无有效期' }}
+                <template v-if="selected.risk.requestedPct != null"> · 请求仓位 {{ (selected.risk.requestedPct * 100).toFixed(0) }}%</template>
+              </p>
+            </div>
+
+            <div class="ticket__block">
+              <h4>四维投票</h4>
+              <ul class="votes">
+                <li
+                  v-for="vote in selected.votes"
+                  :key="vote.key"
+                  :class="{ against: vote.against, focus: focusDim === vote.key }"
+                  @click="vote.against && pointDim(vote.key)"
+                >
+                  <span>{{ vote.label }}</span>
+                  <b>{{ vote.score ?? '—' }}</b>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div v-if="selected.objections.length" class="ticket__block objections">
+            <h4>异议</h4>
+            <ul>
+              <li v-for="(item, index) in selected.objections" :key="index">{{ item }}</li>
+            </ul>
+          </div>
+
+          <div class="ticket__block">
+            <h4>理由</h4>
+            <p v-if="!selected.reasons.length" class="nt-empty">{{ selected.degraded ? '规则分：模型降级，没有研判正文' : '未调用' }}</p>
+            <ol v-else class="reasons">
+              <li v-for="(item, index) in selected.reasons" :key="index">{{ item }}</li>
+            </ol>
+            <p v-if="selected.evidence.length" class="evidence">
+              <span v-for="(item, index) in selected.evidence" :key="index" class="chip">{{ item }}</span>
+            </p>
+          </div>
+
+          <div class="ticket__block">
+            <h4>风控</h4>
+            <p class="px">
+              请求仓位 {{ selected.risk.requestedPct != null ? `${(selected.risk.requestedPct * 100).toFixed(1)}%` : '—' }}
+              · 允许仓位 {{ selected.risk.allowedPct != null ? `${(selected.risk.allowedPct * 100).toFixed(1)}%` : '—' }}
+              <template v-if="selected.risk.rule"> · {{ selected.risk.rule }}</template>
+            </p>
+            <p class="nt-note">{{ selected.risk.note }}</p>
+          </div>
+
+          <footer class="ticket__actions">
+            <NtButton size="sm" variant="quiet" @click="openMarket(selected.symbol)">看行情</NtButton>
+            <NtButton v-if="selected.lane === 'pending'" size="sm" @click="openTrade(selected)">去下单</NtButton>
+          </footer>
+        </template>
+        <p v-else class="nt-empty">点左边一票读正文。没有研判正文时这里写「未调用」或「规则分」，不编理由。</p>
+      </div>
+    </section>
+
+    <div class="nt-split desk-split">
       <section class="nt-panel">
         <h2 class="nt-panel__title">晨报与热词</h2>
         <p v-if="briefing?.summary" class="brief">{{ briefing.summary }}</p>
@@ -289,7 +441,34 @@ onBeforeUnmount(() => {
         <p class="nt-note more">
           <button type="button" class="link" @click="openPanel('morning-briefing')">打开晨报</button>
           <button type="button" class="link" @click="openPanel('intel')">打开情报</button>
+          <button type="button" class="link" @click="openPanel('signals')">打开信号中枢</button>
+          <button type="button" class="link" @click="openPanel('pool-manager')">打开股池</button>
         </p>
+      </section>
+
+      <section class="nt-panel">
+        <h2 class="nt-panel__title">持仓</h2>
+        <p v-if="account.openHalted" class="nt-err">开仓已停{{ account.haltReason ? `：${account.haltReason}` : '' }}</p>
+        <!-- 持仓接口失败和真的空仓分开写：没读到时账面不显示成空仓 -->
+        <p v-if="!account.positionsOk" class="nt-err">持仓接口没有应答，账面不当作空仓。</p>
+        <p v-else-if="!account.positions.length" class="nt-empty">暂无持仓。</p>
+        <div v-else class="pos-table">
+          <div class="pos-row pos-row--head">
+            <span>代码</span>
+            <span>数量</span>
+            <span>权重</span>
+            <span>浮盈</span>
+          </div>
+          <div v-for="item in account.positions" :key="item.symbol" class="pos-row">
+            <button type="button" class="sym" @click="openMarket(item.symbol)">{{ item.symbol }}</button>
+            <b>{{ item.quantity ?? '—' }}</b>
+            <em>{{ weight(item) || '—' }}</em>
+            <i :class="pnlClass(pnlRatio(item))">{{ pnlRatio(item) != null ? ratioPct(pnlRatio(item), 1) : '—' }}</i>
+          </div>
+        </div>
+        <h3 class="sub">板块涨跌（全市场）</h3>
+        <p v-if="!chartRows.length" class="nt-empty">板块快照未返回。</p>
+        <NtSectorBar v-else :rows="chartRows" height="220px" />
       </section>
     </div>
 
@@ -305,48 +484,6 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </section>
-
-    <div class="nt-split desk-split">
-      <section class="nt-panel">
-        <h2 class="nt-panel__title">为什么没选上</h2>
-        <p class="nt-note">候选 {{ candidates.length }} · 入选 {{ selectedCount }}。漏选原因来自漏斗，不是事后解释。</p>
-        <p v-if="!missRows.length" class="nt-empty">没有漏选记录。全市场扫描要等日线和快照进来之后才会写候选。</p>
-        <ul v-else class="rows">
-          <li v-for="row in missRows" :key="row.id || row.symbol + row.strategy">
-            <button type="button" class="sym" @click="openPanel('market', { symbol: row.symbol })">{{ row.symbol }}</button>
-            <span class="name">{{ row.name || strategyLabel(row.strategy) }}</span>
-            <span>{{ missLabel(row.missReason) }}</span>
-            <b>规则 {{ row.ruleScore ?? '—' }}</b>
-          </li>
-        </ul>
-        <p class="nt-note more">
-          <button type="button" class="link" @click="openPanel('pool-manager')">打开股池</button>
-        </p>
-      </section>
-
-      <section class="nt-panel">
-        <h2 class="nt-panel__title">持仓</h2>
-        <p v-if="account.openHalted" class="nt-err">开仓已停{{ account.haltReason ? `：${account.haltReason}` : '' }}</p>
-        <p v-if="!account.positions.length" class="nt-empty">暂无持仓。</p>
-        <div v-else class="pos-table">
-          <div class="pos-row pos-row--head">
-            <span>代码</span>
-            <span>数量</span>
-            <span>权重</span>
-            <span>浮盈</span>
-          </div>
-          <div v-for="item in account.positions" :key="item.symbol" class="pos-row">
-            <button type="button" class="sym" @click="openPanel('market', { symbol: item.symbol })">{{ item.symbol }}</button>
-            <b>{{ item.quantity ?? '—' }}</b>
-            <em>{{ weight(item) || '—' }}</em>
-            <i :class="pnlClass(pnlRatio(item))">{{ pnlRatio(item) != null ? ratioPct(pnlRatio(item), 1) : '—' }}</i>
-          </div>
-        </div>
-        <h3 class="sub">板块涨跌（全市场）</h3>
-        <p v-if="!chartRows.length" class="nt-empty">板块快照未返回。</p>
-        <NtSectorBar v-else :rows="chartRows" height="220px" />
-      </section>
-    </div>
   </div>
 </template>
 
@@ -510,11 +647,258 @@ onBeforeUnmount(() => {
   margin-top: 8px;
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .sub {
   margin: 14px 0 0;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* ---- 一张票：左栏三列 + 右栏正文 ---- */
+
+.desk {
+  display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.desk__lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lane h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nt-text-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.lane h3 b {
+  font-family: var(--nt-font-mono);
+  color: var(--nt-text-3);
+  font-weight: 500;
+}
+
+.lane ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lane li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+  padding: 5px 6px;
+  border-radius: var(--nt-radius-s);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.lane li.on {
+  border-color: var(--nt-accent);
+  background: color-mix(in srgb, var(--nt-accent) 8%, transparent);
+}
+
+.lane li .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.lane li b {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.lane li b.hot {
+  color: var(--nt-warn, var(--nt-accent));
+}
+
+.mono {
+  font-family: var(--nt-font-mono);
+}
+
+.tag {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--nt-warn);
+  border: 1px solid var(--nt-warn);
+  border-radius: 3px;
+  padding: 0 3px;
+  white-space: nowrap;
+}
+
+.done,
+.miss {
+  font-size: 11px;
+  color: var(--nt-text-3);
+  white-space: nowrap;
+}
+
+.desk__body {
+  min-width: 0;
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-m);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ticket__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ticket__head .big {
+  font-size: 15px;
+}
+
+.ticket__head strong {
+  font-size: 14px;
+}
+
+.ticket__head .up {
+  color: var(--nt-up);
+  font-style: normal;
+}
+
+.ticket__head .down {
+  color: var(--nt-down);
+  font-style: normal;
+}
+
+.ticket__head .date {
+  color: var(--nt-text-3);
+  font-size: 11px;
+}
+
+.ticket__head .score {
+  margin-left: auto;
+  font-family: var(--nt-font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ticket__head .score.hot {
+  color: var(--nt-warn, var(--nt-accent));
+}
+
+.ticket__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ticket__block h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--nt-text-3);
+  letter-spacing: 0.04em;
+}
+
+.ticket__block p {
+  margin: 0;
+}
+
+.votes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.votes li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 3px 6px;
+  border-radius: var(--nt-radius-s);
+  border: 1px solid transparent;
+}
+
+.votes li.against {
+  color: var(--nt-warn);
+  cursor: pointer;
+}
+
+.votes li.focus {
+  border-color: var(--nt-warn);
+}
+
+.votes li b {
+  font-family: var(--nt-font-mono);
+  font-weight: 500;
+}
+
+.objections ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--nt-warn);
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reasons {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--nt-text-1);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.5;
+}
+
+.evidence {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  font-size: 10.5px;
+  font-family: var(--nt-font-mono);
+  color: var(--nt-text-2);
+  border: 1px solid var(--nt-border-1);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.ticket__actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .desk {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

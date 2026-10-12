@@ -87,6 +87,8 @@ export interface SignalItem {
   status: string
   dims: Record<string, unknown>
   time: string
+  /** 信号归属的交易日（yyyy-mm-dd）。决策台「形成日」用。 */
+  tradeDate: string
   /** ATR14，仓位与止损的度量单位。 */
   atr: number | null
   /** 建议仓位比率（0–1）。 */
@@ -115,7 +117,8 @@ export interface ScanReply {
   signalIds: string[]
   sellSignalIds: string[]
   dropped: Record<string, number>
-  misses: Record<string, string>
+  /** misses: 原因代码 → 只数（与 dropped 同为按原因聚合，后端 proto map<string,int32>）。 */
+  misses: Record<string, number>
   killSwitch: boolean
   elapsedMs: number | null
 }

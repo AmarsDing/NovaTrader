@@ -26,6 +26,10 @@ export interface SceneNode {
   tone: 'up' | 'down' | 'flat'
   inputs: Identifier[]
   outputs: Identifier[]
+  /** S2 右上角新鲜度角标。没拿到可信时间戳就不给，不编 */
+  fresh?: { text: string; tone: 'ok' | 'warn' | 'danger' }
+  /** S2 底缘活动条：60 格，true 有活动 / false 静默 / null 没观测到 */
+  activity?: (boolean | null)[]
 }
 
 export interface ChildCard {
