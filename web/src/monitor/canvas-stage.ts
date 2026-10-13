@@ -179,7 +179,7 @@ const FUNNEL_LABEL_DROP = 20
 const ROLE: Record<string, string> = {
   'model:large': '消息 · 外围 · 综合',
   'model:small': '技术 · 资金',
-  'model:token': '令牌未接入',
+  'model:token': '令牌计数',
   'post:scan': '规则漏斗',
   'dim:tech': '小模型打分',
   'dim:news': '大模型打分',

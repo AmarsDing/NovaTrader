@@ -1,4 +1,4 @@
-import { amount, intText, missLabel, phaseName, ratioPct, signed } from '@/utils/format'
+import { amount, compactAmount, intText, missLabel, phaseName, ratioPct, signed } from '@/utils/format'
 import { buildFunnel, funnelCountText, funnelRate } from './funnel'
 import type {
   ChildCard,
@@ -322,13 +322,15 @@ function scanFace(input: MonitorInput): Pick<SceneNode, 'rank' | 'face' | 'sub' 
 }
 
 function modelFace(input: MonitorInput): Pick<SceneNode, 'rank' | 'face' | 'sub' | 'tone'> {
-  if (!input.brainStats?.ok) return { rank: 'brief', face: '统计未返回', sub: '令牌未接入', tone: 'flat' }
+  const usage = input.brainP1?.ok ? input.brainP1.usage : null
+  const tokenSub = usage ? `令牌 ${compactAmount(usage.total.totalTokens)}` : '令牌未接入'
+  if (!input.brainStats?.ok) return { rank: 'brief', face: '统计未返回', sub: tokenSub, tone: 'flat' }
   const open = input.brainStats.tiers.find((tier) => tier.circuitOpen)
   if (open) return { rank: 'focus', face: open.tier || open.model || '熔断', sub: '熔断', tone: 'flat' }
   const counts = input.brainStats.tiers.map((tier) => tier.calls).filter((value): value is number => value != null)
-  if (counts.length === 0) return { rank: 'brief', face: '统计未返回', sub: '令牌未接入', tone: 'flat' }
+  if (counts.length === 0) return { rank: 'brief', face: '统计未返回', sub: tokenSub, tone: 'flat' }
   const calls = counts.reduce((sum, value) => sum + value, 0)
-  return { rank: 'brief', face: `${calls} 次`, sub: '令牌未接入', tone: 'flat' }
+  return { rank: 'brief', face: `${calls} 次`, sub: tokenSub, tone: 'flat' }
 }
 
 function accountSub(input: MonitorInput): string {
@@ -535,7 +537,19 @@ function modelChildren(input: MonitorInput): ChildCard[] {
     sub: tier.model || '',
     tone: 'flat' as const,
   }))
-  cards.push({ id: 'token:gap', title: '令牌', face: '令牌未接入', sub: '', tone: 'flat' })
+  /* S7：usage 通了就出真令牌合计，不再用「令牌未接入」占位 */
+  const usage = input.brainP1?.ok ? input.brainP1.usage : null
+  if (usage) {
+    cards.push({
+      id: 'token:total',
+      title: '令牌',
+      face: compactAmount(usage.total.totalTokens),
+      sub: `入 ${compactAmount(usage.total.promptTokens)} · 出 ${compactAmount(usage.total.completionTokens)}`,
+      tone: 'flat' as const,
+    })
+  } else {
+    cards.push({ id: 'token:gap', title: '令牌', face: '令牌未接入', sub: '', tone: 'flat' })
+  }
   if (input.tasks) {
     const task = input.tasks.ok ? input.tasks.items[0] : undefined
     cards.push({
@@ -666,6 +680,8 @@ function fillChildren(input: MonitorInput): ChildCard[] {
 function tierChildren(input: MonitorInput, key: string): ChildCard[] {
   const tier = input.brainStats?.ok ? input.brainStats.tiers.find((item) => (item.tier || item.model) === key) : undefined
   if (!tier) return [{ id: 'tier:missing', title: key || '模型', face: '统计未返回', sub: '令牌未接入', tone: 'flat' }]
+  /* S7：usage 按档给出真令牌数；接口没通仍写「令牌未接入」 */
+  const usageTier = (input.brainP1?.ok ? input.brainP1.usage?.tiers : undefined)?.find((item) => item.tier === tier.tier)
   return [
     { id: `tier:${key}:calls`, title: tier.model || key, face: tier.calls == null ? '未返回' : `${tier.calls} 次`, sub: tier.circuitOpen ? '熔断' : '', tone: 'flat' },
     { id: `tier:${key}:fail`, title: '失败', face: intText(tier.failures), sub: '', tone: 'flat' },
@@ -674,7 +690,13 @@ function tierChildren(input: MonitorInput, key: string): ChildCard[] {
     { id: `tier:${key}:fly`, title: '在途', face: intText(tier.inFlight), sub: '', tone: 'flat' },
     { id: `tier:${key}:queue`, title: '排队', face: intText(tier.queued), sub: '', tone: 'flat' },
     { id: `tier:${key}:kv`, title: 'KV', face: tier.kvCacheUsage == null ? '未返回' : String(tier.kvCacheUsage), sub: '', tone: 'flat' },
-    { id: `tier:${key}:token`, title: '令牌', face: '令牌未接入', sub: '', tone: 'flat' },
+    {
+      id: `tier:${key}:token`,
+      title: '令牌',
+      face: usageTier ? compactAmount(usageTier.totalTokens) : '令牌未接入',
+      sub: usageTier ? `入 ${compactAmount(usageTier.promptTokens)} · 出 ${compactAmount(usageTier.completionTokens)}` : '',
+      tone: 'flat',
+    },
   ]
 }
 
@@ -962,7 +984,11 @@ function buildModelNodes(input: MonitorInput): SceneNode[] {
   const tiers = input.brainStats?.ok ? input.brainStats.tiers : []
   const large = tiers.find((tier) => tier.tier === 'large') ?? tiers[0]
   const small = tiers.find((tier) => tier.tier === 'small') ?? tiers[1]
-  return [modelNode('model:large', '大模型', input.brainStats?.ok ?? false, large), modelNode('model:small', '小模型', input.brainStats?.ok ?? false, small), tokenNode()]
+  return [
+    modelNode('model:large', '大模型', input.brainStats?.ok ?? false, large),
+    modelNode('model:small', '小模型', input.brainStats?.ok ?? false, small),
+    tokenNode(input),
+  ]
 }
 
 function modelNode(
@@ -989,16 +1015,35 @@ function modelNode(
   }
 }
 
-function tokenNode(): SceneNode {
+/** S7：令牌节点——usage 通了就出真合计（仍是计数不是金额），没通保持 gap 占位 */
+function tokenNode(input: MonitorInput): SceneNode {
+  const usage = input.brainP1?.ok ? input.brainP1.usage : null
+  if (!usage) {
+    return {
+      id: 'model:token',
+      ring: 'post',
+      title: '花费',
+      status: 'gap',
+      detail: '令牌未接入。调用次数不能折算金额',
+      rank: 'brief',
+      face: '令牌未接入',
+      sub: '不能折算金额',
+      tone: 'flat',
+      inputs: [],
+      outputs: [],
+    }
+  }
+  const total = usage.total
+  const sub = `入 ${compactAmount(total.promptTokens)} · 出 ${compactAmount(total.completionTokens)}`
   return {
     id: 'model:token',
     ring: 'post',
-    title: '花费',
-    status: 'gap',
-    detail: '令牌未接入。调用次数不能折算金额',
+    title: '令牌',
+    status: 'live',
+    detail: `今日令牌合计 ${total.totalTokens.toLocaleString()}（入 ${total.promptTokens.toLocaleString()} / 出 ${total.completionTokens.toLocaleString()}，调用 ${intText(total.calls)} 次）。计数不是金额。`,
     rank: 'brief',
-    face: '令牌未接入',
-    sub: '不能折算金额',
+    face: compactAmount(total.totalTokens),
+    sub,
     tone: 'flat',
     inputs: [],
     outputs: [],

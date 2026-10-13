@@ -94,15 +94,17 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       return { face: '守着', sub: risk.buysToday == null ? '' : `今日买单 ${risk.buysToday}`, tone: 'flat' }
     }
     case 'model': {
+      const usage = input.brainP1?.ok ? input.brainP1.usage : null
+      const tokenSub = usage ? `令牌 ${compactAmount(usage.total.totalTokens)}` : '令牌未接入'
       const stats = input.brainStats
-      if (!stats?.ok) return { face: '统计未返回', sub: '令牌未接入', tone: 'flat' }
+      if (!stats?.ok) return { face: '统计未返回', sub: tokenSub, tone: 'flat' }
       const open = stats.tiers.find((tier) => tier.circuitOpen)
       if (open) return { face: open.tier || open.model || '熔断', sub: '熔断', tone: 'flat' }
       const calls = stats.tiers.reduce((sum, tier) => sum + (tier.calls ?? 0), 0)
       const p95 = Math.max(0, ...stats.tiers.map((tier) => tier.p95Ms ?? 0))
       return {
         face: stats.tiers.length === 0 ? '统计未返回' : `${calls} 次`,
-        sub: `P95 ${Math.round(p95)}ms · 令牌未接入`,
+        sub: `P95 ${Math.round(p95)}ms · ${tokenSub}`,
         tone: 'flat',
       }
     }

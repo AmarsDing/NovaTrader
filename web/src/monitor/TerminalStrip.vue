@@ -8,7 +8,8 @@
  * 只读：整条终端带没有写操作，点行只是选中画布节点。缺口写「未接入：需要 GET …」，不编数。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { amount, intText, missLabel, ratioPct, signed } from '@/utils/format'
+import { amount, compactAmount, intText, missLabel, pctText, ratioPct, signed } from '@/utils/format'
+import { attributionLabel } from './detail'
 import { dutyOf, isLoud, statusDot } from './duty'
 import { gpuMemory } from './hud'
 import { TAPE_DOMAIN_LABEL, TAPE_MAX_ROWS } from './tape'
@@ -265,12 +266,32 @@ const positionLines = computed<PositionLine[]>(() => {
   })
 })
 
-/** 复盘：漏选条数与最大原因是现有数据；胜率与评分-收益散点没有只读出口，点名接口 */
+/** 复盘：漏选条数与最大原因是现有数据；S7 起绩效与相关性用 strategyP1 真数据 */
 const reviewLines = computed<PaneLine[]>(() => {
+  const lines: PaneLine[] = []
+  const perf = props.input.strategyP1?.ok ? props.input.strategyP1.performance : null
+  if (perf) {
+    lines.push(
+      perf.sample > 0
+        ? { key: 'win', label: '近 20 笔胜率', value: pctText(perf.winRate * 100, 1), tone: 'flat' }
+        : { key: 'win', label: '胜率', value: '样本不足：还没有已出后验的信号', tone: 'flat' },
+    )
+    if (perf.sample > 0) {
+      const top = perf.attributions[0]
+      lines.push({ key: 'attr', label: '最大归因', value: top ? `${attributionLabel(top.attribution)} ×${top.count}` : '还没有归因记录', tone: 'flat' })
+    }
+  }
+  const scatter = props.input.strategyP1?.ok ? props.input.strategyP1.scatter : null
+  if (scatter && scatter.sample >= 2) {
+    lines.push({ key: 'corr', label: '评分-收益相关', value: scatter.pearson.toFixed(2), tone: 'flat' })
+  }
   const candidates = props.input.candidates
-  if (!candidates?.ok) return [{ key: 'miss', label: '漏选', value: '候选接口无返回', tone: 'flat' }]
+  if (!candidates?.ok) {
+    lines.push({ key: 'miss', label: '漏选', value: '候选接口无返回', tone: 'flat' })
+    return lines
+  }
   const missed = candidates.items.filter((item) => item.stage !== 'selected')
-  const lines: PaneLine[] = [{ key: 'miss', label: '漏选', value: `${missed.length} 条`, tone: 'flat' }]
+  lines.push({ key: 'miss', label: '漏选', value: `${missed.length} 条`, tone: 'flat' })
   const limits = props.input.limits
   if (limits?.ok) {
     const missedSymbols = new Set(missed.map((item) => item.symbol))
@@ -288,8 +309,22 @@ const reviewLines = computed<PaneLine[]>(() => {
   return lines
 })
 
-const REVIEW_GAP = '未接入：需要 GET /v1/strategy/performance、/v1/strategy/score-vs-pnl（胜率与评分-收益散点）'
-const AUCTION_GAP = '未接入：需要 GET /v1/market/auction（竞价逐笔异动，每 5 秒一行）。下面先用事件流顶上。'
+/** 复盘注脚：接口没通的段点名缺口，全通时说明口径 */
+const reviewGap = computed(() => {
+  const perf = props.input.strategyP1?.ok ? props.input.strategyP1.performance : null
+  const scatter = props.input.strategyP1?.ok ? props.input.strategyP1.scatter : null
+  if (perf && scatter) return '胜率与相关性口径：strategy_feedback 已出后验的近 20 笔；相关性为评分-收益 Pearson（n≥2）。'
+  if (perf && !scatter) return '散点未接入：需要 GET /v1/strategy/score-vs-pnl。'
+  if (!perf && scatter) return '胜率未接入：需要 GET /v1/strategy/performance。'
+  return '未接入：需要 GET /v1/strategy/performance、/v1/strategy/score-vs-pnl（胜率与评分-收益散点）'
+})
+/** 竞价注脚：S7 接口通了就出当日截面摘要；没通/无截面仍写缺口。逐笔流不在本接口，事件流照旧顶上。 */
+const auctionNote = computed(() => {
+  const auction = props.input.marketP1?.ok ? props.input.marketP1.auction : null
+  if (!auction) return '未接入：需要 GET /v1/market/auction（竞价逐笔异动，每 5 秒一行）。下面先用事件流顶上。'
+  if (!auction.found) return `${auction.tradeDate} 无竞价截面（09:25 竞价因子未落库）。下面先用事件流顶上。`
+  return `${auction.tradeDate} 竞价截面：总额 ${compactAmount(auction.totalAmount)} · 竞价涨停 ${auction.limitUpCount} 只（快照非逐笔，逐笔仍走事件流）`
+})
 
 /* ---- 运行日志：通知 + 审计按时间合并 ---- */
 
@@ -346,6 +381,19 @@ const brainMissing = computed(() => !props.input.brainStats?.ok)
 const memory = computed(() => gpuMemory(props.input))
 const queued = computed(() => tiers.value.reduce((sum, tier) => sum + (tier.queued ?? 0), 0))
 const inFlight = computed(() => tiers.value.reduce((sum, tier) => sum + (tier.inFlight ?? 0), 0))
+/* S7：/api/ops/gpu 通了就出真利用率/温度，没通才写缺口 */
+const gpuLine = computed(() => {
+  const gpu = props.input.opsP1?.ok ? props.input.opsP1.gpu : null
+  if (!gpu) return 'GPU 利用率未接入：需要 GET /v1/ops/gpu'
+  if (!gpu.gpuAvailable) return gpu.gpuNote || 'GPU 不可得（未检测到 nvidia-smi）'
+  const first = gpu.gpus[0]
+  if (!first) return 'GPU 不可得（nvidia-smi 没有返回显卡）'
+  const bits: string[] = []
+  bits.push(first.utilPct >= 0 ? `GPU ${Math.round(first.utilPct)}%` : 'GPU 利用率不可得')
+  if (first.tempC >= 0) bits.push(`${Math.round(first.tempC)}°C`)
+  if (first.memTotalMiB > 0) bits.push(`显存 ${Math.round((first.memUsedMiB / first.memTotalMiB) * 100)}%`)
+  return bits.join(' · ')
+})
 
 /* ---- 账本 ---- */
 
@@ -353,12 +401,17 @@ const openOrders = computed(() => {
   if (!props.input.orders?.ok) return null
   return props.input.orders.items.filter((item) => !['filled', 'cancelled', 'canceled', 'rejected', 'expired'].includes(item.status.toLowerCase())).length
 })
-/** 文件单状态（§4.6）：只有实盘才谈得上文件单，读口是 S7 的 GET /v1/ops/broker-files */
+/** 文件单状态（§4.6）：只有实盘才谈得上文件单。S7 接口就位——broker-gw 未落地前如实转述 available=false 的缺口 */
 const brokerLine = computed(() => {
   const mode = risk.value?.ok ? risk.value.mode : ''
   if (!mode) return '模式未返回，文件单状态无从判定'
   if (mode.toUpperCase() !== 'LIVE') return '模拟盘，不下文件单'
-  return '未接入：需要 GET /v1/ops/broker-files'
+  const broker = props.input.opsP1?.ok ? props.input.opsP1.brokerFiles : null
+  if (!broker) return '未接入：需要 GET /v1/ops/broker-files'
+  if (!broker.available) return `不可用：${broker.note}`
+  const bits = [`待写 ${intText(broker.pending)}`, `已写 ${intText(broker.written)}`, `已消费 ${intText(broker.consumed)}`]
+  if (broker.leftover != null && broker.leftover > 0) bits.push(`遗留 ${broker.leftover}`)
+  return bits.join(' · ')
 })
 </script>
 
@@ -392,7 +445,7 @@ const brokerLine = computed(() => {
         </header>
 
         <template v-if="tapeVisible">
-          <p v-if="firstPane === 'auction'" class="nt-term__gapline">{{ AUCTION_GAP }}</p>
+          <p v-if="firstPane === 'auction'" class="nt-term__gapline">{{ auctionNote }}</p>
           <ul v-if="shown.length" class="nt-tape">
             <li v-for="row in shown" :key="row.id" :class="{ 'is-enter': entering.has(row.id) }">
               <button
@@ -448,7 +501,7 @@ const brokerLine = computed(() => {
               <span>{{ line.value }}</span>
             </li>
           </ul>
-          <p class="nt-term__note">{{ REVIEW_GAP }}</p>
+          <p class="nt-term__note">{{ reviewGap }}</p>
         </template>
       </section>
 
@@ -512,9 +565,7 @@ const brokerLine = computed(() => {
           <div class="nt-meter"><i :style="{ width: `${memory.pct}%` }"></i></div>
           <b>{{ memory.pct }}% · {{ memory.text }}</b>
         </div>
-        <p class="nt-term__note">
-          队列 {{ queued }} 在跑 {{ inFlight }} · GPU 利用率未接入：需要 GET /v1/ops/gpu · 令牌合计接口未做，花费不折算金额
-        </p>
+        <p class="nt-term__note">队列 {{ queued }} 在跑 {{ inFlight }} · {{ gpuLine }} · 令牌是计数不是金额</p>
       </section>
 
       <section class="nt-term nt-term--ledger">
