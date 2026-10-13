@@ -41,34 +41,87 @@ func gib(n uint64) string {
 	return strconv.FormatFloat(v, 'f', 1, 64) + " GB"
 }
 
-func gpuNodes(ctx context.Context) []map[string]string {
+// gpuInfo 是一块显卡的指标（nvidia-smi，700ms 超时）。
+type gpuInfo struct {
+	Name        string
+	MemUsedMiB  float64
+	MemTotalMiB float64
+	UtilPct     float64 // -1 表示 nvidia-smi 返回 N/A
+	TempC       float64 // -1 同上
+	PowerW      float64 // -1 同上
+}
+
+// queryGPU 查询显存、利用率、温度、功耗。nvidia-smi 不存在或超时返回 nil, false。
+func queryGPU(ctx context.Context) ([]gpuInfo, bool) {
 	cctx, cancel := context.WithTimeout(ctx, 700*time.Millisecond)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, "nvidia-smi",
-		"--query-gpu=memory.used,memory.total,name",
+		"--query-gpu=memory.used,memory.total,name,utilization.gpu,temperature.gpu,power.draw",
 		"--format=csv,noheader,nounits")
 	out, err := cmd.Output()
 	if err != nil {
-		return []map[string]string{nodeStatus("显存", "down", "未检测到 nvidia-smi")}
+		return nil, false
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	rows := make([]map[string]string, 0, len(lines))
-	for i, line := range lines {
+	rows := make([]gpuInfo, 0, len(lines))
+	for _, line := range lines {
 		fields := strings.Split(line, ",")
 		if len(fields) < 3 {
 			continue
 		}
-		used := strings.TrimSpace(fields[0])
-		total := strings.TrimSpace(fields[1])
-		name := strings.TrimSpace(strings.Join(fields[2:], ","))
+		info := gpuInfo{
+			MemUsedMiB:  parseCSVFloat(fields[0]),
+			MemTotalMiB: parseCSVFloat(fields[1]),
+			UtilPct:     -1,
+			TempC:       -1,
+			PowerW:      -1,
+		}
+		// name 之后才是利用率/温度/功耗（名字里可能带逗号，从尾部取三列）
+		if len(fields) >= 6 {
+			info.UtilPct = parseCSVFloatNA(fields[len(fields)-3])
+			info.TempC = parseCSVFloatNA(fields[len(fields)-2])
+			info.PowerW = parseCSVFloatNA(fields[len(fields)-1])
+			info.Name = strings.TrimSpace(strings.Join(fields[2:len(fields)-3], ","))
+		} else {
+			info.Name = strings.TrimSpace(strings.Join(fields[2:], ","))
+		}
+		rows = append(rows, info)
+	}
+	return rows, len(rows) > 0
+}
+
+func parseCSVFloat(s string) float64 {
+	v, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	return v
+}
+
+// parseCSVFloatNA 解析可能为 N/A 的列；N/A 返回 -1（监控纪律：不可得不是 0）。
+func parseCSVFloatNA(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.EqualFold(s, "N/A") {
+		return -1
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return -1
+	}
+	return v
+}
+
+func gpuNodes(ctx context.Context) []map[string]string {
+	gpus, ok := queryGPU(ctx)
+	if !ok {
+		return []map[string]string{nodeStatus("显存", "down", "未检测到 nvidia-smi")}
+	}
+	rows := make([]map[string]string, 0, len(gpus))
+	for i, info := range gpus {
+		used := strconv.FormatFloat(info.MemUsedMiB, 'f', 0, 64)
+		total := strconv.FormatFloat(info.MemTotalMiB, 'f', 0, 64)
 		label := "显存"
-		if len(lines) > 1 {
+		if len(gpus) > 1 {
 			label = "显存 GPU" + strconv.Itoa(i)
 		}
-		rows = append(rows, nodeStatus(label, "ok", name+" 已用 "+used+" MiB / 共 "+total+" MiB"))
-	}
-	if len(rows) == 0 {
-		return []map[string]string{nodeStatus("显存", "down", "nvidia-smi 没有返回显存")}
+		rows = append(rows, nodeStatus(label, "ok", info.Name+" 已用 "+used+" MiB / 共 "+total+" MiB"))
 	}
 	return rows
 }

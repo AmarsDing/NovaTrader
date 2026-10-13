@@ -107,6 +107,19 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       }
     }
     case 'gpu': {
+      /* S7：优先 /api/ops/gpu 的真实利用率；接口没通才回退 ops 资源节点的显存文本 */
+      const gpu = input.opsP1?.ok ? input.opsP1.gpu : null
+      if (gpu) {
+        if (!gpu.gpuAvailable) return { face: '不可得', sub: gpu.gpuNote || '未检测到 nvidia-smi', tone: 'flat' }
+        const first = gpu.gpus[0]
+        if (!first) return { face: '不可得', sub: 'nvidia-smi 没有返回显卡', tone: 'flat' }
+        const memPct = first.memTotalMiB > 0 ? Math.round((first.memUsedMiB / first.memTotalMiB) * 100) : null
+        return {
+          face: first.utilPct >= 0 ? `${Math.round(first.utilPct)}%` : '利用率不可得',
+          sub: memPct != null ? `显存 ${memPct}%${first.tempC >= 0 ? ` · ${Math.round(first.tempC)}°C` : ''}` : '显存未返回',
+          tone: 'flat',
+        }
+      }
       const node = input.ops?.ok ? input.ops.resources?.find((item) => item.name.startsWith('显存')) : null
       if (!node) return { face: '未接入', sub: 'ops.resources 无显存节点', tone: 'flat' }
       const memory = gpuMemory(input)

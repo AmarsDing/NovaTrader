@@ -253,6 +253,20 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
   if (account.openHalted) {
     overview.push({ key: 'halt', label: '开仓', value: '已停', tone: 'danger', note: account.haltReason || '对账不一致，停止开仓' })
   }
+  /* S7：文件单目录（/api/ops/broker-files）。broker-gw 边车未落地前接口如实返回 available=false */
+  const broker = input.opsP1?.ok ? input.opsP1.brokerFiles : null
+  overview.push(
+    broker == null
+      ? { key: 'broker', label: '文件单目录', value: '未接入：需要 GET /v1/ops/broker-files', tone: 'warn' }
+      : broker.available
+        ? {
+            key: 'broker',
+            label: '文件单目录',
+            value: `待写 ${intText(broker.pending)} / 已写 ${intText(broker.written)} / 已消费 ${intText(broker.consumed)}`,
+            note: broker.leftover != null && broker.leftover > 0 ? `遗留 ${broker.leftover} 个未消费` : broker.lastOk ? `最近成功 ${broker.lastOk}` : '',
+          }
+        : { key: 'broker', label: '文件单目录', value: '不可用', tone: 'warn', note: broker.note },
+  )
 
   /* 日内曲线与回撤：前端采样，刷新即失 */
   const stats = equityStats(extra.equityPoints ?? [])
@@ -1002,8 +1016,9 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
                 note: `按窗口 ${usage.window} 平均`,
               }
             : { key: 'tps', label: 'tokens/s（输入/输出分开）', value: GAP_TOKEN, tone: 'warn', note: '需要令牌计数与时间窗' },
-          { key: 'gpu', label: 'GPU 利用率 / 温度 / 功耗', value: GAP_GPU, tone: 'warn' },
+          { key: 'gpu', label: 'GPU 利用率 / 温度 / 功耗', ...gpuMetricRow(input) },
           { key: 'vram', label: '显存', value: gpu ? gpu.text : '未返回', note: gpu ? `占用 ${gpu.pct}%（ops 资源节点文本解析）` : 'ops 资源节点没有显存信息' },
+          ...gpuQueueRows(input),
         ],
       },
       { key: 'route', title: '路由说明', rows: [{ key: 'route', label: '固定路由', value: '技术/资金走小模型，消息/外围/综合走大模型', note: '大模型只出评分和理由，不直接下单（决策 3）' }] },
@@ -1019,6 +1034,44 @@ function tokensPerSecond(usage: { window: string; since: string; total: { comple
   const seconds = (Date.now() - since) / 1000
   if (seconds <= 0) return '未返回'
   return `${(usage.total.completionTokens / seconds).toFixed(1)} tok/s`
+}
+
+/** S7：GPU 利用率/温度/功耗行。接口没通写「未接入」；n/a 写「不可得」，不填 0。 */
+function gpuMetricRow(input: MonitorInput): { value: string; note?: string; tone?: 'warn' } {
+  const gpu = input.opsP1?.ok ? input.opsP1.gpu : null
+  if (!gpu) return { value: GAP_GPU, tone: 'warn' }
+  if (!gpu.gpuAvailable) return { value: '不可得', note: gpu.gpuNote || '未检测到 nvidia-smi', tone: 'warn' }
+  const first = gpu.gpus[0]
+  if (!first) return { value: '不可得', note: 'nvidia-smi 没有返回显卡', tone: 'warn' }
+  const na = (v: number, unit: string, digits = 0) => (v < 0 ? '不可得' : `${v.toFixed(digits)}${unit}`)
+  return {
+    value: `${na(first.utilPct, '%')} / ${na(first.tempC, '°C')} / ${na(first.powerW, 'W')}`,
+    note: first.name + (gpu.gpus.length > 1 ? ` 等 ${gpu.gpus.length} 卡` : ''),
+  }
+}
+
+/** S7：脑服务在途/排队与今日吞吐（来自 /api/ops/gpu 聚合 brain）。缺段则不出行。 */
+function gpuQueueRows(input: MonitorInput): DetailRow[] {
+  const gpu = input.opsP1?.ok ? input.opsP1.gpu : null
+  if (!gpu) return []
+  const rows: DetailRow[] = []
+  if (gpu.brainInFlight != null || gpu.brainQueued != null) {
+    rows.push({
+      key: 'queue',
+      label: '模型队列',
+      value: `在途 ${intText(gpu.brainInFlight)} / 排队 ${intText(gpu.brainQueued)}`,
+      note: 'brain /v1/brain/stats 各档合计',
+    })
+  }
+  if (gpu.brainTokensPerHour != null) {
+    rows.push({
+      key: 'tph',
+      label: '今日吞吐',
+      value: `${Math.round(gpu.brainTokensPerHour).toLocaleString()} tok/h`,
+      note: gpu.brainCallsToday != null ? `今日调用 ${gpu.brainCallsToday.toLocaleString()} 次` : '',
+    })
+  }
+  return rows
 }
 
 /** 评分分布 0–100 十桶 */

@@ -390,5 +390,27 @@ export interface MonitorInput {
       total: { fromHeight: number; sample: number; succeeded: number; rate: number }[]
     } | null
   } | null
+  /** S7：GPU 与文件单目录（GET /api/ops/gpu + /api/ops/broker-files）。gpu_available=false 表示没有 nvidia-smi。 */
+  opsP1?: {
+    ok: boolean
+    gpu?: {
+      gpus: { name: string; memUsedMiB: number; memTotalMiB: number; utilPct: number; tempC: number; powerW: number }[]
+      gpuAvailable: boolean
+      gpuNote: string
+      brainInFlight: number | null
+      brainQueued: number | null
+      brainTokensPerHour: number | null
+      brainCallsToday: number | null
+    } | null
+    brokerFiles?: {
+      available: boolean
+      note: string
+      pending: number | null
+      written: number | null
+      consumed: number | null
+      leftover: number | null
+      lastOk: string
+    } | null
+  } | null
   pulses: Pulse[]
 }

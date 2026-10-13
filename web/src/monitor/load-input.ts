@@ -5,7 +5,7 @@ import { getQuality, listSources } from '@/api/datahub'
 import { hotWords, timeline as fetchTimeline } from '@/api/intel'
 import { getAuction, getFactors, getLadder, getSentimentDetail, listLimits, listSectors } from '@/api/market'
 import { listMessages } from '@/api/notify'
-import { opsStatus } from '@/api/ops'
+import { getOpsBrokerFiles, getOpsGpu, opsStatus } from '@/api/ops'
 import { getRiskLimits, getRiskReport, getRiskState } from '@/api/risk'
 import { listCandidates, getScoreVsPnl, getStrategyPerformance } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
@@ -21,7 +21,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
 
-  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter, auction, ladder] =
+  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter, auction, ladder, gpu, brokerFiles] =
     await Promise.all([
       quiet(() => getAccount(book)),
       quiet(() => listPositions(book)),
@@ -54,6 +54,8 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       quiet(() => getScoreVsPnl(50)),
       quiet(() => getAuction(10)),
       quiet(() => getLadder(5)),
+      quiet(() => getOpsGpu()),
+      quiet(() => getOpsBrokerFiles()),
     ])
 
   void accountStore.refresh()
@@ -378,6 +380,15 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
             ok: true,
             auction: auction ?? null,
             ladder: ladder ?? null,
+          }
+        : { ok: false },
+    /* S7：GPU 与文件单目录；任一通了就算 ok */
+    opsP1:
+      gpu || brokerFiles
+        ? {
+            ok: true,
+            gpu: gpu ?? null,
+            brokerFiles: brokerFiles ?? null,
           }
         : { ok: false },
   }
