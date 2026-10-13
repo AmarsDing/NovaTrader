@@ -285,6 +285,43 @@ const reviewLines = computed<PaneLine[]>(() => {
   if (scatter && scatter.sample >= 2) {
     lines.push({ key: 'corr', label: '评分-收益相关', value: scatter.pearson.toFixed(2), tone: 'flat' })
   }
+  /* P2：打板溢价与市场广度——盘前/盘后最先要看的两个「赚钱效应」量。
+   * 快照没定稿（16:45 之前）只有开盘溢价，就照实写开盘口径，不拿开盘冒充收盘。 */
+  const premium = props.input.marketP2?.ok ? props.input.marketP2.premium : null
+  if (premium?.found && premium.summary) {
+    const s = premium.summary
+    const value = s.hasClose ? s.closeAvg : s.openAvg
+    lines.push({
+      key: 'premium',
+      label: s.hasClose ? '打板收盘溢价' : '打板开盘溢价',
+      value: `${ratioPct(value)} · 再板 ${s.limitAgain}/${s.sample} 只`,
+      tone: value > 0 ? 'up' : value < 0 ? 'down' : 'flat',
+    })
+  } else {
+    lines.push({
+      key: 'premium',
+      label: '打板溢价',
+      value: premium ? `基准日没有涨停名单（${premium.tradeDate || '最近收盘日'}）` : '溢价未接入：需要 GET /v1/market/limit-premium',
+      tone: 'flat',
+    })
+  }
+  const breadth = props.input.marketP2?.ok ? props.input.marketP2.breadth : null
+  if (breadth?.found && breadth.latest) {
+    const b = breadth.latest
+    lines.push({
+      key: 'breadth',
+      label: `MA${b.window} 上方占比`,
+      value: `${ratioPct(b.ratio, 1)} · ${b.above}/${b.total} 只${b.live ? '（实时算）' : ''}`,
+      tone: b.ratio >= 0.5 ? 'up' : 'down',
+    })
+  } else {
+    lines.push({
+      key: 'breadth',
+      label: 'MA20 上方占比',
+      value: breadth ? '没有可算的日线样本（凑不满 20 根收盘）' : '广度未接入：需要 GET /v1/market/breadth',
+      tone: 'flat',
+    })
+  }
   const candidates = props.input.candidates
   if (!candidates?.ok) {
     lines.push({ key: 'miss', label: '漏选', value: '候选接口无返回', tone: 'flat' })
@@ -313,10 +350,19 @@ const reviewLines = computed<PaneLine[]>(() => {
 const reviewGap = computed(() => {
   const perf = props.input.strategyP1?.ok ? props.input.strategyP1.performance : null
   const scatter = props.input.strategyP1?.ok ? props.input.strategyP1.scatter : null
-  if (perf && scatter) return '胜率与相关性口径：strategy_feedback 已出后验的近 20 笔；相关性为评分-收益 Pearson（n≥2）。'
-  if (perf && !scatter) return '散点未接入：需要 GET /v1/strategy/score-vs-pnl。'
-  if (!perf && scatter) return '胜率未接入：需要 GET /v1/strategy/performance。'
-  return '未接入：需要 GET /v1/strategy/performance、/v1/strategy/score-vs-pnl（胜率与评分-收益散点）'
+  const bits: string[] = []
+  if (perf && scatter) bits.push('胜率与相关性口径：strategy_feedback 已出后验的近 20 笔；相关性为评分-收益 Pearson（n≥2）。')
+  else if (perf) bits.push('散点未接入：需要 GET /v1/strategy/score-vs-pnl。')
+  else if (scatter) bits.push('胜率未接入：需要 GET /v1/strategy/performance。')
+  else bits.push('未接入：需要 GET /v1/strategy/performance、/v1/strategy/score-vs-pnl（胜率与评分-收益散点）')
+  /* P2 两项的口径注脚：通了才写口径，没通由上面的行自己点名缺口 */
+  const premium = props.input.marketP2?.ok ? props.input.marketP2.premium : null
+  if (premium?.found) {
+    bits.push(premium.live ? '溢价按 limit_board × market_data 实时兜底（快照表当日未落库）。' : '溢价口径：limit_premium 快照（09:27 开盘、16:45 收盘定稿）。')
+  }
+  const breadth = props.input.marketP2?.ok ? props.input.marketP2.breadth : null
+  if (breadth?.found) bits.push('广度口径：MA20 = 最近 20 根收盘均值，样本为当日有日线且凑满 20 根的股票。')
+  return bits.join('')
 })
 /** 竞价注脚：S7 接口通了就出当日截面摘要；没通/无截面仍写缺口。逐笔流不在本接口，事件流照旧顶上。 */
 const auctionNote = computed(() => {
@@ -498,7 +544,7 @@ const brokerLine = computed(() => {
           <ul>
             <li v-for="line in reviewLines" :key="line.key">
               <i>{{ line.label }}</i>
-              <span>{{ line.value }}</span>
+              <span :class="line.tone === 'flat' ? '' : `is-${line.tone}`">{{ line.value }}</span>
             </li>
           </ul>
           <p class="nt-term__note">{{ reviewGap }}</p>

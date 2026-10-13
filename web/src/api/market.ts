@@ -216,3 +216,169 @@ export async function getLadder(days = 5): Promise<LadderSummary> {
     total: asList<RawRecord>(raw, 'total').map(normalizeLadderStep),
   }
 }
+
+/* ---------- P2：K 线缺口 / 昨涨停今溢价 / 20 日均线占比（只读） ---------- */
+
+export interface PremiumRow {
+  symbol: string
+  name: string
+  tradeDate: string
+  baseDate: string
+  consecutive: number
+  baseClose: number
+  open: number
+  close: number
+  openPremium: number
+  closePremium: number
+  highPremium: number
+  limitAgain: boolean
+  hasClose: boolean
+  source: string
+}
+
+export interface PremiumDay {
+  tradeDate: string
+  baseDate: string
+  sample: number
+  limitAgain: number
+  openAvg: number
+  closeAvg: number
+  closeWin: number
+  highAvg: number
+  hasClose: boolean
+}
+
+export interface PremiumSummary {
+  tradeDate: string
+  found: boolean
+  live: boolean
+  summary: PremiumDay | null
+  days: PremiumDay[]
+  rows: PremiumRow[]
+  asOf: string
+}
+
+function normalizePremiumDay(raw: RawRecord): PremiumDay {
+  return {
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    baseDate: pick<string>(raw, 'baseDate', 'base_date') || '',
+    sample: num(pick(raw, 'sample')) ?? 0,
+    limitAgain: num(pick(raw, 'limitAgain', 'limit_again')) ?? 0,
+    openAvg: num(pick(raw, 'openAvg', 'open_avg')) ?? 0,
+    closeAvg: num(pick(raw, 'closeAvg', 'close_avg')) ?? 0,
+    closeWin: num(pick(raw, 'closeWin', 'close_win')) ?? 0,
+    highAvg: num(pick(raw, 'highAvg', 'high_avg')) ?? 0,
+    hasClose: !!raw.hasClose,
+  }
+}
+
+/** 昨日涨停今日溢价（P2 快照表；live=true 表示快照未落、实时兜底）。溢价率为分数（0.0323=3.23%）。 */
+export async function getLimitPremium(days = 5, top = 50): Promise<PremiumSummary> {
+  const data = await request('/api/market/limit-premium', { query: { days, top } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    found: !!raw.found,
+    live: !!raw.live,
+    summary: raw.summary ? normalizePremiumDay(raw.summary as RawRecord) : null,
+    days: asList<RawRecord>(raw, 'days').map(normalizePremiumDay),
+    rows: asList<RawRecord>(raw, 'rows').map((r) => ({
+      symbol: pick<string>(r, 'symbol') || '',
+      name: pick<string>(r, 'name') || '',
+      tradeDate: pick<string>(r, 'tradeDate', 'trade_date') || '',
+      baseDate: pick<string>(r, 'baseDate', 'base_date') || '',
+      consecutive: num(pick(r, 'consecutive')) ?? 0,
+      baseClose: num(pick(r, 'baseClose', 'base_close')) ?? 0,
+      open: num(pick(r, 'open')) ?? 0,
+      close: num(pick(r, 'close')) ?? 0,
+      openPremium: num(pick(r, 'openPremium', 'open_premium')) ?? 0,
+      closePremium: num(pick(r, 'closePremium', 'close_premium')) ?? 0,
+      highPremium: num(pick(r, 'highPremium', 'high_premium')) ?? 0,
+      limitAgain: !!r.limitAgain,
+      hasClose: !!r.hasClose,
+      source: pick<string>(r, 'source') || '',
+    })),
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+  }
+}
+
+export interface BreadthDay {
+  tradeDate: string
+  window: number
+  above: number
+  below: number
+  flat: number
+  total: number
+  ratio: number
+  live: boolean
+  asOf: string
+}
+
+export interface BreadthSummary {
+  tradeDate: string
+  found: boolean
+  latest: BreadthDay | null
+  days: BreadthDay[]
+}
+
+/** 20 日均线上占比（市场广度）。ratio 为分数。 */
+export async function getBreadth(days = 10): Promise<BreadthSummary> {
+  const data = await request('/api/market/breadth', { query: { days } })
+  const raw = (data ?? {}) as RawRecord
+  const norm = (r: RawRecord): BreadthDay => ({
+    tradeDate: pick<string>(r, 'tradeDate', 'trade_date') || '',
+    window: num(pick(r, 'window')) ?? 20,
+    above: num(pick(r, 'above')) ?? 0,
+    below: num(pick(r, 'below')) ?? 0,
+    flat: num(pick(r, 'flat')) ?? 0,
+    total: num(pick(r, 'total')) ?? 0,
+    ratio: num(pick(r, 'ratio')) ?? 0,
+    live: !!r.live,
+    asOf: pick<string>(r, 'asOf', 'as_of') || '',
+  })
+  return {
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    found: !!raw.found,
+    latest: raw.latest ? norm(raw.latest as RawRecord) : null,
+    days: asList<RawRecord>(raw, 'days').map(norm),
+  }
+}
+
+export interface KlineGapDay {
+  tradeDate: string
+  universe: number
+  missing: number
+  present: number
+  sample: string[]
+  asOf: string
+}
+
+export interface KlineGapsSummary {
+  tradeDate: string
+  found: boolean
+  universe: number
+  days: KlineGapDay[]
+  missingTotal: number
+  asOf: string
+}
+
+/** K 线连续性检查（交易日历开市但无 1d 收盘行的缺口日）。 */
+export async function getKlineGaps(days = 5): Promise<KlineGapsSummary> {
+  const data = await request('/api/market/kline-gaps', { query: { days } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    found: !!raw.found,
+    universe: num(pick(raw, 'universe')) ?? 0,
+    days: asList<RawRecord>(raw, 'days').map((d) => ({
+      tradeDate: pick<string>(d, 'tradeDate', 'trade_date') || '',
+      universe: num(pick(d, 'universe')) ?? 0,
+      missing: num(pick(d, 'missing')) ?? 0,
+      present: num(pick(d, 'present')) ?? 0,
+      sample: asList<string>(d, 'sample'),
+      asOf: pick<string>(d, 'asOf', 'as_of') || '',
+    })),
+    missingTotal: num(pick(raw, 'missingTotal', 'missing_total')) ?? 0,
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+  }
+}

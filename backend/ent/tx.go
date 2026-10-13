@@ -58,12 +58,16 @@ type Tx struct {
 	LimitBoard *LimitBoardClient
 	// LimitPool is the client for interacting with the LimitPool builders.
 	LimitPool *LimitPoolClient
+	// LimitPremium is the client for interacting with the LimitPremium builders.
+	LimitPremium *LimitPremiumClient
 	// LlmCallLog is the client for interacting with the LlmCallLog builders.
 	LlmCallLog *LlmCallLogClient
 	// MacroSeries is the client for interacting with the MacroSeries builders.
 	MacroSeries *MacroSeriesClient
 	// MarginDetail is the client for interacting with the MarginDetail builders.
 	MarginDetail *MarginDetailClient
+	// MarketBreadth is the client for interacting with the MarketBreadth builders.
+	MarketBreadth *MarketBreadthClient
 	// MarketData is the client for interacting with the MarketData builders.
 	MarketData *MarketDataClient
 	// MarketSentiment is the client for interacting with the MarketSentiment builders.
@@ -296,9 +300,11 @@ func (tx *Tx) init() {
 	tx.LhbSeat = NewLhbSeatClient(tx.config)
 	tx.LimitBoard = NewLimitBoardClient(tx.config)
 	tx.LimitPool = NewLimitPoolClient(tx.config)
+	tx.LimitPremium = NewLimitPremiumClient(tx.config)
 	tx.LlmCallLog = NewLlmCallLogClient(tx.config)
 	tx.MacroSeries = NewMacroSeriesClient(tx.config)
 	tx.MarginDetail = NewMarginDetailClient(tx.config)
+	tx.MarketBreadth = NewMarketBreadthClient(tx.config)
 	tx.MarketData = NewMarketDataClient(tx.config)
 	tx.MarketSentiment = NewMarketSentimentClient(tx.config)
 	tx.MoneyFlow = NewMoneyFlowClient(tx.config)

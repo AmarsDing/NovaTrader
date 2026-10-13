@@ -26,9 +26,11 @@ import (
 	"server/ent/lhbseat"
 	"server/ent/limitboard"
 	"server/ent/limitpool"
+	"server/ent/limitpremium"
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
 	"server/ent/moneyflow"
@@ -1246,6 +1248,46 @@ func init() {
 	limitpoolDescAsOf := limitpoolFields[14].Descriptor()
 	// limitpool.DefaultAsOf holds the default value on creation for the as_of field.
 	limitpool.DefaultAsOf = limitpoolDescAsOf.Default.(func() time.Time)
+	limitpremiumFields := schema.LimitPremium{}.Fields()
+	_ = limitpremiumFields
+	// limitpremiumDescSymbol is the schema descriptor for symbol field.
+	limitpremiumDescSymbol := limitpremiumFields[0].Descriptor()
+	// limitpremium.SymbolValidator is a validator for the "symbol" field. It is called by the builders before save.
+	limitpremium.SymbolValidator = func() func(string) error {
+		validators := limitpremiumDescSymbol.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(symbol string) error {
+			for _, fn := range fns {
+				if err := fn(symbol); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// limitpremiumDescName is the schema descriptor for name field.
+	limitpremiumDescName := limitpremiumFields[3].Descriptor()
+	// limitpremium.DefaultName holds the default value on creation for the name field.
+	limitpremium.DefaultName = limitpremiumDescName.Default.(string)
+	// limitpremium.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	limitpremium.NameValidator = limitpremiumDescName.Validators[0].(func(string) error)
+	// limitpremiumDescConsecutive is the schema descriptor for consecutive field.
+	limitpremiumDescConsecutive := limitpremiumFields[4].Descriptor()
+	// limitpremium.DefaultConsecutive holds the default value on creation for the consecutive field.
+	limitpremium.DefaultConsecutive = limitpremiumDescConsecutive.Default.(int)
+	// limitpremiumDescLimitAgain is the schema descriptor for limit_again field.
+	limitpremiumDescLimitAgain := limitpremiumFields[12].Descriptor()
+	// limitpremium.DefaultLimitAgain holds the default value on creation for the limit_again field.
+	limitpremium.DefaultLimitAgain = limitpremiumDescLimitAgain.Default.(bool)
+	// limitpremiumDescSource is the schema descriptor for source field.
+	limitpremiumDescSource := limitpremiumFields[13].Descriptor()
+	// limitpremium.DefaultSource holds the default value on creation for the source field.
+	limitpremium.DefaultSource = limitpremiumDescSource.Default.(string)
+	// limitpremium.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	limitpremium.SourceValidator = limitpremiumDescSource.Validators[0].(func(string) error)
 	llmcalllogFields := schema.LlmCallLog{}.Fields()
 	_ = llmcalllogFields
 	// llmcalllogDescTraceID is the schema descriptor for trace_id field.
@@ -1460,6 +1502,38 @@ func init() {
 	margindetail.DefaultSource = margindetailDescSource.Default.(string)
 	// margindetail.SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	margindetail.SourceValidator = margindetailDescSource.Validators[0].(func(string) error)
+	marketbreadthFields := schema.MarketBreadth{}.Fields()
+	_ = marketbreadthFields
+	// marketbreadthDescWindow is the schema descriptor for window field.
+	marketbreadthDescWindow := marketbreadthFields[2].Descriptor()
+	// marketbreadth.DefaultWindow holds the default value on creation for the window field.
+	marketbreadth.DefaultWindow = marketbreadthDescWindow.Default.(int)
+	// marketbreadthDescAbove is the schema descriptor for above field.
+	marketbreadthDescAbove := marketbreadthFields[3].Descriptor()
+	// marketbreadth.DefaultAbove holds the default value on creation for the above field.
+	marketbreadth.DefaultAbove = marketbreadthDescAbove.Default.(int)
+	// marketbreadthDescBelow is the schema descriptor for below field.
+	marketbreadthDescBelow := marketbreadthFields[4].Descriptor()
+	// marketbreadth.DefaultBelow holds the default value on creation for the below field.
+	marketbreadth.DefaultBelow = marketbreadthDescBelow.Default.(int)
+	// marketbreadthDescFlat is the schema descriptor for flat field.
+	marketbreadthDescFlat := marketbreadthFields[5].Descriptor()
+	// marketbreadth.DefaultFlat holds the default value on creation for the flat field.
+	marketbreadth.DefaultFlat = marketbreadthDescFlat.Default.(int)
+	// marketbreadthDescTotal is the schema descriptor for total field.
+	marketbreadthDescTotal := marketbreadthFields[6].Descriptor()
+	// marketbreadth.DefaultTotal holds the default value on creation for the total field.
+	marketbreadth.DefaultTotal = marketbreadthDescTotal.Default.(int)
+	// marketbreadthDescRatio is the schema descriptor for ratio field.
+	marketbreadthDescRatio := marketbreadthFields[7].Descriptor()
+	// marketbreadth.DefaultRatio holds the default value on creation for the ratio field.
+	marketbreadth.DefaultRatio = marketbreadthDescRatio.Default.(float64)
+	// marketbreadthDescSource is the schema descriptor for source field.
+	marketbreadthDescSource := marketbreadthFields[8].Descriptor()
+	// marketbreadth.DefaultSource holds the default value on creation for the source field.
+	marketbreadth.DefaultSource = marketbreadthDescSource.Default.(string)
+	// marketbreadth.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	marketbreadth.SourceValidator = marketbreadthDescSource.Validators[0].(func(string) error)
 	marketdataFields := schema.MarketData{}.Fields()
 	_ = marketdataFields
 	// marketdataDescSymbol is the schema descriptor for symbol field.

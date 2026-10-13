@@ -793,6 +793,48 @@ var (
 			},
 		},
 	}
+	// LimitPremiumColumns holds the columns for the "limit_premium" table.
+	LimitPremiumColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "base_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "name", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "consecutive", Type: field.TypeInt, Default: 1},
+		{Name: "pre_close", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "open", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "high", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "close", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "open_premium", Type: field.TypeFloat64, Nullable: true},
+		{Name: "close_premium", Type: field.TypeFloat64, Nullable: true},
+		{Name: "high_premium", Type: field.TypeFloat64, Nullable: true},
+		{Name: "limit_again", Type: field.TypeBool, Default: false},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "as_of", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// LimitPremiumTable holds the schema information for the "limit_premium" table.
+	LimitPremiumTable = &schema.Table{
+		Name:       "limit_premium",
+		Columns:    LimitPremiumColumns,
+		PrimaryKey: []*schema.Column{LimitPremiumColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "limitpremium_trade_date_symbol",
+				Unique:  true,
+				Columns: []*schema.Column{LimitPremiumColumns[2], LimitPremiumColumns[1]},
+			},
+			{
+				Name:    "limitpremium_base_date",
+				Unique:  false,
+				Columns: []*schema.Column{LimitPremiumColumns[3]},
+			},
+			{
+				Name:    "limitpremium_trade_date_limit_again",
+				Unique:  false,
+				Columns: []*schema.Column{LimitPremiumColumns[2], LimitPremiumColumns[13]},
+			},
+		},
+	}
 	// LlmCallLogColumns holds the columns for the "llm_call_log" table.
 	LlmCallLogColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -890,6 +932,32 @@ var (
 				Name:    "margindetail_trade_date",
 				Unique:  false,
 				Columns: []*schema.Column{MarginDetailColumns[2]},
+			},
+		},
+	}
+	// MarketBreadthColumns holds the columns for the "market_breadth" table.
+	MarketBreadthColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "as_of", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "window", Type: field.TypeInt, Default: 20},
+		{Name: "above", Type: field.TypeInt, Default: 0},
+		{Name: "below", Type: field.TypeInt, Default: 0},
+		{Name: "flat", Type: field.TypeInt, Default: 0},
+		{Name: "total", Type: field.TypeInt, Default: 0},
+		{Name: "ratio", Type: field.TypeFloat64, Default: 0},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
+	}
+	// MarketBreadthTable holds the schema information for the "market_breadth" table.
+	MarketBreadthTable = &schema.Table{
+		Name:       "market_breadth",
+		Columns:    MarketBreadthColumns,
+		PrimaryKey: []*schema.Column{MarketBreadthColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "marketbreadth_trade_date",
+				Unique:  true,
+				Columns: []*schema.Column{MarketBreadthColumns[1]},
 			},
 		},
 	}
@@ -2103,9 +2171,11 @@ var (
 		LhbSeatTable,
 		LimitBoardTable,
 		LimitPoolTable,
+		LimitPremiumTable,
 		LlmCallLogTable,
 		MacroSeriesTable,
 		MarginDetailTable,
+		MarketBreadthTable,
 		MarketDataTable,
 		MarketSentimentTable,
 		MoneyFlowTable,
@@ -2220,6 +2290,9 @@ func init() {
 	LimitPoolTable.Annotation = &entsql.Annotation{
 		Table: "limit_pool",
 	}
+	LimitPremiumTable.Annotation = &entsql.Annotation{
+		Table: "limit_premium",
+	}
 	LlmCallLogTable.Annotation = &entsql.Annotation{
 		Table: "llm_call_log",
 	}
@@ -2228,6 +2301,9 @@ func init() {
 	}
 	MarginDetailTable.Annotation = &entsql.Annotation{
 		Table: "margin_detail",
+	}
+	MarketBreadthTable.Annotation = &entsql.Annotation{
+		Table: "market_breadth",
 	}
 	MarketDataTable.Annotation = &entsql.Annotation{
 		Table: "market_data",

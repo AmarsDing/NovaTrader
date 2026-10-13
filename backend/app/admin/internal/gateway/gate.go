@@ -74,7 +74,11 @@ type Gate struct {
 	Log      *log.Helper
 	NATSUp   func() bool
 	PingDB   func(context.Context) error
-	Now      func() time.Time
+	// P2 运维只读口：连接池/库内省/NATS 统计。由 data.AuditStore 与 Hub 注入。
+	PoolStats PoolStatsFunc
+	DBStats   DBStatsFunc
+	NATSStats NATSStatsFunc
+	Now       func() time.Time
 	// ServerContext 返回一个不被单个请求超时约束的 ctx（备份跑 pg_dump 要几分钟，
 	// 不能挂在 kratos 默认 1s 的请求超时上）。nil 时退化为 Background。
 	ServerContext func() context.Context
@@ -113,6 +117,10 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.opsGPU(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/broker-files":
 		g.opsBrokerFiles(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/db":
+		g.opsDB(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/nats":
+		g.opsNATS(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/ops/backup":
 		g.backup(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/audit":

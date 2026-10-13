@@ -9,6 +9,7 @@
  * - 日内曲线/回撤来自前端环形缓冲，注明「仅本次会话」。
  */
 import { dimVotes, ticketRisk } from '@/view/decision-desk'
+import type { BreadthSummary, PremiumSummary } from '@/api/market'
 import {
   amount,
   clock,
@@ -68,7 +69,7 @@ export interface DetailSection {
 }
 
 export interface DetailPanel {
-  kind: 'account' | 'signal' | 'risk' | 'source' | 'model' | 'scan'
+  kind: 'account' | 'signal' | 'risk' | 'source' | 'model' | 'scan' | 'ops'
   sections: DetailSection[]
   /** §5.2 出口：只跳路由，本页没有任何确认/下单按钮 */
   exit?: { label: string; to: string }
@@ -105,6 +106,11 @@ export const GAP_LATENCY_HIST = '未接入：需要 GET /v1/brain/latency-histog
 export const GAP_SCORE_PNL = '未接入：需要 GET /v1/strategy/score-vs-pnl'
 export const GAP_GPU = '未接入：需要 GET /v1/ops/gpu'
 export const GAP_LADDER = '未接入：需要 GET /v1/market/ladder'
+export const GAP_PREMIUM = '未接入：需要 GET /v1/market/limit-premium'
+export const GAP_BREADTH = '未接入：需要 GET /v1/market/breadth'
+export const GAP_KLINE = '未接入：需要 GET /v1/market/kline-gaps'
+export const GAP_DB = '未接入：需要 GET /api/ops/db（PG 连接池/库体积/慢查询）'
+export const GAP_NATS = '未接入：需要 GET /api/ops/nats（NATS 积压与 lag）'
 export const GAP_DAY_PNL = '未返回：trade Account 没有当日盈亏字段（需要 GET /v1/trade/account 补 day_pnl）'
 
 /* ---------- 入口 ---------- */
@@ -117,6 +123,8 @@ export function detailKindFor(input: MonitorInput, id: string): DetailPanel['kin
   if (id === 'post:scan' || id === 'post:miss') return 'scan'
   if (id === 'post:model' || id === 'model:large' || id === 'model:small' || id === 'model:token') return 'model'
   if (id === 'post:desk') return 'signal'
+  /* P2：PG 与 NATS 两张服务牌有运行口径可读（连接池/库体积/慢查询、积压/lag），点开给字段级面板 */
+  if (id === 'service:postgres' || id === 'service:nats') return 'ops'
   if (id.startsWith('symbol:') && signalOf(input, id.slice('symbol:'.length))) return 'signal'
   if (id.startsWith('source:') && id !== 'source:quality' && sourceOf(input, id)) return 'source'
   return null
@@ -136,6 +144,8 @@ export function buildDetail(input: MonitorInput, id: string, now: number, extra:
       return sourcePanel(input, id, now)
     case 'model':
       return modelPanel(input, id)
+    case 'ops':
+      return { kind, sections: id === 'service:nats' ? natsSections(input) : dbSections(input) }
     case 'scan':
       return { kind, sections: scanSections(input) }
   }
@@ -1290,5 +1300,288 @@ function scanSections(input: MonitorInput): DetailSection[] {
         rows: [{ key: 'a', label: '竞价', value: '未接入：需要 GET /v1/market/auction', tone: 'warn' }],
       }
 
-  return [auctionSection, ladderSection, layersSection, ...reasonSections, missSection, reviewSection]
+  /* P2：昨日涨停今日溢价（GET /api/market/limit-premium）。
+   * 快照表 limit_premium 优先；当日没落库时后端按 limit_board × market_data 实时兜底并置 live=true。 */
+  const premium = input.marketP2?.ok ? input.marketP2.premium ?? null : null
+  const premiumSections = premiumSectionsOf(premium)
+
+  /* P2：20 日均线上占比（GET /api/market/breadth，market_breadth 表 + 最新一日实时兜底） */
+  const breadth = input.marketP2?.ok ? input.marketP2.breadth ?? null : null
+  const breadthSection = breadthSectionOf(breadth)
+
+  return [auctionSection, ladderSection, ...premiumSections, breadthSection, layersSection, ...reasonSections, missSection, reviewSection]
+}
+
+/** 溢价段：当日汇总 + 明细前 8 + 近几日趋势。found=false 是「基准日没有涨停股」，不是接口坏。 */
+function premiumSectionsOf(premium: PremiumSummary | null): DetailSection[] {
+  if (!premium) {
+    return [{ key: 'premium', title: '昨日涨停今日溢价', rows: [{ key: 'p', label: '打板溢价', value: GAP_PREMIUM, tone: 'warn' }] }]
+  }
+  if (!premium.found || !premium.summary) {
+    return [
+      {
+        key: 'premium',
+        title: '昨日涨停今日溢价',
+        rows: [{ key: 'p', label: '打板溢价', value: `基准日没有涨停名单（${premium.tradeDate || '最近收盘日'}）`, tone: 'warn' }],
+      },
+    ]
+  }
+  const summary = premium.summary
+  const rows: DetailRow[] = [
+    {
+      key: 'open',
+      label: '开盘均溢',
+      value: ratioPct(summary.openAvg),
+      note: `${summary.baseDate || '基准日'} 涨停 ${summary.sample} 只 → ${summary.tradeDate || '当日'} 开盘`,
+      tone: summary.openAvg > 0 ? 'up' : summary.openAvg < 0 ? 'down' : 'flat',
+    },
+    summary.hasClose
+      ? {
+          key: 'close',
+          label: '收盘均溢 / 胜率',
+          value: `${ratioPct(summary.closeAvg)} / ${ratioPct(summary.closeWin, 0)}`,
+          note: '胜率 = 收盘溢价 >0 的只数占比',
+          tone: summary.closeAvg > 0 ? 'up' : summary.closeAvg < 0 ? 'down' : 'flat',
+        }
+      : { key: 'close', label: '收盘均溢', value: '尚未定稿', note: '收盘溢价 16:45 的 market.premium.close 任务补齐' },
+    { key: 'high', label: '盘中最高均溢', value: ratioPct(summary.highAvg), note: '按最高价算，是打板次日的兑现上限口径' },
+    { key: 'again', label: '今日再板', value: `${summary.limitAgain} / ${summary.sample} 只`, note: '连板高度延续的家数' },
+  ]
+  const table: DetailTable = {
+    key: 'prem',
+    columns: ['代码', '名称', '连板', '昨收', '开盘溢价', '收盘溢价', '再板'],
+    rows: premium.rows.slice(0, 8).map((row) => [
+      row.symbol,
+      row.name || '名称未返回',
+      `${row.consecutive} 板`,
+      amount(row.baseClose),
+      row.open > 0 ? ratioPct(row.openPremium) : '—',
+      row.hasClose ? ratioPct(row.closePremium) : '未定稿',
+      row.limitAgain ? '是' : '否',
+    ]),
+    empty: '没有溢价明细行',
+  }
+  const main: DetailSection = {
+    key: 'premium',
+    title: '昨日涨停今日溢价',
+    rows,
+    table,
+    foot: premium.live
+      ? '快照表当日未落库，按 limit_board × market_data 实时兜底（live）。溢价 = 当日价 / 昨日涨停价 − 1。'
+      : '口径：limit_premium 快照表（09:27 落开盘溢价，16:45 补收盘定稿）。溢价 = 当日价 / 昨日涨停价 − 1。',
+  }
+  if (premium.days.length === 0) return [main]
+  const trend: DetailSection = {
+    key: 'premium-trend',
+    title: `近 ${premium.days.length} 日溢价`,
+    table: {
+      key: 'prem-days',
+      columns: ['交易日', '样本', '开盘均溢', '收盘均溢', '收盘胜率', '再板'],
+      rows: premium.days.map((day) => [
+        day.tradeDate,
+        `${day.sample} 只`,
+        ratioPct(day.openAvg),
+        day.hasClose ? ratioPct(day.closeAvg) : '未定稿',
+        day.hasClose ? ratioPct(day.closeWin, 0) : '—',
+        `${day.limitAgain} 只`,
+      ]),
+      empty: '没有历史快照行',
+    },
+    foot: '只读快照表的历史行；缺行的日期不补算（历史缺口由任务回填）。',
+  }
+  return [main, trend]
+}
+
+/** 广度段：最新一日的 MA20 上方占比 + 近几日序列。ratio 是分数（0.6 = 60%）。 */
+function breadthSectionOf(breadth: BreadthSummary | null): DetailSection {
+  if (!breadth) {
+    return { key: 'breadth', title: '市场广度（20 日均线上占比）', rows: [{ key: 'b', label: '广度', value: GAP_BREADTH, tone: 'warn' }] }
+  }
+  if (!breadth.found || !breadth.latest) {
+    return {
+      key: 'breadth',
+      title: '市场广度（20 日均线上占比）',
+      rows: [{ key: 'b', label: '广度', value: `没有可算的日线样本（${breadth.tradeDate || '最近收盘日'}）`, tone: 'warn' }],
+    }
+  }
+  const latest = breadth.latest
+  return {
+    key: 'breadth',
+    title: '市场广度（20 日均线上占比）',
+    rows: [
+      {
+        key: 'ratio',
+        label: `MA${latest.window} 上方占比`,
+        value: ratioPct(latest.ratio, 1),
+        note: `${latest.above} / ${latest.total} 只（下方 ${latest.below} · 持平 ${latest.flat}）`,
+        tone: latest.ratio >= 0.5 ? 'up' : 'down',
+      },
+    ],
+    table:
+      breadth.days.length > 1
+        ? {
+            key: 'breadth-days',
+            columns: ['交易日', '上方', '下方', '样本', '占比'],
+            rows: breadth.days.map((day) => [
+              day.tradeDate + (day.live ? '（实时）' : ''),
+              intText(day.above),
+              intText(day.below),
+              intText(day.total),
+              ratioPct(day.ratio, 1),
+            ]),
+            empty: '没有广度行',
+          }
+        : undefined,
+    foot: latest.live
+      ? '当日行是实时算的（表里还没有），不落库。MA20 = 最近 20 根收盘均值，样本 = 当日有日线且凑满 20 根的股票。'
+      : '口径：market_breadth 表（16:50 的 market.breadth 任务落库）。MA20 = 最近 20 根收盘均值。',
+  }
+}
+
+/* ---------- P2 运维牌：PostgreSQL 与 NATS（§2.5 链路层） ---------- */
+
+/** 字节数转人读单位（库体积、流占用）。后端已给 size_pretty，这里只服务 NATS 的 bytes。 */
+function bytesText(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+  let n = value
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024
+    i += 1
+  }
+  return `${i === 0 ? n : n.toFixed(1)} ${units[i]}`
+}
+
+function dbSections(input: MonitorInput): DetailSection[] {
+  const db = input.opsP2?.ok ? input.opsP2.db ?? null : null
+  if (!db) {
+    return [{ key: 'db', title: 'PostgreSQL', rows: [{ key: 'g', label: '连接池 / 库体积 / 慢查询', value: GAP_DB, tone: 'warn' }] }]
+  }
+  const rows: DetailRow[] = []
+  rows.push(
+    db.sizePretty
+      ? { key: 'size', label: '库体积', value: db.sizePretty, note: 'pg_database_size(current_database())' }
+      : { key: 'size', label: '库体积', value: '未返回', note: db.note || 'pg_database_size 查询失败', tone: 'warn' },
+  )
+  if (db.pool) {
+    const cap = db.pool.maxOpen > 0 ? db.pool.maxOpen : db.pool.open
+    const pct = db.pool.usedPct
+    rows.push({
+      key: 'pool',
+      label: '连接池用量',
+      value: `${db.pool.inUse} / ${cap}`,
+      note: `空闲 ${db.pool.idle} · 累计等待 ${intText(db.pool.waitCount)} 次 / ${Math.round(db.pool.waitMs)}ms`,
+      ring: pct != null && cap > 0 ? { pct: Math.min(100, Math.round(pct)), tone: ringTone(Math.round(pct)) } : undefined,
+    })
+  } else {
+    rows.push({
+      key: 'pool',
+      label: '连接池用量',
+      value: '未返回',
+      note: db.note || 'admin 的 PG 连接不在本进程（审计未启用或 postgres 未配置）',
+      tone: 'warn',
+    })
+  }
+  if (db.connections) {
+    rows.push({
+      key: 'conn',
+      label: '库内连接',
+      value: db.maxConnections ? `${db.connections.total} / ${db.maxConnections}` : intText(db.connections.total),
+      note: `活跃 ${db.connections.active} · 空闲 ${db.connections.idle} · 事务中空闲 ${db.connections.idleInTx}`,
+      tone: db.connections.idleInTx > 0 ? 'warn' : 'flat',
+    })
+  }
+  const overview: DetailSection = {
+    key: 'db',
+    title: 'PostgreSQL',
+    rows,
+    foot: 'pg_stat_activity 只统计本库连接；「事务中空闲」长期不为 0 说明有事务没提交。',
+  }
+  const slow: DetailSection = db.slowAvailable
+    ? {
+        key: 'slow',
+        title: '慢查询 Top5（按平均耗时）',
+        table: {
+          key: 'slow',
+          columns: ['语句', '调用', '平均', '累计'],
+          rows: db.slowTop.map((item) => [
+            clipText(item.query, 72),
+            intText(item.calls),
+            `${item.meanMs.toFixed(1)}ms`,
+            `${Math.round(item.totalMs)}ms`,
+          ]),
+          empty: 'pg_stat_statements 里还没有语句记录',
+          flags: db.slowTop.map((item) => (item.meanMs >= 500 ? 'warn' : '')),
+        },
+        foot: '需要 pg_stat_statements 扩展；平均 ≥500ms 标橙。',
+      }
+    : {
+        key: 'slow',
+        title: '慢查询',
+        rows: [{ key: 's', label: '慢查询 Top5', value: '未接入', note: db.slowNote || '需要 pg_stat_statements 扩展', tone: 'warn' }],
+      }
+  return [overview, slow]
+}
+
+function natsSections(input: MonitorInput): DetailSection[] {
+  const nats = input.opsP2?.ok ? input.opsP2.nats ?? null : null
+  if (!nats) {
+    return [{ key: 'nats', title: 'NATS', rows: [{ key: 'g', label: '积压 / lag', value: GAP_NATS, tone: 'warn' }] }]
+  }
+  if (!nats.connected) {
+    return [
+      {
+        key: 'nats',
+        title: 'NATS',
+        rows: [{ key: 'c', label: '连接', value: '未连接', note: nats.note || '总线断连：桌面推送与事件流都停，恢复后按序号补发', tone: 'danger' }],
+      },
+    ]
+  }
+  const rows: DetailRow[] = [
+    {
+      key: 'io',
+      label: '收发计数',
+      value: `${intText(nats.inMsgs)} 入 / ${intText(nats.outMsgs)} 出`,
+      note: `重连 ${intText(nats.reconnects)} 次（本进程累计）`,
+    },
+  ]
+  rows.push(
+    nats.stream
+      ? {
+          key: 'stream',
+          label: `流 ${nats.stream.name || 'NOVATRADER'}`,
+          value: `${intText(nats.stream.messages)} 条`,
+          note: `占用 ${bytesText(nats.stream.bytes)}`,
+        }
+      : { key: 'stream', label: 'JetStream 流', value: '未返回', note: '流信息不可得（JetStream 未启用或流未建）', tone: 'warn' },
+  )
+  rows.push({
+    key: 'lag',
+    label: '消费者 lag 合计',
+    value: intText(nats.lagTotal),
+    note: nats.pendingTotal == null ? '待确认条数未返回' : `待确认 ${intText(nats.pendingTotal)} 条`,
+    tone: nats.lagTotal != null && nats.lagTotal > 0 ? 'warn' : 'flat',
+  })
+  return [
+    {
+      key: 'nats',
+      title: 'NATS',
+      rows,
+      table: {
+        key: 'consumers',
+        columns: ['消费者', '主题', '积压', '待确认', 'lag'],
+        rows: nats.consumers.map((item) => [
+          item.durable,
+          item.subject,
+          item.missing ? '消费者不存在' : intText(item.pending),
+          item.missing ? '—' : intText(item.ackPending),
+          item.missing ? '—' : intText(item.lag),
+        ]),
+        empty: '没有 durable 消费者（JetStream 流信息不可得）',
+        flags: nats.consumers.map((item) => (item.missing ? 'danger' : (item.lag ?? 0) > 0 ? 'warn' : '')),
+      },
+      foot: 'lag = 流末序号 − 该消费者已投递序号；消费者不存在说明 durable 还没建（首次订阅时才建）。',
+    },
+  ]
 }

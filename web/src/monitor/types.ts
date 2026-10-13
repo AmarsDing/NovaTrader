@@ -1,3 +1,6 @@
+import type { BreadthSummary, KlineGapsSummary, PremiumSummary } from '@/api/market'
+import type { OpsDb, OpsNats } from '@/api/ops'
+
 export type Ring = 'source' | 'service' | 'post' | 'book'
 
 export type NodeStatus = 'live' | 'idle' | 'gap' | 'down' | 'attention'
@@ -411,6 +414,26 @@ export interface MonitorInput {
       leftover: number | null
       lastOk: string
     } | null
+  } | null
+  /**
+   * P2：昨涨停今溢价 / 20 日均线上占比 / K 线连续性
+   * （GET /api/market/limit-premium + breadth + kline-gaps，M02 只读口 + limit_premium/market_breadth 两张快照表）。
+   * premium.found=false 表示基准日没有涨停名单（不是接口坏了）；live=true 表示快照表还没落、按 market_data 实时兜底。
+   */
+  marketP2?: {
+    ok: boolean
+    premium?: PremiumSummary | null
+    breadth?: BreadthSummary | null
+    klineGaps?: KlineGapsSummary | null
+  } | null
+  /**
+   * P2：PostgreSQL 连接池/库体积/慢查询与 NATS 积压（GET /api/ops/db + /api/ops/nats）。
+   * db.slowAvailable=false 表示 pg_stat_statements 没装（照实写缺口）；nats.connected=false 表示总线断连。
+   */
+  opsP2?: {
+    ok: boolean
+    db?: OpsDb | null
+    nats?: OpsNats | null
   } | null
   pulses: Pulse[]
 }

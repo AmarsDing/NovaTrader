@@ -80,6 +80,67 @@ func (h *Hub) Up() bool {
 	return bus != nil && bus.Conn() != nil && bus.Conn().IsConnected()
 }
 
+// Stats 返回 NATS 运行口径：连接计数、各订阅积压、durable 消费者 lag。
+// 供 /api/ops/nats 使用；NATS 断连时返回 connected=false 而不是错误。
+func (h *Hub) Stats() map[string]any {
+	h.mu.Lock()
+	bus := h.bus
+	h.mu.Unlock()
+	if bus == nil || bus.Conn() == nil || !bus.Conn().IsConnected() {
+		return map[string]any{"connected": false}
+	}
+	nc := bus.Conn()
+	stats := nc.Stats()
+	out := map[string]any{
+		"connected":  true,
+		"in_msgs":    stats.InMsgs,
+		"out_msgs":   stats.OutMsgs,
+		"in_bytes":   stats.InBytes,
+		"out_bytes":  stats.OutBytes,
+		"reconnects": stats.Reconnects,
+	}
+	if bus.JetStream() != nil {
+		if info, err := bus.JetStream().StreamInfo(events.StreamName); err == nil {
+			stream := map[string]any{
+				"name":         info.Config.Name,
+				"messages":     info.State.Msgs,
+				"bytes":        info.State.Bytes,
+				"first_seq":    info.State.FirstSeq,
+				"last_seq":     info.State.LastSeq,
+				"num_subjects": info.State.NumSubjects,
+			}
+			consumers := []map[string]any{}
+			for _, route := range natsRoutes {
+				if route.core || route.durable == "" {
+					continue
+				}
+				ci, err := bus.JetStream().ConsumerInfo(events.StreamName, route.durable)
+				if err != nil {
+					consumers = append(consumers, map[string]any{
+						"durable": route.durable, "subject": route.subject, "missing": true,
+					})
+					continue
+				}
+				lag := int64(info.State.LastSeq) - int64(ci.Delivered.Stream)
+				if lag < 0 {
+					lag = 0
+				}
+				consumers = append(consumers, map[string]any{
+					"durable":       route.durable,
+					"subject":       route.subject,
+					"pending":       ci.NumPending,
+					"ack_pending":   ci.NumAckPending,
+					"delivered_seq": ci.Delivered.Stream,
+					"lag":           lag,
+				})
+			}
+			stream["consumers"] = consumers
+			out["stream"] = stream
+		}
+	}
+	return out
+}
+
 // Publish 写入环形缓冲并推给已订阅的连接。行情先攒着，由 flush 每秒发一次。
 func (h *Hub) Publish(topic, event string, payload any) {
 	if h == nil || topic == "" {
@@ -226,29 +287,32 @@ func (h *Hub) closeBus() {
 	}
 }
 
+type natsRoute struct {
+	subject string
+	topic   string
+	event   string
+	durable string
+	core    bool
+}
+
+// natsRoutes 是桌面推送的订阅表，bind 和 Stats 共用（Stats 需要 durable 名单查积压）。
+var natsRoutes = []natsRoute{
+	{events.SubjectSignal, "signal", "signal", "admin_signal", false},
+	{events.SubjectTradeAccount, "position", "position", "admin_trade_account", false},
+	{events.SubjectTradeOrder, "position", "position", "admin_trade_order", false},
+	{events.SubjectTradeFill, "position", "position", "admin_trade_fill", false},
+	{events.SubjectRiskAlert, "alert", "alert", "admin_risk_alert", false},
+	{events.SubjectKillSwitch, "alert", "alert", "admin_killswitch", false},
+	{events.SubjectIntelAlert, "alert", "alert", "admin_intel_alert", false},
+	{events.SubjectNotifyDesktop, "alert", "notify", "admin_notify_desktop", false},
+	{events.SubjectStrategyReview, "alert", "alert", "admin_strategy_review", false},
+	{events.SubjectBriefing, "alert", "alert", "admin_briefing", false},
+	{events.SubjectMarketSnapshot, "market", "market", "", true},
+	{events.SubjectBrainProgress, "brain", "brain", "", true},
+}
+
 func (h *Hub) bind(bus *events.Bus) {
-	type route struct {
-		subject string
-		topic   string
-		event   string
-		durable string
-		core    bool
-	}
-	routes := []route{
-		{events.SubjectSignal, "signal", "signal", "admin_signal", false},
-		{events.SubjectTradeAccount, "position", "position", "admin_trade_account", false},
-		{events.SubjectTradeOrder, "position", "position", "admin_trade_order", false},
-		{events.SubjectTradeFill, "position", "position", "admin_trade_fill", false},
-		{events.SubjectRiskAlert, "alert", "alert", "admin_risk_alert", false},
-		{events.SubjectKillSwitch, "alert", "alert", "admin_killswitch", false},
-		{events.SubjectIntelAlert, "alert", "alert", "admin_intel_alert", false},
-		{events.SubjectNotifyDesktop, "alert", "notify", "admin_notify_desktop", false},
-		{events.SubjectStrategyReview, "alert", "alert", "admin_strategy_review", false},
-		{events.SubjectBriefing, "alert", "alert", "admin_briefing", false},
-		{events.SubjectMarketSnapshot, "market", "market", "", true},
-		{events.SubjectBrainProgress, "brain", "brain", "", true},
-	}
-	for _, item := range routes {
+	for _, item := range natsRoutes {
 		item := item
 		if item.core {
 			if _, err := bus.Conn().Subscribe(item.subject, func(m *nats.Msg) {

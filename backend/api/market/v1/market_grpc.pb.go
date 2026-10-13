@@ -31,6 +31,9 @@ const (
 	Market_SetWatchlist_FullMethodName    = "/api.market.v1.Market/SetWatchlist"
 	Market_GetAuction_FullMethodName      = "/api.market.v1.Market/GetAuction"
 	Market_GetLadder_FullMethodName       = "/api.market.v1.Market/GetLadder"
+	Market_GetLimitPremium_FullMethodName = "/api.market.v1.Market/GetLimitPremium"
+	Market_GetBreadth_FullMethodName      = "/api.market.v1.Market/GetBreadth"
+	Market_GetKlineGaps_FullMethodName    = "/api.market.v1.Market/GetKlineGaps"
 )
 
 // MarketClient is the client API for Market service.
@@ -55,6 +58,12 @@ type MarketClient interface {
 	GetAuction(ctx context.Context, in *GetAuctionRequest, opts ...grpc.CallOption) (*GetAuctionReply, error)
 	// 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
 	GetLadder(ctx context.Context, in *GetLadderRequest, opts ...grpc.CallOption) (*GetLadderReply, error)
+	// 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
+	GetLimitPremium(ctx context.Context, in *GetLimitPremiumRequest, opts ...grpc.CallOption) (*GetLimitPremiumReply, error)
+	// 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
+	GetBreadth(ctx context.Context, in *GetBreadthRequest, opts ...grpc.CallOption) (*GetBreadthReply, error)
+	// 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
+	GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest, opts ...grpc.CallOption) (*GetKlineGapsReply, error)
 }
 
 type marketClient struct {
@@ -155,6 +164,36 @@ func (c *marketClient) GetLadder(ctx context.Context, in *GetLadderRequest, opts
 	return out, nil
 }
 
+func (c *marketClient) GetLimitPremium(ctx context.Context, in *GetLimitPremiumRequest, opts ...grpc.CallOption) (*GetLimitPremiumReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLimitPremiumReply)
+	err := c.cc.Invoke(ctx, Market_GetLimitPremium_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetBreadth(ctx context.Context, in *GetBreadthRequest, opts ...grpc.CallOption) (*GetBreadthReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBreadthReply)
+	err := c.cc.Invoke(ctx, Market_GetBreadth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest, opts ...grpc.CallOption) (*GetKlineGapsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetKlineGapsReply)
+	err := c.cc.Invoke(ctx, Market_GetKlineGaps_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MarketServer is the server API for Market service.
 // All implementations must embed UnimplementedMarketServer
 // for forward compatibility.
@@ -177,6 +216,12 @@ type MarketServer interface {
 	GetAuction(context.Context, *GetAuctionRequest) (*GetAuctionReply, error)
 	// 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
 	GetLadder(context.Context, *GetLadderRequest) (*GetLadderReply, error)
+	// 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
+	GetLimitPremium(context.Context, *GetLimitPremiumRequest) (*GetLimitPremiumReply, error)
+	// 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
+	GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error)
+	// 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
+	GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error)
 	mustEmbedUnimplementedMarketServer()
 }
 
@@ -213,6 +258,15 @@ func (UnimplementedMarketServer) GetAuction(context.Context, *GetAuctionRequest)
 }
 func (UnimplementedMarketServer) GetLadder(context.Context, *GetLadderRequest) (*GetLadderReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetLadder not implemented")
+}
+func (UnimplementedMarketServer) GetLimitPremium(context.Context, *GetLimitPremiumRequest) (*GetLimitPremiumReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLimitPremium not implemented")
+}
+func (UnimplementedMarketServer) GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBreadth not implemented")
+}
+func (UnimplementedMarketServer) GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetKlineGaps not implemented")
 }
 func (UnimplementedMarketServer) mustEmbedUnimplementedMarketServer() {}
 func (UnimplementedMarketServer) testEmbeddedByValue()                {}
@@ -397,6 +451,60 @@ func _Market_GetLadder_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Market_GetLimitPremium_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLimitPremiumRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetLimitPremium(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetLimitPremium_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetLimitPremium(ctx, req.(*GetLimitPremiumRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetBreadth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBreadthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetBreadth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetBreadth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetBreadth(ctx, req.(*GetBreadthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetKlineGaps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetKlineGapsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetKlineGaps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetKlineGaps_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetKlineGaps(ctx, req.(*GetKlineGapsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Market_ServiceDesc is the grpc.ServiceDesc for Market service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -439,6 +547,18 @@ var Market_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLadder",
 			Handler:    _Market_GetLadder_Handler,
+		},
+		{
+			MethodName: "GetLimitPremium",
+			Handler:    _Market_GetLimitPremium_Handler,
+		},
+		{
+			MethodName: "GetBreadth",
+			Handler:    _Market_GetBreadth_Handler,
+		},
+		{
+			MethodName: "GetKlineGaps",
+			Handler:    _Market_GetKlineGaps_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1980,6 +1980,867 @@ func (x *GetLadderReply) GetTotal() []*LadderStep {
 	return nil
 }
 
+// GetLimitPremiumRequest 昨日涨停今日溢价。trade_date 默认最近一个已收盘交易日。
+type GetLimitPremiumRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"` // 2006-01-02，空为今天（未收盘回退上一交易日）
+	Days          int32                  `protobuf:"varint,2,opt,name=days,proto3" json:"days,omitempty"`                           // 往前看几个交易日，默认 5，上限 20（0 为单日）
+	Top           int32                  `protobuf:"varint,3,opt,name=top,proto3" json:"top,omitempty"`                             // 明细条数上限（按 close_premium 倒序），默认 50，上限 200
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLimitPremiumRequest) Reset() {
+	*x = GetLimitPremiumRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLimitPremiumRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLimitPremiumRequest) ProtoMessage() {}
+
+func (x *GetLimitPremiumRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLimitPremiumRequest.ProtoReflect.Descriptor instead.
+func (*GetLimitPremiumRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *GetLimitPremiumRequest) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *GetLimitPremiumRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+func (x *GetLimitPremiumRequest) GetTop() int32 {
+	if x != nil {
+		return x.Top
+	}
+	return 0
+}
+
+// LimitPremiumRow 一只股票一个溢价日的快照。溢价率均为分数（0.0323 = 3.23%），分母 base_close。
+type LimitPremiumRow struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	TradeDate     string                 `protobuf:"bytes,3,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`             // 溢价兑现日
+	BaseDate      string                 `protobuf:"bytes,4,opt,name=base_date,json=baseDate,proto3" json:"base_date,omitempty"`                // 涨停日（前一交易日）
+	Consecutive   int32                  `protobuf:"varint,5,opt,name=consecutive,proto3" json:"consecutive,omitempty"`                         // base_date 连板数
+	BaseClose     float64                `protobuf:"fixed64,6,opt,name=base_close,json=baseClose,proto3" json:"base_close,omitempty"`           // base_date 收盘（涨停价）
+	Open          float64                `protobuf:"fixed64,7,opt,name=open,proto3" json:"open,omitempty"`                                      // 开盘价；竞价口径未到时为 0
+	Close         float64                `protobuf:"fixed64,8,opt,name=close,proto3" json:"close,omitempty"`                                    // 收盘价；未收盘为 0
+	OpenPremium   float64                `protobuf:"fixed64,9,opt,name=open_premium,json=openPremium,proto3" json:"open_premium,omitempty"`     // 开盘溢价（竞价涨幅口径，09:26 落）
+	ClosePremium  float64                `protobuf:"fixed64,10,opt,name=close_premium,json=closePremium,proto3" json:"close_premium,omitempty"` // 收盘溢价（收盘补）
+	HighPremium   float64                `protobuf:"fixed64,11,opt,name=high_premium,json=highPremium,proto3" json:"high_premium,omitempty"`    // 最高溢价（收盘补）
+	LimitAgain    bool                   `protobuf:"varint,12,opt,name=limit_again,json=limitAgain,proto3" json:"limit_again,omitempty"`        // 今日收盘再度涨停
+	HasClose      bool                   `protobuf:"varint,13,opt,name=has_close,json=hasClose,proto3" json:"has_close,omitempty"`              // close_premium 已落（false 时只有开盘口径）
+	Source        string                 `protobuf:"bytes,14,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LimitPremiumRow) Reset() {
+	*x = LimitPremiumRow{}
+	mi := &file_api_market_v1_market_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LimitPremiumRow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LimitPremiumRow) ProtoMessage() {}
+
+func (x *LimitPremiumRow) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LimitPremiumRow.ProtoReflect.Descriptor instead.
+func (*LimitPremiumRow) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *LimitPremiumRow) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *LimitPremiumRow) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LimitPremiumRow) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *LimitPremiumRow) GetBaseDate() string {
+	if x != nil {
+		return x.BaseDate
+	}
+	return ""
+}
+
+func (x *LimitPremiumRow) GetConsecutive() int32 {
+	if x != nil {
+		return x.Consecutive
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetBaseClose() float64 {
+	if x != nil {
+		return x.BaseClose
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetOpen() float64 {
+	if x != nil {
+		return x.Open
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetClose() float64 {
+	if x != nil {
+		return x.Close
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetOpenPremium() float64 {
+	if x != nil {
+		return x.OpenPremium
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetClosePremium() float64 {
+	if x != nil {
+		return x.ClosePremium
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetHighPremium() float64 {
+	if x != nil {
+		return x.HighPremium
+	}
+	return 0
+}
+
+func (x *LimitPremiumRow) GetLimitAgain() bool {
+	if x != nil {
+		return x.LimitAgain
+	}
+	return false
+}
+
+func (x *LimitPremiumRow) GetHasClose() bool {
+	if x != nil {
+		return x.HasClose
+	}
+	return false
+}
+
+func (x *LimitPremiumRow) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type LimitPremiumDay struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	BaseDate      string                 `protobuf:"bytes,2,opt,name=base_date,json=baseDate,proto3" json:"base_date,omitempty"`
+	Sample        int32                  `protobuf:"varint,3,opt,name=sample,proto3" json:"sample,omitempty"`                           // 昨日涨停家数
+	LimitAgain    int32                  `protobuf:"varint,4,opt,name=limit_again,json=limitAgain,proto3" json:"limit_again,omitempty"` // 今日收盘再度涨停家数
+	OpenAvg       float64                `protobuf:"fixed64,5,opt,name=open_avg,json=openAvg,proto3" json:"open_avg,omitempty"`         // 开盘溢价均值（分数）
+	CloseAvg      float64                `protobuf:"fixed64,6,opt,name=close_avg,json=closeAvg,proto3" json:"close_avg,omitempty"`      // 收盘溢价均值（分数）
+	CloseWin      float64                `protobuf:"fixed64,7,opt,name=close_win,json=closeWin,proto3" json:"close_win,omitempty"`      // 收盘溢价 > 0 的占比（分数）
+	HighAvg       float64                `protobuf:"fixed64,8,opt,name=high_avg,json=highAvg,proto3" json:"high_avg,omitempty"`         // 最高溢价均值（分数）
+	HasClose      bool                   `protobuf:"varint,9,opt,name=has_close,json=hasClose,proto3" json:"has_close,omitempty"`       // 当日收盘口径已落
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LimitPremiumDay) Reset() {
+	*x = LimitPremiumDay{}
+	mi := &file_api_market_v1_market_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LimitPremiumDay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LimitPremiumDay) ProtoMessage() {}
+
+func (x *LimitPremiumDay) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LimitPremiumDay.ProtoReflect.Descriptor instead.
+func (*LimitPremiumDay) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *LimitPremiumDay) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *LimitPremiumDay) GetBaseDate() string {
+	if x != nil {
+		return x.BaseDate
+	}
+	return ""
+}
+
+func (x *LimitPremiumDay) GetSample() int32 {
+	if x != nil {
+		return x.Sample
+	}
+	return 0
+}
+
+func (x *LimitPremiumDay) GetLimitAgain() int32 {
+	if x != nil {
+		return x.LimitAgain
+	}
+	return 0
+}
+
+func (x *LimitPremiumDay) GetOpenAvg() float64 {
+	if x != nil {
+		return x.OpenAvg
+	}
+	return 0
+}
+
+func (x *LimitPremiumDay) GetCloseAvg() float64 {
+	if x != nil {
+		return x.CloseAvg
+	}
+	return 0
+}
+
+func (x *LimitPremiumDay) GetCloseWin() float64 {
+	if x != nil {
+		return x.CloseWin
+	}
+	return 0
+}
+
+func (x *LimitPremiumDay) GetHighAvg() float64 {
+	if x != nil {
+		return x.HighAvg
+	}
+	return 0
+}
+
+func (x *LimitPremiumDay) GetHasClose() bool {
+	if x != nil {
+		return x.HasClose
+	}
+	return false
+}
+
+// GetLimitPremiumReply found=false 表示快照表与实时兜底都拿不到（昨日无涨停名单）。
+type GetLimitPremiumReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Found         bool                   `protobuf:"varint,2,opt,name=found,proto3" json:"found,omitempty"`
+	Live          bool                   `protobuf:"varint,3,opt,name=live,proto3" json:"live,omitempty"` // true 表示快照表未落库，本行按 market_data 实时兜底
+	Summary       *LimitPremiumDay       `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	Days          []*LimitPremiumDay     `protobuf:"bytes,5,rep,name=days,proto3" json:"days,omitempty"` // 按交易日倒序
+	Rows          []*LimitPremiumRow     `protobuf:"bytes,6,rep,name=rows,proto3" json:"rows,omitempty"` // 当日明细（按 close_premium 倒序，截断到 top）
+	AsOf          string                 `protobuf:"bytes,7,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLimitPremiumReply) Reset() {
+	*x = GetLimitPremiumReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLimitPremiumReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLimitPremiumReply) ProtoMessage() {}
+
+func (x *GetLimitPremiumReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLimitPremiumReply.ProtoReflect.Descriptor instead.
+func (*GetLimitPremiumReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GetLimitPremiumReply) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *GetLimitPremiumReply) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetLimitPremiumReply) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+func (x *GetLimitPremiumReply) GetSummary() *LimitPremiumDay {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+func (x *GetLimitPremiumReply) GetDays() []*LimitPremiumDay {
+	if x != nil {
+		return x.Days
+	}
+	return nil
+}
+
+func (x *GetLimitPremiumReply) GetRows() []*LimitPremiumRow {
+	if x != nil {
+		return x.Rows
+	}
+	return nil
+}
+
+func (x *GetLimitPremiumReply) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
+// GetBreadthRequest 20 日均线上占比。
+type GetBreadthRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"` // 2006-01-02，空为最近已收盘交易日
+	Days          int32                  `protobuf:"varint,2,opt,name=days,proto3" json:"days,omitempty"`                           // 往前看几个交易日，默认 10，上限 60
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBreadthRequest) Reset() {
+	*x = GetBreadthRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBreadthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBreadthRequest) ProtoMessage() {}
+
+func (x *GetBreadthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBreadthRequest.ProtoReflect.Descriptor instead.
+func (*GetBreadthRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *GetBreadthRequest) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *GetBreadthRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+type BreadthDay struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Window        int32                  `protobuf:"varint,2,opt,name=window,proto3" json:"window,omitempty"` // 均线窗口（20）
+	Above         int32                  `protobuf:"varint,3,opt,name=above,proto3" json:"above,omitempty"`   // 收盘 > MA20 只数
+	Below         int32                  `protobuf:"varint,4,opt,name=below,proto3" json:"below,omitempty"`
+	Flat          int32                  `protobuf:"varint,5,opt,name=flat,proto3" json:"flat,omitempty"`
+	Total         int32                  `protobuf:"varint,6,opt,name=total,proto3" json:"total,omitempty"`  // 样本总数
+	Ratio         float64                `protobuf:"fixed64,7,opt,name=ratio,proto3" json:"ratio,omitempty"` // above/total（分数）
+	Live          bool                   `protobuf:"varint,8,opt,name=live,proto3" json:"live,omitempty"`    // true 表示 market_breadth 表无行，实时算出
+	AsOf          string                 `protobuf:"bytes,9,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BreadthDay) Reset() {
+	*x = BreadthDay{}
+	mi := &file_api_market_v1_market_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BreadthDay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BreadthDay) ProtoMessage() {}
+
+func (x *BreadthDay) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BreadthDay.ProtoReflect.Descriptor instead.
+func (*BreadthDay) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *BreadthDay) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *BreadthDay) GetWindow() int32 {
+	if x != nil {
+		return x.Window
+	}
+	return 0
+}
+
+func (x *BreadthDay) GetAbove() int32 {
+	if x != nil {
+		return x.Above
+	}
+	return 0
+}
+
+func (x *BreadthDay) GetBelow() int32 {
+	if x != nil {
+		return x.Below
+	}
+	return 0
+}
+
+func (x *BreadthDay) GetFlat() int32 {
+	if x != nil {
+		return x.Flat
+	}
+	return 0
+}
+
+func (x *BreadthDay) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *BreadthDay) GetRatio() float64 {
+	if x != nil {
+		return x.Ratio
+	}
+	return 0
+}
+
+func (x *BreadthDay) GetLive() bool {
+	if x != nil {
+		return x.Live
+	}
+	return false
+}
+
+func (x *BreadthDay) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
+type GetBreadthReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Found         bool                   `protobuf:"varint,2,opt,name=found,proto3" json:"found,omitempty"`
+	Latest        *BreadthDay            `protobuf:"bytes,3,opt,name=latest,proto3" json:"latest,omitempty"`
+	Days          []*BreadthDay          `protobuf:"bytes,4,rep,name=days,proto3" json:"days,omitempty"` // 按交易日倒序
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBreadthReply) Reset() {
+	*x = GetBreadthReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBreadthReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBreadthReply) ProtoMessage() {}
+
+func (x *GetBreadthReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBreadthReply.ProtoReflect.Descriptor instead.
+func (*GetBreadthReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *GetBreadthReply) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *GetBreadthReply) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetBreadthReply) GetLatest() *BreadthDay {
+	if x != nil {
+		return x.Latest
+	}
+	return nil
+}
+
+func (x *GetBreadthReply) GetDays() []*BreadthDay {
+	if x != nil {
+		return x.Days
+	}
+	return nil
+}
+
+// GetKlineGapsRequest K 线连续性检查。days 往前看几个交易日，默认 5，上限 20。
+type GetKlineGapsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"` // 2006-01-02，空为今天
+	Days          int32                  `protobuf:"varint,2,opt,name=days,proto3" json:"days,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetKlineGapsRequest) Reset() {
+	*x = GetKlineGapsRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetKlineGapsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetKlineGapsRequest) ProtoMessage() {}
+
+func (x *GetKlineGapsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetKlineGapsRequest.ProtoReflect.Descriptor instead.
+func (*GetKlineGapsRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *GetKlineGapsRequest) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *GetKlineGapsRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+type KlineGapDay struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Universe      int32                  `protobuf:"varint,2,opt,name=universe,proto3" json:"universe,omitempty"`    // 当日应有日线收盘行的股票池大小（近 30 日有过日线的股票）
+	Missing       int32                  `protobuf:"varint,3,opt,name=missing,proto3" json:"missing,omitempty"`      // 缺口只数
+	Present       int32                  `protobuf:"varint,4,opt,name=present,proto3" json:"present,omitempty"`      // universe - missing
+	Sample        []string               `protobuf:"bytes,5,rep,name=sample,proto3" json:"sample,omitempty"`         // 缺口样本（按股票代码，截断到 20）
+	AsOf          string                 `protobuf:"bytes,6,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"` // 最近一条缺口日线的时间；没有行时为空
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KlineGapDay) Reset() {
+	*x = KlineGapDay{}
+	mi := &file_api_market_v1_market_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KlineGapDay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KlineGapDay) ProtoMessage() {}
+
+func (x *KlineGapDay) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KlineGapDay.ProtoReflect.Descriptor instead.
+func (*KlineGapDay) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *KlineGapDay) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *KlineGapDay) GetUniverse() int32 {
+	if x != nil {
+		return x.Universe
+	}
+	return 0
+}
+
+func (x *KlineGapDay) GetMissing() int32 {
+	if x != nil {
+		return x.Missing
+	}
+	return 0
+}
+
+func (x *KlineGapDay) GetPresent() int32 {
+	if x != nil {
+		return x.Present
+	}
+	return 0
+}
+
+func (x *KlineGapDay) GetSample() []string {
+	if x != nil {
+		return x.Sample
+	}
+	return nil
+}
+
+func (x *KlineGapDay) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
+type GetKlineGapsReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Found         bool                   `protobuf:"varint,2,opt,name=found,proto3" json:"found,omitempty"`                                   // true 表示至少有一天有缺口
+	Universe      int32                  `protobuf:"varint,3,opt,name=universe,proto3" json:"universe,omitempty"`                             // 股票池大小
+	Days          []*KlineGapDay         `protobuf:"bytes,4,rep,name=days,proto3" json:"days,omitempty"`                                      // 按交易日倒序
+	MissingTotal  int32                  `protobuf:"varint,5,opt,name=missing_total,json=missingTotal,proto3" json:"missing_total,omitempty"` // 全部缺口日合计（重复股票按日计）
+	AsOf          string                 `protobuf:"bytes,7,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetKlineGapsReply) Reset() {
+	*x = GetKlineGapsReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetKlineGapsReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetKlineGapsReply) ProtoMessage() {}
+
+func (x *GetKlineGapsReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetKlineGapsReply.ProtoReflect.Descriptor instead.
+func (*GetKlineGapsReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *GetKlineGapsReply) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *GetKlineGapsReply) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetKlineGapsReply) GetUniverse() int32 {
+	if x != nil {
+		return x.Universe
+	}
+	return 0
+}
+
+func (x *GetKlineGapsReply) GetDays() []*KlineGapDay {
+	if x != nil {
+		return x.Days
+	}
+	return nil
+}
+
+func (x *GetKlineGapsReply) GetMissingTotal() int32 {
+	if x != nil {
+		return x.MissingTotal
+	}
+	return 0
+}
+
+func (x *GetKlineGapsReply) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
 var File_api_market_v1_market_proto protoreflect.FileDescriptor
 
 const file_api_market_v1_market_proto_rawDesc = "" +
@@ -2166,11 +3027,99 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\x05steps\x18\x02 \x03(\v2\x19.api.market.v1.LadderStepR\x05steps\"o\n" +
 	"\x0eGetLadderReply\x12,\n" +
 	"\x04days\x18\x01 \x03(\v2\x18.api.market.v1.LadderDayR\x04days\x12/\n" +
-	"\x05total\x18\x02 \x03(\v2\x19.api.market.v1.LadderStepR\x05total*$\n" +
+	"\x05total\x18\x02 \x03(\v2\x19.api.market.v1.LadderStepR\x05total\"]\n" +
+	"\x16GetLimitPremiumRequest\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x12\n" +
+	"\x04days\x18\x02 \x01(\x05R\x04days\x12\x10\n" +
+	"\x03top\x18\x03 \x01(\x05R\x03top\"\xa5\x03\n" +
+	"\x0fLimitPremiumRow\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x03 \x01(\tR\ttradeDate\x12\x1b\n" +
+	"\tbase_date\x18\x04 \x01(\tR\bbaseDate\x12 \n" +
+	"\vconsecutive\x18\x05 \x01(\x05R\vconsecutive\x12\x1d\n" +
+	"\n" +
+	"base_close\x18\x06 \x01(\x01R\tbaseClose\x12\x12\n" +
+	"\x04open\x18\a \x01(\x01R\x04open\x12\x14\n" +
+	"\x05close\x18\b \x01(\x01R\x05close\x12!\n" +
+	"\fopen_premium\x18\t \x01(\x01R\vopenPremium\x12#\n" +
+	"\rclose_premium\x18\n" +
+	" \x01(\x01R\fclosePremium\x12!\n" +
+	"\fhigh_premium\x18\v \x01(\x01R\vhighPremium\x12\x1f\n" +
+	"\vlimit_again\x18\f \x01(\bR\n" +
+	"limitAgain\x12\x1b\n" +
+	"\thas_close\x18\r \x01(\bR\bhasClose\x12\x16\n" +
+	"\x06source\x18\x0e \x01(\tR\x06source\"\x93\x02\n" +
+	"\x0fLimitPremiumDay\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x1b\n" +
+	"\tbase_date\x18\x02 \x01(\tR\bbaseDate\x12\x16\n" +
+	"\x06sample\x18\x03 \x01(\x05R\x06sample\x12\x1f\n" +
+	"\vlimit_again\x18\x04 \x01(\x05R\n" +
+	"limitAgain\x12\x19\n" +
+	"\bopen_avg\x18\x05 \x01(\x01R\aopenAvg\x12\x1b\n" +
+	"\tclose_avg\x18\x06 \x01(\x01R\bcloseAvg\x12\x1b\n" +
+	"\tclose_win\x18\a \x01(\x01R\bcloseWin\x12\x19\n" +
+	"\bhigh_avg\x18\b \x01(\x01R\ahighAvg\x12\x1b\n" +
+	"\thas_close\x18\t \x01(\bR\bhasClose\"\x96\x02\n" +
+	"\x14GetLimitPremiumReply\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x14\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found\x12\x12\n" +
+	"\x04live\x18\x03 \x01(\bR\x04live\x128\n" +
+	"\asummary\x18\x04 \x01(\v2\x1e.api.market.v1.LimitPremiumDayR\asummary\x122\n" +
+	"\x04days\x18\x05 \x03(\v2\x1e.api.market.v1.LimitPremiumDayR\x04days\x122\n" +
+	"\x04rows\x18\x06 \x03(\v2\x1e.api.market.v1.LimitPremiumRowR\x04rows\x12\x13\n" +
+	"\x05as_of\x18\a \x01(\tR\x04asOf\"F\n" +
+	"\x11GetBreadthRequest\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x12\n" +
+	"\x04days\x18\x02 \x01(\x05R\x04days\"\xd8\x01\n" +
+	"\n" +
+	"BreadthDay\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x16\n" +
+	"\x06window\x18\x02 \x01(\x05R\x06window\x12\x14\n" +
+	"\x05above\x18\x03 \x01(\x05R\x05above\x12\x14\n" +
+	"\x05below\x18\x04 \x01(\x05R\x05below\x12\x12\n" +
+	"\x04flat\x18\x05 \x01(\x05R\x04flat\x12\x14\n" +
+	"\x05total\x18\x06 \x01(\x05R\x05total\x12\x14\n" +
+	"\x05ratio\x18\a \x01(\x01R\x05ratio\x12\x12\n" +
+	"\x04live\x18\b \x01(\bR\x04live\x12\x13\n" +
+	"\x05as_of\x18\t \x01(\tR\x04asOf\"\xa8\x01\n" +
+	"\x0fGetBreadthReply\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x14\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found\x121\n" +
+	"\x06latest\x18\x03 \x01(\v2\x19.api.market.v1.BreadthDayR\x06latest\x12-\n" +
+	"\x04days\x18\x04 \x03(\v2\x19.api.market.v1.BreadthDayR\x04days\"H\n" +
+	"\x13GetKlineGapsRequest\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x12\n" +
+	"\x04days\x18\x02 \x01(\x05R\x04days\"\xa9\x01\n" +
+	"\vKlineGapDay\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x1a\n" +
+	"\buniverse\x18\x02 \x01(\x05R\buniverse\x12\x18\n" +
+	"\amissing\x18\x03 \x01(\x05R\amissing\x12\x18\n" +
+	"\apresent\x18\x04 \x01(\x05R\apresent\x12\x16\n" +
+	"\x06sample\x18\x05 \x03(\tR\x06sample\x12\x13\n" +
+	"\x05as_of\x18\x06 \x01(\tR\x04asOf\"\xce\x01\n" +
+	"\x11GetKlineGapsReply\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x14\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found\x12\x1a\n" +
+	"\buniverse\x18\x03 \x01(\x05R\buniverse\x12.\n" +
+	"\x04days\x18\x04 \x03(\v2\x1a.api.market.v1.KlineGapDayR\x04days\x12#\n" +
+	"\rmissing_total\x18\x05 \x01(\x05R\fmissingTotal\x12\x13\n" +
+	"\x05as_of\x18\a \x01(\tR\x04asOf*$\n" +
 	"\x06Adjust\x12\b\n" +
 	"\x04NONE\x10\x00\x12\a\n" +
 	"\x03QFQ\x10\x01\x12\a\n" +
-	"\x03HFQ\x10\x022\xfe\a\n" +
+	"\x03HFQ\x10\x022\xe0\n" +
+	"\n" +
 	"\x06Market\x12^\n" +
 	"\aGetBars\x12\x1d.api.market.v1.GetBarsRequest\x1a\x1b.api.market.v1.GetBarsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/market/bars\x12v\n" +
 	"\rGetIndicators\x12#.api.market.v1.GetIndicatorsRequest\x1a!.api.market.v1.GetIndicatorsReply\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/market/indicators\x12y\n" +
@@ -2181,7 +3130,11 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\fSetWatchlist\x12\".api.market.v1.SetWatchlistRequest\x1a .api.market.v1.SetWatchlistReply\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/market/watchlist\x12j\n" +
 	"\n" +
 	"GetAuction\x12 .api.market.v1.GetAuctionRequest\x1a\x1e.api.market.v1.GetAuctionReply\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/market/auction\x12f\n" +
-	"\tGetLadder\x12\x1f.api.market.v1.GetLadderRequest\x1a\x1d.api.market.v1.GetLadderReply\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/market/ladderB\x19Z\x17server/api/market/v1;v1b\x06proto3"
+	"\tGetLadder\x12\x1f.api.market.v1.GetLadderRequest\x1a\x1d.api.market.v1.GetLadderReply\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/market/ladder\x12\x7f\n" +
+	"\x0fGetLimitPremium\x12%.api.market.v1.GetLimitPremiumRequest\x1a#.api.market.v1.GetLimitPremiumReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/market/limit-premium\x12j\n" +
+	"\n" +
+	"GetBreadth\x12 .api.market.v1.GetBreadthRequest\x1a\x1e.api.market.v1.GetBreadthReply\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/market/breadth\x12s\n" +
+	"\fGetKlineGaps\x12\".api.market.v1.GetKlineGapsRequest\x1a .api.market.v1.GetKlineGapsReply\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/market/kline-gapsB\x19Z\x17server/api/market/v1;v1b\x06proto3"
 
 var (
 	file_api_market_v1_market_proto_rawDescOnce sync.Once
@@ -2196,7 +3149,7 @@ func file_api_market_v1_market_proto_rawDescGZIP() []byte {
 }
 
 var file_api_market_v1_market_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_market_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_api_market_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_api_market_v1_market_proto_goTypes = []any{
 	(Adjust)(0),                    // 0: api.market.v1.Adjust
 	(*GetBarsRequest)(nil),         // 1: api.market.v1.GetBarsRequest
@@ -2225,16 +3178,26 @@ var file_api_market_v1_market_proto_goTypes = []any{
 	(*LadderStep)(nil),             // 24: api.market.v1.LadderStep
 	(*LadderDay)(nil),              // 25: api.market.v1.LadderDay
 	(*GetLadderReply)(nil),         // 26: api.market.v1.GetLadderReply
-	nil,                            // 27: api.market.v1.IndicatorPoint.ValuesEntry
-	nil,                            // 28: api.market.v1.FactorRow.ValuesEntry
+	(*GetLimitPremiumRequest)(nil), // 27: api.market.v1.GetLimitPremiumRequest
+	(*LimitPremiumRow)(nil),        // 28: api.market.v1.LimitPremiumRow
+	(*LimitPremiumDay)(nil),        // 29: api.market.v1.LimitPremiumDay
+	(*GetLimitPremiumReply)(nil),   // 30: api.market.v1.GetLimitPremiumReply
+	(*GetBreadthRequest)(nil),      // 31: api.market.v1.GetBreadthRequest
+	(*BreadthDay)(nil),             // 32: api.market.v1.BreadthDay
+	(*GetBreadthReply)(nil),        // 33: api.market.v1.GetBreadthReply
+	(*GetKlineGapsRequest)(nil),    // 34: api.market.v1.GetKlineGapsRequest
+	(*KlineGapDay)(nil),            // 35: api.market.v1.KlineGapDay
+	(*GetKlineGapsReply)(nil),      // 36: api.market.v1.GetKlineGapsReply
+	nil,                            // 37: api.market.v1.IndicatorPoint.ValuesEntry
+	nil,                            // 38: api.market.v1.FactorRow.ValuesEntry
 }
 var file_api_market_v1_market_proto_depIdxs = []int32{
 	0,  // 0: api.market.v1.GetBarsRequest.adjust:type_name -> api.market.v1.Adjust
 	2,  // 1: api.market.v1.GetBarsReply.bars:type_name -> api.market.v1.Bar
 	0,  // 2: api.market.v1.GetIndicatorsRequest.adjust:type_name -> api.market.v1.Adjust
-	27, // 3: api.market.v1.IndicatorPoint.values:type_name -> api.market.v1.IndicatorPoint.ValuesEntry
+	37, // 3: api.market.v1.IndicatorPoint.values:type_name -> api.market.v1.IndicatorPoint.ValuesEntry
 	5,  // 4: api.market.v1.GetIndicatorsReply.points:type_name -> api.market.v1.IndicatorPoint
-	28, // 5: api.market.v1.FactorRow.values:type_name -> api.market.v1.FactorRow.ValuesEntry
+	38, // 5: api.market.v1.FactorRow.values:type_name -> api.market.v1.FactorRow.ValuesEntry
 	8,  // 6: api.market.v1.GetFactorsCrossReply.rows:type_name -> api.market.v1.FactorRow
 	13, // 7: api.market.v1.GetLimitBoardsReply.boards:type_name -> api.market.v1.LimitBoard
 	16, // 8: api.market.v1.GetSectorHeatReply.sectors:type_name -> api.market.v1.SectorHeat
@@ -2243,29 +3206,41 @@ var file_api_market_v1_market_proto_depIdxs = []int32{
 	24, // 11: api.market.v1.LadderDay.steps:type_name -> api.market.v1.LadderStep
 	25, // 12: api.market.v1.GetLadderReply.days:type_name -> api.market.v1.LadderDay
 	24, // 13: api.market.v1.GetLadderReply.total:type_name -> api.market.v1.LadderStep
-	1,  // 14: api.market.v1.Market.GetBars:input_type -> api.market.v1.GetBarsRequest
-	4,  // 15: api.market.v1.Market.GetIndicators:input_type -> api.market.v1.GetIndicatorsRequest
-	7,  // 16: api.market.v1.Market.GetFactorsCross:input_type -> api.market.v1.GetFactorsCrossRequest
-	10, // 17: api.market.v1.Market.GetSentiment:input_type -> api.market.v1.GetSentimentRequest
-	12, // 18: api.market.v1.Market.GetLimitBoards:input_type -> api.market.v1.GetLimitBoardsRequest
-	15, // 19: api.market.v1.Market.GetSectorHeat:input_type -> api.market.v1.GetSectorHeatRequest
-	18, // 20: api.market.v1.Market.SetWatchlist:input_type -> api.market.v1.SetWatchlistRequest
-	20, // 21: api.market.v1.Market.GetAuction:input_type -> api.market.v1.GetAuctionRequest
-	23, // 22: api.market.v1.Market.GetLadder:input_type -> api.market.v1.GetLadderRequest
-	3,  // 23: api.market.v1.Market.GetBars:output_type -> api.market.v1.GetBarsReply
-	6,  // 24: api.market.v1.Market.GetIndicators:output_type -> api.market.v1.GetIndicatorsReply
-	9,  // 25: api.market.v1.Market.GetFactorsCross:output_type -> api.market.v1.GetFactorsCrossReply
-	11, // 26: api.market.v1.Market.GetSentiment:output_type -> api.market.v1.Sentiment
-	14, // 27: api.market.v1.Market.GetLimitBoards:output_type -> api.market.v1.GetLimitBoardsReply
-	17, // 28: api.market.v1.Market.GetSectorHeat:output_type -> api.market.v1.GetSectorHeatReply
-	19, // 29: api.market.v1.Market.SetWatchlist:output_type -> api.market.v1.SetWatchlistReply
-	22, // 30: api.market.v1.Market.GetAuction:output_type -> api.market.v1.GetAuctionReply
-	26, // 31: api.market.v1.Market.GetLadder:output_type -> api.market.v1.GetLadderReply
-	23, // [23:32] is the sub-list for method output_type
-	14, // [14:23] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	29, // 14: api.market.v1.GetLimitPremiumReply.summary:type_name -> api.market.v1.LimitPremiumDay
+	29, // 15: api.market.v1.GetLimitPremiumReply.days:type_name -> api.market.v1.LimitPremiumDay
+	28, // 16: api.market.v1.GetLimitPremiumReply.rows:type_name -> api.market.v1.LimitPremiumRow
+	32, // 17: api.market.v1.GetBreadthReply.latest:type_name -> api.market.v1.BreadthDay
+	32, // 18: api.market.v1.GetBreadthReply.days:type_name -> api.market.v1.BreadthDay
+	35, // 19: api.market.v1.GetKlineGapsReply.days:type_name -> api.market.v1.KlineGapDay
+	1,  // 20: api.market.v1.Market.GetBars:input_type -> api.market.v1.GetBarsRequest
+	4,  // 21: api.market.v1.Market.GetIndicators:input_type -> api.market.v1.GetIndicatorsRequest
+	7,  // 22: api.market.v1.Market.GetFactorsCross:input_type -> api.market.v1.GetFactorsCrossRequest
+	10, // 23: api.market.v1.Market.GetSentiment:input_type -> api.market.v1.GetSentimentRequest
+	12, // 24: api.market.v1.Market.GetLimitBoards:input_type -> api.market.v1.GetLimitBoardsRequest
+	15, // 25: api.market.v1.Market.GetSectorHeat:input_type -> api.market.v1.GetSectorHeatRequest
+	18, // 26: api.market.v1.Market.SetWatchlist:input_type -> api.market.v1.SetWatchlistRequest
+	20, // 27: api.market.v1.Market.GetAuction:input_type -> api.market.v1.GetAuctionRequest
+	23, // 28: api.market.v1.Market.GetLadder:input_type -> api.market.v1.GetLadderRequest
+	27, // 29: api.market.v1.Market.GetLimitPremium:input_type -> api.market.v1.GetLimitPremiumRequest
+	31, // 30: api.market.v1.Market.GetBreadth:input_type -> api.market.v1.GetBreadthRequest
+	34, // 31: api.market.v1.Market.GetKlineGaps:input_type -> api.market.v1.GetKlineGapsRequest
+	3,  // 32: api.market.v1.Market.GetBars:output_type -> api.market.v1.GetBarsReply
+	6,  // 33: api.market.v1.Market.GetIndicators:output_type -> api.market.v1.GetIndicatorsReply
+	9,  // 34: api.market.v1.Market.GetFactorsCross:output_type -> api.market.v1.GetFactorsCrossReply
+	11, // 35: api.market.v1.Market.GetSentiment:output_type -> api.market.v1.Sentiment
+	14, // 36: api.market.v1.Market.GetLimitBoards:output_type -> api.market.v1.GetLimitBoardsReply
+	17, // 37: api.market.v1.Market.GetSectorHeat:output_type -> api.market.v1.GetSectorHeatReply
+	19, // 38: api.market.v1.Market.SetWatchlist:output_type -> api.market.v1.SetWatchlistReply
+	22, // 39: api.market.v1.Market.GetAuction:output_type -> api.market.v1.GetAuctionReply
+	26, // 40: api.market.v1.Market.GetLadder:output_type -> api.market.v1.GetLadderReply
+	30, // 41: api.market.v1.Market.GetLimitPremium:output_type -> api.market.v1.GetLimitPremiumReply
+	33, // 42: api.market.v1.Market.GetBreadth:output_type -> api.market.v1.GetBreadthReply
+	36, // 43: api.market.v1.Market.GetKlineGaps:output_type -> api.market.v1.GetKlineGapsReply
+	32, // [32:44] is the sub-list for method output_type
+	20, // [20:32] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_api_market_v1_market_proto_init() }
@@ -2279,7 +3254,7 @@ func file_api_market_v1_market_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_market_v1_market_proto_rawDesc), len(file_api_market_v1_market_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   28,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

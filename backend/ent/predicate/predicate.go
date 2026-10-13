@@ -75,6 +75,9 @@ type LimitBoard func(*sql.Selector)
 // LimitPool is the predicate function for limitpool builders.
 type LimitPool func(*sql.Selector)
 
+// LimitPremium is the predicate function for limitpremium builders.
+type LimitPremium func(*sql.Selector)
+
 // LlmCallLog is the predicate function for llmcalllog builders.
 type LlmCallLog func(*sql.Selector)
 
@@ -83,6 +86,9 @@ type MacroSeries func(*sql.Selector)
 
 // MarginDetail is the predicate function for margindetail builders.
 type MarginDetail func(*sql.Selector)
+
+// MarketBreadth is the predicate function for marketbreadth builders.
+type MarketBreadth func(*sql.Selector)
 
 // MarketData is the predicate function for marketdata builders.
 type MarketData func(*sql.Selector)

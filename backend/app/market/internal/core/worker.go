@@ -77,6 +77,14 @@ func (w *Worker) jobs() ([]scheduler.Job, error) {
 		{Name: "market.close", Spec: "5 15 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, MaxDelay: time.Hour, Run: now(w.uc.Close)},
 		// M01 资金流 16:30、龙虎榜 17:30 入库。
 		{Name: "market.capital", Spec: "30 19 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: now(w.uc.Capital)},
+		// P2（监控驾驶舱 §7）：昨日涨停名单 09:27 落开盘溢价（竞价撮合后的开盘价），收盘后 16:45 补收盘/最高溢价定稿。
+		{Name: "market.premium.open", Spec: "27 9 * * *", TradingDayOnly: true, Timeout: 2 * time.Minute, Retry: 2, MaxDelay: 10 * time.Minute, Run: now(w.uc.PremiumOpen)},
+		// 等 M01 的 16:00 日线入库后再定稿；重启晚于 18:45 就不再补（次日由 kline-check 兜底缺口）。
+		{Name: "market.premium.close", Spec: "45 16 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, MaxDelay: 2 * time.Hour, Run: now(w.uc.PremiumClose)},
+		// 20 日均线上占比（市场广度），依赖同一天的日线已入库。
+		{Name: "market.breadth", Spec: "50 16 * * *", TradingDayOnly: true, Timeout: 10 * time.Minute, Retry: 2, MaxDelay: 2 * time.Hour, Run: now(w.uc.BreadthClose)},
+		// K 线连续性检查（缺口日）：收盘半小时后跑，比 market.close(15:05) 晚，给 M01 日线留缓冲。
+		{Name: "market.kline-check", Spec: "35 15 * * *", TradingDayOnly: true, Timeout: 10 * time.Minute, Retry: 2, MaxDelay: 3 * time.Hour, Run: now(w.uc.KlineCheck)},
 	}
 	for _, at := range w.cfg.Checkpoints {
 		spec, err := cronAt(at)

@@ -3,9 +3,9 @@ import { brainLatencyHistogram, brainStats, brainUsage, getBriefing } from '@/ap
 import { getAdmission, getReport, getShadowStats, listTasks } from '@/api/backtest'
 import { getQuality, listSources } from '@/api/datahub'
 import { hotWords, timeline as fetchTimeline } from '@/api/intel'
-import { getAuction, getFactors, getLadder, getSentimentDetail, listLimits, listSectors } from '@/api/market'
+import { getAuction, getBreadth, getFactors, getKlineGaps, getLadder, getLimitPremium, getSentimentDetail, listLimits, listSectors } from '@/api/market'
 import { listMessages } from '@/api/notify'
-import { getOpsBrokerFiles, getOpsGpu, opsStatus } from '@/api/ops'
+import { getOpsBrokerFiles, getOpsDb, getOpsGpu, getOpsNats, opsStatus } from '@/api/ops'
 import { getRiskLimits, getRiskReport, getRiskState } from '@/api/risk'
 import { listCandidates, getScoreVsPnl, getStrategyPerformance } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
@@ -21,7 +21,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
 
-  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter, auction, ladder, gpu, brokerFiles] =
+  const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter, auction, ladder, gpu, brokerFiles, premium, breadth, klineGaps, db, nats] =
     await Promise.all([
       quiet(() => getAccount(book)),
       quiet(() => listPositions(book)),
@@ -56,6 +56,12 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       quiet(() => getLadder(5)),
       quiet(() => getOpsGpu()),
       quiet(() => getOpsBrokerFiles()),
+      /* P2：K 线缺口 / 昨涨停今溢价 / 20 日均线占比 / PG / NATS（§7） */
+      quiet(() => getLimitPremium(5, 50)),
+      quiet(() => getBreadth(10)),
+      quiet(() => getKlineGaps(5)),
+      quiet(() => getOpsDb()),
+      quiet(() => getOpsNats()),
     ])
 
   void accountStore.refresh()
@@ -389,6 +395,24 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
             ok: true,
             gpu: gpu ?? null,
             brokerFiles: brokerFiles ?? null,
+          }
+        : { ok: false },
+    /* P2：昨涨停今溢价 / 20 日均线占比 / K 线缺口 / PG / NATS；任一通了就算 ok */
+    marketP2:
+      premium || breadth || klineGaps
+        ? {
+            ok: true,
+            premium: premium ?? null,
+            breadth: breadth ?? null,
+            klineGaps: klineGaps ?? null,
+          }
+        : { ok: false },
+    opsP2:
+      db || nats
+        ? {
+            ok: true,
+            db: db ?? null,
+            nats: nats ?? null,
           }
         : { ok: false },
   }

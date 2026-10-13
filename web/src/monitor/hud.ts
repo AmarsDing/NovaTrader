@@ -145,8 +145,24 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
       return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率 · 盈亏比 ${perf.plRatio > 0 ? perf.plRatio.toFixed(1) : '不足'}`, tone: perf.winRate >= 0.5 ? 'up' : 'down' }
     }
-    case 'gap:misslimit':
-      return { face: '未接入', sub: '需要昨日涨停跨日快照表（P2）', tone: 'flat' }
+    case 'gap:misslimit': {
+      /* 昨日涨停名单 × 候选漏选名单：漏掉的涨停只数（§5.6 盘后漏选复盘的同一口径）。
+       * 两个接口任一没通就点名缺口——不拿「涨停家数」冒充「漏选家数」。 */
+      const limits = input.limits?.ok ? input.limits.rows : null
+      const candidates = input.candidates?.ok ? input.candidates.items : null
+      if (!limits) return { face: '未返回', sub: '需要 GET /v1/market/limits（涨停名单）', tone: 'flat' }
+      if (!candidates) return { face: '候选未返回', sub: `涨停 ${limits.length} 家`, tone: 'flat' }
+      const missed = new Set(candidates.filter((item) => item.missReason).map((item) => item.symbol))
+      const hit = limits.filter((row) => missed.has(row.symbol))
+      return {
+        face: `${hit.length} 只`,
+        sub:
+          hit.length > 0
+            ? `${hit.slice(0, 3).map((row) => row.symbol).join('、')} · 涨停 ${limits.length} 家`
+            : `涨停 ${limits.length} 家都在池内`,
+        tone: 'flat',
+      }
+    }
     case 'overnight:overseas': {
       const hit = input.sectors?.ok ? input.sectors.rows.find((row) => row.overseas != null) : null
       if (!hit) return { face: '未调用', sub: '', tone: 'flat' }
@@ -247,13 +263,27 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     }
     case 'off:backfill': {
       const items = input.quality?.ok ? input.quality.items : null
-      if (!items) return { face: '质量未返回', sub: '', tone: 'flat' }
-      if (items.length === 0) return { face: '0', sub: '没有质量问题记录', tone: 'flat' }
+      /* P2：K 线连续性（GET /api/market/kline-gaps）与补数格共用一行——缺口是补数要看的第一件事 */
+      const gaps = input.marketP2?.ok ? input.marketP2.klineGaps : null
+      const gapText = gaps ? (gaps.found ? `K 线缺口 ${gaps.missingTotal} 只` : 'K 线无缺口') : ''
+      if (!items) return { face: '质量未返回', sub: gapText, tone: 'flat' }
+      if (items.length === 0) return { face: '0', sub: gapText ? `没有质量问题记录 · ${gapText}` : '没有质量问题记录', tone: 'flat' }
       const hits = items.reduce((sum, item) => sum + (item.hits ?? 0), 0)
-      return { face: String(hits), sub: `质量问题 ${items.length} 条命中`, tone: 'flat' }
+      const bits = [`质量问题 ${items.length} 条命中`]
+      if (gapText) bits.push(gapText)
+      return { face: String(hits), sub: bits.join(' · '), tone: 'flat' }
     }
-    case 'off:db':
-      return { face: '未接入', sub: '需要 PG 库体积只读口（P2）', tone: 'flat' }
+    case 'off:db': {
+      /* P2：GET /api/ops/db —— 库体积（pg_database_size）+ 连接池用量（database/sql.Stats） */
+      const db = input.opsP2?.ok ? input.opsP2.db : null
+      if (!db) return { face: '未接入', sub: '需要 GET /api/ops/db（PG 库体积/连接池）', tone: 'flat' }
+      if (!db.sizePretty && !db.pool) return { face: '未返回', sub: db.note || 'PG 内省无应答', tone: 'flat' }
+      const bits: string[] = []
+      if (db.pool) bits.push(`池 ${db.pool.inUse}/${db.pool.maxOpen > 0 ? db.pool.maxOpen : db.pool.open}`)
+      if (db.connections) bits.push(`连接 ${db.connections.total}${db.maxConnections ? `/${db.maxConnections}` : ''}`)
+      if (!db.slowAvailable && db.slowNote) bits.push('慢查询未接入')
+      return { face: db.sizePretty || '体积未返回', sub: bits.join(' · ') || '连接池未返回', tone: 'flat' }
+    }
     default:
       return { face: '未返回', sub: '', tone: 'flat' }
   }

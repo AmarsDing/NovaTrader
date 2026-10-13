@@ -34,9 +34,11 @@ import (
 	"server/ent/lhbseat"
 	"server/ent/limitboard"
 	"server/ent/limitpool"
+	"server/ent/limitpremium"
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
 	"server/ent/moneyflow"
@@ -134,12 +136,16 @@ type Client struct {
 	LimitBoard *LimitBoardClient
 	// LimitPool is the client for interacting with the LimitPool builders.
 	LimitPool *LimitPoolClient
+	// LimitPremium is the client for interacting with the LimitPremium builders.
+	LimitPremium *LimitPremiumClient
 	// LlmCallLog is the client for interacting with the LlmCallLog builders.
 	LlmCallLog *LlmCallLogClient
 	// MacroSeries is the client for interacting with the MacroSeries builders.
 	MacroSeries *MacroSeriesClient
 	// MarginDetail is the client for interacting with the MarginDetail builders.
 	MarginDetail *MarginDetailClient
+	// MarketBreadth is the client for interacting with the MarketBreadth builders.
+	MarketBreadth *MarketBreadthClient
 	// MarketData is the client for interacting with the MarketData builders.
 	MarketData *MarketDataClient
 	// MarketSentiment is the client for interacting with the MarketSentiment builders.
@@ -252,9 +258,11 @@ func (c *Client) init() {
 	c.LhbSeat = NewLhbSeatClient(c.config)
 	c.LimitBoard = NewLimitBoardClient(c.config)
 	c.LimitPool = NewLimitPoolClient(c.config)
+	c.LimitPremium = NewLimitPremiumClient(c.config)
 	c.LlmCallLog = NewLlmCallLogClient(c.config)
 	c.MacroSeries = NewMacroSeriesClient(c.config)
 	c.MarginDetail = NewMarginDetailClient(c.config)
+	c.MarketBreadth = NewMarketBreadthClient(c.config)
 	c.MarketData = NewMarketDataClient(c.config)
 	c.MarketSentiment = NewMarketSentimentClient(c.config)
 	c.MoneyFlow = NewMoneyFlowClient(c.config)
@@ -409,9 +417,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		LhbSeat:           NewLhbSeatClient(cfg),
 		LimitBoard:        NewLimitBoardClient(cfg),
 		LimitPool:         NewLimitPoolClient(cfg),
+		LimitPremium:      NewLimitPremiumClient(cfg),
 		LlmCallLog:        NewLlmCallLogClient(cfg),
 		MacroSeries:       NewMacroSeriesClient(cfg),
 		MarginDetail:      NewMarginDetailClient(cfg),
+		MarketBreadth:     NewMarketBreadthClient(cfg),
 		MarketData:        NewMarketDataClient(cfg),
 		MarketSentiment:   NewMarketSentimentClient(cfg),
 		MoneyFlow:         NewMoneyFlowClient(cfg),
@@ -493,9 +503,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		LhbSeat:           NewLhbSeatClient(cfg),
 		LimitBoard:        NewLimitBoardClient(cfg),
 		LimitPool:         NewLimitPoolClient(cfg),
+		LimitPremium:      NewLimitPremiumClient(cfg),
 		LlmCallLog:        NewLlmCallLogClient(cfg),
 		MacroSeries:       NewMacroSeriesClient(cfg),
 		MarginDetail:      NewMarginDetailClient(cfg),
+		MarketBreadth:     NewMarketBreadthClient(cfg),
 		MarketData:        NewMarketDataClient(cfg),
 		MarketSentiment:   NewMarketSentimentClient(cfg),
 		MoneyFlow:         NewMoneyFlowClient(cfg),
@@ -568,16 +580,17 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BacktestTask, c.BacktestTrade, c.CollectCursor, c.DailyReview,
 		c.DataQualityIssue, c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster,
 		c.IntelFact, c.IntelLink, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument,
-		c.LhbSeat, c.LimitBoard, c.LimitPool, c.LlmCallLog, c.MacroSeries,
-		c.MarginDetail, c.MarketData, c.MarketSentiment, c.MoneyFlow,
-		c.MorningBriefing, c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox,
-		c.OverseasMapping, c.OverseasQuote, c.ParamProposal, c.Position, c.RawResponse,
-		c.RiskCheck, c.RiskEvent, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
-		c.ServiceInstance, c.ShadowSignal, c.SignalEvent, c.SourceHealth, c.StockAlias,
-		c.StockBasic, c.StockBlacklist, c.StockFactor, c.StockNameHistory,
-		c.StrategyCandidate, c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary,
-		c.StrategyVersion, c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill,
-		c.TradeOrder, c.TradeSignal,
+		c.LhbSeat, c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog,
+		c.MacroSeries, c.MarginDetail, c.MarketBreadth, c.MarketData,
+		c.MarketSentiment, c.MoneyFlow, c.MorningBriefing, c.NewsSentiment,
+		c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping, c.OverseasQuote,
+		c.ParamProposal, c.Position, c.RawResponse, c.RiskCheck, c.RiskEvent,
+		c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember, c.ServiceInstance,
+		c.ShadowSignal, c.SignalEvent, c.SourceHealth, c.StockAlias, c.StockBasic,
+		c.StockBlacklist, c.StockFactor, c.StockNameHistory, c.StrategyCandidate,
+		c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion,
+		c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeOrder,
+		c.TradeSignal,
 	} {
 		n.Use(hooks...)
 	}
@@ -591,16 +604,17 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BacktestTask, c.BacktestTrade, c.CollectCursor, c.DailyReview,
 		c.DataQualityIssue, c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster,
 		c.IntelFact, c.IntelLink, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument,
-		c.LhbSeat, c.LimitBoard, c.LimitPool, c.LlmCallLog, c.MacroSeries,
-		c.MarginDetail, c.MarketData, c.MarketSentiment, c.MoneyFlow,
-		c.MorningBriefing, c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox,
-		c.OverseasMapping, c.OverseasQuote, c.ParamProposal, c.Position, c.RawResponse,
-		c.RiskCheck, c.RiskEvent, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
-		c.ServiceInstance, c.ShadowSignal, c.SignalEvent, c.SourceHealth, c.StockAlias,
-		c.StockBasic, c.StockBlacklist, c.StockFactor, c.StockNameHistory,
-		c.StrategyCandidate, c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary,
-		c.StrategyVersion, c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill,
-		c.TradeOrder, c.TradeSignal,
+		c.LhbSeat, c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog,
+		c.MacroSeries, c.MarginDetail, c.MarketBreadth, c.MarketData,
+		c.MarketSentiment, c.MoneyFlow, c.MorningBriefing, c.NewsSentiment,
+		c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping, c.OverseasQuote,
+		c.ParamProposal, c.Position, c.RawResponse, c.RiskCheck, c.RiskEvent,
+		c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember, c.ServiceInstance,
+		c.ShadowSignal, c.SignalEvent, c.SourceHealth, c.StockAlias, c.StockBasic,
+		c.StockBlacklist, c.StockFactor, c.StockNameHistory, c.StrategyCandidate,
+		c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion,
+		c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeOrder,
+		c.TradeSignal,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -655,12 +669,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.LimitBoard.mutate(ctx, m)
 	case *LimitPoolMutation:
 		return c.LimitPool.mutate(ctx, m)
+	case *LimitPremiumMutation:
+		return c.LimitPremium.mutate(ctx, m)
 	case *LlmCallLogMutation:
 		return c.LlmCallLog.mutate(ctx, m)
 	case *MacroSeriesMutation:
 		return c.MacroSeries.mutate(ctx, m)
 	case *MarginDetailMutation:
 		return c.MarginDetail.mutate(ctx, m)
+	case *MarketBreadthMutation:
+		return c.MarketBreadth.mutate(ctx, m)
 	case *MarketDataMutation:
 		return c.MarketData.mutate(ctx, m)
 	case *MarketSentimentMutation:
@@ -3867,6 +3885,139 @@ func (c *LimitPoolClient) mutate(ctx context.Context, m *LimitPoolMutation) (Val
 	}
 }
 
+// LimitPremiumClient is a client for the LimitPremium schema.
+type LimitPremiumClient struct {
+	config
+}
+
+// NewLimitPremiumClient returns a client for the LimitPremium from the given config.
+func NewLimitPremiumClient(c config) *LimitPremiumClient {
+	return &LimitPremiumClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `limitpremium.Hooks(f(g(h())))`.
+func (c *LimitPremiumClient) Use(hooks ...Hook) {
+	c.hooks.LimitPremium = append(c.hooks.LimitPremium, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `limitpremium.Intercept(f(g(h())))`.
+func (c *LimitPremiumClient) Intercept(interceptors ...Interceptor) {
+	c.inters.LimitPremium = append(c.inters.LimitPremium, interceptors...)
+}
+
+// Create returns a builder for creating a LimitPremium entity.
+func (c *LimitPremiumClient) Create() *LimitPremiumCreate {
+	mutation := newLimitPremiumMutation(c.config, OpCreate)
+	return &LimitPremiumCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of LimitPremium entities.
+func (c *LimitPremiumClient) CreateBulk(builders ...*LimitPremiumCreate) *LimitPremiumCreateBulk {
+	return &LimitPremiumCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *LimitPremiumClient) MapCreateBulk(slice any, setFunc func(*LimitPremiumCreate, int)) *LimitPremiumCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &LimitPremiumCreateBulk{err: fmt.Errorf("calling to LimitPremiumClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*LimitPremiumCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &LimitPremiumCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for LimitPremium.
+func (c *LimitPremiumClient) Update() *LimitPremiumUpdate {
+	mutation := newLimitPremiumMutation(c.config, OpUpdate)
+	return &LimitPremiumUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *LimitPremiumClient) UpdateOne(_m *LimitPremium) *LimitPremiumUpdateOne {
+	mutation := newLimitPremiumMutation(c.config, OpUpdateOne, withLimitPremium(_m))
+	return &LimitPremiumUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *LimitPremiumClient) UpdateOneID(id int) *LimitPremiumUpdateOne {
+	mutation := newLimitPremiumMutation(c.config, OpUpdateOne, withLimitPremiumID(id))
+	return &LimitPremiumUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for LimitPremium.
+func (c *LimitPremiumClient) Delete() *LimitPremiumDelete {
+	mutation := newLimitPremiumMutation(c.config, OpDelete)
+	return &LimitPremiumDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *LimitPremiumClient) DeleteOne(_m *LimitPremium) *LimitPremiumDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *LimitPremiumClient) DeleteOneID(id int) *LimitPremiumDeleteOne {
+	builder := c.Delete().Where(limitpremium.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &LimitPremiumDeleteOne{builder}
+}
+
+// Query returns a query builder for LimitPremium.
+func (c *LimitPremiumClient) Query() *LimitPremiumQuery {
+	return &LimitPremiumQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeLimitPremium},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a LimitPremium entity by its id.
+func (c *LimitPremiumClient) Get(ctx context.Context, id int) (*LimitPremium, error) {
+	return c.Query().Where(limitpremium.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *LimitPremiumClient) GetX(ctx context.Context, id int) *LimitPremium {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *LimitPremiumClient) Hooks() []Hook {
+	return c.hooks.LimitPremium
+}
+
+// Interceptors returns the client interceptors.
+func (c *LimitPremiumClient) Interceptors() []Interceptor {
+	return c.inters.LimitPremium
+}
+
+func (c *LimitPremiumClient) mutate(ctx context.Context, m *LimitPremiumMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&LimitPremiumCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&LimitPremiumUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&LimitPremiumUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&LimitPremiumDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown LimitPremium mutation op: %q", m.Op())
+	}
+}
+
 // LlmCallLogClient is a client for the LlmCallLog schema.
 type LlmCallLogClient struct {
 	config
@@ -4263,6 +4414,139 @@ func (c *MarginDetailClient) mutate(ctx context.Context, m *MarginDetailMutation
 		return (&MarginDetailDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown MarginDetail mutation op: %q", m.Op())
+	}
+}
+
+// MarketBreadthClient is a client for the MarketBreadth schema.
+type MarketBreadthClient struct {
+	config
+}
+
+// NewMarketBreadthClient returns a client for the MarketBreadth from the given config.
+func NewMarketBreadthClient(c config) *MarketBreadthClient {
+	return &MarketBreadthClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `marketbreadth.Hooks(f(g(h())))`.
+func (c *MarketBreadthClient) Use(hooks ...Hook) {
+	c.hooks.MarketBreadth = append(c.hooks.MarketBreadth, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `marketbreadth.Intercept(f(g(h())))`.
+func (c *MarketBreadthClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MarketBreadth = append(c.inters.MarketBreadth, interceptors...)
+}
+
+// Create returns a builder for creating a MarketBreadth entity.
+func (c *MarketBreadthClient) Create() *MarketBreadthCreate {
+	mutation := newMarketBreadthMutation(c.config, OpCreate)
+	return &MarketBreadthCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MarketBreadth entities.
+func (c *MarketBreadthClient) CreateBulk(builders ...*MarketBreadthCreate) *MarketBreadthCreateBulk {
+	return &MarketBreadthCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MarketBreadthClient) MapCreateBulk(slice any, setFunc func(*MarketBreadthCreate, int)) *MarketBreadthCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MarketBreadthCreateBulk{err: fmt.Errorf("calling to MarketBreadthClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MarketBreadthCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MarketBreadthCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MarketBreadth.
+func (c *MarketBreadthClient) Update() *MarketBreadthUpdate {
+	mutation := newMarketBreadthMutation(c.config, OpUpdate)
+	return &MarketBreadthUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MarketBreadthClient) UpdateOne(_m *MarketBreadth) *MarketBreadthUpdateOne {
+	mutation := newMarketBreadthMutation(c.config, OpUpdateOne, withMarketBreadth(_m))
+	return &MarketBreadthUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MarketBreadthClient) UpdateOneID(id int) *MarketBreadthUpdateOne {
+	mutation := newMarketBreadthMutation(c.config, OpUpdateOne, withMarketBreadthID(id))
+	return &MarketBreadthUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MarketBreadth.
+func (c *MarketBreadthClient) Delete() *MarketBreadthDelete {
+	mutation := newMarketBreadthMutation(c.config, OpDelete)
+	return &MarketBreadthDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MarketBreadthClient) DeleteOne(_m *MarketBreadth) *MarketBreadthDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MarketBreadthClient) DeleteOneID(id int) *MarketBreadthDeleteOne {
+	builder := c.Delete().Where(marketbreadth.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MarketBreadthDeleteOne{builder}
+}
+
+// Query returns a query builder for MarketBreadth.
+func (c *MarketBreadthClient) Query() *MarketBreadthQuery {
+	return &MarketBreadthQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMarketBreadth},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MarketBreadth entity by its id.
+func (c *MarketBreadthClient) Get(ctx context.Context, id int) (*MarketBreadth, error) {
+	return c.Query().Where(marketbreadth.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MarketBreadthClient) GetX(ctx context.Context, id int) *MarketBreadth {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MarketBreadthClient) Hooks() []Hook {
+	return c.hooks.MarketBreadth
+}
+
+// Interceptors returns the client interceptors.
+func (c *MarketBreadthClient) Interceptors() []Interceptor {
+	return c.inters.MarketBreadth
+}
+
+func (c *MarketBreadthClient) mutate(ctx context.Context, m *MarketBreadthMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MarketBreadthCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MarketBreadthUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MarketBreadthUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MarketBreadthDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MarketBreadth mutation op: %q", m.Op())
 	}
 }
 
@@ -9460,10 +9744,10 @@ type (
 		BacktestTask, BacktestTrade, CollectCursor, DailyReview, DataQualityIssue,
 		FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact, IntelLink,
 		Introspection, KbCase, KbChunk, KbDocument, LhbSeat, LimitBoard, LimitPool,
-		LlmCallLog, MacroSeries, MarginDetail, MarketData, MarketSentiment, MoneyFlow,
-		MorningBriefing, NewsSentiment, NotifyMessage, OrderTrail, Outbox,
-		OverseasMapping, OverseasQuote, ParamProposal, Position, RawResponse,
-		RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat, SectorMember,
+		LimitPremium, LlmCallLog, MacroSeries, MarginDetail, MarketBreadth, MarketData,
+		MarketSentiment, MoneyFlow, MorningBriefing, NewsSentiment, NotifyMessage,
+		OrderTrail, Outbox, OverseasMapping, OverseasQuote, ParamProposal, Position,
+		RawResponse, RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat, SectorMember,
 		ServiceInstance, ShadowSignal, SignalEvent, SourceHealth, StockAlias,
 		StockBasic, StockBlacklist, StockFactor, StockNameHistory, StrategyCandidate,
 		StrategyConfig, StrategyFeedback, StrategyLibrary, StrategyVersion, TaskRun,
@@ -9474,10 +9758,10 @@ type (
 		BacktestTask, BacktestTrade, CollectCursor, DailyReview, DataQualityIssue,
 		FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact, IntelLink,
 		Introspection, KbCase, KbChunk, KbDocument, LhbSeat, LimitBoard, LimitPool,
-		LlmCallLog, MacroSeries, MarginDetail, MarketData, MarketSentiment, MoneyFlow,
-		MorningBriefing, NewsSentiment, NotifyMessage, OrderTrail, Outbox,
-		OverseasMapping, OverseasQuote, ParamProposal, Position, RawResponse,
-		RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat, SectorMember,
+		LimitPremium, LlmCallLog, MacroSeries, MarginDetail, MarketBreadth, MarketData,
+		MarketSentiment, MoneyFlow, MorningBriefing, NewsSentiment, NotifyMessage,
+		OrderTrail, Outbox, OverseasMapping, OverseasQuote, ParamProposal, Position,
+		RawResponse, RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat, SectorMember,
 		ServiceInstance, ShadowSignal, SignalEvent, SourceHealth, StockAlias,
 		StockBasic, StockBlacklist, StockFactor, StockNameHistory, StrategyCandidate,
 		StrategyConfig, StrategyFeedback, StrategyLibrary, StrategyVersion, TaskRun,

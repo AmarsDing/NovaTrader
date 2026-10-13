@@ -21,10 +21,13 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationMarketGetAuction = "/api.market.v1.Market/GetAuction"
 const OperationMarketGetBars = "/api.market.v1.Market/GetBars"
+const OperationMarketGetBreadth = "/api.market.v1.Market/GetBreadth"
 const OperationMarketGetFactorsCross = "/api.market.v1.Market/GetFactorsCross"
 const OperationMarketGetIndicators = "/api.market.v1.Market/GetIndicators"
+const OperationMarketGetKlineGaps = "/api.market.v1.Market/GetKlineGaps"
 const OperationMarketGetLadder = "/api.market.v1.Market/GetLadder"
 const OperationMarketGetLimitBoards = "/api.market.v1.Market/GetLimitBoards"
+const OperationMarketGetLimitPremium = "/api.market.v1.Market/GetLimitPremium"
 const OperationMarketGetSectorHeat = "/api.market.v1.Market/GetSectorHeat"
 const OperationMarketGetSentiment = "/api.market.v1.Market/GetSentiment"
 const OperationMarketSetWatchlist = "/api.market.v1.Market/SetWatchlist"
@@ -34,14 +37,20 @@ type MarketHTTPServer interface {
 	GetAuction(context.Context, *GetAuctionRequest) (*GetAuctionReply, error)
 	// GetBars K 线。freq 为 1m 或 1d。
 	GetBars(context.Context, *GetBarsRequest) (*GetBarsReply, error)
+	// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
+	GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error)
 	// GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 	GetFactorsCross(context.Context, *GetFactorsCrossRequest) (*GetFactorsCrossReply, error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(context.Context, *GetIndicatorsRequest) (*GetIndicatorsReply, error)
+	// GetKlineGaps 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
+	GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error)
 	// GetLadder 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
 	GetLadder(context.Context, *GetLadderRequest) (*GetLadderReply, error)
 	// GetLimitBoards 涨跌停列表。
 	GetLimitBoards(context.Context, *GetLimitBoardsRequest) (*GetLimitBoardsReply, error)
+	// GetLimitPremium 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
+	GetLimitPremium(context.Context, *GetLimitPremiumRequest) (*GetLimitPremiumReply, error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(context.Context, *GetSectorHeatRequest) (*GetSectorHeatReply, error)
 	// GetSentiment 情绪截面，as_of 规则同上。
@@ -61,6 +70,9 @@ func RegisterMarketHTTPServer(s *http.Server, srv MarketHTTPServer) {
 	r.POST("/v1/market/watchlist", _Market_SetWatchlist0_HTTP_Handler(srv))
 	r.GET("/v1/market/auction", _Market_GetAuction0_HTTP_Handler(srv))
 	r.GET("/v1/market/ladder", _Market_GetLadder0_HTTP_Handler(srv))
+	r.GET("/v1/market/limit-premium", _Market_GetLimitPremium0_HTTP_Handler(srv))
+	r.GET("/v1/market/breadth", _Market_GetBreadth0_HTTP_Handler(srv))
+	r.GET("/v1/market/kline-gaps", _Market_GetKlineGaps0_HTTP_Handler(srv))
 }
 
 func _Market_GetBars0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
@@ -237,19 +249,82 @@ func _Market_GetLadder0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context
 	}
 }
 
+func _Market_GetLimitPremium0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetLimitPremiumRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetLimitPremium)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetLimitPremium(ctx, req.(*GetLimitPremiumRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetLimitPremiumReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetBreadth0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetBreadthRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetBreadth)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetBreadth(ctx, req.(*GetBreadthRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetBreadthReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetKlineGaps0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetKlineGapsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetKlineGaps)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetKlineGaps(ctx, req.(*GetKlineGapsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetKlineGapsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type MarketHTTPClient interface {
 	// GetAuction 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
 	GetAuction(ctx context.Context, req *GetAuctionRequest, opts ...http.CallOption) (rsp *GetAuctionReply, err error)
 	// GetBars K 线。freq 为 1m 或 1d。
 	GetBars(ctx context.Context, req *GetBarsRequest, opts ...http.CallOption) (rsp *GetBarsReply, err error)
+	// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
+	GetBreadth(ctx context.Context, req *GetBreadthRequest, opts ...http.CallOption) (rsp *GetBreadthReply, err error)
 	// GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 	GetFactorsCross(ctx context.Context, req *GetFactorsCrossRequest, opts ...http.CallOption) (rsp *GetFactorsCrossReply, err error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(ctx context.Context, req *GetIndicatorsRequest, opts ...http.CallOption) (rsp *GetIndicatorsReply, err error)
+	// GetKlineGaps 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
+	GetKlineGaps(ctx context.Context, req *GetKlineGapsRequest, opts ...http.CallOption) (rsp *GetKlineGapsReply, err error)
 	// GetLadder 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
 	GetLadder(ctx context.Context, req *GetLadderRequest, opts ...http.CallOption) (rsp *GetLadderReply, err error)
 	// GetLimitBoards 涨跌停列表。
 	GetLimitBoards(ctx context.Context, req *GetLimitBoardsRequest, opts ...http.CallOption) (rsp *GetLimitBoardsReply, err error)
+	// GetLimitPremium 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
+	GetLimitPremium(ctx context.Context, req *GetLimitPremiumRequest, opts ...http.CallOption) (rsp *GetLimitPremiumReply, err error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(ctx context.Context, req *GetSectorHeatRequest, opts ...http.CallOption) (rsp *GetSectorHeatReply, err error)
 	// GetSentiment 情绪截面，as_of 规则同上。
@@ -294,6 +369,20 @@ func (c *MarketHTTPClientImpl) GetBars(ctx context.Context, in *GetBarsRequest, 
 	return &out, nil
 }
 
+// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
+func (c *MarketHTTPClientImpl) GetBreadth(ctx context.Context, in *GetBreadthRequest, opts ...http.CallOption) (*GetBreadthReply, error) {
+	var out GetBreadthReply
+	pattern := "/v1/market/breadth"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetBreadth))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 func (c *MarketHTTPClientImpl) GetFactorsCross(ctx context.Context, in *GetFactorsCrossRequest, opts ...http.CallOption) (*GetFactorsCrossReply, error) {
 	var out GetFactorsCrossReply
@@ -322,6 +411,20 @@ func (c *MarketHTTPClientImpl) GetIndicators(ctx context.Context, in *GetIndicat
 	return &out, nil
 }
 
+// GetKlineGaps 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
+func (c *MarketHTTPClientImpl) GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest, opts ...http.CallOption) (*GetKlineGapsReply, error) {
+	var out GetKlineGapsReply
+	pattern := "/v1/market/kline-gaps"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetKlineGaps))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetLadder 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
 func (c *MarketHTTPClientImpl) GetLadder(ctx context.Context, in *GetLadderRequest, opts ...http.CallOption) (*GetLadderReply, error) {
 	var out GetLadderReply
@@ -342,6 +445,20 @@ func (c *MarketHTTPClientImpl) GetLimitBoards(ctx context.Context, in *GetLimitB
 	pattern := "/v1/market/limits"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetLimitBoards))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetLimitPremium 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
+func (c *MarketHTTPClientImpl) GetLimitPremium(ctx context.Context, in *GetLimitPremiumRequest, opts ...http.CallOption) (*GetLimitPremiumReply, error) {
+	var out GetLimitPremiumReply
+	pattern := "/v1/market/limit-premium"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetLimitPremium))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

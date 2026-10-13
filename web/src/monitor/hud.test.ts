@@ -229,6 +229,81 @@ describe('resolveHud · 时段特化格', () => {
   })
 })
 
+describe('resolveHud · P2 口径', () => {
+  it('昨日漏选涨停：limits × 候选交集，无交集明说「都在池内」', () => {
+    const cells = resolveHud(fixture(), hudCells('preopen'), Date.UTC(2026, 9, 12, 6, 47))
+    expect(cells[1].key).toBe('gap:misslimit')
+    expect(cells[1].face).toBe('0 只')
+    expect(cells[1].sub).toBe('涨停 2 家都在池内')
+
+    const input = fixture()
+    input.candidates = {
+      ok: true,
+      items: [
+        { symbol: 'SZ000001', name: '漏选涨停', strategy: 's', stage: 'ai_scored', missReason: '评分 84 未过线', ruleScore: null, aiScore: null, finalScore: 84 },
+        { symbol: 'SZ300001', name: '漏选甲', strategy: 's', stage: 'ai_scored', missReason: '评分 80 未过线', ruleScore: null, aiScore: null, finalScore: 80 },
+      ],
+    }
+    const hit = resolveHud(input, hudCells('preopen'), Date.UTC(2026, 9, 12, 6, 47))[1]
+    expect(hit.face).toBe('1 只')
+    expect(hit.sub).toBe('SZ000001 · 涨停 2 家')
+  })
+
+  it('漏选涨停格不拿涨停家数冒充：名单接口没通就点名缺口', () => {
+    const input = fixture()
+    input.limits = null
+    const cells = resolveHud(input, hudCells('preopen'), Date.UTC(2026, 9, 12, 6, 47))
+    expect(cells[1].face).toBe('未返回')
+    expect(cells[1].sub).toContain('/v1/market/limits')
+  })
+
+  it('库体积格接 /api/ops/db：主词 sizePretty，副行池用量与连接数', () => {
+    const input = fixture()
+    input.opsP2 = {
+      ok: true,
+      db: {
+        pool: { maxOpen: 25, open: 12, inUse: 5, idle: 7, waitCount: 3, waitMs: 42, usedPct: 20 },
+        sizeBytes: 1073741824,
+        sizePretty: '1024 MiB',
+        maxConnections: 100,
+        connections: { total: 14, active: 2, idle: 11, idleInTx: 0 },
+        slowAvailable: false,
+        slowNote: 'pg_stat_statements 扩展未安装',
+        slowTop: [],
+        note: '',
+      },
+      nats: null,
+    }
+    const cells = resolveHud(input, hudCells('offday'), Date.UTC(2026, 9, 12, 6, 47))
+    expect(cells[2].face).toBe('1024 MiB')
+    expect(cells[2].sub).toContain('池 5/25')
+    expect(cells[2].sub).toContain('连接 14/100')
+    expect(cells[2].sub).toContain('慢查询未接入')
+  })
+
+  it('补数格并入 K 线缺口口径：有缺口报只数，无缺口说无缺口', () => {
+    const input = fixture()
+    input.marketP2 = {
+      ok: true,
+      premium: null,
+      breadth: null,
+      klineGaps: { tradeDate: '2026-10-13', found: true, universe: 5000, days: [], missingTotal: 7, asOf: '' },
+    }
+    const cells = resolveHud(input, hudCells('offday'), Date.UTC(2026, 9, 12, 6, 47))
+    expect(cells[1].face).toBe('15')
+    expect(cells[1].sub).toContain('K 线缺口 7 只')
+
+    input.marketP2 = {
+      ok: true,
+      premium: null,
+      breadth: null,
+      klineGaps: { tradeDate: '2026-10-13', found: false, universe: 5000, days: [], missingTotal: 0, asOf: '' },
+    }
+    const clean = resolveHud(input, hudCells('offday'), Date.UTC(2026, 9, 12, 6, 47))
+    expect(clean[1].sub).toContain('K 线无缺口')
+  })
+})
+
 describe('resolveHud · 空输入降级', () => {
   it('emptyMonitorInput 全部返回「未返回/未接入」而非 0 或横线', () => {
     const cells = resolveHud(emptyMonitorInput(), hudCells('morning'), 0)

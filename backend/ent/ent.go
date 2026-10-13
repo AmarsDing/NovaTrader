@@ -30,9 +30,11 @@ import (
 	"server/ent/lhbseat"
 	"server/ent/limitboard"
 	"server/ent/limitpool"
+	"server/ent/limitpremium"
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
 	"server/ent/moneyflow"
@@ -160,9 +162,11 @@ func checkColumn(t, c string) error {
 			lhbseat.Table:           lhbseat.ValidColumn,
 			limitboard.Table:        limitboard.ValidColumn,
 			limitpool.Table:         limitpool.ValidColumn,
+			limitpremium.Table:      limitpremium.ValidColumn,
 			llmcalllog.Table:        llmcalllog.ValidColumn,
 			macroseries.Table:       macroseries.ValidColumn,
 			margindetail.Table:      margindetail.ValidColumn,
+			marketbreadth.Table:     marketbreadth.ValidColumn,
 			marketdata.Table:        marketdata.ValidColumn,
 			marketsentiment.Table:   marketsentiment.ValidColumn,
 			moneyflow.Table:         moneyflow.ValidColumn,

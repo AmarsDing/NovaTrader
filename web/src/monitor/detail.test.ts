@@ -396,6 +396,242 @@ describe('§5.6 扫描牌', () => {
   })
 })
 
+describe('P2 · 昨涨停今溢价 / 市场广度 / PG / NATS', () => {
+  /** 有 P2 数据的输入：溢价已定稿（hasClose）、广度两日、缺口 7 只、PG 无 pg_stat_statements、NATS 在线 */
+  function p2Input(): MonitorInput {
+    const input = fixture()
+    input.marketP2 = {
+      ok: true,
+      premium: {
+        tradeDate: '2026-10-13',
+        found: true,
+        live: false,
+        summary: {
+          tradeDate: '2026-10-13',
+          baseDate: '2026-10-12',
+          sample: 40,
+          limitAgain: 6,
+          openAvg: 0.021,
+          closeAvg: -0.008,
+          closeWin: 0.42,
+          highAvg: 0.05,
+          hasClose: true,
+        },
+        days: [
+          { tradeDate: '2026-10-12', baseDate: '2026-10-09', sample: 35, limitAgain: 4, openAvg: 0.01, closeAvg: 0.02, closeWin: 0.55, highAvg: 0.04, hasClose: true },
+        ],
+        rows: [
+          {
+            symbol: '300750',
+            name: '宁德',
+            tradeDate: '2026-10-13',
+            baseDate: '2026-10-12',
+            consecutive: 2,
+            baseClose: 22,
+            open: 23,
+            close: 23.5,
+            openPremium: 0.045,
+            closePremium: 0.068,
+            highPremium: 0.09,
+            limitAgain: true,
+            hasClose: true,
+            source: 'market_agg',
+          },
+          {
+            symbol: '600000',
+            name: '',
+            tradeDate: '2026-10-13',
+            baseDate: '2026-10-12',
+            consecutive: 1,
+            baseClose: 10,
+            open: 9.8,
+            close: 0,
+            openPremium: -0.02,
+            closePremium: 0,
+            highPremium: 0,
+            limitAgain: false,
+            hasClose: false,
+            source: 'market_agg',
+          },
+        ],
+        asOf: '2026-10-13T16:45:00+08:00',
+      },
+      breadth: {
+        tradeDate: '2026-10-13',
+        found: true,
+        latest: { tradeDate: '2026-10-13', window: 20, above: 3100, below: 1800, flat: 100, total: 5000, ratio: 0.62, live: false, asOf: '' },
+        days: [
+          { tradeDate: '2026-10-13', window: 20, above: 3100, below: 1800, flat: 100, total: 5000, ratio: 0.62, live: false, asOf: '' },
+          { tradeDate: '2026-10-12', window: 20, above: 2500, below: 2400, flat: 100, total: 5000, ratio: 0.5, live: false, asOf: '' },
+        ],
+      },
+      klineGaps: {
+        tradeDate: '2026-10-13',
+        found: true,
+        universe: 5000,
+        days: [{ tradeDate: '2026-10-13', universe: 5000, missing: 7, present: 4993, sample: ['600000'], asOf: '' }],
+        missingTotal: 7,
+        asOf: '',
+      },
+    }
+    input.opsP2 = {
+      ok: true,
+      db: {
+        pool: { maxOpen: 25, open: 12, inUse: 5, idle: 7, waitCount: 3, waitMs: 42, usedPct: 20 },
+        sizeBytes: 1073741824,
+        sizePretty: '1024 MiB',
+        maxConnections: 100,
+        connections: { total: 14, active: 2, idle: 11, idleInTx: 1 },
+        slowAvailable: false,
+        slowNote: 'pg_stat_statements 扩展未安装',
+        slowTop: [],
+        note: '',
+      },
+      nats: {
+        connected: true,
+        note: '',
+        inMsgs: 1200,
+        outMsgs: 900,
+        reconnects: 1,
+        stream: { name: 'NOVATRADER', messages: 4200, bytes: 20480 },
+        consumers: [
+          { durable: 'admin_signal', subject: 'signal.*', missing: false, pending: 0, ackPending: 0, deliveredSeq: 4200, lag: 0 },
+          { durable: 'admin_risk_alert', subject: 'risk.alert', missing: true, pending: null, ackPending: null, deliveredSeq: null, lag: null },
+        ],
+        lagTotal: null,
+        pendingTotal: null,
+      },
+    }
+    return input
+  }
+
+  it('PG / NATS 服务牌走 ops 面板；其它服务牌仍退回运行记录', () => {
+    const input = p2Input()
+    expect(detailKindFor(input, 'service:postgres')).toBe('ops')
+    expect(detailKindFor(input, 'service:nats')).toBe('ops')
+    expect(detailKindFor(input, 'service:redis')).toBeNull()
+    expect(detailKindFor(input, 'source:quality')).toBeNull()
+  })
+
+  it('PG 面板：库体积、连接池环形、事务中空闲转橙；慢查询缺扩展照实写', () => {
+    const panel = buildDetail(p2Input(), 'service:postgres', NOW)
+    expect(panel?.kind).toBe('ops')
+    const db = panel?.sections.find((s) => s.key === 'db')
+    expect(db?.rows?.find((r) => r.key === 'size')?.value).toBe('1024 MiB')
+    const pool = db?.rows?.find((r) => r.key === 'pool')
+    expect(pool?.value).toBe('5 / 25')
+    expect(pool?.ring).toEqual({ pct: 20, tone: 'ok' })
+    expect(pool?.note).toContain('累计等待 3 次')
+    expect(db?.rows?.find((r) => r.key === 'conn')?.tone).toBe('warn')
+    const slow = panel?.sections.find((s) => s.key === 'slow')
+    expect(slow?.rows?.[0].value).toBe('未接入')
+    expect(slow?.rows?.[0].note).toContain('pg_stat_statements')
+  })
+
+  it('慢查询可用时出 Top5 表，平均 ≥500ms 整行标橙', () => {
+    const input = p2Input()
+    input.opsP2 = {
+      ok: true,
+      db: {
+        pool: null,
+        sizeBytes: null,
+        sizePretty: '',
+        maxConnections: null,
+        connections: null,
+        slowAvailable: true,
+        slowNote: '',
+        slowTop: [
+          { query: 'SELECT * FROM market_data WHERE bar_time > $1', calls: 120, meanMs: 830.4, totalMs: 99648 },
+          { query: 'UPDATE positions SET quantity = $1', calls: 40, meanMs: 12.1, totalMs: 484 },
+        ],
+        note: 'admin 的 PG 连接不在本进程',
+      },
+      nats: null,
+    }
+    const panel = buildDetail(input, 'service:postgres', NOW)
+    const slow = panel?.sections.find((s) => s.key === 'slow')
+    expect(slow?.table?.rows).toHaveLength(2)
+    expect(slow?.table?.rows[0][2]).toBe('830.4ms')
+    expect(slow?.table?.flags).toEqual(['warn', ''])
+    /* 连接池拿不到就写缺口原因，不写 0 */
+    expect(panel?.sections[0].rows?.find((r) => r.key === 'pool')?.value).toBe('未返回')
+    expect(panel?.sections[0].rows?.find((r) => r.key === 'size')?.value).toBe('未返回')
+  })
+
+  it('NATS 面板：在线出流与消费者表，缺 durable 整行标红；断连只写「未连接」', () => {
+    const panel = buildDetail(p2Input(), 'service:nats', NOW)
+    const nats = panel?.sections.find((s) => s.key === 'nats')
+    expect(nats?.rows?.find((r) => r.key === 'io')?.value).toBe('1200 入 / 900 出')
+    expect(nats?.rows?.find((r) => r.key === 'stream')?.note).toContain('20.0 KiB')
+    expect(nats?.table?.rows[1][2]).toBe('消费者不存在')
+    expect(nats?.table?.flags).toEqual(['', 'danger'])
+    expect(nats?.rows?.find((r) => r.key === 'lag')?.value).toBe('—')
+
+    const down = p2Input()
+    down.opsP2 = { ok: true, db: null, nats: { connected: false, note: '', inMsgs: null, outMsgs: null, reconnects: null, stream: null, consumers: [], lagTotal: null, pendingTotal: null } }
+    const downPanel = buildDetail(down, 'service:nats', NOW)
+    const row = downPanel?.sections[0].rows?.[0]
+    expect(row?.value).toBe('未连接')
+    expect(row?.tone).toBe('danger')
+  })
+
+  it('P2 接口没通时，PG/NATS 面板点名缺的接口而不是 0', () => {
+    const panel = buildDetail(fixture(), 'service:postgres', NOW)
+    expect(panel?.sections[0].rows?.[0].value).toContain('/api/ops/db')
+    const nats = buildDetail(fixture(), 'service:nats', NOW)
+    expect(nats?.sections[0].rows?.[0].value).toContain('/api/ops/nats')
+  })
+
+  it('扫描牌含溢价段：收盘口径、胜率、明细表未定稿行写「未定稿」', () => {
+    const panel = buildDetail(p2Input(), 'post:scan', NOW)
+    const premium = panel?.sections.find((s) => s.key === 'premium')
+    expect(premium?.rows?.find((r) => r.key === 'open')?.value).toBe('2.10%')
+    const close = premium?.rows?.find((r) => r.key === 'close')
+    expect(close?.value).toBe('-0.80% / 42%')
+    expect(close?.tone).toBe('down')
+    expect(premium?.rows?.find((r) => r.key === 'again')?.value).toBe('6 / 40 只')
+    expect(premium?.table?.rows[1][5]).toBe('未定稿')
+    expect(premium?.foot).toContain('limit_premium 快照表')
+    const trend = panel?.sections.find((s) => s.key === 'premium-trend')
+    expect(trend?.table?.rows[0][0]).toBe('2026-10-12')
+  })
+
+  it('溢价实时兜底（live）时注脚改口径，不当快照表数据', () => {
+    const input = p2Input()
+    input.marketP2 = { ok: true, premium: { ...input.marketP2!.premium!, live: true } }
+    const premium = buildDetail(input, 'post:scan', NOW)?.sections.find((s) => s.key === 'premium')
+    expect(premium?.foot).toContain('实时兜底')
+  })
+
+  it('基准日没有涨停名单：found=false 写清是哪一天，不写 0%', () => {
+    const input = p2Input()
+    input.marketP2 = {
+      ok: true,
+      premium: { tradeDate: '2026-10-13', found: false, live: false, summary: null, days: [], rows: [], asOf: '' },
+    }
+    const premium = buildDetail(input, 'post:scan', NOW)?.sections.find((s) => s.key === 'premium')
+    expect(premium?.rows?.[0].value).toContain('基准日没有涨停名单')
+    expect(premium?.rows?.[0].value).toContain('2026-10-13')
+  })
+
+  it('扫描牌含广度段：占比红涨绿跌、多日出序列表', () => {
+    const panel = buildDetail(p2Input(), 'post:scan', NOW)
+    const breadth = panel?.sections.find((s) => s.key === 'breadth')
+    const ratio = breadth?.rows?.find((r) => r.key === 'ratio')
+    expect(ratio?.label).toBe('MA20 上方占比')
+    expect(ratio?.value).toBe('62.0%')
+    expect(ratio?.tone).toBe('up')
+    expect(ratio?.note).toBe('3100 / 5000 只（下方 1800 · 持平 100）')
+    expect(breadth?.table?.rows).toHaveLength(2)
+  })
+
+  it('P2 接口没通时溢价/广度段点名接口', () => {
+    const panel = buildDetail(fixture(), 'post:scan', NOW)
+    expect(panel?.sections.find((s) => s.key === 'premium')?.rows?.[0].value).toContain('/v1/market/limit-premium')
+    expect(panel?.sections.find((s) => s.key === 'breadth')?.rows?.[0].value).toContain('/v1/market/breadth')
+  })
+})
+
 describe('纯函数小件', () => {
   it('intelIdsOf 只认 N:数字，去重', () => {
     expect(intelIdsOf(['F:ma20=+2.3%', 'N:123', 'N:123', 'N:45', 'N:abc'])).toEqual(['123', '45'])

@@ -48,17 +48,20 @@ func NewHTTPServer(c *conf.Admin, settings gateway.Settings, audit *data.AuditSt
 		helper.Warn("没有配置 admin.users，桌面端无法登录")
 	}
 	gate := &gateway.Gate{
-		Settings: settings,
-		Audit:    audit,
-		Params:   audit,
-		Backup:   audit,
-		Log:      helper,
-		PingDB:   audit.Ping,
+		Settings:  settings,
+		Audit:     audit,
+		Params:    audit,
+		Backup:    audit,
+		Log:       helper,
+		PingDB:    audit.Ping,
+		PoolStats: audit.PoolStats,
+		DBStats:   audit.DBStats,
 		// 备份要跑 pg_dump，不能挂在请求超时（config 里默认 1s）上。
 		ServerContext: context.Background,
 	}
 	if hub != nil {
 		gate.NATSUp = hub.Up
+		gate.NATSStats = hub.Stats
 	}
 	srv.HandlePrefix("/api/", gate)
 	return srv

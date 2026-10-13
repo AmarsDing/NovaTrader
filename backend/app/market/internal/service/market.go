@@ -377,3 +377,104 @@ func (s *MarketService) GetLadder(ctx context.Context, req *v1.GetLadderRequest)
 	}
 	return reply, nil
 }
+
+// resolveP2Day 处理 P2 接口的默认交易日：空 = 最近已收盘交易日。
+func resolveP2Day(raw string) (time.Time, error) {
+	if strings.TrimSpace(raw) != "" {
+		return parseDay(raw)
+	}
+	return tradecal.Default.LastClosedDay(time.Now())
+}
+
+// GetLimitPremium 返回昨日涨停今日溢价（监控驾驶舱 P2，只读）。
+func (s *MarketService) GetLimitPremium(ctx context.Context, req *v1.GetLimitPremiumRequest) (*v1.GetLimitPremiumReply, error) {
+	day, err := resolveP2Day(req.GetTradeDate())
+	if err != nil {
+		return nil, err
+	}
+	report, err := s.uc.PremiumSnapshot(ctx, day, int(req.GetDays()), int(req.GetTop()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	toDay := func(p biz.PremiumDay) *v1.LimitPremiumDay {
+		return &v1.LimitPremiumDay{
+			TradeDate: fmtDay(p.TradeDate), BaseDate: fmtDay(p.BaseDate),
+			Sample: int32(p.Sample), LimitAgain: int32(p.LimitAgain),
+			OpenAvg: p.OpenAvg, CloseAvg: p.CloseAvg, CloseWin: p.CloseWin, HighAvg: p.HighAvg,
+			HasClose: p.HasClose,
+		}
+	}
+	reply := &v1.GetLimitPremiumReply{
+		TradeDate: fmtDay(report.Day), Found: report.Found, Live: report.Live,
+		AsOf: fmtTime(report.AsOf),
+	}
+	if report.Found {
+		reply.Summary = toDay(report.Summary)
+	}
+	for _, p := range report.Days {
+		reply.Days = append(reply.Days, toDay(p))
+	}
+	for _, r := range report.Rows {
+		reply.Rows = append(reply.Rows, &v1.LimitPremiumRow{
+			Symbol: r.Symbol, Name: r.Name,
+			TradeDate: fmtDay(r.TradeDate), BaseDate: fmtDay(r.BaseDate),
+			Consecutive: int32(r.Consecutive), BaseClose: r.BaseClose,
+			Open: r.Open, Close: r.Close,
+			OpenPremium: r.OpenPremium, ClosePremium: r.ClosePremium, HighPremium: r.HighPremium,
+			LimitAgain: r.LimitAgain, HasClose: r.HasClose, Source: r.Source,
+		})
+	}
+	return reply, nil
+}
+
+// GetBreadth 返回 20 日均线上占比（监控驾驶舱 P2，只读）。
+func (s *MarketService) GetBreadth(ctx context.Context, req *v1.GetBreadthRequest) (*v1.GetBreadthReply, error) {
+	day, err := resolveP2Day(req.GetTradeDate())
+	if err != nil {
+		return nil, err
+	}
+	report, err := s.uc.BreadthSnapshot(ctx, day, int(req.GetDays()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	toDay := func(d biz.BreadthDay) *v1.BreadthDay {
+		return &v1.BreadthDay{
+			TradeDate: fmtDay(d.Day), Window: int32(d.Window),
+			Above: int32(d.Above), Below: int32(d.Below), Flat: int32(d.Flat), Total: int32(d.Total),
+			Ratio: d.Ratio, Live: d.Live, AsOf: fmtTime(d.AsOf),
+		}
+	}
+	reply := &v1.GetBreadthReply{TradeDate: fmtDay(report.Day), Found: report.Found}
+	if report.Found {
+		reply.Latest = toDay(report.Latest)
+	}
+	for _, d := range report.Days {
+		reply.Days = append(reply.Days, toDay(d))
+	}
+	return reply, nil
+}
+
+// GetKlineGaps 返回 K 线连续性检查（监控驾驶舱 P2，只读）。to 为空时取最近已收盘交易日。
+func (s *MarketService) GetKlineGaps(ctx context.Context, req *v1.GetKlineGapsRequest) (*v1.GetKlineGapsReply, error) {
+	day, err := resolveP2Day(req.GetTradeDate())
+	if err != nil {
+		return nil, err
+	}
+	report, err := s.uc.KlineGaps(ctx, day, int(req.GetDays()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetKlineGapsReply{
+		TradeDate: fmtDay(report.Day), Found: report.Found,
+		Universe: int32(report.Universe), MissingTotal: int32(report.MissingTotal),
+		AsOf: fmtTime(report.AsOf),
+	}
+	for _, d := range report.Days {
+		reply.Days = append(reply.Days, &v1.KlineGapDay{
+			TradeDate: fmtDay(d.Day), Universe: int32(d.Universe),
+			Missing: int32(d.Missing), Present: int32(d.Present),
+			Sample: d.Sample, AsOf: fmtTime(d.AsOf),
+		})
+	}
+	return reply, nil
+}

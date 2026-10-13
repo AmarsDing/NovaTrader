@@ -284,6 +284,18 @@ func (f LimitPoolFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LimitPoolMutation", m)
 }
 
+// The LimitPremiumFunc type is an adapter to allow the use of ordinary
+// function as LimitPremium mutator.
+type LimitPremiumFunc func(context.Context, *ent.LimitPremiumMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f LimitPremiumFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.LimitPremiumMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.LimitPremiumMutation", m)
+}
+
 // The LlmCallLogFunc type is an adapter to allow the use of ordinary
 // function as LlmCallLog mutator.
 type LlmCallLogFunc func(context.Context, *ent.LlmCallLogMutation) (ent.Value, error)
@@ -318,6 +330,18 @@ func (f MarginDetailFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MarginDetailMutation", m)
+}
+
+// The MarketBreadthFunc type is an adapter to allow the use of ordinary
+// function as MarketBreadth mutator.
+type MarketBreadthFunc func(context.Context, *ent.MarketBreadthMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f MarketBreadthFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.MarketBreadthMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.MarketBreadthMutation", m)
 }
 
 // The MarketDataFunc type is an adapter to allow the use of ordinary

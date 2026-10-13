@@ -30,9 +30,11 @@ import (
 	"server/ent/lhbseat"
 	"server/ent/limitboard"
 	"server/ent/limitpool"
+	"server/ent/limitpremium"
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
 	"server/ent/moneyflow"
@@ -113,9 +115,11 @@ const (
 	TypeLhbSeat           = "LhbSeat"
 	TypeLimitBoard        = "LimitBoard"
 	TypeLimitPool         = "LimitPool"
+	TypeLimitPremium      = "LimitPremium"
 	TypeLlmCallLog        = "LlmCallLog"
 	TypeMacroSeries       = "MacroSeries"
 	TypeMarginDetail      = "MarginDetail"
+	TypeMarketBreadth     = "MarketBreadth"
 	TypeMarketData        = "MarketData"
 	TypeMarketSentiment   = "MarketSentiment"
 	TypeMoneyFlow         = "MoneyFlow"
@@ -24269,6 +24273,1498 @@ func (m *LimitPoolMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown LimitPool edge %s", name)
 }
 
+// LimitPremiumMutation represents an operation that mutates the LimitPremium nodes in the graph.
+type LimitPremiumMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int
+	symbol           *string
+	trade_date       *time.Time
+	base_date        *time.Time
+	name             *string
+	consecutive      *int
+	addconsecutive   *int
+	pre_close        *float64
+	addpre_close     *float64
+	open             *float64
+	addopen          *float64
+	high             *float64
+	addhigh          *float64
+	close            *float64
+	addclose         *float64
+	open_premium     *float64
+	addopen_premium  *float64
+	close_premium    *float64
+	addclose_premium *float64
+	high_premium     *float64
+	addhigh_premium  *float64
+	limit_again      *bool
+	source           *string
+	as_of            *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*LimitPremium, error)
+	predicates       []predicate.LimitPremium
+}
+
+var _ ent.Mutation = (*LimitPremiumMutation)(nil)
+
+// limitpremiumOption allows management of the mutation configuration using functional options.
+type limitpremiumOption func(*LimitPremiumMutation)
+
+// newLimitPremiumMutation creates new mutation for the LimitPremium entity.
+func newLimitPremiumMutation(c config, op Op, opts ...limitpremiumOption) *LimitPremiumMutation {
+	m := &LimitPremiumMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeLimitPremium,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withLimitPremiumID sets the ID field of the mutation.
+func withLimitPremiumID(id int) limitpremiumOption {
+	return func(m *LimitPremiumMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *LimitPremium
+		)
+		m.oldValue = func(ctx context.Context) (*LimitPremium, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().LimitPremium.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withLimitPremium sets the old LimitPremium of the mutation.
+func withLimitPremium(node *LimitPremium) limitpremiumOption {
+	return func(m *LimitPremiumMutation) {
+		m.oldValue = func(context.Context) (*LimitPremium, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m LimitPremiumMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m LimitPremiumMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *LimitPremiumMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *LimitPremiumMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().LimitPremium.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSymbol sets the "symbol" field.
+func (m *LimitPremiumMutation) SetSymbol(s string) {
+	m.symbol = &s
+}
+
+// Symbol returns the value of the "symbol" field in the mutation.
+func (m *LimitPremiumMutation) Symbol() (r string, exists bool) {
+	v := m.symbol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSymbol returns the old "symbol" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldSymbol(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSymbol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSymbol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSymbol: %w", err)
+	}
+	return oldValue.Symbol, nil
+}
+
+// ResetSymbol resets all changes to the "symbol" field.
+func (m *LimitPremiumMutation) ResetSymbol() {
+	m.symbol = nil
+}
+
+// SetTradeDate sets the "trade_date" field.
+func (m *LimitPremiumMutation) SetTradeDate(t time.Time) {
+	m.trade_date = &t
+}
+
+// TradeDate returns the value of the "trade_date" field in the mutation.
+func (m *LimitPremiumMutation) TradeDate() (r time.Time, exists bool) {
+	v := m.trade_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTradeDate returns the old "trade_date" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldTradeDate(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTradeDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTradeDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTradeDate: %w", err)
+	}
+	return oldValue.TradeDate, nil
+}
+
+// ResetTradeDate resets all changes to the "trade_date" field.
+func (m *LimitPremiumMutation) ResetTradeDate() {
+	m.trade_date = nil
+}
+
+// SetBaseDate sets the "base_date" field.
+func (m *LimitPremiumMutation) SetBaseDate(t time.Time) {
+	m.base_date = &t
+}
+
+// BaseDate returns the value of the "base_date" field in the mutation.
+func (m *LimitPremiumMutation) BaseDate() (r time.Time, exists bool) {
+	v := m.base_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBaseDate returns the old "base_date" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldBaseDate(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBaseDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBaseDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBaseDate: %w", err)
+	}
+	return oldValue.BaseDate, nil
+}
+
+// ResetBaseDate resets all changes to the "base_date" field.
+func (m *LimitPremiumMutation) ResetBaseDate() {
+	m.base_date = nil
+}
+
+// SetName sets the "name" field.
+func (m *LimitPremiumMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *LimitPremiumMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *LimitPremiumMutation) ResetName() {
+	m.name = nil
+}
+
+// SetConsecutive sets the "consecutive" field.
+func (m *LimitPremiumMutation) SetConsecutive(i int) {
+	m.consecutive = &i
+	m.addconsecutive = nil
+}
+
+// Consecutive returns the value of the "consecutive" field in the mutation.
+func (m *LimitPremiumMutation) Consecutive() (r int, exists bool) {
+	v := m.consecutive
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldConsecutive returns the old "consecutive" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldConsecutive(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldConsecutive is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldConsecutive requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldConsecutive: %w", err)
+	}
+	return oldValue.Consecutive, nil
+}
+
+// AddConsecutive adds i to the "consecutive" field.
+func (m *LimitPremiumMutation) AddConsecutive(i int) {
+	if m.addconsecutive != nil {
+		*m.addconsecutive += i
+	} else {
+		m.addconsecutive = &i
+	}
+}
+
+// AddedConsecutive returns the value that was added to the "consecutive" field in this mutation.
+func (m *LimitPremiumMutation) AddedConsecutive() (r int, exists bool) {
+	v := m.addconsecutive
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetConsecutive resets all changes to the "consecutive" field.
+func (m *LimitPremiumMutation) ResetConsecutive() {
+	m.consecutive = nil
+	m.addconsecutive = nil
+}
+
+// SetPreClose sets the "pre_close" field.
+func (m *LimitPremiumMutation) SetPreClose(f float64) {
+	m.pre_close = &f
+	m.addpre_close = nil
+}
+
+// PreClose returns the value of the "pre_close" field in the mutation.
+func (m *LimitPremiumMutation) PreClose() (r float64, exists bool) {
+	v := m.pre_close
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreClose returns the old "pre_close" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldPreClose(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreClose is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreClose requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreClose: %w", err)
+	}
+	return oldValue.PreClose, nil
+}
+
+// AddPreClose adds f to the "pre_close" field.
+func (m *LimitPremiumMutation) AddPreClose(f float64) {
+	if m.addpre_close != nil {
+		*m.addpre_close += f
+	} else {
+		m.addpre_close = &f
+	}
+}
+
+// AddedPreClose returns the value that was added to the "pre_close" field in this mutation.
+func (m *LimitPremiumMutation) AddedPreClose() (r float64, exists bool) {
+	v := m.addpre_close
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPreClose clears the value of the "pre_close" field.
+func (m *LimitPremiumMutation) ClearPreClose() {
+	m.pre_close = nil
+	m.addpre_close = nil
+	m.clearedFields[limitpremium.FieldPreClose] = struct{}{}
+}
+
+// PreCloseCleared returns if the "pre_close" field was cleared in this mutation.
+func (m *LimitPremiumMutation) PreCloseCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldPreClose]
+	return ok
+}
+
+// ResetPreClose resets all changes to the "pre_close" field.
+func (m *LimitPremiumMutation) ResetPreClose() {
+	m.pre_close = nil
+	m.addpre_close = nil
+	delete(m.clearedFields, limitpremium.FieldPreClose)
+}
+
+// SetOpen sets the "open" field.
+func (m *LimitPremiumMutation) SetOpen(f float64) {
+	m.open = &f
+	m.addopen = nil
+}
+
+// Open returns the value of the "open" field in the mutation.
+func (m *LimitPremiumMutation) Open() (r float64, exists bool) {
+	v := m.open
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpen returns the old "open" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldOpen(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpen is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpen requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpen: %w", err)
+	}
+	return oldValue.Open, nil
+}
+
+// AddOpen adds f to the "open" field.
+func (m *LimitPremiumMutation) AddOpen(f float64) {
+	if m.addopen != nil {
+		*m.addopen += f
+	} else {
+		m.addopen = &f
+	}
+}
+
+// AddedOpen returns the value that was added to the "open" field in this mutation.
+func (m *LimitPremiumMutation) AddedOpen() (r float64, exists bool) {
+	v := m.addopen
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOpen clears the value of the "open" field.
+func (m *LimitPremiumMutation) ClearOpen() {
+	m.open = nil
+	m.addopen = nil
+	m.clearedFields[limitpremium.FieldOpen] = struct{}{}
+}
+
+// OpenCleared returns if the "open" field was cleared in this mutation.
+func (m *LimitPremiumMutation) OpenCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldOpen]
+	return ok
+}
+
+// ResetOpen resets all changes to the "open" field.
+func (m *LimitPremiumMutation) ResetOpen() {
+	m.open = nil
+	m.addopen = nil
+	delete(m.clearedFields, limitpremium.FieldOpen)
+}
+
+// SetHigh sets the "high" field.
+func (m *LimitPremiumMutation) SetHigh(f float64) {
+	m.high = &f
+	m.addhigh = nil
+}
+
+// High returns the value of the "high" field in the mutation.
+func (m *LimitPremiumMutation) High() (r float64, exists bool) {
+	v := m.high
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHigh returns the old "high" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldHigh(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHigh is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHigh requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHigh: %w", err)
+	}
+	return oldValue.High, nil
+}
+
+// AddHigh adds f to the "high" field.
+func (m *LimitPremiumMutation) AddHigh(f float64) {
+	if m.addhigh != nil {
+		*m.addhigh += f
+	} else {
+		m.addhigh = &f
+	}
+}
+
+// AddedHigh returns the value that was added to the "high" field in this mutation.
+func (m *LimitPremiumMutation) AddedHigh() (r float64, exists bool) {
+	v := m.addhigh
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearHigh clears the value of the "high" field.
+func (m *LimitPremiumMutation) ClearHigh() {
+	m.high = nil
+	m.addhigh = nil
+	m.clearedFields[limitpremium.FieldHigh] = struct{}{}
+}
+
+// HighCleared returns if the "high" field was cleared in this mutation.
+func (m *LimitPremiumMutation) HighCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldHigh]
+	return ok
+}
+
+// ResetHigh resets all changes to the "high" field.
+func (m *LimitPremiumMutation) ResetHigh() {
+	m.high = nil
+	m.addhigh = nil
+	delete(m.clearedFields, limitpremium.FieldHigh)
+}
+
+// SetClose sets the "close" field.
+func (m *LimitPremiumMutation) SetClose(f float64) {
+	m.close = &f
+	m.addclose = nil
+}
+
+// Close returns the value of the "close" field in the mutation.
+func (m *LimitPremiumMutation) Close() (r float64, exists bool) {
+	v := m.close
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClose returns the old "close" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldClose(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClose is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClose requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClose: %w", err)
+	}
+	return oldValue.Close, nil
+}
+
+// AddClose adds f to the "close" field.
+func (m *LimitPremiumMutation) AddClose(f float64) {
+	if m.addclose != nil {
+		*m.addclose += f
+	} else {
+		m.addclose = &f
+	}
+}
+
+// AddedClose returns the value that was added to the "close" field in this mutation.
+func (m *LimitPremiumMutation) AddedClose() (r float64, exists bool) {
+	v := m.addclose
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearClose clears the value of the "close" field.
+func (m *LimitPremiumMutation) ClearClose() {
+	m.close = nil
+	m.addclose = nil
+	m.clearedFields[limitpremium.FieldClose] = struct{}{}
+}
+
+// CloseCleared returns if the "close" field was cleared in this mutation.
+func (m *LimitPremiumMutation) CloseCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldClose]
+	return ok
+}
+
+// ResetClose resets all changes to the "close" field.
+func (m *LimitPremiumMutation) ResetClose() {
+	m.close = nil
+	m.addclose = nil
+	delete(m.clearedFields, limitpremium.FieldClose)
+}
+
+// SetOpenPremium sets the "open_premium" field.
+func (m *LimitPremiumMutation) SetOpenPremium(f float64) {
+	m.open_premium = &f
+	m.addopen_premium = nil
+}
+
+// OpenPremium returns the value of the "open_premium" field in the mutation.
+func (m *LimitPremiumMutation) OpenPremium() (r float64, exists bool) {
+	v := m.open_premium
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenPremium returns the old "open_premium" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldOpenPremium(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenPremium is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenPremium requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenPremium: %w", err)
+	}
+	return oldValue.OpenPremium, nil
+}
+
+// AddOpenPremium adds f to the "open_premium" field.
+func (m *LimitPremiumMutation) AddOpenPremium(f float64) {
+	if m.addopen_premium != nil {
+		*m.addopen_premium += f
+	} else {
+		m.addopen_premium = &f
+	}
+}
+
+// AddedOpenPremium returns the value that was added to the "open_premium" field in this mutation.
+func (m *LimitPremiumMutation) AddedOpenPremium() (r float64, exists bool) {
+	v := m.addopen_premium
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearOpenPremium clears the value of the "open_premium" field.
+func (m *LimitPremiumMutation) ClearOpenPremium() {
+	m.open_premium = nil
+	m.addopen_premium = nil
+	m.clearedFields[limitpremium.FieldOpenPremium] = struct{}{}
+}
+
+// OpenPremiumCleared returns if the "open_premium" field was cleared in this mutation.
+func (m *LimitPremiumMutation) OpenPremiumCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldOpenPremium]
+	return ok
+}
+
+// ResetOpenPremium resets all changes to the "open_premium" field.
+func (m *LimitPremiumMutation) ResetOpenPremium() {
+	m.open_premium = nil
+	m.addopen_premium = nil
+	delete(m.clearedFields, limitpremium.FieldOpenPremium)
+}
+
+// SetClosePremium sets the "close_premium" field.
+func (m *LimitPremiumMutation) SetClosePremium(f float64) {
+	m.close_premium = &f
+	m.addclose_premium = nil
+}
+
+// ClosePremium returns the value of the "close_premium" field in the mutation.
+func (m *LimitPremiumMutation) ClosePremium() (r float64, exists bool) {
+	v := m.close_premium
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClosePremium returns the old "close_premium" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldClosePremium(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClosePremium is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClosePremium requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClosePremium: %w", err)
+	}
+	return oldValue.ClosePremium, nil
+}
+
+// AddClosePremium adds f to the "close_premium" field.
+func (m *LimitPremiumMutation) AddClosePremium(f float64) {
+	if m.addclose_premium != nil {
+		*m.addclose_premium += f
+	} else {
+		m.addclose_premium = &f
+	}
+}
+
+// AddedClosePremium returns the value that was added to the "close_premium" field in this mutation.
+func (m *LimitPremiumMutation) AddedClosePremium() (r float64, exists bool) {
+	v := m.addclose_premium
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearClosePremium clears the value of the "close_premium" field.
+func (m *LimitPremiumMutation) ClearClosePremium() {
+	m.close_premium = nil
+	m.addclose_premium = nil
+	m.clearedFields[limitpremium.FieldClosePremium] = struct{}{}
+}
+
+// ClosePremiumCleared returns if the "close_premium" field was cleared in this mutation.
+func (m *LimitPremiumMutation) ClosePremiumCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldClosePremium]
+	return ok
+}
+
+// ResetClosePremium resets all changes to the "close_premium" field.
+func (m *LimitPremiumMutation) ResetClosePremium() {
+	m.close_premium = nil
+	m.addclose_premium = nil
+	delete(m.clearedFields, limitpremium.FieldClosePremium)
+}
+
+// SetHighPremium sets the "high_premium" field.
+func (m *LimitPremiumMutation) SetHighPremium(f float64) {
+	m.high_premium = &f
+	m.addhigh_premium = nil
+}
+
+// HighPremium returns the value of the "high_premium" field in the mutation.
+func (m *LimitPremiumMutation) HighPremium() (r float64, exists bool) {
+	v := m.high_premium
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHighPremium returns the old "high_premium" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldHighPremium(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHighPremium is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHighPremium requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHighPremium: %w", err)
+	}
+	return oldValue.HighPremium, nil
+}
+
+// AddHighPremium adds f to the "high_premium" field.
+func (m *LimitPremiumMutation) AddHighPremium(f float64) {
+	if m.addhigh_premium != nil {
+		*m.addhigh_premium += f
+	} else {
+		m.addhigh_premium = &f
+	}
+}
+
+// AddedHighPremium returns the value that was added to the "high_premium" field in this mutation.
+func (m *LimitPremiumMutation) AddedHighPremium() (r float64, exists bool) {
+	v := m.addhigh_premium
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearHighPremium clears the value of the "high_premium" field.
+func (m *LimitPremiumMutation) ClearHighPremium() {
+	m.high_premium = nil
+	m.addhigh_premium = nil
+	m.clearedFields[limitpremium.FieldHighPremium] = struct{}{}
+}
+
+// HighPremiumCleared returns if the "high_premium" field was cleared in this mutation.
+func (m *LimitPremiumMutation) HighPremiumCleared() bool {
+	_, ok := m.clearedFields[limitpremium.FieldHighPremium]
+	return ok
+}
+
+// ResetHighPremium resets all changes to the "high_premium" field.
+func (m *LimitPremiumMutation) ResetHighPremium() {
+	m.high_premium = nil
+	m.addhigh_premium = nil
+	delete(m.clearedFields, limitpremium.FieldHighPremium)
+}
+
+// SetLimitAgain sets the "limit_again" field.
+func (m *LimitPremiumMutation) SetLimitAgain(b bool) {
+	m.limit_again = &b
+}
+
+// LimitAgain returns the value of the "limit_again" field in the mutation.
+func (m *LimitPremiumMutation) LimitAgain() (r bool, exists bool) {
+	v := m.limit_again
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLimitAgain returns the old "limit_again" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldLimitAgain(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLimitAgain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLimitAgain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLimitAgain: %w", err)
+	}
+	return oldValue.LimitAgain, nil
+}
+
+// ResetLimitAgain resets all changes to the "limit_again" field.
+func (m *LimitPremiumMutation) ResetLimitAgain() {
+	m.limit_again = nil
+}
+
+// SetSource sets the "source" field.
+func (m *LimitPremiumMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *LimitPremiumMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *LimitPremiumMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetAsOf sets the "as_of" field.
+func (m *LimitPremiumMutation) SetAsOf(t time.Time) {
+	m.as_of = &t
+}
+
+// AsOf returns the value of the "as_of" field in the mutation.
+func (m *LimitPremiumMutation) AsOf() (r time.Time, exists bool) {
+	v := m.as_of
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAsOf returns the old "as_of" field's value of the LimitPremium entity.
+// If the LimitPremium object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitPremiumMutation) OldAsOf(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAsOf is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAsOf requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAsOf: %w", err)
+	}
+	return oldValue.AsOf, nil
+}
+
+// ResetAsOf resets all changes to the "as_of" field.
+func (m *LimitPremiumMutation) ResetAsOf() {
+	m.as_of = nil
+}
+
+// Where appends a list predicates to the LimitPremiumMutation builder.
+func (m *LimitPremiumMutation) Where(ps ...predicate.LimitPremium) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the LimitPremiumMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *LimitPremiumMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.LimitPremium, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *LimitPremiumMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *LimitPremiumMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (LimitPremium).
+func (m *LimitPremiumMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *LimitPremiumMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.symbol != nil {
+		fields = append(fields, limitpremium.FieldSymbol)
+	}
+	if m.trade_date != nil {
+		fields = append(fields, limitpremium.FieldTradeDate)
+	}
+	if m.base_date != nil {
+		fields = append(fields, limitpremium.FieldBaseDate)
+	}
+	if m.name != nil {
+		fields = append(fields, limitpremium.FieldName)
+	}
+	if m.consecutive != nil {
+		fields = append(fields, limitpremium.FieldConsecutive)
+	}
+	if m.pre_close != nil {
+		fields = append(fields, limitpremium.FieldPreClose)
+	}
+	if m.open != nil {
+		fields = append(fields, limitpremium.FieldOpen)
+	}
+	if m.high != nil {
+		fields = append(fields, limitpremium.FieldHigh)
+	}
+	if m.close != nil {
+		fields = append(fields, limitpremium.FieldClose)
+	}
+	if m.open_premium != nil {
+		fields = append(fields, limitpremium.FieldOpenPremium)
+	}
+	if m.close_premium != nil {
+		fields = append(fields, limitpremium.FieldClosePremium)
+	}
+	if m.high_premium != nil {
+		fields = append(fields, limitpremium.FieldHighPremium)
+	}
+	if m.limit_again != nil {
+		fields = append(fields, limitpremium.FieldLimitAgain)
+	}
+	if m.source != nil {
+		fields = append(fields, limitpremium.FieldSource)
+	}
+	if m.as_of != nil {
+		fields = append(fields, limitpremium.FieldAsOf)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *LimitPremiumMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case limitpremium.FieldSymbol:
+		return m.Symbol()
+	case limitpremium.FieldTradeDate:
+		return m.TradeDate()
+	case limitpremium.FieldBaseDate:
+		return m.BaseDate()
+	case limitpremium.FieldName:
+		return m.Name()
+	case limitpremium.FieldConsecutive:
+		return m.Consecutive()
+	case limitpremium.FieldPreClose:
+		return m.PreClose()
+	case limitpremium.FieldOpen:
+		return m.Open()
+	case limitpremium.FieldHigh:
+		return m.High()
+	case limitpremium.FieldClose:
+		return m.Close()
+	case limitpremium.FieldOpenPremium:
+		return m.OpenPremium()
+	case limitpremium.FieldClosePremium:
+		return m.ClosePremium()
+	case limitpremium.FieldHighPremium:
+		return m.HighPremium()
+	case limitpremium.FieldLimitAgain:
+		return m.LimitAgain()
+	case limitpremium.FieldSource:
+		return m.Source()
+	case limitpremium.FieldAsOf:
+		return m.AsOf()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *LimitPremiumMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case limitpremium.FieldSymbol:
+		return m.OldSymbol(ctx)
+	case limitpremium.FieldTradeDate:
+		return m.OldTradeDate(ctx)
+	case limitpremium.FieldBaseDate:
+		return m.OldBaseDate(ctx)
+	case limitpremium.FieldName:
+		return m.OldName(ctx)
+	case limitpremium.FieldConsecutive:
+		return m.OldConsecutive(ctx)
+	case limitpremium.FieldPreClose:
+		return m.OldPreClose(ctx)
+	case limitpremium.FieldOpen:
+		return m.OldOpen(ctx)
+	case limitpremium.FieldHigh:
+		return m.OldHigh(ctx)
+	case limitpremium.FieldClose:
+		return m.OldClose(ctx)
+	case limitpremium.FieldOpenPremium:
+		return m.OldOpenPremium(ctx)
+	case limitpremium.FieldClosePremium:
+		return m.OldClosePremium(ctx)
+	case limitpremium.FieldHighPremium:
+		return m.OldHighPremium(ctx)
+	case limitpremium.FieldLimitAgain:
+		return m.OldLimitAgain(ctx)
+	case limitpremium.FieldSource:
+		return m.OldSource(ctx)
+	case limitpremium.FieldAsOf:
+		return m.OldAsOf(ctx)
+	}
+	return nil, fmt.Errorf("unknown LimitPremium field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LimitPremiumMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case limitpremium.FieldSymbol:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSymbol(v)
+		return nil
+	case limitpremium.FieldTradeDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTradeDate(v)
+		return nil
+	case limitpremium.FieldBaseDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBaseDate(v)
+		return nil
+	case limitpremium.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case limitpremium.FieldConsecutive:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetConsecutive(v)
+		return nil
+	case limitpremium.FieldPreClose:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreClose(v)
+		return nil
+	case limitpremium.FieldOpen:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpen(v)
+		return nil
+	case limitpremium.FieldHigh:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHigh(v)
+		return nil
+	case limitpremium.FieldClose:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClose(v)
+		return nil
+	case limitpremium.FieldOpenPremium:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenPremium(v)
+		return nil
+	case limitpremium.FieldClosePremium:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClosePremium(v)
+		return nil
+	case limitpremium.FieldHighPremium:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHighPremium(v)
+		return nil
+	case limitpremium.FieldLimitAgain:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLimitAgain(v)
+		return nil
+	case limitpremium.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case limitpremium.FieldAsOf:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAsOf(v)
+		return nil
+	}
+	return fmt.Errorf("unknown LimitPremium field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *LimitPremiumMutation) AddedFields() []string {
+	var fields []string
+	if m.addconsecutive != nil {
+		fields = append(fields, limitpremium.FieldConsecutive)
+	}
+	if m.addpre_close != nil {
+		fields = append(fields, limitpremium.FieldPreClose)
+	}
+	if m.addopen != nil {
+		fields = append(fields, limitpremium.FieldOpen)
+	}
+	if m.addhigh != nil {
+		fields = append(fields, limitpremium.FieldHigh)
+	}
+	if m.addclose != nil {
+		fields = append(fields, limitpremium.FieldClose)
+	}
+	if m.addopen_premium != nil {
+		fields = append(fields, limitpremium.FieldOpenPremium)
+	}
+	if m.addclose_premium != nil {
+		fields = append(fields, limitpremium.FieldClosePremium)
+	}
+	if m.addhigh_premium != nil {
+		fields = append(fields, limitpremium.FieldHighPremium)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *LimitPremiumMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case limitpremium.FieldConsecutive:
+		return m.AddedConsecutive()
+	case limitpremium.FieldPreClose:
+		return m.AddedPreClose()
+	case limitpremium.FieldOpen:
+		return m.AddedOpen()
+	case limitpremium.FieldHigh:
+		return m.AddedHigh()
+	case limitpremium.FieldClose:
+		return m.AddedClose()
+	case limitpremium.FieldOpenPremium:
+		return m.AddedOpenPremium()
+	case limitpremium.FieldClosePremium:
+		return m.AddedClosePremium()
+	case limitpremium.FieldHighPremium:
+		return m.AddedHighPremium()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *LimitPremiumMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case limitpremium.FieldConsecutive:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddConsecutive(v)
+		return nil
+	case limitpremium.FieldPreClose:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPreClose(v)
+		return nil
+	case limitpremium.FieldOpen:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOpen(v)
+		return nil
+	case limitpremium.FieldHigh:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHigh(v)
+		return nil
+	case limitpremium.FieldClose:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddClose(v)
+		return nil
+	case limitpremium.FieldOpenPremium:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOpenPremium(v)
+		return nil
+	case limitpremium.FieldClosePremium:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddClosePremium(v)
+		return nil
+	case limitpremium.FieldHighPremium:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddHighPremium(v)
+		return nil
+	}
+	return fmt.Errorf("unknown LimitPremium numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *LimitPremiumMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(limitpremium.FieldPreClose) {
+		fields = append(fields, limitpremium.FieldPreClose)
+	}
+	if m.FieldCleared(limitpremium.FieldOpen) {
+		fields = append(fields, limitpremium.FieldOpen)
+	}
+	if m.FieldCleared(limitpremium.FieldHigh) {
+		fields = append(fields, limitpremium.FieldHigh)
+	}
+	if m.FieldCleared(limitpremium.FieldClose) {
+		fields = append(fields, limitpremium.FieldClose)
+	}
+	if m.FieldCleared(limitpremium.FieldOpenPremium) {
+		fields = append(fields, limitpremium.FieldOpenPremium)
+	}
+	if m.FieldCleared(limitpremium.FieldClosePremium) {
+		fields = append(fields, limitpremium.FieldClosePremium)
+	}
+	if m.FieldCleared(limitpremium.FieldHighPremium) {
+		fields = append(fields, limitpremium.FieldHighPremium)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *LimitPremiumMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *LimitPremiumMutation) ClearField(name string) error {
+	switch name {
+	case limitpremium.FieldPreClose:
+		m.ClearPreClose()
+		return nil
+	case limitpremium.FieldOpen:
+		m.ClearOpen()
+		return nil
+	case limitpremium.FieldHigh:
+		m.ClearHigh()
+		return nil
+	case limitpremium.FieldClose:
+		m.ClearClose()
+		return nil
+	case limitpremium.FieldOpenPremium:
+		m.ClearOpenPremium()
+		return nil
+	case limitpremium.FieldClosePremium:
+		m.ClearClosePremium()
+		return nil
+	case limitpremium.FieldHighPremium:
+		m.ClearHighPremium()
+		return nil
+	}
+	return fmt.Errorf("unknown LimitPremium nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *LimitPremiumMutation) ResetField(name string) error {
+	switch name {
+	case limitpremium.FieldSymbol:
+		m.ResetSymbol()
+		return nil
+	case limitpremium.FieldTradeDate:
+		m.ResetTradeDate()
+		return nil
+	case limitpremium.FieldBaseDate:
+		m.ResetBaseDate()
+		return nil
+	case limitpremium.FieldName:
+		m.ResetName()
+		return nil
+	case limitpremium.FieldConsecutive:
+		m.ResetConsecutive()
+		return nil
+	case limitpremium.FieldPreClose:
+		m.ResetPreClose()
+		return nil
+	case limitpremium.FieldOpen:
+		m.ResetOpen()
+		return nil
+	case limitpremium.FieldHigh:
+		m.ResetHigh()
+		return nil
+	case limitpremium.FieldClose:
+		m.ResetClose()
+		return nil
+	case limitpremium.FieldOpenPremium:
+		m.ResetOpenPremium()
+		return nil
+	case limitpremium.FieldClosePremium:
+		m.ResetClosePremium()
+		return nil
+	case limitpremium.FieldHighPremium:
+		m.ResetHighPremium()
+		return nil
+	case limitpremium.FieldLimitAgain:
+		m.ResetLimitAgain()
+		return nil
+	case limitpremium.FieldSource:
+		m.ResetSource()
+		return nil
+	case limitpremium.FieldAsOf:
+		m.ResetAsOf()
+		return nil
+	}
+	return fmt.Errorf("unknown LimitPremium field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *LimitPremiumMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *LimitPremiumMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *LimitPremiumMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *LimitPremiumMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *LimitPremiumMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *LimitPremiumMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *LimitPremiumMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown LimitPremium unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *LimitPremiumMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown LimitPremium edge %s", name)
+}
+
 // LlmCallLogMutation represents an operation that mutates the LlmCallLog nodes in the graph.
 type LlmCallLogMutation struct {
 	config
@@ -27380,6 +28876,965 @@ func (m *MarginDetailMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *MarginDetailMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown MarginDetail edge %s", name)
+}
+
+// MarketBreadthMutation represents an operation that mutates the MarketBreadth nodes in the graph.
+type MarketBreadthMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	trade_date    *time.Time
+	as_of         *time.Time
+	window        *int
+	addwindow     *int
+	above         *int
+	addabove      *int
+	below         *int
+	addbelow      *int
+	flat          *int
+	addflat       *int
+	total         *int
+	addtotal      *int
+	ratio         *float64
+	addratio      *float64
+	source        *string
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*MarketBreadth, error)
+	predicates    []predicate.MarketBreadth
+}
+
+var _ ent.Mutation = (*MarketBreadthMutation)(nil)
+
+// marketbreadthOption allows management of the mutation configuration using functional options.
+type marketbreadthOption func(*MarketBreadthMutation)
+
+// newMarketBreadthMutation creates new mutation for the MarketBreadth entity.
+func newMarketBreadthMutation(c config, op Op, opts ...marketbreadthOption) *MarketBreadthMutation {
+	m := &MarketBreadthMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeMarketBreadth,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withMarketBreadthID sets the ID field of the mutation.
+func withMarketBreadthID(id int) marketbreadthOption {
+	return func(m *MarketBreadthMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *MarketBreadth
+		)
+		m.oldValue = func(ctx context.Context) (*MarketBreadth, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().MarketBreadth.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withMarketBreadth sets the old MarketBreadth of the mutation.
+func withMarketBreadth(node *MarketBreadth) marketbreadthOption {
+	return func(m *MarketBreadthMutation) {
+		m.oldValue = func(context.Context) (*MarketBreadth, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m MarketBreadthMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m MarketBreadthMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *MarketBreadthMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *MarketBreadthMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().MarketBreadth.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetTradeDate sets the "trade_date" field.
+func (m *MarketBreadthMutation) SetTradeDate(t time.Time) {
+	m.trade_date = &t
+}
+
+// TradeDate returns the value of the "trade_date" field in the mutation.
+func (m *MarketBreadthMutation) TradeDate() (r time.Time, exists bool) {
+	v := m.trade_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTradeDate returns the old "trade_date" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldTradeDate(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTradeDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTradeDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTradeDate: %w", err)
+	}
+	return oldValue.TradeDate, nil
+}
+
+// ResetTradeDate resets all changes to the "trade_date" field.
+func (m *MarketBreadthMutation) ResetTradeDate() {
+	m.trade_date = nil
+}
+
+// SetAsOf sets the "as_of" field.
+func (m *MarketBreadthMutation) SetAsOf(t time.Time) {
+	m.as_of = &t
+}
+
+// AsOf returns the value of the "as_of" field in the mutation.
+func (m *MarketBreadthMutation) AsOf() (r time.Time, exists bool) {
+	v := m.as_of
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAsOf returns the old "as_of" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldAsOf(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAsOf is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAsOf requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAsOf: %w", err)
+	}
+	return oldValue.AsOf, nil
+}
+
+// ResetAsOf resets all changes to the "as_of" field.
+func (m *MarketBreadthMutation) ResetAsOf() {
+	m.as_of = nil
+}
+
+// SetWindow sets the "window" field.
+func (m *MarketBreadthMutation) SetWindow(i int) {
+	m.window = &i
+	m.addwindow = nil
+}
+
+// Window returns the value of the "window" field in the mutation.
+func (m *MarketBreadthMutation) Window() (r int, exists bool) {
+	v := m.window
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindow returns the old "window" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldWindow(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindow is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindow requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindow: %w", err)
+	}
+	return oldValue.Window, nil
+}
+
+// AddWindow adds i to the "window" field.
+func (m *MarketBreadthMutation) AddWindow(i int) {
+	if m.addwindow != nil {
+		*m.addwindow += i
+	} else {
+		m.addwindow = &i
+	}
+}
+
+// AddedWindow returns the value that was added to the "window" field in this mutation.
+func (m *MarketBreadthMutation) AddedWindow() (r int, exists bool) {
+	v := m.addwindow
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetWindow resets all changes to the "window" field.
+func (m *MarketBreadthMutation) ResetWindow() {
+	m.window = nil
+	m.addwindow = nil
+}
+
+// SetAbove sets the "above" field.
+func (m *MarketBreadthMutation) SetAbove(i int) {
+	m.above = &i
+	m.addabove = nil
+}
+
+// Above returns the value of the "above" field in the mutation.
+func (m *MarketBreadthMutation) Above() (r int, exists bool) {
+	v := m.above
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAbove returns the old "above" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldAbove(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAbove is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAbove requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAbove: %w", err)
+	}
+	return oldValue.Above, nil
+}
+
+// AddAbove adds i to the "above" field.
+func (m *MarketBreadthMutation) AddAbove(i int) {
+	if m.addabove != nil {
+		*m.addabove += i
+	} else {
+		m.addabove = &i
+	}
+}
+
+// AddedAbove returns the value that was added to the "above" field in this mutation.
+func (m *MarketBreadthMutation) AddedAbove() (r int, exists bool) {
+	v := m.addabove
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAbove resets all changes to the "above" field.
+func (m *MarketBreadthMutation) ResetAbove() {
+	m.above = nil
+	m.addabove = nil
+}
+
+// SetBelow sets the "below" field.
+func (m *MarketBreadthMutation) SetBelow(i int) {
+	m.below = &i
+	m.addbelow = nil
+}
+
+// Below returns the value of the "below" field in the mutation.
+func (m *MarketBreadthMutation) Below() (r int, exists bool) {
+	v := m.below
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBelow returns the old "below" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldBelow(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBelow is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBelow requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBelow: %w", err)
+	}
+	return oldValue.Below, nil
+}
+
+// AddBelow adds i to the "below" field.
+func (m *MarketBreadthMutation) AddBelow(i int) {
+	if m.addbelow != nil {
+		*m.addbelow += i
+	} else {
+		m.addbelow = &i
+	}
+}
+
+// AddedBelow returns the value that was added to the "below" field in this mutation.
+func (m *MarketBreadthMutation) AddedBelow() (r int, exists bool) {
+	v := m.addbelow
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBelow resets all changes to the "below" field.
+func (m *MarketBreadthMutation) ResetBelow() {
+	m.below = nil
+	m.addbelow = nil
+}
+
+// SetFlat sets the "flat" field.
+func (m *MarketBreadthMutation) SetFlat(i int) {
+	m.flat = &i
+	m.addflat = nil
+}
+
+// Flat returns the value of the "flat" field in the mutation.
+func (m *MarketBreadthMutation) Flat() (r int, exists bool) {
+	v := m.flat
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFlat returns the old "flat" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldFlat(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFlat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFlat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFlat: %w", err)
+	}
+	return oldValue.Flat, nil
+}
+
+// AddFlat adds i to the "flat" field.
+func (m *MarketBreadthMutation) AddFlat(i int) {
+	if m.addflat != nil {
+		*m.addflat += i
+	} else {
+		m.addflat = &i
+	}
+}
+
+// AddedFlat returns the value that was added to the "flat" field in this mutation.
+func (m *MarketBreadthMutation) AddedFlat() (r int, exists bool) {
+	v := m.addflat
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFlat resets all changes to the "flat" field.
+func (m *MarketBreadthMutation) ResetFlat() {
+	m.flat = nil
+	m.addflat = nil
+}
+
+// SetTotal sets the "total" field.
+func (m *MarketBreadthMutation) SetTotal(i int) {
+	m.total = &i
+	m.addtotal = nil
+}
+
+// Total returns the value of the "total" field in the mutation.
+func (m *MarketBreadthMutation) Total() (r int, exists bool) {
+	v := m.total
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotal returns the old "total" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldTotal(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotal is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotal requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotal: %w", err)
+	}
+	return oldValue.Total, nil
+}
+
+// AddTotal adds i to the "total" field.
+func (m *MarketBreadthMutation) AddTotal(i int) {
+	if m.addtotal != nil {
+		*m.addtotal += i
+	} else {
+		m.addtotal = &i
+	}
+}
+
+// AddedTotal returns the value that was added to the "total" field in this mutation.
+func (m *MarketBreadthMutation) AddedTotal() (r int, exists bool) {
+	v := m.addtotal
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotal resets all changes to the "total" field.
+func (m *MarketBreadthMutation) ResetTotal() {
+	m.total = nil
+	m.addtotal = nil
+}
+
+// SetRatio sets the "ratio" field.
+func (m *MarketBreadthMutation) SetRatio(f float64) {
+	m.ratio = &f
+	m.addratio = nil
+}
+
+// Ratio returns the value of the "ratio" field in the mutation.
+func (m *MarketBreadthMutation) Ratio() (r float64, exists bool) {
+	v := m.ratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRatio returns the old "ratio" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldRatio(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRatio is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRatio requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRatio: %w", err)
+	}
+	return oldValue.Ratio, nil
+}
+
+// AddRatio adds f to the "ratio" field.
+func (m *MarketBreadthMutation) AddRatio(f float64) {
+	if m.addratio != nil {
+		*m.addratio += f
+	} else {
+		m.addratio = &f
+	}
+}
+
+// AddedRatio returns the value that was added to the "ratio" field in this mutation.
+func (m *MarketBreadthMutation) AddedRatio() (r float64, exists bool) {
+	v := m.addratio
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetRatio resets all changes to the "ratio" field.
+func (m *MarketBreadthMutation) ResetRatio() {
+	m.ratio = nil
+	m.addratio = nil
+}
+
+// SetSource sets the "source" field.
+func (m *MarketBreadthMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *MarketBreadthMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the MarketBreadth entity.
+// If the MarketBreadth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MarketBreadthMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *MarketBreadthMutation) ResetSource() {
+	m.source = nil
+}
+
+// Where appends a list predicates to the MarketBreadthMutation builder.
+func (m *MarketBreadthMutation) Where(ps ...predicate.MarketBreadth) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the MarketBreadthMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *MarketBreadthMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.MarketBreadth, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *MarketBreadthMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *MarketBreadthMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (MarketBreadth).
+func (m *MarketBreadthMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *MarketBreadthMutation) Fields() []string {
+	fields := make([]string, 0, 9)
+	if m.trade_date != nil {
+		fields = append(fields, marketbreadth.FieldTradeDate)
+	}
+	if m.as_of != nil {
+		fields = append(fields, marketbreadth.FieldAsOf)
+	}
+	if m.window != nil {
+		fields = append(fields, marketbreadth.FieldWindow)
+	}
+	if m.above != nil {
+		fields = append(fields, marketbreadth.FieldAbove)
+	}
+	if m.below != nil {
+		fields = append(fields, marketbreadth.FieldBelow)
+	}
+	if m.flat != nil {
+		fields = append(fields, marketbreadth.FieldFlat)
+	}
+	if m.total != nil {
+		fields = append(fields, marketbreadth.FieldTotal)
+	}
+	if m.ratio != nil {
+		fields = append(fields, marketbreadth.FieldRatio)
+	}
+	if m.source != nil {
+		fields = append(fields, marketbreadth.FieldSource)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *MarketBreadthMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case marketbreadth.FieldTradeDate:
+		return m.TradeDate()
+	case marketbreadth.FieldAsOf:
+		return m.AsOf()
+	case marketbreadth.FieldWindow:
+		return m.Window()
+	case marketbreadth.FieldAbove:
+		return m.Above()
+	case marketbreadth.FieldBelow:
+		return m.Below()
+	case marketbreadth.FieldFlat:
+		return m.Flat()
+	case marketbreadth.FieldTotal:
+		return m.Total()
+	case marketbreadth.FieldRatio:
+		return m.Ratio()
+	case marketbreadth.FieldSource:
+		return m.Source()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *MarketBreadthMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case marketbreadth.FieldTradeDate:
+		return m.OldTradeDate(ctx)
+	case marketbreadth.FieldAsOf:
+		return m.OldAsOf(ctx)
+	case marketbreadth.FieldWindow:
+		return m.OldWindow(ctx)
+	case marketbreadth.FieldAbove:
+		return m.OldAbove(ctx)
+	case marketbreadth.FieldBelow:
+		return m.OldBelow(ctx)
+	case marketbreadth.FieldFlat:
+		return m.OldFlat(ctx)
+	case marketbreadth.FieldTotal:
+		return m.OldTotal(ctx)
+	case marketbreadth.FieldRatio:
+		return m.OldRatio(ctx)
+	case marketbreadth.FieldSource:
+		return m.OldSource(ctx)
+	}
+	return nil, fmt.Errorf("unknown MarketBreadth field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MarketBreadthMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case marketbreadth.FieldTradeDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTradeDate(v)
+		return nil
+	case marketbreadth.FieldAsOf:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAsOf(v)
+		return nil
+	case marketbreadth.FieldWindow:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindow(v)
+		return nil
+	case marketbreadth.FieldAbove:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAbove(v)
+		return nil
+	case marketbreadth.FieldBelow:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBelow(v)
+		return nil
+	case marketbreadth.FieldFlat:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFlat(v)
+		return nil
+	case marketbreadth.FieldTotal:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotal(v)
+		return nil
+	case marketbreadth.FieldRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRatio(v)
+		return nil
+	case marketbreadth.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MarketBreadth field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *MarketBreadthMutation) AddedFields() []string {
+	var fields []string
+	if m.addwindow != nil {
+		fields = append(fields, marketbreadth.FieldWindow)
+	}
+	if m.addabove != nil {
+		fields = append(fields, marketbreadth.FieldAbove)
+	}
+	if m.addbelow != nil {
+		fields = append(fields, marketbreadth.FieldBelow)
+	}
+	if m.addflat != nil {
+		fields = append(fields, marketbreadth.FieldFlat)
+	}
+	if m.addtotal != nil {
+		fields = append(fields, marketbreadth.FieldTotal)
+	}
+	if m.addratio != nil {
+		fields = append(fields, marketbreadth.FieldRatio)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *MarketBreadthMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case marketbreadth.FieldWindow:
+		return m.AddedWindow()
+	case marketbreadth.FieldAbove:
+		return m.AddedAbove()
+	case marketbreadth.FieldBelow:
+		return m.AddedBelow()
+	case marketbreadth.FieldFlat:
+		return m.AddedFlat()
+	case marketbreadth.FieldTotal:
+		return m.AddedTotal()
+	case marketbreadth.FieldRatio:
+		return m.AddedRatio()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *MarketBreadthMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case marketbreadth.FieldWindow:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWindow(v)
+		return nil
+	case marketbreadth.FieldAbove:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAbove(v)
+		return nil
+	case marketbreadth.FieldBelow:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBelow(v)
+		return nil
+	case marketbreadth.FieldFlat:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFlat(v)
+		return nil
+	case marketbreadth.FieldTotal:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotal(v)
+		return nil
+	case marketbreadth.FieldRatio:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRatio(v)
+		return nil
+	}
+	return fmt.Errorf("unknown MarketBreadth numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *MarketBreadthMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *MarketBreadthMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *MarketBreadthMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown MarketBreadth nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *MarketBreadthMutation) ResetField(name string) error {
+	switch name {
+	case marketbreadth.FieldTradeDate:
+		m.ResetTradeDate()
+		return nil
+	case marketbreadth.FieldAsOf:
+		m.ResetAsOf()
+		return nil
+	case marketbreadth.FieldWindow:
+		m.ResetWindow()
+		return nil
+	case marketbreadth.FieldAbove:
+		m.ResetAbove()
+		return nil
+	case marketbreadth.FieldBelow:
+		m.ResetBelow()
+		return nil
+	case marketbreadth.FieldFlat:
+		m.ResetFlat()
+		return nil
+	case marketbreadth.FieldTotal:
+		m.ResetTotal()
+		return nil
+	case marketbreadth.FieldRatio:
+		m.ResetRatio()
+		return nil
+	case marketbreadth.FieldSource:
+		m.ResetSource()
+		return nil
+	}
+	return fmt.Errorf("unknown MarketBreadth field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *MarketBreadthMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *MarketBreadthMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *MarketBreadthMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *MarketBreadthMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *MarketBreadthMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *MarketBreadthMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *MarketBreadthMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown MarketBreadth unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *MarketBreadthMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown MarketBreadth edge %s", name)
 }
 
 // MarketDataMutation represents an operation that mutates the MarketData nodes in the graph.

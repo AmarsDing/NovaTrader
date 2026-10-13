@@ -115,3 +115,139 @@ export async function getOpsBrokerFiles(): Promise<OpsBrokerFiles> {
     lastOk: pick<string>(raw, 'lastOk', 'last_ok') || '',
   }
 }
+
+/* ---------- P2：PostgreSQL 与 NATS 运行口径（只读） ---------- */
+
+export interface OpsDbPool {
+  maxOpen: number
+  open: number
+  inUse: number
+  idle: number
+  waitCount: number
+  waitMs: number
+  usedPct: number | null
+}
+
+export interface SlowQuery {
+  query: string
+  calls: number
+  meanMs: number
+  totalMs: number
+}
+
+export interface OpsDb {
+  pool: OpsDbPool | null
+  sizeBytes: number | null
+  sizePretty: string
+  maxConnections: number | null
+  connections: { total: number; active: number; idle: number; idleInTx: number } | null
+  slowAvailable: boolean
+  slowNote: string
+  slowTop: SlowQuery[]
+  note: string
+}
+
+/** PostgreSQL 连接池 / 库体积 / 慢查询。pg_stat_statements 未装时 slowAvailable=false。 */
+export async function getOpsDb(): Promise<OpsDb> {
+  const data = await request('/api/ops/db')
+  const raw = (data ?? {}) as RawRecord
+  const poolRaw = pick<RawRecord>(raw, 'pool')
+  const connRaw = pick<RawRecord>(raw, 'connections')
+  const slowRaw = pick<RawRecord>(raw, 'slow_queries')
+  return {
+    pool: poolRaw
+      ? {
+          maxOpen: num(pick(poolRaw, 'maxOpen', 'max_open')) ?? 0,
+          open: num(pick(poolRaw, 'open')) ?? 0,
+          inUse: num(pick(poolRaw, 'inUse', 'in_use')) ?? 0,
+          idle: num(pick(poolRaw, 'idle')) ?? 0,
+          waitCount: num(pick(poolRaw, 'waitCount', 'wait_count')) ?? 0,
+          waitMs: num(pick(poolRaw, 'waitMs', 'wait_ms')) ?? 0,
+          usedPct: num(pick(raw, 'poolUsedPct', 'pool_used_pct')),
+        }
+      : null,
+    sizeBytes: num(pick(raw, 'sizeBytes', 'size_bytes')),
+    sizePretty: pick<string>(raw, 'sizePretty', 'size_pretty') || '',
+    maxConnections: num(pick(raw, 'maxConnections', 'max_connections')),
+    connections: connRaw
+      ? {
+          total: num(pick(connRaw, 'total')) ?? 0,
+          active: num(pick(connRaw, 'active')) ?? 0,
+          idle: num(pick(connRaw, 'idle')) ?? 0,
+          idleInTx: num(pick(connRaw, 'idleInTx', 'idle_in_tx')) ?? 0,
+        }
+      : null,
+    slowAvailable: !!(slowRaw && slowRaw.available),
+    slowNote: pick<string>(slowRaw ?? {}, 'note') || '',
+    slowTop: asList<RawRecord>(slowRaw ?? {}, 'top').map((q) => ({
+      query: pick<string>(q, 'query') || '',
+      calls: num(pick(q, 'calls')) ?? 0,
+      meanMs: num(pick(q, 'meanMs', 'mean_ms')) ?? 0,
+      totalMs: num(pick(q, 'totalMs', 'total_ms')) ?? 0,
+    })),
+    note: pick<string>(raw, 'note', 'db_note') || '',
+  }
+}
+
+export interface NatsConsumer {
+  durable: string
+  subject: string
+  missing: boolean
+  pending: number | null
+  ackPending: number | null
+  deliveredSeq: number | null
+  lag: number | null
+}
+
+export interface OpsNats {
+  connected: boolean
+  note: string
+  inMsgs: number | null
+  outMsgs: number | null
+  reconnects: number | null
+  stream: { name: string; messages: number; bytes: number } | null
+  consumers: NatsConsumer[]
+  lagTotal: number | null
+  pendingTotal: number | null
+}
+
+/** NATS 连接计数与各 durable 消费者 lag。断连时 connected=false，不编数。 */
+export async function getOpsNats(): Promise<OpsNats> {
+  const data = await request('/api/ops/nats')
+  const raw = (data ?? {}) as RawRecord
+  const streamRaw = pick<RawRecord>(raw, 'stream')
+  const consumers = asList<RawRecord>(streamRaw ?? {}, 'consumers').map((c) => ({
+    durable: pick<string>(c, 'durable') || '',
+    subject: pick<string>(c, 'subject') || '',
+    missing: !!c.missing,
+    pending: num(pick(c, 'pending')),
+    ackPending: num(pick(c, 'ackPending', 'ack_pending')),
+    deliveredSeq: num(pick(c, 'deliveredSeq', 'delivered_seq')),
+    lag: num(pick(c, 'lag')),
+  }))
+  let lagTotal: number | null = 0
+  let pendingTotal: number | null = 0
+  for (const c of consumers) {
+    if (c.lag == null) lagTotal = null
+    if (c.pending == null) pendingTotal = null
+    if (lagTotal != null && c.lag != null) lagTotal += c.lag
+    if (pendingTotal != null && c.pending != null) pendingTotal += c.pending
+  }
+  return {
+    connected: !!raw.connected,
+    note: pick<string>(raw, 'note') || '',
+    inMsgs: num(pick(raw, 'inMsgs', 'in_msgs')),
+    outMsgs: num(pick(raw, 'outMsgs', 'out_msgs')),
+    reconnects: num(pick(raw, 'reconnects')),
+    stream: streamRaw
+      ? {
+          name: pick<string>(streamRaw, 'name') || '',
+          messages: num(pick(streamRaw, 'messages')) ?? 0,
+          bytes: num(pick(streamRaw, 'bytes')) ?? 0,
+        }
+      : null,
+    consumers,
+    lagTotal,
+    pendingTotal,
+  }
+}

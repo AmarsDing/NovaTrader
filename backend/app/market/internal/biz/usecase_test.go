@@ -24,6 +24,15 @@ type fakeRepo struct {
 	boards    map[string]market.LimitBoard
 	sentiment []market.Sentiment
 	heat      int
+
+	// P2 测试桩数据
+	barDays      []DailyBarDay
+	barsOn       map[string]market.DayBar
+	issues       []QualityIssue
+	premiumRows  []PremiumRow
+	premiumRange []PremiumRow
+	breadthRows  []BreadthRecord
+	breadthSaved []BreadthDay
 }
 
 func (f *fakeRepo) LoadStocks(context.Context) ([]market.StockInfo, error) { return f.stocks, nil }
@@ -103,6 +112,42 @@ func (f *fakeRepo) Boards(context.Context, time.Time, string, string) ([]market.
 }
 func (f *fakeRepo) SectorHeatAt(context.Context, time.Time, time.Time, int) ([]market.SectorHeat, error) {
 	return nil, nil
+}
+
+/* ---------- P2 测试桩 ---------- */
+
+func (f *fakeRepo) DailyBarDays(context.Context, time.Time, time.Time) ([]DailyBarDay, error) {
+	return f.barDays, nil
+}
+func (f *fakeRepo) DailyBarsOn(context.Context, time.Time) (map[string]market.DayBar, error) {
+	return f.barsOn, nil
+}
+func (f *fakeRepo) SaveIssues(_ context.Context, issues []QualityIssue) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.issues = append(f.issues, issues...)
+	return nil
+}
+func (f *fakeRepo) PremiumRows(context.Context, time.Time) ([]PremiumRow, error) {
+	return f.premiumRows, nil
+}
+func (f *fakeRepo) PremiumRange(context.Context, time.Time, time.Time) ([]PremiumRow, error) {
+	return f.premiumRange, nil
+}
+func (f *fakeRepo) SavePremiums(_ context.Context, rows []PremiumRow) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.premiumRows = append(f.premiumRows, rows...)
+	return nil
+}
+func (f *fakeRepo) BreadthRange(context.Context, time.Time, time.Time) ([]BreadthRecord, error) {
+	return f.breadthRows, nil
+}
+func (f *fakeRepo) SaveBreadth(_ context.Context, rec BreadthDay) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.breadthSaved = append(f.breadthSaved, rec)
+	return nil
 }
 
 type fakeSnaps struct{ snaps []market.Snapshot }

@@ -22,6 +22,14 @@ const (
 	KindCapital  = "capital"
 )
 
+// P2 落库来源标记（limit_premium.source / market_breadth.source）。
+const (
+	// SourceMarketAgg 是 market 服务自己算出来的（与 market_data.source 同名）。
+	SourceMarketAgg = "market_agg"
+	// SourceLiveBar 是读接口在快照缺失时按 market_data 实时兜底算的，不落库。
+	SourceLiveBar = "live_bar"
+)
+
 // BarRow 是库里的一根 K 线和它的复权因子。
 type BarRow struct {
 	market.Bar
@@ -68,6 +76,24 @@ type Repo interface {
 	SentimentAt(ctx context.Context, day, asOf time.Time) (market.Sentiment, bool, error)
 	Boards(ctx context.Context, day time.Time, direction, status string) ([]market.LimitBoard, error)
 	SectorHeatAt(ctx context.Context, day, asOf time.Time, top int) ([]market.SectorHeat, error)
+
+	// P2（监控驾驶舱业务监控方案 §7）
+	// DailyBarDays 返回 [from,to) 内所有 1d 收盘行的 symbol+日（存在性检查，不取价量）。
+	DailyBarDays(ctx context.Context, from, to time.Time) ([]DailyBarDay, error)
+	// DailyBarsOn 返回某交易日全部 1d 收盘行，按 symbol 索引。
+	DailyBarsOn(ctx context.Context, day time.Time) (map[string]market.DayBar, error)
+	// SaveIssues 把质量问题 upsert 进 data_quality_issue。
+	SaveIssues(ctx context.Context, issues []QualityIssue) error
+	// PremiumRows 读某日全部 limit_premium 行。
+	PremiumRows(ctx context.Context, day time.Time) ([]PremiumRow, error)
+	// PremiumRange 读 [from,to] 区间内的 limit_premium 行（按 trade_date 倒序）。
+	PremiumRange(ctx context.Context, from, to time.Time) ([]PremiumRow, error)
+	// SavePremiums upsert limit_premium（trade_date+symbol 唯一）。
+	SavePremiums(ctx context.Context, rows []PremiumRow) error
+	// BreadthRange 读 [from,to] 区间内的 market_breadth 行（按 trade_date 倒序）。
+	BreadthRange(ctx context.Context, from, to time.Time) ([]BreadthRecord, error)
+	// SaveBreadth upsert market_breadth（trade_date 唯一）。
+	SaveBreadth(ctx context.Context, rec BreadthDay) error
 }
 
 // SnapshotSource 读 Redis snap:latest。
