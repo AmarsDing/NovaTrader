@@ -289,6 +289,27 @@ def to_symbol(code: str, market: int) -> str:
     return code + ".SZ"
 
 
+def tcp_quote_time(row, now: datetime) -> datetime | None:
+    """保留源日期/时间；缺失或无法解析时保持未知，不能用请求时间冒充行情时间。"""
+    value = row.get("servertime", "") or row.get("time", "")
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=SHANGHAI) if value.tzinfo is None else value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        # 完整日期必须保留，不能把前一交易日的时间移到今天。
+        if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+            parsed = datetime.fromisoformat(text)
+            return parsed.replace(tzinfo=SHANGHAI) if parsed.tzinfo is None else parsed
+        # mootdx 的时间字段常只有 HH:MM:SS，沿用当日上海日期。
+        return datetime.strptime(text[:8], "%H:%M:%S").replace(
+            year=now.year, month=now.month, day=now.day, tzinfo=SHANGHAI
+        )
+    except (TypeError, ValueError):
+        return None
+
+
 def tcp_snapshots(symbols: list[str]):
     client = tcp_client()
     codes = []
@@ -309,20 +330,13 @@ def tcp_snapshots(symbols: list[str]):
             last = float(row.get("price", 0) or 0)
             if last <= 0:
                 continue
-            t = datetime.now(SHANGHAI)
-            server_time = str(row.get("servertime", "") or row.get("time", ""))
-            if server_time:
-                try:
-                    t = datetime.strptime(server_time[:8], "%H:%M:%S").replace(
-                        year=t.year, month=t.month, day=t.day, tzinfo=SHANGHAI
-                    )
-                except ValueError:
-                    pass
+            t = tcp_quote_time(row, datetime.now(SHANGHAI))
             vol = int(float(row.get("vol", 0) or 0)) * 100
             items.append(
                 {
                     "symbol": to_symbol(code, market),
-                    "time": iso(t),
+                    "time": iso(t) if t is not None else None,
+                    "stale": t is None,
                     "pre_close": float(row.get("last_close", 0) or 0),
                     "open": float(row.get("open", 0) or 0),
                     "high": float(row.get("high", 0) or 0),

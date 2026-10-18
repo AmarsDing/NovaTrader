@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "protocol": "eastmoney-file-csv-isolated-v1",
+  "mode": "ISOLATED",
+  "official_contract_reviewed_on": "2026-10-16",
+  "sources": [
+    "https://emquant.18.cn/file-help/doc/file_order/scanner_v2.html",
+    "https://emquant.18.cn/file-help/doc/file_order/scanner_v2_csv_guide.html"
+  ],
+  "terminal_version": null,
+  "terminal_export_verified": false,
+  "live_enabled": false,
+  "can_open_live": false,
+  "scope": {
+    "symbols": ["SHSE.XXXXXX", "SZSE.XXXXXX"],
+    "unsupported_mapping": ["BJSE", "fund-specific rules", "bond-specific rules", "derivatives"],
+    "order_type": {"1": "limit"},
+    "order_business": {"1": "stock_buy", "2": "stock_sell"},
+    "price_tick": "0.01",
+    "terminal_timezone": "Asia/Shanghai",
+    "fixture_encoding": "utf-8",
+    "explicit_read_encodings": ["utf-8-sig", "gb18030"],
+    "real_terminal_encoding_verified": false
+  },
+  "input": {
+    "order.csv": ["sid", "account_id", "symbol", "volume", "order_type", "order_business(order_biz)", "price", "comment"],
+    "cancel_order.csv": ["sid", "comment"],
+    "publication": "Complete and fsync outside watched input, then same-filesystem no-overwrite hard link. Unsupported filesystem fails closed.",
+    "fin_semantics": "No further appends; permits terminal cleanup. Scanner can process new or changed CSV before .fin exists.",
+    "identity": "Persistent account + command kind + sid/request_id transport claim survives CSV cleanup. Never retry an uncertain publication.",
+    "acknowledgement": "FILE_PUBLISHED is transport evidence only. Terminal order report determines broker state."
+  },
+  "output": {
+    "account_subdirectory": true,
+    "snapshot_files": ["cash.csv", "position.csv", "order_status.csv"],
+    "append_files": ["execution_report.csv", "order_status_change.csv"],
+    "order_status": {"1": "ACKNOWLEDGED", "2": "PARTIAL", "3": "FILLED", "5": "CANCELLED", "8": "REJECTED", "10": "PENDING", "12": "EXPIRED"},
+    "execution_type": {"15": "FILL", "19": "CANCEL_REJECTED"},
+    "header_policy": "Exact required columns; official long_name(short_name), long_name, or documented short_name accepted. Unknown/missing/duplicate columns rejected.",
+    "missing_policy": "Unavailable; never synthesize zero balances or broker acknowledgement.",
+    "replay": "Re-read bounded complete prefix. Fill identity account+sid+exec_id, record version excludes recv_at. No destructive cursor advancement or business ledger in gateway.",
+    "maximum_file_bytes": 8388608,
+    "maximum_file_rows": 100000,
+    "over_limit_policy": "Blocked until controlled archival/rotation and trade-side replay are implemented and verified.",
+    "file_freshness_seconds": 30,
+    "file_freshness_is_terminal_heartbeat": false,
+    "cross_file_atomic_snapshot": false
+  },
+  "transport": {
+    "contract": "../backend/api/broker/v1/gateway.proto",
+    "wire": "HTTPS JSON, not a running gRPC server",
+    "tls_minimum": "1.2",
+    "client_auth": "Trusted CA AND explicit SHA256 leaf-certificate allowlist",
+    "server_auth": "Go client validates configured CA and endpoint hostname; no insecure override",
+    "required_headers": ["X-NT-Protocol", "X-NT-Account"],
+    "max_request_bytes": 65536,
+    "default_start": false,
+    "account_scope": "One configured account per gateway process",
+    "writes": ["POST /v1/broker/orders", "POST /v1/broker/cancels"],
+    "reads": ["GET /v1/broker/health", "GET /v1/broker/snapshot", "GET /v1/broker/orders/{sid}", "POST /v1/broker/reconcile"]
+  },
+  "remaining_admission_evidence": [
+    "Actual terminal version, exports, encoding, enum and market mapping",
+    "DGX-to-Windows network, certificate deployment/rotation and host restart",
+    "Durable trade-side report ingestion, account ledger/outbox and full replay checkpoint",
+    "Terminal login/scanner health and cross-file consistent reconciliation",
+    "Output archival/rotation and long-duration performance",
+    "At least 20 real SIM trading days and separate restricted L2 approval"
+  ]
+}

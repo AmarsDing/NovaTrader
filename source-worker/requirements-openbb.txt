@@ -1,0 +1,5 @@
+# Optional environment only. Never install into production pyworker.
+# Top-level pins verified against upstream provider pyproject on 2026-10-16.
+# Full transitive environment lock must be archived when the isolated provider POC is actually installed.
+openbb-core==2.0.0
+openbb-fred==2.0.0

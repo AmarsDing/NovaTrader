@@ -1,0 +1,7 @@
+.venv/
+vendor/
+__pycache__/
+nt_research/__pycache__/
+tests/__pycache__/
+runs/
+*.log

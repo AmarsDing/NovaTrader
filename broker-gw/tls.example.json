@@ -1,0 +1,8 @@
+{
+  "host": "127.0.0.1",
+  "port": 7443,
+  "ca_file": "C:/NovaTrader/isolated-certs/ca.pem",
+  "cert_file": "C:/NovaTrader/isolated-certs/server.pem",
+  "key_file": "C:/NovaTrader/isolated-certs/server.key",
+  "allowed_client_sha256": ["REPLACE_WITH_TEST_CLIENT_LEAF_CERTIFICATE_SHA256"]
+}

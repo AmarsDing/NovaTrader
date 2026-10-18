@@ -1,0 +1,20 @@
+{
+  "a_stock_skill": {
+    "url": "https://raw.githubusercontent.com/simonlin1212/a-stock-data/main/SKILL.md",
+    "sha256": "d30aa90edb881a45168c397a6ca1ccfebc440a8d4c93b3d94d3123d27b260a1d",
+    "bytes": 434721,
+    "status": "verified"
+  },
+  "a_stock_license": {
+    "url": "https://raw.githubusercontent.com/simonlin1212/a-stock-data/main/LICENSE",
+    "sha256": "199bab40163ad21135c2c4d5db43bffdadb14ed80762b048f04931cc48700bbf",
+    "bytes": 10760,
+    "status": "verified"
+  },
+  "openbb_fred_pyproject": {
+    "url": "https://raw.githubusercontent.com/OpenBB-finance/OpenBB/develop/openbb_platform/providers/fred/pyproject.toml",
+    "sha256": "03b67a0bef95704d8184b3c19b4f012a12d91c2c05e9d8692bd262d937a2370a",
+    "bytes": 2957,
+    "status": "verified"
+  }
+}
