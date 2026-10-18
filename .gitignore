@@ -3,13 +3,14 @@ backend/bin/
 backend/dist/
 backend/build/
 backend/runtime/*.log
+backend/runtime/nats-*/
 *.exe
 *.test
 *.out
 
 # Python
 pyworker/.venv/
-pyworker/**/__pycache__/
+__pycache__/
 *.pyc
 .Python
 

@@ -1,0 +1,123 @@
+[
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 0.2,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_000.20s.jpg"
+  },
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 12.52,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_012.52s.jpg"
+  },
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 24.84,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_024.84s.jpg"
+  },
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 37.17,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_037.17s.jpg"
+  },
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 61.81,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_061.81s.jpg"
+  },
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 86.45,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_086.45s.jpg"
+  },
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "time_seconds": 111.1,
+    "crop_box": [
+      0,
+      850,
+      1320,
+      1780
+    ],
+    "image": "309318776bd26ad8dd8568882f59d8ee_111.10s.jpg"
+  },
+  {
+    "file": "6ab105c44c0edfcd5c729b24bea91f8f.mp4",
+    "time_seconds": 7.6,
+    "crop_box": [
+      0,
+      480,
+      1320,
+      2170
+    ],
+    "image": "6ab105c44c0edfcd5c729b24bea91f8f_007.60s.jpg"
+  },
+  {
+    "file": "8d952a380f74859c5538a6a5ac7749ee.mp4",
+    "time_seconds": 8.95,
+    "crop_box": [
+      0,
+      620,
+      1320,
+      2030
+    ],
+    "image": "8d952a380f74859c5538a6a5ac7749ee_008.95s.jpg"
+  },
+  {
+    "file": "e1386a6fdcd3d3441ad113e4a6df7290.mp4",
+    "time_seconds": 1.71,
+    "crop_box": [
+      0,
+      480,
+      1320,
+      2170
+    ],
+    "image": "e1386a6fdcd3d3441ad113e4a6df7290_001.71s.jpg"
+  },
+  {
+    "file": "eb7f3b942296688b6ad3a07f90676e0b.mp4",
+    "time_seconds": 3.31,
+    "crop_box": [
+      0,
+      480,
+      1320,
+      2170
+    ],
+    "image": "eb7f3b942296688b6ad3a07f90676e0b_003.31s.jpg"
+  }
+]

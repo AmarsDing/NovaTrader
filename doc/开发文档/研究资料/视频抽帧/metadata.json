@@ -1,0 +1,91 @@
+[
+  {
+    "file": "309318776bd26ad8dd8568882f59d8ee.mp4",
+    "bytes": 136811846,
+    "duration_seconds": 136.04,
+    "sample_times_seconds": [
+      0.2,
+      12.52,
+      24.84,
+      37.17,
+      49.49,
+      61.81,
+      74.13,
+      86.45,
+      98.77,
+      111.1,
+      123.42,
+      135.74
+    ],
+    "contact_sheet": "309318776bd26ad8dd8568882f59d8ee_contact.jpg",
+    "resolution": "1320x2868"
+  },
+  {
+    "file": "6ab105c44c0edfcd5c729b24bea91f8f.mp4",
+    "bytes": 48031420,
+    "duration_seconds": 26.39,
+    "sample_times_seconds": [
+      0.2,
+      3.9,
+      7.6,
+      11.3,
+      14.99,
+      18.69,
+      22.39,
+      26.09
+    ],
+    "contact_sheet": "6ab105c44c0edfcd5c729b24bea91f8f_contact.jpg",
+    "resolution": "1320x2868"
+  },
+  {
+    "file": "8d952a380f74859c5538a6a5ac7749ee.mp4",
+    "bytes": 12581229,
+    "duration_seconds": 15.81,
+    "sample_times_seconds": [
+      0.2,
+      2.39,
+      4.57,
+      6.76,
+      8.95,
+      11.14,
+      13.32,
+      15.51
+    ],
+    "contact_sheet": "8d952a380f74859c5538a6a5ac7749ee_contact.jpg",
+    "resolution": "1320x2868"
+  },
+  {
+    "file": "e1386a6fdcd3d3441ad113e4a6df7290.mp4",
+    "bytes": 12100476,
+    "duration_seconds": 11.07,
+    "sample_times_seconds": [
+      0.2,
+      1.71,
+      3.22,
+      4.73,
+      6.24,
+      7.75,
+      9.26,
+      10.77
+    ],
+    "contact_sheet": "e1386a6fdcd3d3441ad113e4a6df7290_contact.jpg",
+    "resolution": "1320x2868"
+  },
+  {
+    "file": "eb7f3b942296688b6ad3a07f90676e0b.mp4",
+    "bytes": 10261339,
+    "duration_seconds": 5.95,
+    "sample_times_seconds": [
+      0.2,
+      0.98,
+      1.76,
+      2.54,
+      3.31,
+      4.09,
+      4.87,
+      5.65
+    ],
+    "contact_sheet": "eb7f3b942296688b6ad3a07f90676e0b_contact.jpg",
+    "resolution": "1320x2868"
+  }
+]

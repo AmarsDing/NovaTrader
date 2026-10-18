@@ -135,7 +135,7 @@ backend/ent/
   - `npm run tauri dev` 联调，`npm run tauri build` 出安装包；本机 Rust 构建配方：`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc CARGO_TARGET_DIR=C:\nt-target`（F:\股票 非 ASCII 路径会损坏 in-tree 产物）；
   - 后端地址运行时可配（设置面板），拼接集中在 `web/src/utils/endpoint.ts`，HTTP 只走 `web/src/api/http.ts`；
   - popout 多屏：`core:webview:allow-create-webview-window` capability + `popout.html` 宿主页 + `POPOUT_ALLOWED` 白名单（trade/settings/ops 禁弹）。
-- 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`（含第五节重构约定：**红涨绿跌**、发光预算——glow 只给 AI 高分信号/预警/Kill Switch、玻璃拟态只留 CommandBar/弹层/AlertCenter、密度可切）；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
+- 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`：**红涨绿跌**、主题/密度与统一token保持；2026-10-15用户要求更强毛玻璃/半透明/霓虹，使用范围以第七节取代第五节旧限制；材质与完整/节能/减少动态模式已实现，完整视觉/硬件压力仍待验收。保留原监控画布/HUD/终端带与dockview一张票，真实性/对比度/性能共同验收；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
 - CI 三道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test）。
 
 ## 7. 配置与端口
