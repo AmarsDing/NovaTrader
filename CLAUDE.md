@@ -163,10 +163,12 @@ backend/ent/
 
 ## 9. 已知技术债（现状注意）
 
-- `backend/api/admin/v1/` 下的模板 proto（airportinfo/ntp/snmp/dataForward/serviceMonitor 等）仍在，与股票业务无关，待清理后重建业务 proto（新增接口一律 proto-first，业务路由当前走 `internal/gateway` in-gate 聚合）。
-- `go.mod` 中 GORM/mysql、mongo、mssqld 等依赖待随业务替换逐步清理。
-- `web/` 仍有少量纯 JS 存量（router/index.js、store/confirm.js 等门面），按渐进策略随触碰迁 TS。
-- 已清偿（勿再按旧账处理）：admin 服务编译（data.go 模板引用已裁剪）、main.go 头注释、web 登录页+骨架（P1–P6 重构完成，21 面板驾驶舱）。
+- 已清偿（2026-10-18/19 逐一核实，勿再按旧账处理）：
+  - `backend/api/admin/v1/` 模板 proto 已全部清除：现仅存 config/environment/observability 三个业务 proto，`api/` 按服务分域（trade/risk/market/intel/brain/strategy/datahub/backtest/notify/broker/platform）；新增接口一律 proto-first，业务路由走 `internal/gateway` in-gate 聚合。
+  - `go.mod` 无 GORM/mysql/mongo/mssqld：直接 DB 依赖仅 ent + pgx/v5；全仓（含 third_party、app/discovery）零 gorm/mongo/mssqld 导入；go.sum 保留 go-sql-driver/mysql 校验和属 ent 模块图合法要求，不 prune。
+  - web 纯 JS 门面清零：router/index.js、store/confirm.js 迁 TS 并删源文件；零引用门面 utils/request.js 已删；src 下无 .js 业务文件（vite/eslint 工程配置按惯例保留 JS）。
+  - admin 服务编译（data.go 模板引用已裁剪）、main.go 头注释、web 登录页+骨架（P1–P6 重构完成，21 面板驾驶舱）。
+- 新浮出的死链（已核查引用、提出删除待用户点名批准）：admin 整链模板残留 —— `app/admin/internal/core/topic.go`（气象/snmp/dataForward 等死主题常量，零外部引用）、`app/admin/internal/biz/` 整个包（nats.go/topic.go 组成死 NatsCase/TopicCase 链，wire.go 未引用 biz.ProviderSet）、`app/admin/internal/data/nats.go`（死 NatsCoreRepo，无 TopicRepo 实现存在）、`backend/utils/natserver/`（全仓仅此两处死代码引用）。删除后需重跑 go build/vet/test 确认。
 
 ## 10. 一句话总结
 
