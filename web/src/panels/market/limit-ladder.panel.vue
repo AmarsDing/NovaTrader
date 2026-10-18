@@ -10,10 +10,9 @@ import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { clock, compactAmount, intText, messageOf, pctText, ratioPct } from '@/utils/format'
+import { dataFrame } from '@/ws/data-frame'
 import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
 import SentimentStages from './SentimentStages.vue'
-
-const REFRESH_THROTTLE_MS = 15000
 
 const detail = ref<Sentiment | null>(null)
 const upBoards = ref<LimitBoard[]>([])
@@ -22,6 +21,8 @@ const upReady = ref(false)
 const downReady = ref(false)
 const error = ref('')
 const loading = ref(false)
+/** 行情快照推送触发的整表重拉走数据帧统一调度（G1）：合帧、隐藏页降频、负载自适应。 */
+const PUSH_RELOAD_MIN_INTERVAL_MS = 15000
 
 const sealed = computed(() => upBoards.value.filter((row) => row.status === 'SEALED'))
 const broken = computed(() => upBoards.value.filter((row) => row.status === 'BROKEN'))
@@ -92,7 +93,6 @@ const brokenRows = computed(() => broken.value as unknown as (LimitBoard & Recor
 
 let offPush: (() => void) | undefined
 let unsubscribe: (() => void) | undefined
-let lastAt = 0
 let loadSequence = 0
 let disposed = false
 
@@ -118,10 +118,9 @@ async function load() {
 
 function onPushMessage(msg: WsPushMessage) {
   if (msg.topic !== 'market') return
-  const now = Date.now()
-  if (now - lastAt < REFRESH_THROTTLE_MS) return
-  lastAt = now
-  void load()
+  dataFrame.scheduleThrottled('limit-ladder', PUSH_RELOAD_MIN_INTERVAL_MS, () => {
+    if (!disposed) void load()
+  })
 }
 
 onMounted(() => {
