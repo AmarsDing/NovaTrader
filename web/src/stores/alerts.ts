@@ -18,6 +18,9 @@ export interface ToastItem {
 
 let toastSeq = 0
 
+/** G3：应用内 toast 栈硬上限，高频告警时挤掉最旧，防屏幕右上一片糊。 */
+export const MAX_TOASTS = 5
+
 export const useAlertsStore = defineStore('alerts', () => {
   const messages = ref<NotifyMessage[]>([])
   const loading = ref(false)
@@ -41,6 +44,7 @@ export const useAlertsStore = defineStore('alerts', () => {
   function pushToast(kind: ToastItem['kind'], title: string, body = ''): number {
     const id = ++toastSeq
     toasts.value.push({ id, kind, title, body, at: Date.now() })
+    if (toasts.value.length > MAX_TOASTS) toasts.value.splice(0, toasts.value.length - MAX_TOASTS)
     return id
   }
 

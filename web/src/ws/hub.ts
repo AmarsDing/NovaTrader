@@ -23,7 +23,7 @@ export interface HubDeps {
   wsUrl: () => string
   checkHealth: () => Promise<boolean>
   askConfirm: (order: Record<string, unknown>, local: boolean) => Promise<unknown>
-  deskNotify: (title: string, body: string) => Promise<boolean>
+  deskNotify: (title: string, body: string, kind?: string) => Promise<boolean>
 }
 
 /** market 主题的证券兴趣声明：symbol 必填；省略 freq 表示该证券全部周期。 */
@@ -525,7 +525,8 @@ export function createWsHub(deps: HubDeps): WsHub {
     const title = record.title || record.subject
     const body = record.body || record.message || record.reason
     if (title && (topic === 'alert' || kind === 'notify')) {
-      runPrompt('桌面通知', () => deps.deskNotify(String(title), body ? String(body) : ''))
+      const severity = String(record.level || record.severity || kind || '')
+      runPrompt('桌面通知', () => deps.deskNotify(String(title), body ? String(body) : '', severity))
     }
   }
 

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 通知中心面板（M10）：消息列表 + 级别/类别筛选 + WS alert 推送即时入列。
- * 打开即视为已读（联动 StatusBar 未读角标，见 stores/notify.ts）。
+ * G3：逐条已读态（点条目标记，localStorage 持久化）+ 全部已读；
+ * 打开面板仍清零 StatusBar 角标（见 stores/notify.ts），两者语义独立。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { listMessages, type NotifyMessage } from '@/api/notify'
@@ -10,6 +11,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import { clock, messageOf } from '@/utils/format'
+import { capNotifReadIds, loadNotifReadIds, saveNotifReadIds } from '@/utils/notify-read'
 import { onPush, type WsPushMessage } from '@/ws/hub'
 
 const notify = useNotifyStore()
@@ -19,6 +21,9 @@ const loading = ref(false)
 const error = ref('')
 const level = ref('')
 const kind = ref('')
+const readIds = ref<string[]>(loadNotifReadIds())
+
+const readSet = computed(() => new Set(readIds.value))
 
 const levels = computed(() => [...new Set(items.value.map((m) => m.level).filter(Boolean))].sort())
 const levelOptions = computed(() => [
@@ -31,6 +36,12 @@ const kindOptions = computed(() => [
   ...kinds.value.map((k) => ({ value: k, label: k })),
 ])
 
+function isRead(m: NotifyMessage): boolean {
+  return m.read || readSet.value.has(m.id)
+}
+
+const unreadInList = computed(() => items.value.filter((m) => !isRead(m)).length)
+
 const entries = computed<TimelineEntry[]>(() =>
   items.value
     .filter((m) => (!level.value || m.level === level.value) && (!kind.value || m.kind === kind.value))
@@ -41,6 +52,7 @@ const entries = computed<TimelineEntry[]>(() =>
       body: m.body,
       tag: m.kind,
       tone: toneOf(m.level),
+      read: isRead(m),
     })),
 )
 
@@ -79,7 +91,20 @@ function onPushMessage(msg: WsPushMessage) {
     read: false,
   }
   items.value = [entry, ...items.value].slice(0, 200)
-  // 面板开着等于在看，推送到了就顺手清未读。
+  // 面板开着等于在看，推送到了就顺手清零角标；条目自身仍按未读呈列，点开才算读过。
+  notify.markRead()
+}
+
+function markOneRead(item: TimelineEntry) {
+  const id = String(item.id)
+  if (readSet.value.has(id)) return
+  readIds.value = capNotifReadIds([id, ...readIds.value])
+  saveNotifReadIds(readIds.value)
+}
+
+function markAllRead() {
+  readIds.value = capNotifReadIds([...items.value.map((m) => m.id), ...readIds.value])
+  saveNotifReadIds(readIds.value)
   notify.markRead()
 }
 
@@ -103,19 +128,20 @@ onBeforeUnmount(() => {
     <header class="nt-head">
       <div>
         <h1 class="nt-title">通知中心</h1>
-        <p class="nt-note">{{ items.length }} 条消息 · WS alert 实时入列 · 打开即已读</p>
+        <p class="nt-note">{{ items.length }} 条消息 · 未读 {{ unreadInList }} · 点条目标记已读</p>
       </div>
       <div class="filters">
         <NtSelect v-model="level" :options="levelOptions" />
         <NtSelect v-model="kind" :options="kindOptions" />
         <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+        <NtButton size="sm" :disabled="unreadInList === 0" @click="markAllRead">全部已读</NtButton>
       </div>
     </header>
 
     <p v-if="error" class="nt-err">{{ error }}</p>
 
     <section class="nt-panel">
-      <NtTimeline :items="entries" :empty="loading ? '加载中…' : '还没有消息'" />
+      <NtTimeline :items="entries" :empty="loading ? '加载中…' : '还没有消息'" selectable @select="markOneRead" />
     </section>
   </div>
 </template>

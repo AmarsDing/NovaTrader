@@ -2,7 +2,7 @@
 /**
  * 底栏 chrome（不进 dock）：链路健康、账本、交易模式、Kill Switch、未读通知、WS 主题、上海时段钟。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import { useAccountStore } from '@/stores/account'
 import { useNotifyStore } from '@/stores/notify'
@@ -43,14 +43,29 @@ function openNotify() {
   getWorkbench()?.openPanel('notify-center')
 }
 
+/* G3 任务栏未读徽标：无 tauri badge 插件的零依赖替代——窗口标题前缀。
+   popout 宿主页不挂本组件，互不抢标题。 */
+let baseTitle = ''
+const stopTitleWatch = watch(
+  () => notify.unread,
+  (n) => {
+    document.title = n > 0 ? `(${n > 99 ? '99+' : n}) ${baseTitle}` : baseTitle
+  },
+)
+
 onMounted(() => {
+  baseTitle = document.title || 'NovaTrader'
   timer = setInterval(() => {
     now.value = new Date()
   }, 1000)
   notify.start()
 })
 
-onBeforeUnmount(() => clearInterval(timer))
+onBeforeUnmount(() => {
+  clearInterval(timer)
+  stopTitleWatch()
+  if (baseTitle) document.title = baseTitle
+})
 </script>
 
 <template>
