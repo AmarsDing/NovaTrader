@@ -30,6 +30,9 @@ type frame struct {
 	Raw      json.RawMessage
 	Epoch    string
 	Metadata map[string]any
+	// publish 时一次解析沉淀的行情身份（仅 market 主题），供按客户端兴趣过滤，免每帧每客户端重解析。
+	Symbol string
+	Freq   string
 }
 
 type topicCursor struct {
@@ -40,10 +43,20 @@ type topicCursor struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// marketFilter 是客户端声明的行情兴趣（P0-3 订阅收窄）；Symbol 必填，Freq 为空表示该证券全周期。
+type marketFilter struct {
+	Symbol string `json:"symbol"`
+	Freq   string `json:"freq"`
+}
+
 type clientSubscription struct {
 	topics    []string
 	pending   map[string]int64 // REST recovery must acknowledge this frozen watermark.
 	requestID uint64
+	// 行情兴趣：marketAll 为真（未声明过滤）时全量；否则按 symbol[/freq] 键集合放行。
+	marketAll     bool
+	marketKeys    map[string]struct{}
+	marketSymbols map[string]struct{}
 }
 
 // Hub keeps a bounded replay ring. A cursor is only valid within its server epoch.
@@ -152,7 +165,7 @@ func (h *Hub) Stats() map[string]any {
 					})
 					continue
 				}
-				consumers = append(consumers, map[string]any{
+				row := map[string]any{
 					"durable":       route.durable,
 					"subject":       route.subject,
 					"pending":       ci.NumPending,
@@ -161,7 +174,19 @@ func (h *Hub) Stats() map[string]any {
 					"lag":           ci.NumPending,
 					"lag_basis":     "filtered_consumer_num_pending",
 					"redelivered":   ci.NumRedelivered,
-				})
+				}
+				// 持久积压最老年龄（N2-01）：两个计数都为零就不必再读流，-1 如实表示无/不可解。
+				if ci.NumPending > 0 || ci.NumAckPending > 0 {
+					ages := oldestBacklog(bus.JetStream(), events.StreamName, route.subject, ci, time.Now())
+					row["oldest_pending_age_ms"] = ages.PendingAgeMs
+					row["oldest_ack_age_ms"] = ages.AckAgeMs
+					row["oldest_age_basis"] = ages.Basis
+				} else {
+					row["oldest_pending_age_ms"] = int64(-1)
+					row["oldest_ack_age_ms"] = int64(-1)
+					row["oldest_age_basis"] = "pending:无积压;ack:无未确认"
+				}
+				consumers = append(consumers, row)
 			}
 			stream["consumers"] = consumers
 			out["stream"] = stream
@@ -187,7 +212,9 @@ func (h *Hub) publish(topic, event string, raw json.RawMessage, metadata map[str
 	}
 	item := frame{Topic: topic, Event: event, Raw: append(json.RawMessage(nil), raw...), Metadata: metadata}
 	if topic == "market" {
-		if key := marketKey(item); key != "" {
+		key, symbol, freq := marketKey(item)
+		item.Symbol, item.Freq = symbol, freq
+		if key != "" {
 			h.mu.Lock()
 			_, exists := h.market[key]
 			if exists || len(h.market) < 5000 {
@@ -202,9 +229,17 @@ func (h *Hub) publish(topic, event string, raw json.RawMessage, metadata map[str
 }
 
 // Only replaceable market states may be coalesced. Unknown payloads remain events.
-func marketKey(item frame) string {
+// 返回合并键与帧的证券身份；identity 在一次解析里顺手产出，供按客户端兴趣过滤。
+func marketKey(item frame) (key, symbol, freq string) {
 	var payload map[string]any
 	_ = json.Unmarshal(item.Raw, &payload)
+	for _, name := range []string{"symbol", "stock_code", "code"} {
+		if s, ok := payload[name].(string); ok && s != "" {
+			symbol = s
+			break
+		}
+	}
+	freq, _ = payload["freq"].(string)
 	kind := item.Event
 	if subject, ok := item.Metadata["subject"].(string); ok && subject != "" {
 		kind = subject
@@ -213,7 +248,7 @@ func marketKey(item frame) string {
 	switch kind {
 	case "tick", "quote", "market", "bar", events.SubjectMarketSnapshot, events.SubjectMarketBar, events.SubjectMarketFactor:
 	default:
-		return ""
+		return "", symbol, freq
 	}
 	bucket := ""
 	if strings.Contains(kind, "bar") {
@@ -228,36 +263,54 @@ func marketKey(item frame) string {
 			}
 		}
 		if bucket == "" {
-			return ""
+			return "", symbol, freq
 		} // Do not erase a completed bar without its time key.
 	}
-	for _, name := range []string{"symbol", "stock_code", "code"} {
-		if symbol, ok := payload[name].(string); ok && symbol != "" {
-			freq, _ := payload["freq"].(string)
-			return kind + ":" + symbol + ":" + freq + ":" + bucket
-		}
+	if symbol != "" {
+		return kind + ":" + symbol + ":" + freq + ":" + bucket, symbol, freq
 	}
 	if kind == events.SubjectMarketSnapshot {
 		source, _ := item.Metadata["source"].(string)
-		return kind + ":batch:" + source
+		return kind + ":batch:" + source, "", ""
 	}
-	return ""
+	return "", symbol, freq
+}
+
+// allowsMarket 实现 P0-3 的服务端收窄：快照 meta/无证券身份的事件帧全量放行；
+// freq 不可判定的帧按证券级放行（宁多勿丢，前端再按行内 freq 过滤）。
+func (s *clientSubscription) allowsMarket(item frame) bool {
+	if item.Topic != "market" || s.marketAll {
+		return true
+	}
+	if item.Symbol == "" {
+		return true
+	}
+	if item.Freq == "" {
+		_, ok := s.marketSymbols[item.Symbol]
+		return ok
+	}
+	if _, ok := s.marketKeys[item.Symbol+"\x00"+item.Freq]; ok {
+		return true
+	}
+	_, ok := s.marketKeys[item.Symbol+"\x00"]
+	return ok
 }
 
 func (h *Hub) onText(client *websocket.Client, message []byte) bool {
 	var req struct {
-		Op        string           `json:"op"`
-		Topics    []string         `json:"topics"`
-		Resume    map[string]int64 `json:"resume"`
-		Epoch     string           `json:"server_epoch"`
-		RequestID uint64           `json:"request_id"`
+		Op            string           `json:"op"`
+		Topics        []string         `json:"topics"`
+		Resume        map[string]int64 `json:"resume"`
+		Epoch         string           `json:"server_epoch"`
+		RequestID     uint64           `json:"request_id"`
+		MarketFilters []marketFilter   `json:"market_filters"`
 	}
 	if err := json.Unmarshal(message, &req); err != nil || req.Op == "" {
 		return false
 	}
 	switch req.Op {
 	case "sub", "resync":
-		h.beginSubscription(client, req.Topics, req.Resume, req.Epoch, req.RequestID, req.Op == "resync")
+		h.beginSubscription(client, req.Topics, req.Resume, req.Epoch, req.RequestID, req.Op == "resync", req.MarketFilters)
 	case "resync_ack":
 		h.completeRecovery(client, req.Resume, req.Epoch, req.RequestID)
 	}
@@ -277,7 +330,8 @@ func (h *Hub) control(op string, requestID uint64, data any) *websocket.WRespons
 }
 
 // The lock serializes ack, replay and live publication. No event can cross the handoff.
-func (h *Hub) beginSubscription(client *websocket.Client, topics []string, resume map[string]int64, epoch string, requestID uint64, force bool) {
+// filters 为客户端声明的行情兴趣（P0-3）；为空表示未声明即全量（向后兼容）。
+func (h *Hub) beginSubscription(client *websocket.Client, topics []string, resume map[string]int64, epoch string, requestID uint64, force bool, filters []marketFilter) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if client == nil {
@@ -291,7 +345,23 @@ func (h *Hub) beginSubscription(client *websocket.Client, topics []string, resum
 			seen[topic] = true
 		}
 	}
-	state := &clientSubscription{topics: selected, pending: map[string]int64{}, requestID: requestID}
+	state := &clientSubscription{topics: selected, pending: map[string]int64{}, requestID: requestID, marketAll: len(filters) == 0}
+	if !state.marketAll {
+		state.marketKeys = map[string]struct{}{}
+		state.marketSymbols = map[string]struct{}{}
+		for _, f := range filters {
+			symbol := strings.TrimSpace(f.Symbol)
+			if symbol == "" {
+				continue
+			}
+			state.marketKeys[symbol+"\x00"+strings.TrimSpace(f.Freq)] = struct{}{}
+			state.marketSymbols[symbol] = struct{}{}
+		}
+		// 全部条目都缺 symbol 视为未声明有效兴趣——回到全量，拒绝"过滤成空流"。
+		if len(state.marketKeys) == 0 {
+			state.marketAll = true
+		}
+	}
 	h.clients[client] = state
 	client.SetTopics(selected)
 	cursors := map[string]topicCursor{}
@@ -319,7 +389,7 @@ func (h *Hub) beginSubscription(client *websocket.Client, topics []string, resum
 			h.resyncs++
 		} else {
 			for _, item := range h.buf[topic] {
-				if item.Seq > after {
+				if item.Seq > after && state.allowsMarket(item) {
 					replays = append(replays, item)
 				}
 			}
@@ -364,7 +434,7 @@ func (h *Hub) completeRecovery(client *websocket.Client, watermarks map[string]i
 		} else {
 			delete(state.pending, topic)
 			for _, item := range h.buf[topic] {
-				if item.Seq > after {
+				if item.Seq > after && state.allowsMarket(item) {
 					replays = append(replays, item)
 				}
 			}
@@ -436,7 +506,7 @@ func (h *Hub) addFrame(item frame) {
 			delete(h.clients, client)
 			continue
 		}
-		if _, recovering := state.pending[item.Topic]; !recovering && client.Allows(item.Topic) {
+		if _, recovering := state.pending[item.Topic]; !recovering && client.Allows(item.Topic) && state.allowsMarket(item) {
 			h.sendLocked(client, item.response())
 		}
 	}

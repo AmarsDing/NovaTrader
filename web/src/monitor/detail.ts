@@ -1527,6 +1527,18 @@ function dbSections(input: MonitorInput): DetailSection[] {
   return [overview, slow]
 }
 
+/** 持久积压年龄：undefined/null=未返回（旧后端/缺消费者）；<0=无积压或不可解；否则按时长格式化。 */
+function backlogAgeText(ms: number | null | undefined, empty: string): string {
+  if (ms == null) return '—'
+  if (ms < 0) return empty
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m${String(seconds % 60).padStart(2, '0')}s`
+  return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}m`
+}
+
 function natsSections(input: MonitorInput): DetailSection[] {
   const nats = input.opsP2?.ok ? input.opsP2.nats ?? null : null
   if (!nats) {
@@ -1573,18 +1585,20 @@ function natsSections(input: MonitorInput): DetailSection[] {
       rows,
       table: {
         key: 'consumers',
-        columns: ['消费者', '主题', '积压', '待确认', 'lag'],
+        columns: ['消费者', '主题', '积压', '待确认', 'lag', '最老积压', '最老待确认'],
         rows: nats.consumers.map((item) => [
           item.durable,
           item.subject,
           item.missing ? '消费者不存在' : intText(item.pending),
           item.missing ? '—' : intText(item.ackPending),
           item.missing ? '—' : intText(item.lag),
+          item.missing ? '—' : backlogAgeText(item.oldestPendingAgeMs, '无积压'),
+          item.missing ? '—' : backlogAgeText(item.oldestAckAgeMs, '无待确认'),
         ]),
         empty: '没有 durable 消费者（JetStream 流信息不可得）',
         flags: nats.consumers.map((item) => (item.missing ? 'danger' : (item.lag ?? 0) > 0 ? 'warn' : '')),
       },
-      foot: 'lag使用JetStream实际NumPending（待投递数），待确认另列NumAckPending；不使用流末序号差推算积压。消费者缺失表示当前durable尚未建立或不可得。',
+      foot: 'lag使用JetStream实际NumPending（待投递数），待确认另列NumAckPending；不使用流末序号差推算积压。最老年龄=delivered/ack_floor 之后第一条主题匹配消息的入流时刻年龄，口径随行 oldest_age_basis 下发；「—」表示旧后端未返回或消费者缺失，不写 0。消费者缺失表示当前durable尚未建立或不可得。',
     },
   ]
 }

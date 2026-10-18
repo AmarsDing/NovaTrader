@@ -197,6 +197,10 @@ export interface NatsConsumer {
   ackPending: number | null
   deliveredSeq: number | null
   lag: number | null
+  /** 持久积压最老年龄（N2-01）：-1 = 无积压或不可解（口径见 oldestAgeBasis）；旧后端不下发时为 undefined。 */
+  oldestPendingAgeMs?: number | null
+  oldestAckAgeMs?: number | null
+  oldestAgeBasis?: string
 }
 
 export interface OpsNats {
@@ -224,6 +228,9 @@ export async function getOpsNats(): Promise<OpsNats> {
     ackPending: num(pick(c, 'ackPending', 'ack_pending')),
     deliveredSeq: num(pick(c, 'deliveredSeq', 'delivered_seq')),
     lag: num(pick(c, 'lag')),
+    oldestPendingAgeMs: num(pick(c, 'oldestPendingAgeMs', 'oldest_pending_age_ms')),
+    oldestAckAgeMs: num(pick(c, 'oldestAckAgeMs', 'oldest_ack_age_ms')),
+    oldestAgeBasis: pick<string>(c, 'oldestAgeBasis', 'oldest_age_basis') || '',
   }))
   let lagTotal: number | null = 0
   let pendingTotal: number | null = 0

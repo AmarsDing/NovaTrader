@@ -505,8 +505,9 @@ describe('P2 · 昨涨停今溢价 / 市场广度 / PG / NATS', () => {
         reconnects: 1,
         stream: { name: 'NOVATRADER', messages: 4200, bytes: 20480 },
         consumers: [
-          { durable: 'admin_signal', subject: 'signal.*', missing: false, pending: 0, ackPending: 0, deliveredSeq: 4200, lag: 0 },
+          { durable: 'admin_signal', subject: 'signal.*', missing: false, pending: 0, ackPending: 0, deliveredSeq: 4200, lag: 0, oldestPendingAgeMs: -1, oldestAckAgeMs: -1, oldestAgeBasis: 'pending:无积压;ack:无未确认' },
           { durable: 'admin_risk_alert', subject: 'risk.alert', missing: true, pending: null, ackPending: null, deliveredSeq: null, lag: null },
+          { durable: 'admin_trade_account', subject: 'trade.account', missing: false, pending: 3, ackPending: 1, deliveredSeq: 9, lag: 3, oldestPendingAgeMs: 83000, oldestAckAgeMs: 1500, oldestAgeBasis: 'pending:delivered后首条匹配;ack:ack_floor后首条匹配' },
         ],
         lagTotal: null,
         pendingTotal: null,
@@ -574,8 +575,14 @@ describe('P2 · 昨涨停今溢价 / 市场广度 / PG / NATS', () => {
     expect(nats?.rows?.find((r) => r.key === 'io')?.value).toBe('1200 入 / 900 出')
     expect(nats?.rows?.find((r) => r.key === 'stream')?.note).toContain('20.0 KiB')
     expect(nats?.table?.rows[1][2]).toBe('消费者不存在')
-    expect(nats?.table?.flags).toEqual(['', 'danger'])
+    expect(nats?.table?.flags).toEqual(['', 'danger', 'warn'])
     expect(nats?.rows?.find((r) => r.key === 'lag')?.value).toBe('—')
+    // 最老年龄：-1 如实写「无积压/无待确认」，有积压按时长格式化，缺消费者整行 —。
+    expect(nats?.table?.rows[0][5]).toBe('无积压')
+    expect(nats?.table?.rows[0][6]).toBe('无待确认')
+    expect(nats?.table?.rows[1][5]).toBe('—')
+    expect(nats?.table?.rows[2][5]).toBe('1m23s')
+    expect(nats?.table?.rows[2][6]).toBe('2s')
 
     const down = p2Input()
     down.opsP2 = { ok: true, db: null, nats: { connected: false, note: '', inMsgs: null, outMsgs: null, reconnects: null, stream: null, consumers: [], lagTotal: null, pendingTotal: null } }
