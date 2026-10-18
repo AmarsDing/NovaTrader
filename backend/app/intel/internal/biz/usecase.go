@@ -365,7 +365,7 @@ func (u *Usecase) headEvents(ctx context.Context, it *Item, s Score, links []Lin
 		}), now)
 		shifts = append(shifts, Shift{Stock: l.Target, Before: before, After: after})
 	}
-	trace := events.TraceID(ctx)
+	// ctx 已携带完整父信封（core 消费 intel.raw 后 ContextWithEnvelope），因果父由 NewWithContext 续上。
 	ev := ScoredEvent{
 		NewsID: it.ID, ClusterID: it.ClusterID, Kind: it.Kind, EventType: s.EventType, Title: it.Title,
 		PublishTime: it.PublishTime, Sentiment: s.Sentiment, Importance: s.Importance,
@@ -375,13 +375,13 @@ func (u *Usecase) headEvents(ctx context.Context, it *Item, s Score, links []Lin
 	for _, l := range links {
 		ev.Links = append(ev.Links, EventLink{Type: l.TargetType, Target: l.Target, Confidence: l.Confidence})
 	}
-	env, err := events.New(eventSource, events.SubjectIntelScored, trace, ev)
+	env, err := events.NewWithContext(ctx, eventSource, events.SubjectIntelScored, ev)
 	if err != nil {
 		return err
 	}
 	out.Event = &env
 	if a := DecideAlert(it, s, links, shifts, u.cfg.AlertImportance, u.cfg.AlertShift); a != nil {
-		alert, err := events.New(eventSource, events.SubjectIntelAlert, trace, a)
+		alert, err := events.NewWithContext(ctx, eventSource, events.SubjectIntelAlert, a)
 		if err != nil {
 			return err
 		}

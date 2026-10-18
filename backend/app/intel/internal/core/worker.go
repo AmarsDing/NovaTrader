@@ -137,7 +137,7 @@ func (w *Worker) handle(ctx context.Context, m *nats.Msg) {
 	if raw.Kind == "" {
 		raw.Kind = strings.TrimPrefix(m.Subject, events.SubjectIntelRawPrefix)
 	}
-	res, err := w.uc.Process(events.WithTraceID(ctx, env.TraceID), raw)
+	res, err := w.uc.Process(events.ContextWithEnvelope(ctx, env), raw)
 	if errors.Is(err, biz.ErrInvalid) {
 		finish(observe.Rejected)
 	} else {

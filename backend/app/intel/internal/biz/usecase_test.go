@@ -253,6 +253,43 @@ func TestPipelineDedupClusterAndEvents(t *testing.T) {
 	}
 }
 
+// 父信封在场的调用（core 消费 intel.raw 后 ContextWithEnvelope）：scored 与 alert
+// 都续上因果父与链号；无父 ctx 的直发（HTTP 触发/测试）仍是根事件，行为与改造前逐字一致。
+func TestProcessStitchesCausationFromParentEnvelope(t *testing.T) {
+	repo := newMemRepo()
+	u := newTestUsecase(t, repo, nil, nil)
+	parent, err := events.New("datahub", events.SubjectIntelRaw("announcement"), "trace-parent-1", map[string]any{"k": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := events.ContextWithEnvelope(context.Background(), parent)
+	res, err := u.Process(ctx, Raw{Source: "cninfo", SourceID: "2", Kind: "announcement", Codes: []string{"600519.SH"},
+		Title: "贵州茅台：关于收到中国证监会立案告知书的公告", Content: "公司因涉嫌信息披露违规，被中国证监会立案调查。"})
+	if err != nil || res.Status != ResultScored {
+		t.Fatalf("res = %+v %v", res, err)
+	}
+	subs := repo.subjects()
+	sort.Strings(subs)
+	if len(subs) != 2 || subs[0] != events.SubjectIntelAlert || subs[1] != events.SubjectIntelScored {
+		t.Fatalf("expected scored+alert on outbox, got %v", subs)
+	}
+	for _, e := range repo.outbox {
+		if e.TraceID != "trace-parent-1" || e.CausationID != parent.EventID {
+			t.Fatalf("stitch broken: trace=%q causation=%q subject=%s", e.TraceID, e.CausationID, e.Subject)
+		}
+	}
+	// 无父字段的直发 ctx：根事件，不编父
+	if _, err := u.Process(context.Background(), Raw{Source: "eastmoney", SourceID: "9", Kind: "news",
+		Title: "宁德时代中标海外储能大单", Content: "宁德时代宣布获得欧洲储能项目订单，合同金额约50亿元。"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range repo.outbox[len(repo.outbox)-1:] {
+		if e.CausationID != "" || e.TraceID != "" {
+			t.Fatalf("root event must stay root: trace=%q causation=%q", e.TraceID, e.CausationID)
+		}
+	}
+}
+
 func TestPipelineFilterAndInvalid(t *testing.T) {
 	repo := newMemRepo()
 	u := newTestUsecase(t, repo, nil, &conf.Intel{BlockedSources: []string{"spam"}})
