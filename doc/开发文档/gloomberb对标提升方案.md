@@ -116,7 +116,7 @@
 
 ## G7 brokerif 对齐：previewOrder 与状态机（P1）
 
-> 状态：**部分实施（2026-10-19）**。后端纯计算切片交付：`pkg/brokerif.PreviewOrder`（R01–R15 逐条预检 + 金额/费用/现金干跑）与 `Tracker`（idle→connected→degraded→down 状态机），race 单测覆盖金额精度、缩量、卖出印花税与迁移表；实施记录：[M09 开发进度 G7 节](M09-交易执行/开发进度.md)。proto-first 接口、UI 强制展示与适配器状态上报未做。
+> 状态：**部分实施（2026-10-19）**。后端交付：`pkg/brokerif.PreviewOrder`（R01–R15 逐条预检 + 金额/费用/现金干跑）与 `Tracker`（idle→connected→degraded→down 状态机）；`app/risk` 引擎侧 `Engine.Preview` 已接——与 Check 同装配同守卫、零副作用（无审计/预约/计数）。proto-first 暴露、UI 强制展示与适配器状态上报未做；实施记录：[M09 开发进度 G7 节](M09-交易执行/开发进度.md)。
 
 **需求**：下单前没有"干跑试算"入口；文件单网关（写 CSV → 终端读走 → 回报）的状态对 UI 不够一阶。
 
