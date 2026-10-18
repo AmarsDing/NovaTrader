@@ -1402,6 +1402,479 @@ func (x *LimitsReply) GetItems() []*LimitItem {
 	return nil
 }
 
+// AlertRule 一条盯盘规则：above/below/crosses 三态，crosses 以 last_price 为基线。
+// 触发后转 triggered 不再响；Edit/Rearm 白名单重建后重新 armed。
+type AlertRule struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Symbol string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// above / below / crosses
+	Condition   string  `protobuf:"bytes,3,opt,name=condition,proto3" json:"condition,omitempty"`
+	TargetPrice float64 `protobuf:"fixed64,4,opt,name=target_price,json=targetPrice,proto3" json:"target_price,omitempty"`
+	Note        string  `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
+	// active / triggered
+	Status    string   `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	LastPrice *float64 `protobuf:"fixed64,7,opt,name=last_price,json=lastPrice,proto3,oneof" json:"last_price,omitempty"`
+	// RFC3339；评估节拍落库
+	ArmedAt       string  `protobuf:"bytes,8,opt,name=armed_at,json=armedAt,proto3" json:"armed_at,omitempty"`
+	TriggeredAt   *string `protobuf:"bytes,9,opt,name=triggered_at,json=triggeredAt,proto3,oneof" json:"triggered_at,omitempty"`
+	CreatedAt     string  `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     string  `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AlertRule) Reset() {
+	*x = AlertRule{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlertRule) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlertRule) ProtoMessage() {}
+
+func (x *AlertRule) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlertRule.ProtoReflect.Descriptor instead.
+func (*AlertRule) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *AlertRule) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AlertRule) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *AlertRule) GetCondition() string {
+	if x != nil {
+		return x.Condition
+	}
+	return ""
+}
+
+func (x *AlertRule) GetTargetPrice() float64 {
+	if x != nil {
+		return x.TargetPrice
+	}
+	return 0
+}
+
+func (x *AlertRule) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *AlertRule) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AlertRule) GetLastPrice() float64 {
+	if x != nil && x.LastPrice != nil {
+		return *x.LastPrice
+	}
+	return 0
+}
+
+func (x *AlertRule) GetArmedAt() string {
+	if x != nil {
+		return x.ArmedAt
+	}
+	return ""
+}
+
+func (x *AlertRule) GetTriggeredAt() string {
+	if x != nil && x.TriggeredAt != nil {
+		return *x.TriggeredAt
+	}
+	return ""
+}
+
+func (x *AlertRule) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+func (x *AlertRule) GetUpdatedAt() string {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return ""
+}
+
+type ListAlertRulesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAlertRulesRequest) Reset() {
+	*x = ListAlertRulesRequest{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAlertRulesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAlertRulesRequest) ProtoMessage() {}
+
+func (x *ListAlertRulesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAlertRulesRequest.ProtoReflect.Descriptor instead.
+func (*ListAlertRulesRequest) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{19}
+}
+
+type CreateAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Condition     string                 `protobuf:"bytes,2,opt,name=condition,proto3" json:"condition,omitempty"`
+	TargetPrice   float64                `protobuf:"fixed64,3,opt,name=target_price,json=targetPrice,proto3" json:"target_price,omitempty"`
+	Note          string                 `protobuf:"bytes,4,opt,name=note,proto3" json:"note,omitempty"`
+	Operator      string                 `protobuf:"bytes,5,opt,name=operator,proto3" json:"operator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateAlertRuleRequest) Reset() {
+	*x = CreateAlertRuleRequest{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateAlertRuleRequest) ProtoMessage() {}
+
+func (x *CreateAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*CreateAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CreateAlertRuleRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *CreateAlertRuleRequest) GetCondition() string {
+	if x != nil {
+		return x.Condition
+	}
+	return ""
+}
+
+func (x *CreateAlertRuleRequest) GetTargetPrice() float64 {
+	if x != nil {
+		return x.TargetPrice
+	}
+	return 0
+}
+
+func (x *CreateAlertRuleRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *CreateAlertRuleRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+type EditAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Condition     string                 `protobuf:"bytes,3,opt,name=condition,proto3" json:"condition,omitempty"`
+	TargetPrice   float64                `protobuf:"fixed64,4,opt,name=target_price,json=targetPrice,proto3" json:"target_price,omitempty"`
+	Note          string                 `protobuf:"bytes,5,opt,name=note,proto3" json:"note,omitempty"`
+	Operator      string                 `protobuf:"bytes,6,opt,name=operator,proto3" json:"operator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EditAlertRuleRequest) Reset() {
+	*x = EditAlertRuleRequest{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EditAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EditAlertRuleRequest) ProtoMessage() {}
+
+func (x *EditAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EditAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*EditAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *EditAlertRuleRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *EditAlertRuleRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *EditAlertRuleRequest) GetCondition() string {
+	if x != nil {
+		return x.Condition
+	}
+	return ""
+}
+
+func (x *EditAlertRuleRequest) GetTargetPrice() float64 {
+	if x != nil {
+		return x.TargetPrice
+	}
+	return 0
+}
+
+func (x *EditAlertRuleRequest) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *EditAlertRuleRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+type RearmAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Operator      string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RearmAlertRuleRequest) Reset() {
+	*x = RearmAlertRuleRequest{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RearmAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RearmAlertRuleRequest) ProtoMessage() {}
+
+func (x *RearmAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RearmAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*RearmAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *RearmAlertRuleRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RearmAlertRuleRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+type DeleteAlertRuleRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Operator      string                 `protobuf:"bytes,2,opt,name=operator,proto3" json:"operator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteAlertRuleRequest) Reset() {
+	*x = DeleteAlertRuleRequest{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteAlertRuleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteAlertRuleRequest) ProtoMessage() {}
+
+func (x *DeleteAlertRuleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteAlertRuleRequest.ProtoReflect.Descriptor instead.
+func (*DeleteAlertRuleRequest) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *DeleteAlertRuleRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DeleteAlertRuleRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+type AlertRulesReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Rules         []*AlertRule           `protobuf:"bytes,1,rep,name=rules,proto3" json:"rules,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AlertRulesReply) Reset() {
+	*x = AlertRulesReply{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlertRulesReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlertRulesReply) ProtoMessage() {}
+
+func (x *AlertRulesReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlertRulesReply.ProtoReflect.Descriptor instead.
+func (*AlertRulesReply) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *AlertRulesReply) GetRules() []*AlertRule {
+	if x != nil {
+		return x.Rules
+	}
+	return nil
+}
+
 var File_api_risk_v1_risk_proto protoreflect.FileDescriptor
 
 const file_api_risk_v1_risk_proto_rawDesc = "" +
@@ -1536,7 +2009,47 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x04note\x18\a \x01(\tR\x04note\"^\n" +
 	"\vLimitsReply\x12!\n" +
 	"\faccount_type\x18\x01 \x01(\tR\vaccountType\x12,\n" +
-	"\x05items\x18\x02 \x03(\v2\x16.api.risk.v1.LimitItemR\x05items2\xa2\a\n" +
+	"\x05items\x18\x02 \x03(\v2\x16.api.risk.v1.LimitItemR\x05items\"\xe5\x02\n" +
+	"\tAlertRule\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x1c\n" +
+	"\tcondition\x18\x03 \x01(\tR\tcondition\x12!\n" +
+	"\ftarget_price\x18\x04 \x01(\x01R\vtargetPrice\x12\x12\n" +
+	"\x04note\x18\x05 \x01(\tR\x04note\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\"\n" +
+	"\n" +
+	"last_price\x18\a \x01(\x01H\x00R\tlastPrice\x88\x01\x01\x12\x19\n" +
+	"\barmed_at\x18\b \x01(\tR\aarmedAt\x12&\n" +
+	"\ftriggered_at\x18\t \x01(\tH\x01R\vtriggeredAt\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\tR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"updated_at\x18\v \x01(\tR\tupdatedAtB\r\n" +
+	"\v_last_priceB\x0f\n" +
+	"\r_triggered_at\"\x17\n" +
+	"\x15ListAlertRulesRequest\"\xa1\x01\n" +
+	"\x16CreateAlertRuleRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x1c\n" +
+	"\tcondition\x18\x02 \x01(\tR\tcondition\x12!\n" +
+	"\ftarget_price\x18\x03 \x01(\x01R\vtargetPrice\x12\x12\n" +
+	"\x04note\x18\x04 \x01(\tR\x04note\x12\x1a\n" +
+	"\boperator\x18\x05 \x01(\tR\boperator\"\xaf\x01\n" +
+	"\x14EditAlertRuleRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x1c\n" +
+	"\tcondition\x18\x03 \x01(\tR\tcondition\x12!\n" +
+	"\ftarget_price\x18\x04 \x01(\x01R\vtargetPrice\x12\x12\n" +
+	"\x04note\x18\x05 \x01(\tR\x04note\x12\x1a\n" +
+	"\boperator\x18\x06 \x01(\tR\boperator\"C\n" +
+	"\x15RearmAlertRuleRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+	"\boperator\x18\x02 \x01(\tR\boperator\"D\n" +
+	"\x16DeleteAlertRuleRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+	"\boperator\x18\x02 \x01(\tR\boperator\"?\n" +
+	"\x0fAlertRulesReply\x12,\n" +
+	"\x05rules\x18\x01 \x03(\v2\x16.api.risk.v1.AlertRuleR\x05rules2\xfc\v\n" +
 	"\x04Risk\x12e\n" +
 	"\n" +
 	"CheckOrder\x12\x1e.api.risk.v1.CheckOrderRequest\x1a\x1c.api.risk.v1.CheckOrderReply\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/risk/v1/check\x12k\n" +
@@ -1547,7 +2060,12 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x0fResetKillSwitch\x12#.api.risk.v1.ResetKillSwitchRequest\x1a\x17.api.risk.v1.StateReply\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/risk/v1/killswitch/reset\x12c\n" +
 	"\vUpdateParam\x12\x1f.api.risk.v1.UpdateParamRequest\x1a\x17.api.risk.v1.StateReply\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/risk/v1/params\x12f\n" +
 	"\vDailyReport\x12\x1f.api.risk.v1.DailyReportRequest\x1a\x1d.api.risk.v1.DailyReportReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/risk/v1/report\x12W\n" +
-	"\x06Limits\x12\x1a.api.risk.v1.LimitsRequest\x1a\x18.api.risk.v1.LimitsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/risk/v1/limitsB\x17Z\x15server/api/risk/v1;v1b\x06proto3"
+	"\x06Limits\x12\x1a.api.risk.v1.LimitsRequest\x1a\x18.api.risk.v1.LimitsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/risk/v1/limits\x12p\n" +
+	"\x0eListAlertRules\x12\".api.risk.v1.ListAlertRulesRequest\x1a\x1c.api.risk.v1.AlertRulesReply\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/risk/v1/alert/rules\x12u\n" +
+	"\x0fCreateAlertRule\x12#.api.risk.v1.CreateAlertRuleRequest\x1a\x1c.api.risk.v1.AlertRulesReply\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/risk/v1/alert/rules\x12v\n" +
+	"\rEditAlertRule\x12!.api.risk.v1.EditAlertRuleRequest\x1a\x1c.api.risk.v1.AlertRulesReply\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/risk/v1/alert/rules/edit\x12y\n" +
+	"\x0eRearmAlertRule\x12\".api.risk.v1.RearmAlertRuleRequest\x1a\x1c.api.risk.v1.AlertRulesReply\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/risk/v1/alert/rules/rearm\x12|\n" +
+	"\x0fDeleteAlertRule\x12#.api.risk.v1.DeleteAlertRuleRequest\x1a\x1c.api.risk.v1.AlertRulesReply\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/risk/v1/alert/rules/deleteB\x17Z\x15server/api/risk/v1;v1b\x06proto3"
 
 var (
 	file_api_risk_v1_risk_proto_rawDescOnce sync.Once
@@ -1561,7 +2079,7 @@ func file_api_risk_v1_risk_proto_rawDescGZIP() []byte {
 	return file_api_risk_v1_risk_proto_rawDescData
 }
 
-var file_api_risk_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_api_risk_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_api_risk_v1_risk_proto_goTypes = []any{
 	(*CheckOrderRequest)(nil),        // 0: api.risk.v1.CheckOrderRequest
 	(*RuleResult)(nil),               // 1: api.risk.v1.RuleResult
@@ -1581,43 +2099,61 @@ var file_api_risk_v1_risk_proto_goTypes = []any{
 	(*LimitsRequest)(nil),            // 15: api.risk.v1.LimitsRequest
 	(*LimitItem)(nil),                // 16: api.risk.v1.LimitItem
 	(*LimitsReply)(nil),              // 17: api.risk.v1.LimitsReply
-	nil,                              // 18: api.risk.v1.StateReply.BreakersEntry
-	nil,                              // 19: api.risk.v1.StateReply.ParamsEntry
-	nil,                              // 20: api.risk.v1.StateReply.AccountAsOfEntry
+	(*AlertRule)(nil),                // 18: api.risk.v1.AlertRule
+	(*ListAlertRulesRequest)(nil),    // 19: api.risk.v1.ListAlertRulesRequest
+	(*CreateAlertRuleRequest)(nil),   // 20: api.risk.v1.CreateAlertRuleRequest
+	(*EditAlertRuleRequest)(nil),     // 21: api.risk.v1.EditAlertRuleRequest
+	(*RearmAlertRuleRequest)(nil),    // 22: api.risk.v1.RearmAlertRuleRequest
+	(*DeleteAlertRuleRequest)(nil),   // 23: api.risk.v1.DeleteAlertRuleRequest
+	(*AlertRulesReply)(nil),          // 24: api.risk.v1.AlertRulesReply
+	nil,                              // 25: api.risk.v1.StateReply.BreakersEntry
+	nil,                              // 26: api.risk.v1.StateReply.ParamsEntry
+	nil,                              // 27: api.risk.v1.StateReply.AccountAsOfEntry
 }
 var file_api_risk_v1_risk_proto_depIdxs = []int32{
 	1,  // 0: api.risk.v1.CheckOrderReply.results:type_name -> api.risk.v1.RuleResult
 	1,  // 1: api.risk.v1.PreviewOrderReply.results:type_name -> api.risk.v1.RuleResult
 	5,  // 2: api.risk.v1.StateReply.kill_switch:type_name -> api.risk.v1.KillSwitch
-	18, // 3: api.risk.v1.StateReply.breakers:type_name -> api.risk.v1.StateReply.BreakersEntry
-	19, // 4: api.risk.v1.StateReply.params:type_name -> api.risk.v1.StateReply.ParamsEntry
-	20, // 5: api.risk.v1.StateReply.account_as_of:type_name -> api.risk.v1.StateReply.AccountAsOfEntry
+	25, // 3: api.risk.v1.StateReply.breakers:type_name -> api.risk.v1.StateReply.BreakersEntry
+	26, // 4: api.risk.v1.StateReply.params:type_name -> api.risk.v1.StateReply.ParamsEntry
+	27, // 5: api.risk.v1.StateReply.account_as_of:type_name -> api.risk.v1.StateReply.AccountAsOfEntry
 	12, // 6: api.risk.v1.DailyReportReply.rejects:type_name -> api.risk.v1.RuleCount
 	13, // 7: api.risk.v1.DailyReportReply.events:type_name -> api.risk.v1.RiskEventItem
 	16, // 8: api.risk.v1.LimitsReply.items:type_name -> api.risk.v1.LimitItem
-	0,  // 9: api.risk.v1.Risk.CheckOrder:input_type -> api.risk.v1.CheckOrderRequest
-	0,  // 10: api.risk.v1.Risk.PreviewOrder:input_type -> api.risk.v1.CheckOrderRequest
-	4,  // 11: api.risk.v1.Risk.GetState:input_type -> api.risk.v1.GetStateRequest
-	7,  // 12: api.risk.v1.Risk.SetMode:input_type -> api.risk.v1.SetModeRequest
-	8,  // 13: api.risk.v1.Risk.TriggerKillSwitch:input_type -> api.risk.v1.TriggerKillSwitchRequest
-	9,  // 14: api.risk.v1.Risk.ResetKillSwitch:input_type -> api.risk.v1.ResetKillSwitchRequest
-	10, // 15: api.risk.v1.Risk.UpdateParam:input_type -> api.risk.v1.UpdateParamRequest
-	11, // 16: api.risk.v1.Risk.DailyReport:input_type -> api.risk.v1.DailyReportRequest
-	15, // 17: api.risk.v1.Risk.Limits:input_type -> api.risk.v1.LimitsRequest
-	2,  // 18: api.risk.v1.Risk.CheckOrder:output_type -> api.risk.v1.CheckOrderReply
-	3,  // 19: api.risk.v1.Risk.PreviewOrder:output_type -> api.risk.v1.PreviewOrderReply
-	6,  // 20: api.risk.v1.Risk.GetState:output_type -> api.risk.v1.StateReply
-	6,  // 21: api.risk.v1.Risk.SetMode:output_type -> api.risk.v1.StateReply
-	6,  // 22: api.risk.v1.Risk.TriggerKillSwitch:output_type -> api.risk.v1.StateReply
-	6,  // 23: api.risk.v1.Risk.ResetKillSwitch:output_type -> api.risk.v1.StateReply
-	6,  // 24: api.risk.v1.Risk.UpdateParam:output_type -> api.risk.v1.StateReply
-	14, // 25: api.risk.v1.Risk.DailyReport:output_type -> api.risk.v1.DailyReportReply
-	17, // 26: api.risk.v1.Risk.Limits:output_type -> api.risk.v1.LimitsReply
-	18, // [18:27] is the sub-list for method output_type
-	9,  // [9:18] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	18, // 9: api.risk.v1.AlertRulesReply.rules:type_name -> api.risk.v1.AlertRule
+	0,  // 10: api.risk.v1.Risk.CheckOrder:input_type -> api.risk.v1.CheckOrderRequest
+	0,  // 11: api.risk.v1.Risk.PreviewOrder:input_type -> api.risk.v1.CheckOrderRequest
+	4,  // 12: api.risk.v1.Risk.GetState:input_type -> api.risk.v1.GetStateRequest
+	7,  // 13: api.risk.v1.Risk.SetMode:input_type -> api.risk.v1.SetModeRequest
+	8,  // 14: api.risk.v1.Risk.TriggerKillSwitch:input_type -> api.risk.v1.TriggerKillSwitchRequest
+	9,  // 15: api.risk.v1.Risk.ResetKillSwitch:input_type -> api.risk.v1.ResetKillSwitchRequest
+	10, // 16: api.risk.v1.Risk.UpdateParam:input_type -> api.risk.v1.UpdateParamRequest
+	11, // 17: api.risk.v1.Risk.DailyReport:input_type -> api.risk.v1.DailyReportRequest
+	15, // 18: api.risk.v1.Risk.Limits:input_type -> api.risk.v1.LimitsRequest
+	19, // 19: api.risk.v1.Risk.ListAlertRules:input_type -> api.risk.v1.ListAlertRulesRequest
+	20, // 20: api.risk.v1.Risk.CreateAlertRule:input_type -> api.risk.v1.CreateAlertRuleRequest
+	21, // 21: api.risk.v1.Risk.EditAlertRule:input_type -> api.risk.v1.EditAlertRuleRequest
+	22, // 22: api.risk.v1.Risk.RearmAlertRule:input_type -> api.risk.v1.RearmAlertRuleRequest
+	23, // 23: api.risk.v1.Risk.DeleteAlertRule:input_type -> api.risk.v1.DeleteAlertRuleRequest
+	2,  // 24: api.risk.v1.Risk.CheckOrder:output_type -> api.risk.v1.CheckOrderReply
+	3,  // 25: api.risk.v1.Risk.PreviewOrder:output_type -> api.risk.v1.PreviewOrderReply
+	6,  // 26: api.risk.v1.Risk.GetState:output_type -> api.risk.v1.StateReply
+	6,  // 27: api.risk.v1.Risk.SetMode:output_type -> api.risk.v1.StateReply
+	6,  // 28: api.risk.v1.Risk.TriggerKillSwitch:output_type -> api.risk.v1.StateReply
+	6,  // 29: api.risk.v1.Risk.ResetKillSwitch:output_type -> api.risk.v1.StateReply
+	6,  // 30: api.risk.v1.Risk.UpdateParam:output_type -> api.risk.v1.StateReply
+	14, // 31: api.risk.v1.Risk.DailyReport:output_type -> api.risk.v1.DailyReportReply
+	17, // 32: api.risk.v1.Risk.Limits:output_type -> api.risk.v1.LimitsReply
+	24, // 33: api.risk.v1.Risk.ListAlertRules:output_type -> api.risk.v1.AlertRulesReply
+	24, // 34: api.risk.v1.Risk.CreateAlertRule:output_type -> api.risk.v1.AlertRulesReply
+	24, // 35: api.risk.v1.Risk.EditAlertRule:output_type -> api.risk.v1.AlertRulesReply
+	24, // 36: api.risk.v1.Risk.RearmAlertRule:output_type -> api.risk.v1.AlertRulesReply
+	24, // 37: api.risk.v1.Risk.DeleteAlertRule:output_type -> api.risk.v1.AlertRulesReply
+	24, // [24:38] is the sub-list for method output_type
+	10, // [10:24] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_api_risk_v1_risk_proto_init() }
@@ -1628,13 +2164,14 @@ func file_api_risk_v1_risk_proto_init() {
 	file_api_risk_v1_risk_proto_msgTypes[0].OneofWrappers = []any{}
 	file_api_risk_v1_risk_proto_msgTypes[6].OneofWrappers = []any{}
 	file_api_risk_v1_risk_proto_msgTypes[10].OneofWrappers = []any{}
+	file_api_risk_v1_risk_proto_msgTypes[18].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_risk_v1_risk_proto_rawDesc), len(file_api_risk_v1_risk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   21,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

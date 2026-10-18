@@ -63,6 +63,38 @@ service Risk {
       get: "/risk/v1/limits"
     };
   }
+  /* ---------- G3 盯盘价格告警规则：CRUD 与 re-arm ---------- */
+  rpc ListAlertRules(ListAlertRulesRequest) returns (AlertRulesReply) {
+    option (google.api.http) = {
+      get: "/risk/v1/alert/rules"
+    };
+  }
+  rpc CreateAlertRule(CreateAlertRuleRequest) returns (AlertRulesReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/alert/rules"
+      body: "*"
+    };
+  }
+  // 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
+  rpc EditAlertRule(EditAlertRuleRequest) returns (AlertRulesReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/alert/rules/edit"
+      body: "*"
+    };
+  }
+  // 重新布防：同参数白名单重建，触发后可重新响。
+  rpc RearmAlertRule(RearmAlertRuleRequest) returns (AlertRulesReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/alert/rules/rearm"
+      body: "*"
+    };
+  }
+  rpc DeleteAlertRule(DeleteAlertRuleRequest) returns (AlertRulesReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/alert/rules/delete"
+      body: "*"
+    };
+  }
 }
 
 message CheckOrderRequest {
@@ -227,4 +259,58 @@ message LimitItem {
 message LimitsReply {
   string account_type = 1;
   repeated LimitItem items = 2;
+}
+
+/* ---------- G3 盯盘价格告警规则 ---------- */
+
+// AlertRule 一条盯盘规则：above/below/crosses 三态，crosses 以 last_price 为基线。
+// 触发后转 triggered 不再响；Edit/Rearm 白名单重建后重新 armed。
+message AlertRule {
+  string id = 1;
+  string symbol = 2;
+  // above / below / crosses
+  string condition = 3;
+  double target_price = 4;
+  string note = 5;
+  // active / triggered
+  string status = 6;
+  optional double last_price = 7;
+  // RFC3339；评估节拍落库
+  string armed_at = 8;
+  optional string triggered_at = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ListAlertRulesRequest {}
+
+message CreateAlertRuleRequest {
+  string symbol = 1;
+  string condition = 2;
+  double target_price = 3;
+  string note = 4;
+  string operator = 5;
+}
+
+message EditAlertRuleRequest {
+  string id = 1;
+  string symbol = 2;
+  string condition = 3;
+  double target_price = 4;
+  string note = 5;
+  string operator = 6;
+}
+
+message RearmAlertRuleRequest {
+  string id = 1;
+  string operator = 2;
+}
+
+message DeleteAlertRuleRequest {
+  string id = 1;
+  string operator = 2;
+}
+
+message AlertRulesReply {
+  repeated AlertRule rules = 1;
 }

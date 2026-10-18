@@ -20,10 +20,15 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationRiskCheckOrder = "/api.risk.v1.Risk/CheckOrder"
+const OperationRiskCreateAlertRule = "/api.risk.v1.Risk/CreateAlertRule"
 const OperationRiskDailyReport = "/api.risk.v1.Risk/DailyReport"
+const OperationRiskDeleteAlertRule = "/api.risk.v1.Risk/DeleteAlertRule"
+const OperationRiskEditAlertRule = "/api.risk.v1.Risk/EditAlertRule"
 const OperationRiskGetState = "/api.risk.v1.Risk/GetState"
 const OperationRiskLimits = "/api.risk.v1.Risk/Limits"
+const OperationRiskListAlertRules = "/api.risk.v1.Risk/ListAlertRules"
 const OperationRiskPreviewOrder = "/api.risk.v1.Risk/PreviewOrder"
+const OperationRiskRearmAlertRule = "/api.risk.v1.Risk/RearmAlertRule"
 const OperationRiskResetKillSwitch = "/api.risk.v1.Risk/ResetKillSwitch"
 const OperationRiskSetMode = "/api.risk.v1.Risk/SetMode"
 const OperationRiskTriggerKillSwitch = "/api.risk.v1.Risk/TriggerKillSwitch"
@@ -32,12 +37,20 @@ const OperationRiskUpdateParam = "/api.risk.v1.Risk/UpdateParam"
 type RiskHTTPServer interface {
 	// CheckOrder 事前校验。调用方超时（建议 200ms）视为拒绝。
 	CheckOrder(context.Context, *CheckOrderRequest) (*CheckOrderReply, error)
+	CreateAlertRule(context.Context, *CreateAlertRuleRequest) (*AlertRulesReply, error)
 	DailyReport(context.Context, *DailyReportRequest) (*DailyReportReply, error)
+	DeleteAlertRule(context.Context, *DeleteAlertRuleRequest) (*AlertRulesReply, error)
+	// EditAlertRule 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
+	EditAlertRule(context.Context, *EditAlertRuleRequest) (*AlertRulesReply, error)
 	GetState(context.Context, *GetStateRequest) (*StateReply, error)
 	// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
 	Limits(context.Context, *LimitsRequest) (*LimitsReply, error)
+	// ListAlertRules ---------- G3 盯盘价格告警规则：CRUD 与 re-arm ----------
+	ListAlertRules(context.Context, *ListAlertRulesRequest) (*AlertRulesReply, error)
 	// PreviewOrder 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
 	PreviewOrder(context.Context, *CheckOrderRequest) (*PreviewOrderReply, error)
+	// RearmAlertRule 重新布防：同参数白名单重建，触发后可重新响。
+	RearmAlertRule(context.Context, *RearmAlertRuleRequest) (*AlertRulesReply, error)
 	// ResetKillSwitch 恢复必须带操作人和确认字样 CONFIRM。恢复后模式仍为 L0。
 	ResetKillSwitch(context.Context, *ResetKillSwitchRequest) (*StateReply, error)
 	SetMode(context.Context, *SetModeRequest) (*StateReply, error)
@@ -56,6 +69,11 @@ func RegisterRiskHTTPServer(s *http.Server, srv RiskHTTPServer) {
 	r.POST("/risk/v1/params", _Risk_UpdateParam0_HTTP_Handler(srv))
 	r.GET("/risk/v1/report", _Risk_DailyReport0_HTTP_Handler(srv))
 	r.GET("/risk/v1/limits", _Risk_Limits0_HTTP_Handler(srv))
+	r.GET("/risk/v1/alert/rules", _Risk_ListAlertRules0_HTTP_Handler(srv))
+	r.POST("/risk/v1/alert/rules", _Risk_CreateAlertRule0_HTTP_Handler(srv))
+	r.POST("/risk/v1/alert/rules/edit", _Risk_EditAlertRule0_HTTP_Handler(srv))
+	r.POST("/risk/v1/alert/rules/rearm", _Risk_RearmAlertRule0_HTTP_Handler(srv))
+	r.POST("/risk/v1/alert/rules/delete", _Risk_DeleteAlertRule0_HTTP_Handler(srv))
 }
 
 func _Risk_CheckOrder0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
@@ -247,15 +265,130 @@ func _Risk_Limits0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error
 	}
 }
 
+func _Risk_ListAlertRules0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListAlertRulesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskListAlertRules)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListAlertRules(ctx, req.(*ListAlertRulesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AlertRulesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Risk_CreateAlertRule0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in CreateAlertRuleRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskCreateAlertRule)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.CreateAlertRule(ctx, req.(*CreateAlertRuleRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AlertRulesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Risk_EditAlertRule0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in EditAlertRuleRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskEditAlertRule)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.EditAlertRule(ctx, req.(*EditAlertRuleRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AlertRulesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Risk_RearmAlertRule0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RearmAlertRuleRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskRearmAlertRule)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RearmAlertRule(ctx, req.(*RearmAlertRuleRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AlertRulesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Risk_DeleteAlertRule0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in DeleteAlertRuleRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskDeleteAlertRule)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.DeleteAlertRule(ctx, req.(*DeleteAlertRuleRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AlertRulesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type RiskHTTPClient interface {
 	// CheckOrder 事前校验。调用方超时（建议 200ms）视为拒绝。
 	CheckOrder(ctx context.Context, req *CheckOrderRequest, opts ...http.CallOption) (rsp *CheckOrderReply, err error)
+	CreateAlertRule(ctx context.Context, req *CreateAlertRuleRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
 	DailyReport(ctx context.Context, req *DailyReportRequest, opts ...http.CallOption) (rsp *DailyReportReply, err error)
+	DeleteAlertRule(ctx context.Context, req *DeleteAlertRuleRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
+	// EditAlertRule 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
+	EditAlertRule(ctx context.Context, req *EditAlertRuleRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
 	GetState(ctx context.Context, req *GetStateRequest, opts ...http.CallOption) (rsp *StateReply, err error)
 	// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
 	Limits(ctx context.Context, req *LimitsRequest, opts ...http.CallOption) (rsp *LimitsReply, err error)
+	// ListAlertRules ---------- G3 盯盘价格告警规则：CRUD 与 re-arm ----------
+	ListAlertRules(ctx context.Context, req *ListAlertRulesRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
 	// PreviewOrder 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
 	PreviewOrder(ctx context.Context, req *CheckOrderRequest, opts ...http.CallOption) (rsp *PreviewOrderReply, err error)
+	// RearmAlertRule 重新布防：同参数白名单重建，触发后可重新响。
+	RearmAlertRule(ctx context.Context, req *RearmAlertRuleRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
 	// ResetKillSwitch 恢复必须带操作人和确认字样 CONFIRM。恢复后模式仍为 L0。
 	ResetKillSwitch(ctx context.Context, req *ResetKillSwitchRequest, opts ...http.CallOption) (rsp *StateReply, err error)
 	SetMode(ctx context.Context, req *SetModeRequest, opts ...http.CallOption) (rsp *StateReply, err error)
@@ -285,6 +418,19 @@ func (c *RiskHTTPClientImpl) CheckOrder(ctx context.Context, in *CheckOrderReque
 	return &out, nil
 }
 
+func (c *RiskHTTPClientImpl) CreateAlertRule(ctx context.Context, in *CreateAlertRuleRequest, opts ...http.CallOption) (*AlertRulesReply, error) {
+	var out AlertRulesReply
+	pattern := "/risk/v1/alert/rules"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationRiskCreateAlertRule))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *RiskHTTPClientImpl) DailyReport(ctx context.Context, in *DailyReportRequest, opts ...http.CallOption) (*DailyReportReply, error) {
 	var out DailyReportReply
 	pattern := "/risk/v1/report"
@@ -292,6 +438,33 @@ func (c *RiskHTTPClientImpl) DailyReport(ctx context.Context, in *DailyReportReq
 	opts = append(opts, http.Operation(OperationRiskDailyReport))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *RiskHTTPClientImpl) DeleteAlertRule(ctx context.Context, in *DeleteAlertRuleRequest, opts ...http.CallOption) (*AlertRulesReply, error) {
+	var out AlertRulesReply
+	pattern := "/risk/v1/alert/rules/delete"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationRiskDeleteAlertRule))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// EditAlertRule 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
+func (c *RiskHTTPClientImpl) EditAlertRule(ctx context.Context, in *EditAlertRuleRequest, opts ...http.CallOption) (*AlertRulesReply, error) {
+	var out AlertRulesReply
+	pattern := "/risk/v1/alert/rules/edit"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationRiskEditAlertRule))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -325,12 +498,40 @@ func (c *RiskHTTPClientImpl) Limits(ctx context.Context, in *LimitsRequest, opts
 	return &out, nil
 }
 
+// ListAlertRules ---------- G3 盯盘价格告警规则：CRUD 与 re-arm ----------
+func (c *RiskHTTPClientImpl) ListAlertRules(ctx context.Context, in *ListAlertRulesRequest, opts ...http.CallOption) (*AlertRulesReply, error) {
+	var out AlertRulesReply
+	pattern := "/risk/v1/alert/rules"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationRiskListAlertRules))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // PreviewOrder 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
 func (c *RiskHTTPClientImpl) PreviewOrder(ctx context.Context, in *CheckOrderRequest, opts ...http.CallOption) (*PreviewOrderReply, error) {
 	var out PreviewOrderReply
 	pattern := "/risk/v1/preview"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationRiskPreviewOrder))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RearmAlertRule 重新布防：同参数白名单重建，触发后可重新响。
+func (c *RiskHTTPClientImpl) RearmAlertRule(ctx context.Context, in *RearmAlertRuleRequest, opts ...http.CallOption) (*AlertRulesReply, error) {
+	var out AlertRulesReply
+	pattern := "/risk/v1/alert/rules/rearm"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationRiskRearmAlertRule))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

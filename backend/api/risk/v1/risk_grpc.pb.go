@@ -28,6 +28,11 @@ const (
 	Risk_UpdateParam_FullMethodName       = "/api.risk.v1.Risk/UpdateParam"
 	Risk_DailyReport_FullMethodName       = "/api.risk.v1.Risk/DailyReport"
 	Risk_Limits_FullMethodName            = "/api.risk.v1.Risk/Limits"
+	Risk_ListAlertRules_FullMethodName    = "/api.risk.v1.Risk/ListAlertRules"
+	Risk_CreateAlertRule_FullMethodName   = "/api.risk.v1.Risk/CreateAlertRule"
+	Risk_EditAlertRule_FullMethodName     = "/api.risk.v1.Risk/EditAlertRule"
+	Risk_RearmAlertRule_FullMethodName    = "/api.risk.v1.Risk/RearmAlertRule"
+	Risk_DeleteAlertRule_FullMethodName   = "/api.risk.v1.Risk/DeleteAlertRule"
 )
 
 // RiskClient is the client API for Risk service.
@@ -49,6 +54,14 @@ type RiskClient interface {
 	DailyReport(ctx context.Context, in *DailyReportRequest, opts ...grpc.CallOption) (*DailyReportReply, error)
 	// 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
 	Limits(ctx context.Context, in *LimitsRequest, opts ...grpc.CallOption) (*LimitsReply, error)
+	// ---------- G3 盯盘价格告警规则：CRUD 与 re-arm ----------
+	ListAlertRules(ctx context.Context, in *ListAlertRulesRequest, opts ...grpc.CallOption) (*AlertRulesReply, error)
+	CreateAlertRule(ctx context.Context, in *CreateAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error)
+	// 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
+	EditAlertRule(ctx context.Context, in *EditAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error)
+	// 重新布防：同参数白名单重建，触发后可重新响。
+	RearmAlertRule(ctx context.Context, in *RearmAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error)
+	DeleteAlertRule(ctx context.Context, in *DeleteAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error)
 }
 
 type riskClient struct {
@@ -149,6 +162,56 @@ func (c *riskClient) Limits(ctx context.Context, in *LimitsRequest, opts ...grpc
 	return out, nil
 }
 
+func (c *riskClient) ListAlertRules(ctx context.Context, in *ListAlertRulesRequest, opts ...grpc.CallOption) (*AlertRulesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AlertRulesReply)
+	err := c.cc.Invoke(ctx, Risk_ListAlertRules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *riskClient) CreateAlertRule(ctx context.Context, in *CreateAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AlertRulesReply)
+	err := c.cc.Invoke(ctx, Risk_CreateAlertRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *riskClient) EditAlertRule(ctx context.Context, in *EditAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AlertRulesReply)
+	err := c.cc.Invoke(ctx, Risk_EditAlertRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *riskClient) RearmAlertRule(ctx context.Context, in *RearmAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AlertRulesReply)
+	err := c.cc.Invoke(ctx, Risk_RearmAlertRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *riskClient) DeleteAlertRule(ctx context.Context, in *DeleteAlertRuleRequest, opts ...grpc.CallOption) (*AlertRulesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AlertRulesReply)
+	err := c.cc.Invoke(ctx, Risk_DeleteAlertRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RiskServer is the server API for Risk service.
 // All implementations must embed UnimplementedRiskServer
 // for forward compatibility.
@@ -168,6 +231,14 @@ type RiskServer interface {
 	DailyReport(context.Context, *DailyReportRequest) (*DailyReportReply, error)
 	// 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
 	Limits(context.Context, *LimitsRequest) (*LimitsReply, error)
+	// ---------- G3 盯盘价格告警规则：CRUD 与 re-arm ----------
+	ListAlertRules(context.Context, *ListAlertRulesRequest) (*AlertRulesReply, error)
+	CreateAlertRule(context.Context, *CreateAlertRuleRequest) (*AlertRulesReply, error)
+	// 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
+	EditAlertRule(context.Context, *EditAlertRuleRequest) (*AlertRulesReply, error)
+	// 重新布防：同参数白名单重建，触发后可重新响。
+	RearmAlertRule(context.Context, *RearmAlertRuleRequest) (*AlertRulesReply, error)
+	DeleteAlertRule(context.Context, *DeleteAlertRuleRequest) (*AlertRulesReply, error)
 	mustEmbedUnimplementedRiskServer()
 }
 
@@ -204,6 +275,21 @@ func (UnimplementedRiskServer) DailyReport(context.Context, *DailyReportRequest)
 }
 func (UnimplementedRiskServer) Limits(context.Context, *LimitsRequest) (*LimitsReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method Limits not implemented")
+}
+func (UnimplementedRiskServer) ListAlertRules(context.Context, *ListAlertRulesRequest) (*AlertRulesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAlertRules not implemented")
+}
+func (UnimplementedRiskServer) CreateAlertRule(context.Context, *CreateAlertRuleRequest) (*AlertRulesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateAlertRule not implemented")
+}
+func (UnimplementedRiskServer) EditAlertRule(context.Context, *EditAlertRuleRequest) (*AlertRulesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method EditAlertRule not implemented")
+}
+func (UnimplementedRiskServer) RearmAlertRule(context.Context, *RearmAlertRuleRequest) (*AlertRulesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method RearmAlertRule not implemented")
+}
+func (UnimplementedRiskServer) DeleteAlertRule(context.Context, *DeleteAlertRuleRequest) (*AlertRulesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteAlertRule not implemented")
 }
 func (UnimplementedRiskServer) mustEmbedUnimplementedRiskServer() {}
 func (UnimplementedRiskServer) testEmbeddedByValue()              {}
@@ -388,6 +474,96 @@ func _Risk_Limits_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Risk_ListAlertRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAlertRulesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).ListAlertRules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_ListAlertRules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).ListAlertRules(ctx, req.(*ListAlertRulesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Risk_CreateAlertRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateAlertRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).CreateAlertRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_CreateAlertRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).CreateAlertRule(ctx, req.(*CreateAlertRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Risk_EditAlertRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EditAlertRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).EditAlertRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_EditAlertRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).EditAlertRule(ctx, req.(*EditAlertRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Risk_RearmAlertRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RearmAlertRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).RearmAlertRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_RearmAlertRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).RearmAlertRule(ctx, req.(*RearmAlertRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Risk_DeleteAlertRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteAlertRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).DeleteAlertRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_DeleteAlertRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).DeleteAlertRule(ctx, req.(*DeleteAlertRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Risk_ServiceDesc is the grpc.ServiceDesc for Risk service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -430,6 +606,26 @@ var Risk_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Limits",
 			Handler:    _Risk_Limits_Handler,
+		},
+		{
+			MethodName: "ListAlertRules",
+			Handler:    _Risk_ListAlertRules_Handler,
+		},
+		{
+			MethodName: "CreateAlertRule",
+			Handler:    _Risk_CreateAlertRule_Handler,
+		},
+		{
+			MethodName: "EditAlertRule",
+			Handler:    _Risk_EditAlertRule_Handler,
+		},
+		{
+			MethodName: "RearmAlertRule",
+			Handler:    _Risk_RearmAlertRule_Handler,
+		},
+		{
+			MethodName: "DeleteAlertRule",
+			Handler:    _Risk_DeleteAlertRule_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
