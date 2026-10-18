@@ -188,6 +188,18 @@ func (f DecisionPlanFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DecisionPlanMutation", m)
 }
 
+// The EventDispositionFunc type is an adapter to allow the use of ordinary
+// function as EventDisposition mutator.
+type EventDispositionFunc func(context.Context, *ent.EventDispositionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EventDispositionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EventDispositionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EventDispositionMutation", m)
+}
+
 // The ExecutionIntentFunc type is an adapter to allow the use of ordinary
 // function as ExecutionIntent mutator.
 type ExecutionIntentFunc func(context.Context, *ent.ExecutionIntentMutation) (ent.Value, error)

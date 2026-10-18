@@ -18,6 +18,7 @@ import (
 	"server/ent/datasetmanifest"
 	"server/ent/datasetrecord"
 	"server/ent/decisionplan"
+	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
 	"server/ent/hotrank"
@@ -860,6 +861,50 @@ func init() {
 	decisionplan.DefaultUpdatedAt = decisionplanDescUpdatedAt.Default.(func() time.Time)
 	// decisionplan.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	decisionplan.UpdateDefaultUpdatedAt = decisionplanDescUpdatedAt.UpdateDefault.(func() time.Time)
+	eventdispositionFields := schema.EventDisposition{}.Fields()
+	_ = eventdispositionFields
+	// eventdispositionDescEventID is the schema descriptor for event_id field.
+	eventdispositionDescEventID := eventdispositionFields[0].Descriptor()
+	// eventdisposition.EventIDValidator is a validator for the "event_id" field. It is called by the builders before save.
+	eventdisposition.EventIDValidator = func() func(string) error {
+		validators := eventdispositionDescEventID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(event_id string) error {
+			for _, fn := range fns {
+				if err := fn(event_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// eventdispositionDescTraceID is the schema descriptor for trace_id field.
+	eventdispositionDescTraceID := eventdispositionFields[1].Descriptor()
+	// eventdisposition.DefaultTraceID holds the default value on creation for the trace_id field.
+	eventdisposition.DefaultTraceID = eventdispositionDescTraceID.Default.(string)
+	// eventdisposition.TraceIDValidator is a validator for the "trace_id" field. It is called by the builders before save.
+	eventdisposition.TraceIDValidator = eventdispositionDescTraceID.Validators[0].(func(string) error)
+	// eventdispositionDescAction is the schema descriptor for action field.
+	eventdispositionDescAction := eventdispositionFields[2].Descriptor()
+	// eventdisposition.ActionValidator is a validator for the "action" field. It is called by the builders before save.
+	eventdisposition.ActionValidator = eventdispositionDescAction.Validators[0].(func(string) error)
+	// eventdispositionDescNote is the schema descriptor for note field.
+	eventdispositionDescNote := eventdispositionFields[3].Descriptor()
+	// eventdisposition.DefaultNote holds the default value on creation for the note field.
+	eventdisposition.DefaultNote = eventdispositionDescNote.Default.(string)
+	// eventdisposition.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	eventdisposition.NoteValidator = eventdispositionDescNote.Validators[0].(func(string) error)
+	// eventdispositionDescActor is the schema descriptor for actor field.
+	eventdispositionDescActor := eventdispositionFields[4].Descriptor()
+	// eventdisposition.ActorValidator is a validator for the "actor" field. It is called by the builders before save.
+	eventdisposition.ActorValidator = eventdispositionDescActor.Validators[0].(func(string) error)
+	// eventdispositionDescCreatedAt is the schema descriptor for created_at field.
+	eventdispositionDescCreatedAt := eventdispositionFields[5].Descriptor()
+	// eventdisposition.DefaultCreatedAt holds the default value on creation for the created_at field.
+	eventdisposition.DefaultCreatedAt = eventdispositionDescCreatedAt.Default.(func() time.Time)
 	executionintentFields := schema.ExecutionIntent{}.Fields()
 	_ = executionintentFields
 	// executionintentDescBusinessKey is the schema descriptor for business_key field.

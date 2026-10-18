@@ -42,6 +42,8 @@ type Tx struct {
 	DatasetRecord *DatasetRecordClient
 	// DecisionPlan is the client for interacting with the DecisionPlan builders.
 	DecisionPlan *DecisionPlanClient
+	// EventDisposition is the client for interacting with the EventDisposition builders.
+	EventDisposition *EventDispositionClient
 	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
 	ExecutionIntent *ExecutionIntentClient
 	// FinanceReport is the client for interacting with the FinanceReport builders.
@@ -312,6 +314,7 @@ func (tx *Tx) init() {
 	tx.DatasetManifest = NewDatasetManifestClient(tx.config)
 	tx.DatasetRecord = NewDatasetRecordClient(tx.config)
 	tx.DecisionPlan = NewDecisionPlanClient(tx.config)
+	tx.EventDisposition = NewEventDispositionClient(tx.config)
 	tx.ExecutionIntent = NewExecutionIntentClient(tx.config)
 	tx.FinanceReport = NewFinanceReportClient(tx.config)
 	tx.HotRank = NewHotRankClient(tx.config)

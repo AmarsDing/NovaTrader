@@ -26,6 +26,7 @@ import (
 	"server/ent/datasetmanifest"
 	"server/ent/datasetrecord"
 	"server/ent/decisionplan"
+	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
 	"server/ent/hotrank"
@@ -130,6 +131,8 @@ type Client struct {
 	DatasetRecord *DatasetRecordClient
 	// DecisionPlan is the client for interacting with the DecisionPlan builders.
 	DecisionPlan *DecisionPlanClient
+	// EventDisposition is the client for interacting with the EventDisposition builders.
+	EventDisposition *EventDispositionClient
 	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
 	ExecutionIntent *ExecutionIntentClient
 	// FinanceReport is the client for interacting with the FinanceReport builders.
@@ -280,6 +283,7 @@ func (c *Client) init() {
 	c.DatasetManifest = NewDatasetManifestClient(c.config)
 	c.DatasetRecord = NewDatasetRecordClient(c.config)
 	c.DecisionPlan = NewDecisionPlanClient(c.config)
+	c.EventDisposition = NewEventDispositionClient(c.config)
 	c.ExecutionIntent = NewExecutionIntentClient(c.config)
 	c.FinanceReport = NewFinanceReportClient(c.config)
 	c.HotRank = NewHotRankClient(c.config)
@@ -449,6 +453,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		DatasetManifest:   NewDatasetManifestClient(cfg),
 		DatasetRecord:     NewDatasetRecordClient(cfg),
 		DecisionPlan:      NewDecisionPlanClient(cfg),
+		EventDisposition:  NewEventDispositionClient(cfg),
 		ExecutionIntent:   NewExecutionIntentClient(cfg),
 		FinanceReport:     NewFinanceReportClient(cfg),
 		HotRank:           NewHotRankClient(cfg),
@@ -545,6 +550,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		DatasetManifest:   NewDatasetManifestClient(cfg),
 		DatasetRecord:     NewDatasetRecordClient(cfg),
 		DecisionPlan:      NewDecisionPlanClient(cfg),
+		EventDisposition:  NewEventDispositionClient(cfg),
 		ExecutionIntent:   NewExecutionIntentClient(cfg),
 		FinanceReport:     NewFinanceReportClient(cfg),
 		HotRank:           NewHotRankClient(cfg),
@@ -639,20 +645,20 @@ func (c *Client) Use(hooks ...Hook) {
 		c.AccountSnapshot, c.AgentDecision, c.AuditLog, c.BackfillJob, c.BacktestReport,
 		c.BacktestTask, c.BacktestTrade, c.CollectCursor, c.ConfigHead,
 		c.ConfigReceipt, c.DailyReview, c.DataQualityIssue, c.DatasetManifest,
-		c.DatasetRecord, c.DecisionPlan, c.ExecutionIntent, c.FinanceReport, c.HotRank,
-		c.HsgtTop10, c.IntelCluster, c.IntelFact, c.IntelLink, c.Introspection,
-		c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat, c.LimitBoard, c.LimitPool,
-		c.LimitPremium, c.LlmCallLog, c.MacroSeries, c.MarginDetail, c.MarketBreadth,
-		c.MarketData, c.MarketSentiment, c.MoneyFlow, c.MorningBriefing,
-		c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping,
-		c.OverseasQuote, c.PaperRunSample, c.ParamProposal, c.Position, c.RawResponse,
-		c.ResearchJob, c.RiskCheck, c.RiskEvent, c.SeatTag, c.Sector, c.SectorHeat,
-		c.SectorMember, c.ServiceInstance, c.ShadowSignal, c.SignalEvent,
-		c.SimBarCursor, c.SourceHealth, c.StockAlias, c.StockBasic, c.StockBlacklist,
-		c.StockFactor, c.StockNameHistory, c.StrategyCandidate, c.StrategyConfig,
-		c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion, c.TaskRun,
-		c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeLedgerLock, c.TradeOrder,
-		c.TradeSignal,
+		c.DatasetRecord, c.DecisionPlan, c.EventDisposition, c.ExecutionIntent,
+		c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact,
+		c.IntelLink, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
+		c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog, c.MacroSeries,
+		c.MarginDetail, c.MarketBreadth, c.MarketData, c.MarketSentiment, c.MoneyFlow,
+		c.MorningBriefing, c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox,
+		c.OverseasMapping, c.OverseasQuote, c.PaperRunSample, c.ParamProposal,
+		c.Position, c.RawResponse, c.ResearchJob, c.RiskCheck, c.RiskEvent, c.SeatTag,
+		c.Sector, c.SectorHeat, c.SectorMember, c.ServiceInstance, c.ShadowSignal,
+		c.SignalEvent, c.SimBarCursor, c.SourceHealth, c.StockAlias, c.StockBasic,
+		c.StockBlacklist, c.StockFactor, c.StockNameHistory, c.StrategyCandidate,
+		c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion,
+		c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeLedgerLock,
+		c.TradeOrder, c.TradeSignal,
 	} {
 		n.Use(hooks...)
 	}
@@ -665,20 +671,20 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.AccountSnapshot, c.AgentDecision, c.AuditLog, c.BackfillJob, c.BacktestReport,
 		c.BacktestTask, c.BacktestTrade, c.CollectCursor, c.ConfigHead,
 		c.ConfigReceipt, c.DailyReview, c.DataQualityIssue, c.DatasetManifest,
-		c.DatasetRecord, c.DecisionPlan, c.ExecutionIntent, c.FinanceReport, c.HotRank,
-		c.HsgtTop10, c.IntelCluster, c.IntelFact, c.IntelLink, c.Introspection,
-		c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat, c.LimitBoard, c.LimitPool,
-		c.LimitPremium, c.LlmCallLog, c.MacroSeries, c.MarginDetail, c.MarketBreadth,
-		c.MarketData, c.MarketSentiment, c.MoneyFlow, c.MorningBriefing,
-		c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping,
-		c.OverseasQuote, c.PaperRunSample, c.ParamProposal, c.Position, c.RawResponse,
-		c.ResearchJob, c.RiskCheck, c.RiskEvent, c.SeatTag, c.Sector, c.SectorHeat,
-		c.SectorMember, c.ServiceInstance, c.ShadowSignal, c.SignalEvent,
-		c.SimBarCursor, c.SourceHealth, c.StockAlias, c.StockBasic, c.StockBlacklist,
-		c.StockFactor, c.StockNameHistory, c.StrategyCandidate, c.StrategyConfig,
-		c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion, c.TaskRun,
-		c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeLedgerLock, c.TradeOrder,
-		c.TradeSignal,
+		c.DatasetRecord, c.DecisionPlan, c.EventDisposition, c.ExecutionIntent,
+		c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact,
+		c.IntelLink, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
+		c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog, c.MacroSeries,
+		c.MarginDetail, c.MarketBreadth, c.MarketData, c.MarketSentiment, c.MoneyFlow,
+		c.MorningBriefing, c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox,
+		c.OverseasMapping, c.OverseasQuote, c.PaperRunSample, c.ParamProposal,
+		c.Position, c.RawResponse, c.ResearchJob, c.RiskCheck, c.RiskEvent, c.SeatTag,
+		c.Sector, c.SectorHeat, c.SectorMember, c.ServiceInstance, c.ShadowSignal,
+		c.SignalEvent, c.SimBarCursor, c.SourceHealth, c.StockAlias, c.StockBasic,
+		c.StockBlacklist, c.StockFactor, c.StockNameHistory, c.StrategyCandidate,
+		c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion,
+		c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeLedgerLock,
+		c.TradeOrder, c.TradeSignal,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -717,6 +723,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.DatasetRecord.mutate(ctx, m)
 	case *DecisionPlanMutation:
 		return c.DecisionPlan.mutate(ctx, m)
+	case *EventDispositionMutation:
+		return c.EventDisposition.mutate(ctx, m)
 	case *ExecutionIntentMutation:
 		return c.ExecutionIntent.mutate(ctx, m)
 	case *FinanceReportMutation:
@@ -2838,6 +2846,139 @@ func (c *DecisionPlanClient) mutate(ctx context.Context, m *DecisionPlanMutation
 		return (&DecisionPlanDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown DecisionPlan mutation op: %q", m.Op())
+	}
+}
+
+// EventDispositionClient is a client for the EventDisposition schema.
+type EventDispositionClient struct {
+	config
+}
+
+// NewEventDispositionClient returns a client for the EventDisposition from the given config.
+func NewEventDispositionClient(c config) *EventDispositionClient {
+	return &EventDispositionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `eventdisposition.Hooks(f(g(h())))`.
+func (c *EventDispositionClient) Use(hooks ...Hook) {
+	c.hooks.EventDisposition = append(c.hooks.EventDisposition, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `eventdisposition.Intercept(f(g(h())))`.
+func (c *EventDispositionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EventDisposition = append(c.inters.EventDisposition, interceptors...)
+}
+
+// Create returns a builder for creating a EventDisposition entity.
+func (c *EventDispositionClient) Create() *EventDispositionCreate {
+	mutation := newEventDispositionMutation(c.config, OpCreate)
+	return &EventDispositionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EventDisposition entities.
+func (c *EventDispositionClient) CreateBulk(builders ...*EventDispositionCreate) *EventDispositionCreateBulk {
+	return &EventDispositionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EventDispositionClient) MapCreateBulk(slice any, setFunc func(*EventDispositionCreate, int)) *EventDispositionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EventDispositionCreateBulk{err: fmt.Errorf("calling to EventDispositionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EventDispositionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EventDispositionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EventDisposition.
+func (c *EventDispositionClient) Update() *EventDispositionUpdate {
+	mutation := newEventDispositionMutation(c.config, OpUpdate)
+	return &EventDispositionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EventDispositionClient) UpdateOne(_m *EventDisposition) *EventDispositionUpdateOne {
+	mutation := newEventDispositionMutation(c.config, OpUpdateOne, withEventDisposition(_m))
+	return &EventDispositionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EventDispositionClient) UpdateOneID(id int) *EventDispositionUpdateOne {
+	mutation := newEventDispositionMutation(c.config, OpUpdateOne, withEventDispositionID(id))
+	return &EventDispositionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EventDisposition.
+func (c *EventDispositionClient) Delete() *EventDispositionDelete {
+	mutation := newEventDispositionMutation(c.config, OpDelete)
+	return &EventDispositionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EventDispositionClient) DeleteOne(_m *EventDisposition) *EventDispositionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EventDispositionClient) DeleteOneID(id int) *EventDispositionDeleteOne {
+	builder := c.Delete().Where(eventdisposition.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EventDispositionDeleteOne{builder}
+}
+
+// Query returns a query builder for EventDisposition.
+func (c *EventDispositionClient) Query() *EventDispositionQuery {
+	return &EventDispositionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEventDisposition},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EventDisposition entity by its id.
+func (c *EventDispositionClient) Get(ctx context.Context, id int) (*EventDisposition, error) {
+	return c.Query().Where(eventdisposition.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EventDispositionClient) GetX(ctx context.Context, id int) *EventDisposition {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EventDispositionClient) Hooks() []Hook {
+	return c.hooks.EventDisposition
+}
+
+// Interceptors returns the client interceptors.
+func (c *EventDispositionClient) Interceptors() []Interceptor {
+	return c.inters.EventDisposition
+}
+
+func (c *EventDispositionClient) mutate(ctx context.Context, m *EventDispositionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EventDispositionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EventDispositionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EventDispositionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EventDispositionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EventDisposition mutation op: %q", m.Op())
 	}
 }
 
@@ -11157,34 +11298,34 @@ type (
 		AccountSnapshot, AgentDecision, AuditLog, BackfillJob, BacktestReport,
 		BacktestTask, BacktestTrade, CollectCursor, ConfigHead, ConfigReceipt,
 		DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord, DecisionPlan,
-		ExecutionIntent, FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact,
-		IntelLink, Introspection, KbCase, KbChunk, KbDocument, LhbSeat, LimitBoard,
-		LimitPool, LimitPremium, LlmCallLog, MacroSeries, MarginDetail, MarketBreadth,
-		MarketData, MarketSentiment, MoneyFlow, MorningBriefing, NewsSentiment,
-		NotifyMessage, OrderTrail, Outbox, OverseasMapping, OverseasQuote,
-		PaperRunSample, ParamProposal, Position, RawResponse, ResearchJob, RiskCheck,
-		RiskEvent, SeatTag, Sector, SectorHeat, SectorMember, ServiceInstance,
-		ShadowSignal, SignalEvent, SimBarCursor, SourceHealth, StockAlias, StockBasic,
-		StockBlacklist, StockFactor, StockNameHistory, StrategyCandidate,
-		StrategyConfig, StrategyFeedback, StrategyLibrary, StrategyVersion, TaskRun,
-		TradeCalendar, TradeCash, TradeFill, TradeLedgerLock, TradeOrder,
-		TradeSignal []ent.Hook
+		EventDisposition, ExecutionIntent, FinanceReport, HotRank, HsgtTop10,
+		IntelCluster, IntelFact, IntelLink, Introspection, KbCase, KbChunk, KbDocument,
+		LhbSeat, LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries,
+		MarginDetail, MarketBreadth, MarketData, MarketSentiment, MoneyFlow,
+		MorningBriefing, NewsSentiment, NotifyMessage, OrderTrail, Outbox,
+		OverseasMapping, OverseasQuote, PaperRunSample, ParamProposal, Position,
+		RawResponse, ResearchJob, RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat,
+		SectorMember, ServiceInstance, ShadowSignal, SignalEvent, SimBarCursor,
+		SourceHealth, StockAlias, StockBasic, StockBlacklist, StockFactor,
+		StockNameHistory, StrategyCandidate, StrategyConfig, StrategyFeedback,
+		StrategyLibrary, StrategyVersion, TaskRun, TradeCalendar, TradeCash, TradeFill,
+		TradeLedgerLock, TradeOrder, TradeSignal []ent.Hook
 	}
 	inters struct {
 		AccountSnapshot, AgentDecision, AuditLog, BackfillJob, BacktestReport,
 		BacktestTask, BacktestTrade, CollectCursor, ConfigHead, ConfigReceipt,
 		DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord, DecisionPlan,
-		ExecutionIntent, FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact,
-		IntelLink, Introspection, KbCase, KbChunk, KbDocument, LhbSeat, LimitBoard,
-		LimitPool, LimitPremium, LlmCallLog, MacroSeries, MarginDetail, MarketBreadth,
-		MarketData, MarketSentiment, MoneyFlow, MorningBriefing, NewsSentiment,
-		NotifyMessage, OrderTrail, Outbox, OverseasMapping, OverseasQuote,
-		PaperRunSample, ParamProposal, Position, RawResponse, ResearchJob, RiskCheck,
-		RiskEvent, SeatTag, Sector, SectorHeat, SectorMember, ServiceInstance,
-		ShadowSignal, SignalEvent, SimBarCursor, SourceHealth, StockAlias, StockBasic,
-		StockBlacklist, StockFactor, StockNameHistory, StrategyCandidate,
-		StrategyConfig, StrategyFeedback, StrategyLibrary, StrategyVersion, TaskRun,
-		TradeCalendar, TradeCash, TradeFill, TradeLedgerLock, TradeOrder,
-		TradeSignal []ent.Interceptor
+		EventDisposition, ExecutionIntent, FinanceReport, HotRank, HsgtTop10,
+		IntelCluster, IntelFact, IntelLink, Introspection, KbCase, KbChunk, KbDocument,
+		LhbSeat, LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries,
+		MarginDetail, MarketBreadth, MarketData, MarketSentiment, MoneyFlow,
+		MorningBriefing, NewsSentiment, NotifyMessage, OrderTrail, Outbox,
+		OverseasMapping, OverseasQuote, PaperRunSample, ParamProposal, Position,
+		RawResponse, ResearchJob, RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat,
+		SectorMember, ServiceInstance, ShadowSignal, SignalEvent, SimBarCursor,
+		SourceHealth, StockAlias, StockBasic, StockBlacklist, StockFactor,
+		StockNameHistory, StrategyCandidate, StrategyConfig, StrategyFeedback,
+		StrategyLibrary, StrategyVersion, TaskRun, TradeCalendar, TradeCash, TradeFill,
+		TradeLedgerLock, TradeOrder, TradeSignal []ent.Interceptor
 	}
 )

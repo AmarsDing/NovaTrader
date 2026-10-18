@@ -51,6 +51,9 @@ type DatasetRecord func(*sql.Selector)
 // DecisionPlan is the predicate function for decisionplan builders.
 type DecisionPlan func(*sql.Selector)
 
+// EventDisposition is the predicate function for eventdisposition builders.
+type EventDisposition func(*sql.Selector)
+
 // ExecutionIntent is the predicate function for executionintent builders.
 type ExecutionIntent func(*sql.Selector)
 

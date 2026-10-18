@@ -22,6 +22,7 @@ import (
 	"server/ent/datasetmanifest"
 	"server/ent/datasetrecord"
 	"server/ent/decisionplan"
+	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
 	"server/ent/hotrank"
@@ -164,6 +165,7 @@ func checkColumn(t, c string) error {
 			datasetmanifest.Table:   datasetmanifest.ValidColumn,
 			datasetrecord.Table:     datasetrecord.ValidColumn,
 			decisionplan.Table:      decisionplan.ValidColumn,
+			eventdisposition.Table:  eventdisposition.ValidColumn,
 			executionintent.Table:   executionintent.ValidColumn,
 			financereport.Table:     financereport.ValidColumn,
 			hotrank.Table:           hotrank.ValidColumn,

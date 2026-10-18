@@ -454,6 +454,39 @@ var (
 			},
 		},
 	}
+	// EventDispositionsColumns holds the columns for the "event_dispositions" table.
+	EventDispositionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "event_id", Type: field.TypeString, Size: 128},
+		{Name: "trace_id", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "action", Type: field.TypeString, Size: 32},
+		{Name: "note", Type: field.TypeString, Size: 280, Default: ""},
+		{Name: "actor", Type: field.TypeString, Size: 64},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// EventDispositionsTable holds the schema information for the "event_dispositions" table.
+	EventDispositionsTable = &schema.Table{
+		Name:       "event_dispositions",
+		Columns:    EventDispositionsColumns,
+		PrimaryKey: []*schema.Column{EventDispositionsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "eventdisposition_event_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventDispositionsColumns[1]},
+			},
+			{
+				Name:    "eventdisposition_trace_id",
+				Unique:  false,
+				Columns: []*schema.Column{EventDispositionsColumns[2]},
+			},
+			{
+				Name:    "eventdisposition_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{EventDispositionsColumns[6]},
+			},
+		},
+	}
 	// ExecutionIntentsColumns holds the columns for the "execution_intents" table.
 	ExecutionIntentsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -2444,6 +2477,7 @@ var (
 		DatasetManifestTable,
 		DatasetRecordTable,
 		DecisionPlansTable,
+		EventDispositionsTable,
 		ExecutionIntentsTable,
 		FinanceReportTable,
 		HotRankTable,
