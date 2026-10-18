@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"server/pkg/accountstate"
 	"server/pkg/risk"
 
 	"github.com/google/wire"
@@ -15,6 +16,7 @@ var ProviderSet = wire.NewSet(NewEngine)
 
 // Repo 是 data 层提供的持久化。写事件的方法要在同一事务里写 outbox。
 type Repo interface {
+	LoadAccountSnapshots(ctx context.Context) ([]accountstate.Snapshot, error)
 	LoadParams(ctx context.Context) (map[string]string, error)
 	// SaveParam 走 pkg/params.Put 生成版本快照，并写一条 kind=param 的 risk_event。
 	SaveParam(ctx context.Context, key, value, old, operator string) error

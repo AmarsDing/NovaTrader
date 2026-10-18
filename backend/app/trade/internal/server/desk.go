@@ -58,15 +58,17 @@ func tradeErr(err error) error {
 }
 
 type orderView struct {
-	ClientOrderID string  `json:"client_order_id"`
-	Account       string  `json:"account"`
-	Symbol        string  `json:"symbol"`
-	Side          string  `json:"side"`
-	Status        string  `json:"status"`
-	Price         float64 `json:"price"`
-	Volume        int     `json:"volume"`
-	Filled        int     `json:"filled"`
-	Reason        string  `json:"reason"`
+	ClientOrderID   string  `json:"client_order_id"`
+	Account         string  `json:"account"`
+	Symbol          string  `json:"symbol"`
+	Side            string  `json:"side"`
+	Status          string  `json:"status"`
+	Price           float64 `json:"price"`
+	Volume          int     `json:"volume"`
+	Filled          int     `json:"filled"`
+	Reason          string  `json:"reason"`
+	SignalID        string  `json:"signal_id"`
+	StrategyVersion string  `json:"strategy_version"`
 }
 
 type fillView struct {
@@ -87,6 +89,7 @@ func orderViewOf(o biz.Order) orderView {
 	return orderView{
 		ClientOrderID: o.ClientOrderID, Account: account, Symbol: o.Symbol, Side: o.Side,
 		Status: o.Status, Price: o.Price, Volume: o.Volume, Filled: o.Filled, Reason: o.Reason,
+		SignalID: o.SignalID, StrategyVersion: o.StrategyVersion,
 	}
 }
 

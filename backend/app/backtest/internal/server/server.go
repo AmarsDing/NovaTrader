@@ -8,6 +8,7 @@ import (
 	"server/app/backtest/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -19,7 +20,7 @@ import (
 
 var ProviderSet = wire.NewSet(NewHTTPServer, NewGRPCServer)
 
-func NewHTTPServer(c *conf.Backtest, svc *service.BacktestService, logger log.Logger) *khttp.Server {
+func NewHTTPServer(c *conf.Backtest, svc *service.BacktestService, research *service.ResearchService, logger log.Logger) *khttp.Server {
 	opts := []khttp.ServerOption{
 		khttp.Middleware(recovery.Recovery(), logging.Server(logger)),
 		khttp.Address(":2071"),
@@ -36,6 +37,7 @@ func NewHTTPServer(c *conf.Backtest, svc *service.BacktestService, logger log.Lo
 		}
 	}
 	srv := khttp.NewServer(opts...)
+	observe.RegisterHTTP(srv, observe.ForService("backtest"))
 	srv.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
@@ -45,10 +47,11 @@ func NewHTTPServer(c *conf.Backtest, svc *service.BacktestService, logger log.Lo
 		_ = metrics.Write(w)
 	})
 	v1.RegisterBacktestHTTPServer(srv, svc)
+	v1.RegisterResearchHTTPServer(srv, research)
 	return srv
 }
 
-func NewGRPCServer(c *conf.Backtest, svc *service.BacktestService, logger log.Logger) *grpc.Server {
+func NewGRPCServer(c *conf.Backtest, svc *service.BacktestService, research *service.ResearchService, logger log.Logger) *grpc.Server {
 	opts := []grpc.ServerOption{
 		grpc.Middleware(recovery.Recovery(), logging.Server(logger)),
 		grpc.Address(":2072"),
@@ -66,5 +69,6 @@ func NewGRPCServer(c *conf.Backtest, svc *service.BacktestService, logger log.Lo
 	}
 	srv := grpc.NewServer(opts...)
 	v1.RegisterBacktestServer(srv, svc)
+	v1.RegisterResearchServer(srv, research)
 	return srv
 }

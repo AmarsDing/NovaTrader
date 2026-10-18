@@ -8,6 +8,7 @@ import (
 	"server/app/strategy/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -42,6 +43,7 @@ func NewHTTPServer(c *conf.Strategy, svc *service.StrategyService, logger log.Lo
 		_ = metrics.Write(w)
 	})
 	v1.RegisterStrategyHTTPServer(srv, svc)
+	observe.RegisterHTTP(srv, observe.ForService("strategy"))
 	return srv
 }
 

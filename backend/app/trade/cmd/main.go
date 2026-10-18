@@ -58,7 +58,7 @@ func main() {
 		"service.name", Name,
 		"service.version", Version,
 	)
-	app, cleanup, err := wireApp(bc.GetTrade(), bc.GetPostgres(), bc.GetNats(), logger)
+	app, cleanup, err := wireApp(bc.GetTrade(), bc.GetPostgres(), bc.GetNats(), bc.GetRedis(), logger)
 	if err != nil {
 		panic(err)
 	}

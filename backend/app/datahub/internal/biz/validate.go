@@ -40,7 +40,9 @@ type SnapshotRules struct {
 	MinCount int
 }
 
-// CheckSnapshots 清洗一轮快照：丢掉结构不合法的条目，检查批次是否过期。FR-01-06、FR-01-14。
+// CheckSnapshots 清洗一轮快照：隔离结构/未来时间异常，逐证券标记行情过期。
+// 旧价和无成交记录保留供查看，不把零成交推断为停牌或替它生成新时间。
+// 整批没有新鲜行情时失败；一只股票的当前时间不能替其余股票保鲜。
 // 返回的 error 会让本次源调用算失败，从而切到下一源。
 func CheckSnapshots(items []Snapshot, r SnapshotRules) ([]Snapshot, []Issue, error) {
 	if len(items) == 0 {
@@ -48,7 +50,7 @@ func CheckSnapshots(items []Snapshot, r SnapshotRules) ([]Snapshot, []Issue, err
 	}
 	var issues []Issue
 	out := items[:0:0]
-	var newest time.Time
+	fresh := 0
 	future := 0
 	for _, s := range items {
 		if _, err := symbol.Parse(s.Symbol); err != nil {
@@ -63,8 +65,20 @@ func CheckSnapshots(items []Snapshot, r SnapshotRules) ([]Snapshot, []Issue, err
 			future++
 			continue
 		}
-		if s.Time.After(newest) {
-			newest = s.Time
+		reason := ""
+		switch {
+		case s.Stale:
+			reason = "源头已标记行情过期"
+		case s.Time.IsZero():
+			reason = "快照没有源行情时间"
+		case r.Trading && r.StaleAfter > 0 && r.Now.Sub(s.Time) > r.StaleAfter:
+			reason = fmt.Sprintf("源行情时间 %s，落后 %s", s.Time.In(shanghai()).Format("2006-01-02 15:04:05"), r.Now.Sub(s.Time).Round(time.Second))
+		}
+		if reason != "" {
+			s.Stale = true
+			issues = append(issues, Issue{Check: CheckStale, Symbol: s.Symbol, Severity: "warn", Message: reason})
+		} else {
+			fresh++
 		}
 		out = append(out, s)
 	}
@@ -76,11 +90,8 @@ func CheckSnapshots(items []Snapshot, r SnapshotRules) ([]Snapshot, []Issue, err
 		return out, issues, fmt.Errorf("快照只有 %d 条，少于 %d", len(out), r.MinCount)
 	}
 	if r.Trading && r.StaleAfter > 0 {
-		if newest.IsZero() {
-			return out, issues, &StaleError{Reason: "快照没有行情时间"}
-		}
-		if lag := r.Now.Sub(newest); lag > r.StaleAfter {
-			return out, issues, &StaleError{Reason: fmt.Sprintf("最新行情时间 %s，落后 %s", newest.In(shanghai()).Format("15:04:05"), lag.Round(time.Second))}
+		if fresh == 0 {
+			return out, issues, &StaleError{Reason: "快照没有可用的新鲜源行情时间"}
 		}
 	}
 	return out, issues, nil

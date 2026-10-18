@@ -43,6 +43,57 @@ func TestCheckSnapshotsDropBad(t *testing.T) {
 	}
 }
 
+func TestCheckSnapshotsMixedAgeKeepsPerSymbolStale(t *testing.T) {
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, shanghai())
+	old := now.Add(-time.Minute)
+	items := []Snapshot{
+		{Symbol: "600519.SH", Time: now, Last: 100},
+		{Symbol: "000001.SZ", Time: old, AsOf: now, Last: 10, Volume: 0},
+		{Symbol: "000002.SZ", AsOf: now, Last: 10},
+		{Symbol: "000003.SZ", Time: now, Last: 10, Stale: true},
+	}
+	out, issues, err := CheckSnapshots(items, SnapshotRules{Now: now, Trading: true, StaleAfter: 10 * time.Second, MinCount: 1})
+	if err != nil || len(out) != 4 || len(issues) != 3 {
+		t.Fatalf("out=%+v issues=%+v err=%v", out, issues, err)
+	}
+	if out[0].Stale || !out[1].Stale || !out[2].Stale || !out[3].Stale || !out[1].Time.Equal(old) {
+		t.Fatalf("per-symbol time/stale lost: %+v", out)
+	}
+}
+
+func TestCheckSnapshotsNoTradesDoesNotInventSuspension(t *testing.T) {
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, shanghai())
+	tests := []struct {
+		name    string
+		time    time.Time
+		trading bool
+		stale   bool
+	}{
+		{"no trade current source", now, true, false},
+		{"no trade old source", now.Add(-time.Minute), true, true},
+		{"closed session retains source", now.Add(-time.Hour), false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, _, err := CheckSnapshots([]Snapshot{{Symbol: "000001.SZ", Time: tt.time, Last: 10, Volume: 0}}, SnapshotRules{Now: now, Trading: tt.trading, StaleAfter: 10 * time.Second, MinCount: 1})
+			if len(out) != 1 || out[0].Stale != tt.stale || !out[0].Time.Equal(tt.time) || (err != nil) != tt.stale {
+				t.Fatalf("out=%+v err=%v", out, err)
+			}
+		})
+	}
+}
+
+func TestCheckSnapshotsFutureTimeIsQuarantined(t *testing.T) {
+	now := time.Date(2026, 10, 14, 10, 0, 0, 0, shanghai())
+	out, issues, err := CheckSnapshots([]Snapshot{
+		{Symbol: "000001.SZ", Time: now.Add(2 * time.Minute), Last: 10},
+		{Symbol: "600519.SH", Time: now, Last: 100},
+	}, SnapshotRules{Now: now, Trading: true, StaleAfter: 10 * time.Second, MinCount: 1})
+	if err != nil || len(out) != 1 || out[0].Symbol != "600519.SH" || len(issues) != 1 || issues[0].Check != CheckTimestamp {
+		t.Fatalf("out=%+v issues=%+v err=%v", out, issues, err)
+	}
+}
+
 func TestCheckBarsAndCompleteness(t *testing.T) {
 	d := time.Date(2026, 10, 8, 0, 0, 0, 0, shanghai())
 	pc := 10.0

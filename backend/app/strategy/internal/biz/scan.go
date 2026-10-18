@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"server/pkg/events"
+	"server/pkg/params"
 	"server/pkg/rules"
 
 	"github.com/google/uuid"
@@ -225,6 +227,33 @@ func (uc *Usecase) Scan(ctx context.Context, req ScanRequest) (*ScanReport, erro
 }
 
 func (uc *Usecase) loadParams(ctx context.Context) Params {
+	if repo, ok := uc.params.(interface {
+		ConfigSnapshot(context.Context) (params.Snapshot, error)
+		RecordConfig(context.Context, int, string) error
+	}); ok {
+		s, err := repo.ConfigSnapshot(ctx)
+		if err != nil {
+			uc.log.Warn("configuration snapshot unavailable")
+			return LoadParams(nil, nil)
+		}
+		patch := map[string]string{}
+		for k, v := range s.Values {
+			if strings.HasPrefix(k, "m06.") {
+				patch[k] = v
+			}
+		}
+		if len(patch) > 0 {
+			if _, err = params.ValidatePatch(s.Values, patch); err != nil {
+				_ = repo.RecordConfig(ctx, s.Revision, "failed")
+				return LoadParams(nil, nil)
+			}
+		}
+		p := LoadParams(s.Values, &s.Revision)
+		if err = repo.RecordConfig(ctx, s.Revision, "applied"); err != nil {
+			uc.log.Warn("configuration load receipt unavailable")
+		}
+		return p
+	}
 	values, err := uc.params.Values(ctx)
 	if err != nil {
 		uc.log.Warnf("strategy_config unavailable, using defaults: %v", err)

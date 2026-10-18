@@ -8,6 +8,7 @@ import (
 
 	"server/app/notify/internal/biz"
 	"server/pkg/events"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -35,7 +36,10 @@ func NewRunner(p *biz.Pipeline, bus *events.Bus, logger log.Logger) *Runner {
 }
 
 func (r *Runner) Start(ctx context.Context) error {
-	if err := r.p.Recover(ctx); err != nil {
+	finish := observe.ForService("notify").Op("recover").Begin()
+	err := r.p.Recover(ctx)
+	observe.FinishError(finish, err)
+	if err != nil {
 		return err
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -75,7 +79,7 @@ func (r *Runner) Start(ctx context.Context) error {
 			case <-runCtx.Done():
 				return
 			case <-t.C:
-				if err := r.p.Flush(runCtx); err != nil {
+				if err := r.flush(runCtx); err != nil {
 					r.log.Errorf("flush: %v", err)
 				}
 			}
@@ -94,8 +98,16 @@ func (r *Runner) Stop(context.Context) error {
 }
 
 func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
+	key := "message_handle"
+	if flush {
+		key = "held_flush"
+	}
+	op := observe.ForService("notify").Op(key)
+	op.Received()
+	finish := op.Begin()
 	env, err := events.Unmarshal(m.Data)
 	if err != nil {
+		finish(observe.Rejected)
 		r.log.Warnf("bad envelope: %v", err)
 		_ = m.Ack()
 		return
@@ -107,10 +119,20 @@ func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
 	} else {
 		handleErr = r.p.Handle(ctx, env)
 	}
+	observe.FinishError(finish, handleErr)
 	if handleErr != nil {
 		r.log.Errorf("%s %s: %v", env.Subject, env.EventID, handleErr)
 		_ = m.Nak()
 		return
 	}
 	_ = m.Ack()
+}
+
+// A successful flush means the pipeline returned nil; individual channel results
+// remain in notification records and are not inferred from this process metric.
+func (r *Runner) flush(ctx context.Context) error {
+	finish := observe.ForService("notify").Op("held_flush").Begin()
+	err := r.p.Flush(ctx)
+	observe.FinishError(finish, err)
+	return err
 }

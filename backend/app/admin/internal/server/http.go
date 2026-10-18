@@ -62,6 +62,7 @@ func NewHTTPServer(c *conf.Admin, settings gateway.Settings, audit *data.AuditSt
 	if hub != nil {
 		gate.NATSUp = hub.Up
 		gate.NATSStats = hub.Stats
+		gate.Observations = hub
 	}
 	srv.HandlePrefix("/api/", gate)
 	return srv

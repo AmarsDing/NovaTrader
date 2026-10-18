@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"server/pkg/brokerif/sim"
 	"server/pkg/events"
 	"server/pkg/symbol"
+	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -23,6 +26,7 @@ type Settings struct {
 	Fee               ashare.Fee
 	Match             sim.MatchRule
 	LiveEnabled       bool
+	BrokerConnected   bool // Only a verified broker adapter may set this; no config/UI bypass.
 	// WorkTimeout 是盯盘限价单未成交多久后撤掉剩余。默认 60 秒。
 	WorkTimeout time.Duration
 	// ChaseMax 是超时后最多重报几次。默认 2。
@@ -35,7 +39,7 @@ func (s Settings) norm() Settings {
 	if s.InitialCash <= 0 {
 		s.InitialCash = 1_000_000
 	}
-	if s.PaperDaysRequired <= 0 {
+	if s.PaperDaysRequired < 20 {
 		s.PaperDaysRequired = 20
 	}
 	if s.Fee == (ashare.Fee{}) {
@@ -73,7 +77,7 @@ func NewEngine(store Store, risk Checker, set Settings, logger log.Logger) *Engi
 func (e *Engine) Place(ctx context.Context, req PlaceRequest) (Order, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.place(ctx, req)
+	return e.placeDurable(ctx, req)
 }
 
 func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
@@ -105,6 +109,13 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 	if req.Source == "manual" && strings.TrimSpace(req.Operator) == "" {
 		return Order{}, fmt.Errorf("%w: 手动下单必须填写操作人", ErrInvalid)
 	}
+	if req.SignalID != "" {
+		if validator, ok := e.store.(SignalOrderValidator); ok {
+			if err := validator.ValidateSignalOrder(ctx, req, book, e.clock()); err != nil {
+				return Order{}, err
+			}
+		}
+	}
 
 	cash, err := e.cash(ctx, book)
 	if err != nil {
@@ -133,16 +144,31 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 	}
 
 	if book == BookLive {
-		paper, err := e.cash(ctx, BookPaper)
-		if err != nil {
-			return Order{}, err
+		order.Channel = "eastmoney-file"
+		if !e.set.BrokerConnected {
+			return reject("实盘柜台通道尚未接入或未完成对账")
 		}
-		if !e.set.LiveEnabled || paper.PaperDays < e.set.PaperDaysRequired {
-			return reject("模拟盘未满准入交易日，或实盘通道未打开")
+		if !e.set.LiveEnabled {
+			return reject("实盘通道未打开")
 		}
+		evidence, err := e.PaperAdmission(ctx, "SIM", 40)
+		if err != nil || !evidence.RunEvidenceReady || evidence.RequiredDays < 20 {
+			return reject("连续真实交易日运行证据未通过；旧paper_days不作为准入依据")
+		}
+	}
+	if err := e.prepareDay(ctx, book, true, false); err != nil {
+		return Order{}, err
+	}
+	cash, err = e.cash(ctx, book)
+	if err != nil {
+		return Order{}, err
 	}
 	if req.Side == string(brokerif.Buy) && cash.OpenHalted {
 		return reject("对账不平，已停止开仓")
+	}
+	frozenCash, frozenSells, err := e.reserved(ctx, book, order.ClientOrderID, nil)
+	if err != nil {
+		return Order{}, err
 	}
 	if req.Side == string(brokerif.Buy) {
 		n, err := ashare.RoundBuy(req.Symbol, req.Volume)
@@ -152,7 +178,8 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 	}
 
 	out, err := e.risk.Check(ctx, CheckIn{
-		ClientOrderID: req.ClientOrderID, Account: accountOf(book), Symbol: req.Symbol,
+		ExpectedConfigRevision: req.ExpectedConfigRevision,
+		ClientOrderID:          req.ClientOrderID, Account: accountOf(book), Symbol: req.Symbol,
 		Side: req.Side, Price: req.Price, Volume: req.Volume, Source: req.Source, Operator: req.Operator,
 	})
 	if err != nil {
@@ -174,6 +201,9 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 			}
 		}
 	}
+	if req.Side == "buy" && e.frozenBuy(order) > cash.Cash-frozenCash+0.001 {
+		return reject("可用资金不足（含在途委托冻结和费用）")
+	}
 
 	pos, _, err := e.store.LoadPosition(ctx, book, req.Symbol)
 	if err != nil {
@@ -182,14 +212,19 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 	pos.Book = book
 	pos.Symbol = req.Symbol
 	if req.Side == string(brokerif.Sell) {
-		ok, err := ashare.CanSell(req.Symbol, pos.Available, order.Volume)
+		ok, err := ashare.CanSell(req.Symbol, pos.Available-frozenSells[req.Symbol], order.Volume)
 		if err != nil || !ok {
 			return reject("可卖数量不足（含 T+1）")
 		}
 	}
 
 	// 盯盘卖出是保护性退出，不等 30 秒确认窗。开仓和手动单仍要确认。
-	if book == BookLive && req.Source != "watch" {
+	if req.FinalCheck != nil {
+		if err := req.FinalCheck(ctx); err != nil {
+			return Order{}, err
+		}
+	}
+	if book == BookLive {
 		order.Status = StatusPending
 		order.Reason = "等待确认"
 		if err := e.store.Commit(ctx, Batch{
@@ -208,7 +243,9 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 	trails = append(trails, Trail{ClientOrderID: order.ClientOrderID, Status: StatusSubmitted, Note: "已接收"})
 	batch := Batch{Orders: []Order{order}, Trails: trails, Cash: &cash}
 	if req.Quote != nil {
-		e.fill(ctx, &batch, &order, pos, *req.Quote)
+		if err := e.fill(ctx, &batch, &order, pos, *req.Quote); err != nil {
+			return Order{}, err
+		}
 		batch.Orders = []Order{order}
 	}
 	batch.Events = append(batch.Events, Event{Subject: events.SubjectTradeOrder, Payload: orderPayload(order)})
@@ -218,27 +255,53 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 	return order, nil
 }
 
-func (e *Engine) fill(ctx context.Context, batch *Batch, order *Order, pos Position, q Quote) {
+func (e *Engine) fill(ctx context.Context, batch *Batch, order *Order, pos Position, q Quote) error {
+	return e.fillWithPool(ctx, batch, order, pos, q, nil)
+}
+
+func (e *Engine) fillWithPool(ctx context.Context, batch *Batch, order *Order, pos Position, q Quote, pool *int) error {
+	if order.Book == BookLive {
+		return fmt.Errorf("%w: 实盘只能消费柜台回报，不能使用模拟撮合", ErrInvalid)
+	}
+	if !q.Time.IsZero() && q.Time.Before(order.CreatedAt) {
+		return nil
+	}
 	if order.Status != StatusSubmitted && order.Status != StatusPartial {
-		return
+		return nil
 	}
 	remain := order.Volume - order.Filled
+	matchRule := e.set.Match
+	if pool != nil {
+		if *pool <= 0 {
+			order.Reason = "本分钟可撮合量已用尽"
+			return nil
+		}
+		if remain > *pool {
+			remain = *pool
+		}
+		// The shared pool already applied the participation ratio once.
+		matchRule.VolumeCap = 0
+	}
 	side := brokerif.Side(order.Side)
 	got := sim.Match(order.Symbol, side, remain, pos.Available, order.Price, sim.Quote{
 		Open: q.Open, High: q.High, Low: q.Low, Volume: q.Volume,
 		LimitUp: q.LimitUp, LimitDown: q.LimitDown,
-	}, e.set.Match)
+	}, matchRule)
 	if got.Qty <= 0 {
 		order.Reason = got.Reason
-		return
+		return nil
 	}
 	cash := *batch.Cash
 	qty := got.Qty
 	if side == brokerif.Buy {
-		qty = afford(e.set.Fee, cash.Cash, order.Symbol, qty, got.Price)
+		frozen, _, err := e.reserved(ctx, order.Book, order.ClientOrderID, batch.Orders)
+		if err != nil {
+			return err
+		}
+		qty = afford(e.set.Fee, cash.Cash-frozen, order.Symbol, qty, got.Price)
 		if qty <= 0 {
 			order.Reason = "资金不足"
-			return
+			return nil
 		}
 	}
 	amount := got.Price * float64(qty)
@@ -266,6 +329,9 @@ func (e *Engine) fill(ctx context.Context, batch *Batch, order *Order, pos Posit
 		pos.LastPrice = got.Price
 	}
 	order.Filled += qty
+	if pool != nil {
+		*pool -= qty
+	}
 	if order.Filled >= order.Volume {
 		order.Status = StatusFilled
 		order.Reason = ""
@@ -283,7 +349,7 @@ func (e *Engine) fill(ctx context.Context, batch *Batch, order *Order, pos Posit
 	batch.Fills = append(batch.Fills, fill)
 	batch.Trails = append(batch.Trails, Trail{ClientOrderID: order.ClientOrderID, Status: order.Status, Note: order.Reason})
 	batch.Events = append(batch.Events, Event{Subject: events.SubjectTradeFill, Payload: fill})
-	_ = ctx
+	return nil
 }
 
 func afford(fee ashare.Fee, cash float64, sym string, want int, price float64) int {
@@ -301,19 +367,37 @@ func upsertPos(list []Position, pos Position) []Position {
 	return append(list, pos)
 }
 
-func (e *Engine) ApplyBar(ctx context.Context, account, rawSymbol string, q Quote) ([]Order, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) applyBar(ctx context.Context, account, rawSymbol string, q Quote) ([]Order, error) {
 	book, err := bookOf(account)
 	if err != nil {
 		return nil, fmt.Errorf("%w: 账户只能是 SIM 或 LIVE", ErrInvalid)
 	}
+	if book == BookLive {
+		return nil, fmt.Errorf("%w: 实盘不能用K线撮合", ErrInvalid)
+	}
 	sym := strings.TrimSpace(rawSymbol)
+	if err := e.prepareDay(ctx, book, true, false); err != nil {
+		return nil, err
+	}
 	orders, err := e.store.ListOpen(ctx, book, sym)
 	if err != nil {
 		return nil, err
 	}
 	if len(orders) == 0 {
+		// Holdings still need mark-to-market updates after their opening order
+		// has filled. A fresh account timestamp cannot justify a frozen old mark.
+		if q.Close > 0 {
+			pos, ok, err := e.store.LoadPosition(ctx, book, sym)
+			if err != nil {
+				return nil, err
+			}
+			if ok && pos.Quantity > 0 {
+				pos.LastPrice = q.Close
+				if err := e.store.Commit(ctx, Batch{Positions: []Position{pos}}); err != nil {
+					return nil, err
+				}
+			}
+		}
 		return nil, nil
 	}
 	cash, err := e.cash(ctx, book)
@@ -322,6 +406,17 @@ func (e *Engine) ApplyBar(ctx context.Context, account, rawSymbol string, q Quot
 	}
 	batch := Batch{Cash: &cash}
 	var out []Order
+	sort.Slice(orders, func(i, j int) bool {
+		if orders[i].CreatedAt.Equal(orders[j].CreatedAt) {
+			return orders[i].ClientOrderID < orders[j].ClientOrderID
+		}
+		return orders[i].CreatedAt.Before(orders[j].CreatedAt)
+	})
+	participation := e.set.Match.VolumeCap
+	if participation <= 0 || participation > 1 || math.IsNaN(participation) || math.IsInf(participation, 0) {
+		participation = 1
+	}
+	pool := int(math.Floor(float64(q.Volume) * participation))
 	for i := range orders {
 		pos, _, err := e.store.LoadPosition(ctx, book, orders[i].Symbol)
 		if err != nil {
@@ -333,7 +428,9 @@ func (e *Engine) ApplyBar(ctx context.Context, account, rawSymbol string, q Quot
 		if q.Close > 0 {
 			pos.LastPrice = q.Close
 		}
-		e.fill(ctx, &batch, &orders[i], pos, q)
+		if err := e.fillWithPool(ctx, &batch, &orders[i], pos, q, &pool); err != nil {
+			return nil, err
+		}
 		batch.Orders = append(batch.Orders, orders[i])
 		out = append(out, orders[i])
 	}
@@ -341,11 +438,14 @@ func (e *Engine) ApplyBar(ctx context.Context, account, rawSymbol string, q Quot
 		if pos, ok, err := e.store.LoadPosition(ctx, book, sym); err != nil {
 			return nil, err
 		} else if ok {
+			pos = overlay(batch.Positions, pos)
 			pos.LastPrice = q.Close
 			batch.Positions = upsertPos(batch.Positions, pos)
 		}
 	}
-	batch.Events = append(batch.Events, Event{Subject: events.SubjectTradeOrder, Payload: map[string]any{"book": book, "symbol": sym, "count": len(out)}})
+	for _, order := range out {
+		batch.Events = append(batch.Events, Event{Subject: events.SubjectTradeOrder, Payload: orderPayload(order)})
+	}
 	if err := e.store.Commit(ctx, batch); err != nil {
 		return nil, err
 	}
@@ -361,9 +461,7 @@ func overlay(list []Position, pos Position) Position {
 	return pos
 }
 
-func (e *Engine) Cancel(ctx context.Context, clientID string) (Order, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) cancelOrder(ctx context.Context, clientID string) (Order, error) {
 	order, ok, err := e.store.LoadOrder(ctx, strings.TrimSpace(clientID))
 	if err != nil {
 		return Order{}, err
@@ -416,24 +514,12 @@ func (e *Engine) Account(ctx context.Context, account string) (AccountView, erro
 	return e.view(ctx, book)
 }
 
-func (e *Engine) Snapshot(ctx context.Context, account string) (AccountView, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) snapshotAccount(ctx context.Context, account string) (AccountView, error) {
 	book, err := bookOf(account)
 	if err != nil {
 		return AccountView{}, fmt.Errorf("%w: 账户只能是 SIM 或 LIVE", ErrInvalid)
 	}
-	view, err := e.view(ctx, book)
-	if err != nil {
-		return AccountView{}, err
-	}
-	if err := e.store.SaveSnapshot(ctx, book, view); err != nil {
-		return AccountView{}, err
-	}
-	if err := e.store.Commit(ctx, Batch{Events: []Event{{Subject: events.SubjectTradeAccount, Payload: view}}}); err != nil {
-		return AccountView{}, err
-	}
-	return view, nil
+	return e.snapshot(ctx, book)
 }
 
 func (e *Engine) view(ctx context.Context, book string) (AccountView, error) {
@@ -466,37 +552,19 @@ func (e *Engine) view(ctx context.Context, book string) (AccountView, error) {
 }
 
 // RollDay 把当日买入转为可卖，并把模拟盘交易日加一。
-func (e *Engine) RollDay(ctx context.Context, account string) (AccountView, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) rollDay(ctx context.Context, account string) (AccountView, error) {
 	book, err := bookOf(account)
 	if err != nil {
 		return AccountView{}, fmt.Errorf("%w: 账户只能是 SIM 或 LIVE", ErrInvalid)
 	}
-	cash, err := e.cash(ctx, book)
-	if err != nil {
-		return AccountView{}, err
-	}
-	pos, err := e.store.ListPositions(ctx, book)
-	if err != nil {
-		return AccountView{}, err
-	}
-	for i := range pos {
-		pos[i].Available = pos[i].Quantity
-	}
-	if book == BookPaper {
-		cash.PaperDays++
-	}
-	if err := e.store.Commit(ctx, Batch{Cash: &cash, Positions: pos}); err != nil {
+	if err := e.prepareDay(ctx, book, true, true); err != nil {
 		return AccountView{}, err
 	}
 	return e.view(ctx, book)
 }
 
 // Reconcile 用外部持仓校正。数量不一致则停止该账本开仓。
-func (e *Engine) Reconcile(ctx context.Context, account string, remote []RemotePosition) (bool, []string, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) reconcile(ctx context.Context, account string, remote []RemotePosition) (bool, []string, error) {
 	book, err := bookOf(account)
 	if err != nil {
 		return false, nil, fmt.Errorf("%w: 账户只能是 SIM 或 LIVE", ErrInvalid)
@@ -517,7 +585,7 @@ func (e *Engine) Reconcile(ctx context.Context, account string, remote []RemoteP
 		}
 		seen[p.Symbol] = true
 		r, ok := want[p.Symbol]
-		if !ok || r.Quantity != p.Quantity {
+		if !ok || r.Quantity != p.Quantity || r.Available != p.Available {
 			diffs = append(diffs, fmt.Sprintf("%s 本地 %d 外部 %d", p.Symbol, p.Quantity, r.Quantity))
 		}
 	}
@@ -537,7 +605,7 @@ func (e *Engine) Reconcile(ctx context.Context, account string, remote []RemoteP
 	}
 	if err := e.store.Commit(ctx, Batch{
 		Cash:   &cash,
-		Events: []Event{{Subject: events.SubjectTradeAccount, Payload: map[string]any{"book": book, "halted": cash.OpenHalted, "diffs": diffs}}},
+		Events: []Event{{Subject: events.SubjectTradeReconciliation, Payload: map[string]any{"version": 1, "account_type": accountOf(book), "account_id": "default", "book": book, "halted": cash.OpenHalted, "diffs": diffs, "as_of": e.clock()}}},
 	}); err != nil {
 		return false, nil, err
 	}
@@ -550,7 +618,10 @@ func (e *Engine) cash(ctx context.Context, book string) (Cash, error) {
 		return Cash{}, err
 	}
 	if !ok {
-		return Cash{Book: book, Cash: e.set.InitialCash}, nil
+		if book == BookLive {
+			return Cash{Book: book}, nil
+		}
+		return Cash{Book: book, Cash: e.set.InitialCash, DayStartDate: e.clock().In(tradecal.Shanghai()).Format("2006-01-02"), DayStartEquity: e.set.InitialCash}, nil
 	}
 	cash.Book = book
 	return cash, nil
@@ -586,9 +657,7 @@ func confirmPayload(o Order) map[string]any {
 }
 
 // Confirm 把待确认的实盘委托放进撮合。超时则作废。
-func (e *Engine) Confirm(ctx context.Context, clientID string) (Order, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) confirm(ctx context.Context, clientID string) (Order, error) {
 	order, ok, err := e.store.LoadOrder(ctx, strings.TrimSpace(clientID))
 	if err != nil {
 		return Order{}, err
@@ -605,6 +674,16 @@ func (e *Engine) Confirm(ctx context.Context, clientID string) (Order, error) {
 		}
 		return Order{}, fmt.Errorf("%w: 确认超时作废", ErrInvalid)
 	}
+	if order.Book == BookLive && !e.set.BrokerConnected {
+		return Order{}, fmt.Errorf("%w: 柜台通道未连接", ErrInvalid)
+	}
+	check, err := e.risk.Check(ctx, CheckIn{ClientOrderID: order.ClientOrderID, Account: accountOf(order.Book), Symbol: order.Symbol, Side: order.Side, Price: order.Price, Volume: order.Volume, Source: order.Source, Operator: order.Operator})
+	if err != nil || !check.Approved {
+		return Order{}, fmt.Errorf("%w: 确认时最新风控未通过", ErrInvalid)
+	}
+	if check.Volume > 0 && check.Volume < order.Volume {
+		order.Volume = check.Volume
+	}
 	order.Status = StatusSubmitted
 	order.Reason = "已确认"
 	if err := e.store.Commit(ctx, Batch{
@@ -618,9 +697,7 @@ func (e *Engine) Confirm(ctx context.Context, clientID string) (Order, error) {
 }
 
 // ExpireConfirms 作废超过确认窗的实盘委托。
-func (e *Engine) ExpireConfirms(ctx context.Context) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) expireConfirms(ctx context.Context) error {
 	rows, err := e.store.ListByStatus(ctx, StatusPending)
 	if err != nil {
 		return err

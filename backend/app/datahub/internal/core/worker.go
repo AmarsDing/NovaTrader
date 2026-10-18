@@ -9,6 +9,7 @@ import (
 	"server/app/datahub/internal/biz"
 	"server/conf"
 	"server/pkg/events"
+	"server/pkg/observe"
 	"server/pkg/registry"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
@@ -290,7 +291,10 @@ func (w *Worker) maybe(ctx context.Context, domain string, def time.Duration, la
 		return
 	}
 	last[domain] = time.Now()
-	if err := fn(ctx); err != nil && ctx.Err() == nil {
+	finish := observe.ForService("datahub").Op("scheduled_collect").Begin()
+	err := fn(ctx)
+	observe.FinishError(finish, err)
+	if err != nil && ctx.Err() == nil {
 		w.log.Errorf("%s: %v", domain, err)
 	}
 }

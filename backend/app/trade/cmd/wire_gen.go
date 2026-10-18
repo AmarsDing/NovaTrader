@@ -20,27 +20,36 @@ import (
 
 // Injectors from wire.go:
 
-func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, logger log.Logger) (*kratos.App, func(), error) {
+func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, redis *conf.Redis, logger log.Logger) (*kratos.App, func(), error) {
 	client, cleanup, err := data.NewEntClient(postgres, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	repo := data.NewRepo(client, logger)
+	redisClient, cleanup2, err := data.NewRedis(redis)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	repo := data.NewRepoWithMarket(client, redisClient, logger)
 	riskClient := data.NewRiskClient(trade)
 	settings := data.NewSettings(trade)
 	engine := biz.NewEngine(repo, riskClient, settings, logger)
-	bus, cleanup2, err := data.NewBus(nats)
+	bus, cleanup3, err := data.NewBus(nats)
 	if err != nil {
+		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	dispatcher := outbox.NewDispatcher(client, bus)
 	runner := core.NewRunner(trade, engine, bus, dispatcher, logger)
 	tradeService := service.NewTradeService(engine)
-	httpServer := server.NewHTTPServer(trade, tradeService, logger)
-	grpcServer := server.NewGRPCServer(trade, tradeService, logger)
+	admissionService := service.NewAdmissionService(tradeService)
+	navService := service.NewNavService(tradeService)
+	httpServer := server.NewHTTPServer(trade, tradeService, admissionService, navService, logger)
+	grpcServer := server.NewGRPCServer(trade, tradeService, admissionService, navService, logger)
 	app := newApp(logger, runner, httpServer, grpcServer)
 	return app, func() {
+		cleanup3()
 		cleanup2()
 		cleanup()
 	}, nil

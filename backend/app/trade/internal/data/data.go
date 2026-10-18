@@ -4,6 +4,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"server/app/trade/internal/biz"
 	"server/conf"
@@ -14,14 +15,28 @@ import (
 	"server/pkg/outbox"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/wire"
 )
 
 var ProviderSet = wire.NewSet(
-	NewEntClient, outbox.NewDispatcher, NewBus, NewRepo, NewSettings, NewRiskClient,
+	NewEntClient, outbox.NewDispatcher, NewBus, NewRedis, NewRepoWithMarket, NewSettings, NewRiskClient,
 	wire.Bind(new(biz.Store), new(*Repo)),
 	wire.Bind(new(biz.Checker), new(*RiskClient)),
 )
+
+func NewRedis(c *conf.Redis) (*redis.Client, func(), error) {
+	if c == nil || c.GetAddr() == "" {
+		return nil, nil, fmt.Errorf("trade: redis config is missing")
+	}
+	r := redis.NewClient(&redis.Options{Addr: c.GetAddr(), ReadTimeout: time.Second, WriteTimeout: time.Second})
+	return r, func() { _ = r.Close() }, nil
+}
+func NewRepoWithMarket(client *ent.Client, rdb *redis.Client, logger log.Logger) *Repo {
+	r := NewRepo(client, logger)
+	r.rdb = rdb
+	return r
+}
 
 func dbConfig(c *conf.Postgres) dbinit.Config {
 	cfg := dbinit.Config{

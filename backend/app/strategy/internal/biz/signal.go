@@ -84,68 +84,72 @@ func ActorAllowed(from, to Status, actor string) bool {
 
 // Signal 是一条交易信号。卖出信号的 Entry 是卖出限价，PositionPct 是卖出比例（1 为全部可卖）。
 type Signal struct {
-	ID          int
-	Book        string
-	Time        time.Time
-	TradeDate   time.Time
-	Symbol      string
-	Name        string
-	Side        string
-	Strategy    string
-	VersionID   *int
-	Entry       float64
-	EntryLow    float64
-	EntryHigh   float64
-	StopLoss    float64
-	TakeProfit  float64
-	ATR         float64
-	PositionPct float64
-	ValidUntil  time.Time
-	HoldDaysMax int
-	RuleScore   float64
-	AIScore     *float64
-	FinalScore  float64
-	Dims        map[string]float64
-	Evidence    []string
-	AIDegraded  bool
-	HighValue   bool
-	ExitKind    string
-	Reason      string
-	ExitPrice   *float64
-	PnlPct      *float64 // 百分比，3.2 表示 +3.2%
-	ClosedAt    time.Time
-	HoldingDays *int
-	Status      Status
-	TraceID     string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             int
+	Book           string
+	Time           time.Time
+	TradeDate      time.Time
+	Symbol         string
+	Name           string
+	Side           string
+	Strategy       string
+	VersionID      *int
+	Entry          float64
+	EntryLow       float64
+	EntryHigh      float64
+	StopLoss       float64
+	TakeProfit     float64
+	ATR            float64
+	PositionPct    float64
+	ValidUntil     time.Time
+	HoldDaysMax    int
+	RuleScore      float64
+	AIScore        *float64
+	FinalScore     float64
+	Dims           map[string]float64
+	Evidence       []string
+	AIDegraded     bool
+	HighValue      bool
+	ExitKind       string
+	Reason         string
+	ExitPrice      *float64
+	PnlPct         *float64 // 百分比，3.2 表示 +3.2%
+	ClosedAt       time.Time
+	HoldingDays    *int
+	Status         Status
+	TraceID        string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ExecutedPrice  *float64
+	ExecutedVolume *int
 }
 
 // SignalUpdated 是 strategy.signal.updated 的载荷。前半部分字段名与 M04 设计第 6 节的约定一致，M04 靠它建案例。
 type SignalUpdated struct {
-	SignalID    int        `json:"signal_id"`
-	Book        string     `json:"book"`
-	Status      Status     `json:"status"`
-	StockCode   string     `json:"stock_code"`
-	StockName   string     `json:"stock_name"`
-	Strategy    string     `json:"strategy"`
-	SignalType  string     `json:"signal_type"`
-	SignalTime  time.Time  `json:"signal_time"`
-	EntryPrice  float64    `json:"entry_price"`
-	Reasoning   string     `json:"reasoning"`
-	From        Status     `json:"from"`
-	StopLoss    float64    `json:"stop_loss"`
-	TakeProfit  float64    `json:"take_profit"`
-	PositionPct float64    `json:"position_pct"`
-	FinalScore  float64    `json:"final_score"`
-	AIDegraded  bool       `json:"ai_degraded"`
-	HighValue   bool       `json:"high_value"`
-	ExitKind    string     `json:"exit_kind,omitempty"`
-	ValidUntil  *time.Time `json:"valid_until,omitempty"`
-	ExitPrice   *float64   `json:"exit_price,omitempty"`
-	PnlPct      *float64   `json:"pnl_pct,omitempty"`
-	HoldingDays *int       `json:"holding_days,omitempty"`
-	ClosedAt    *time.Time `json:"closed_at,omitempty"`
+	SignalID       int        `json:"signal_id"`
+	Book           string     `json:"book"`
+	Status         Status     `json:"status"`
+	StockCode      string     `json:"stock_code"`
+	StockName      string     `json:"stock_name"`
+	Strategy       string     `json:"strategy"`
+	SignalType     string     `json:"signal_type"`
+	SignalTime     time.Time  `json:"signal_time"`
+	EntryPrice     float64    `json:"entry_price"`
+	Reasoning      string     `json:"reasoning"`
+	From           Status     `json:"from"`
+	StopLoss       float64    `json:"stop_loss"`
+	TakeProfit     float64    `json:"take_profit"`
+	PositionPct    float64    `json:"position_pct"`
+	FinalScore     float64    `json:"final_score"`
+	AIDegraded     bool       `json:"ai_degraded"`
+	HighValue      bool       `json:"high_value"`
+	ExitKind       string     `json:"exit_kind,omitempty"`
+	ValidUntil     *time.Time `json:"valid_until,omitempty"`
+	ExitPrice      *float64   `json:"exit_price,omitempty"`
+	PnlPct         *float64   `json:"pnl_pct,omitempty"`
+	HoldingDays    *int       `json:"holding_days,omitempty"`
+	ClosedAt       *time.Time `json:"closed_at,omitempty"`
+	ExecutedPrice  *float64   `json:"executed_price,omitempty"`
+	ExecutedVolume *int       `json:"executed_volume,omitempty"`
 }
 
 // Close 是买入信号平仓结果。PnlPct 用百分比，和 M04 案例一致。
@@ -170,6 +174,7 @@ func signalEnvelope(s *Signal, from Status) (events.Envelope, error) {
 		From: from, StopLoss: s.StopLoss, TakeProfit: s.TakeProfit, PositionPct: s.PositionPct,
 		FinalScore: s.FinalScore, AIDegraded: s.AIDegraded, HighValue: s.HighValue, ExitKind: s.ExitKind,
 		ExitPrice: s.ExitPrice, PnlPct: s.PnlPct, HoldingDays: s.HoldingDays,
+		ExecutedPrice: s.ExecutedPrice, ExecutedVolume: s.ExecutedVolume,
 	}
 	if !s.ClosedAt.IsZero() {
 		v := s.ClosedAt
@@ -236,7 +241,7 @@ func (uc *Usecase) ExpireDue(ctx context.Context, now time.Time) (int, error) {
 	n := 0
 	for _, s := range due {
 		_, err := uc.signals.Transition(ctx, s.ID, s.Status, StatusExpired, "超过有效期", ActorStrategy, s.TraceID, signalEnvelope, nil)
-		if errors.Is(err, ErrConflict) {
+		if errors.Is(err, ErrConflict) || errors.Is(err, ErrExecutionProtected) {
 			continue
 		}
 		if err != nil {

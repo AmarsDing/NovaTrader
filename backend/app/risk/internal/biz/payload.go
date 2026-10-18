@@ -3,21 +3,14 @@ package biz
 import (
 	"time"
 
+	"server/pkg/accountstate"
 	"server/pkg/risk"
 )
 
 // 以下是 risk 订阅和发布的事件载荷，字段名以 M08 设计文档第 6 节为准。
 
 // AccountPayload 是 trade.account：trade 每 10 秒推一次账户快照。
-type AccountPayload struct {
-	AccountType    risk.AccountType `json:"account_type"`
-	Equity         float64          `json:"equity"`
-	Available      float64          `json:"available"`
-	DayStartEquity float64          `json:"day_start_equity"`
-	Holdings       []risk.Holding   `json:"holdings"`
-	OpenOrders     []risk.OpenOrder `json:"open_orders"`
-	AsOf           time.Time        `json:"as_of"`
-}
+type AccountPayload = accountstate.Snapshot
 
 // OrderActionPayload 是 trade.order 里风控关心的部分。action=cancel 计入速度上限。
 type OrderActionPayload struct {

@@ -8,6 +8,7 @@ import (
 	"server/app/notify/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -45,6 +46,7 @@ func NewHTTPServer(c *conf.Notify, svc *service.NotifyService, logger log.Logger
 		_ = metrics.Write(w)
 	})
 	v1.RegisterNotifyHTTPServer(srv, svc)
+	observe.RegisterHTTP(srv, observe.ForService("notify"))
 	return srv
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"server/app/brain/internal/biz"
+	"server/pkg/observe"
 	"server/pkg/outbox"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
@@ -60,7 +61,10 @@ func (r *Runner) Start(ctx context.Context) error {
 		}
 	})
 	go r.loop(ctx, dispatchInterval, func(ctx context.Context) {
-		if _, err := r.box.Dispatch(ctx, 100); err != nil {
+		finish := observe.ForService("brain").Op("outbox").Begin()
+		_, err := r.box.Dispatch(ctx, 100)
+		observe.FinishError(finish, err)
+		if err != nil {
 			r.log.Warnf("outbox dispatch: %v", err)
 		}
 	})

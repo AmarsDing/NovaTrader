@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"server/pkg/params"
 	"strings"
 	"testing"
 	"time"
@@ -264,8 +265,8 @@ func TestNormalizeConfig(t *testing.T) {
 	if _, err := normalizeConfig(map[string]string{"market.sentiment.rules": `{"hot_min_up":80}`}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := normalizeConfig(map[string]string{"risk.max_single_pct": "0.05"}); err == nil {
-		t.Fatal("risk key accepted")
+	if _, err := normalizeConfig(map[string]string{"risk.max_single_pct": "0.05"}); err != nil {
+		t.Fatal("valid risk parameter rejected")
 	}
 	if _, err := normalizeConfig(map[string]string{"m06.select_score": "x"}); err == nil {
 		t.Fatal("bad number accepted")
@@ -310,6 +311,10 @@ func TestConfigEndpoint(t *testing.T) {
 		t.Fatalf("viewer %d %s", res.Code, res.Body)
 	}
 	res = putJSON(t, gate, "/api/config", `{"values":{"m06.select_score":"80"}}`, owner)
+	if res.Code != http.StatusPreconditionRequired {
+		t.Fatalf("blind legacy write %d", res.Code)
+	}
+	res = putJSON(t, gate, "/api/config", `{"base_revision":0,"values":{"m06.select_score":"80"}}`, owner)
 	if res.Code != http.StatusOK {
 		t.Fatalf("save %d %s", res.Code, res.Body)
 	}
@@ -341,9 +346,33 @@ func putJSON(t *testing.T, gate *Gate, path, raw, token string) *httptest.Respon
 }
 
 type memParams struct {
-	on   bool
-	rows map[string]string
+	on       bool
+	rows     map[string]string
+	revision int
 }
+
+func (m *memParams) ReadConfig(ctx context.Context) (params.Snapshot, error) {
+	v, e := m.LoadParams(ctx)
+	return params.Snapshot{Revision: m.revision, Values: v}, e
+}
+func (m *memParams) SaveConfig(ctx context.Context, base int, v map[string]string) (params.Snapshot, error) {
+	if base != m.revision {
+		return params.Snapshot{}, params.ErrConflict
+	}
+	if err := m.SaveParams(ctx, v); err != nil {
+		return params.Snapshot{}, err
+	}
+	m.revision++
+	return m.ReadConfig(ctx)
+}
+func (m *memParams) VersionConfig(context.Context, int) (params.Snapshot, error) {
+	return params.Snapshot{}, errors.New("missing")
+}
+func (m *memParams) RollbackConfig(context.Context, int, int) (params.Snapshot, error) {
+	return params.Snapshot{}, errors.New("missing")
+}
+func (m *memParams) ConfigReceipts(context.Context) ([]params.Receipt, error) { return nil, nil }
+func (m *memParams) ConfigHistory(context.Context) ([]ConfigVersion, error)   { return nil, nil }
 
 func (m *memParams) Enabled() bool { return m.on }
 

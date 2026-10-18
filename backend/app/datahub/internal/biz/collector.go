@@ -11,6 +11,7 @@ import (
 
 	"server/pkg/events"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -101,6 +102,13 @@ type Result struct {
 // CollectSnapshot 采一轮全市场快照写 Redis，发 market.snapshot。FR-01-04。
 // 只在集合竞价和连续竞价时段调用；调用方用 Session 判断。
 func (c *Collector) CollectSnapshot(ctx context.Context) (SnapshotMeta, error) {
+	finish := observe.ForService("datahub").Op("snapshot_collect").Begin()
+	meta, err := c.collectSnapshot(ctx)
+	observe.FinishError(finish, err)
+	return meta, err
+}
+
+func (c *Collector) collectSnapshot(ctx context.Context) (SnapshotMeta, error) {
 	start := c.now()
 	sess, err := c.cal.SessionAt(start)
 	if err != nil {
@@ -108,20 +116,37 @@ func (c *Collector) CollectSnapshot(ctx context.Context) (SnapshotMeta, error) {
 	}
 	rules := SnapshotRules{Now: start, StaleAfter: c.opt.StaleAfter, Trading: InQuoteSession(sess), MinCount: c.opt.MinSnapshotCount}
 	var issues []Issue
+	var attemptedSource string
 	var newest time.Time
 	batch, src, err := Run(ctx, c.p, DomainSnapshot, RunOptions{Timeout: c.opt.SnapshotTimeout},
 		func(ctx context.Context, s Source) (*SnapshotBatch, error) {
+			attemptedSource = s.Name()
 			b, err := s.(SnapshotSource).Snapshots(ctx, nil)
 			return &b, err
 		},
 		func(b *SnapshotBatch) error {
+			rules.Now = c.now()
 			clean, iss, err := CheckSnapshots(b.Items, rules)
 			b.Items = clean
-			issues = iss
+			if err != nil {
+				check := CheckCompleteness
+				var stale *StaleError
+				if errors.As(err, &stale) {
+					check = CheckStale
+				} else if len(clean) == 0 {
+					check = CheckEmpty
+				}
+				iss = append(iss, Issue{Check: check, Severity: "error", Message: err.Error()})
+			}
+			for i := range iss {
+				iss[i].Source = attemptedSource
+			}
+			issues = append(issues, iss...)
 			return err
 		})
 	if err != nil {
 		snapFailures.Inc()
+		c.saveIssues(ctx, DomainSnapshot, attemptedSource, dateOf(start), issues)
 		meta, _ := c.snap.Meta(ctx)
 		if !meta.Stale {
 			meta.Stale = true
@@ -135,7 +160,6 @@ func (c *Collector) CollectSnapshot(ctx context.Context) (SnapshotMeta, error) {
 	for i := range batch.Items {
 		batch.Items[i].AsOf = asOf
 		batch.Items[i].Source = src
-		batch.Items[i].Stale = false
 		if batch.Items[i].Time.After(newest) {
 			newest = batch.Items[i].Time
 		}

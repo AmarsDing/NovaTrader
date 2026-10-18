@@ -10,6 +10,7 @@ import (
 	v1 "server/api/backtest/v1"
 	"server/app/backtest/internal/biz"
 	"server/pkg/backtest"
+	"server/pkg/dataset"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/go-kratos/kratos/v2/transport"
@@ -25,6 +26,30 @@ type BacktestService struct {
 }
 
 func NewBacktestService(uc *biz.Usecase) *BacktestService { return &BacktestService{uc: uc} }
+
+func (s *BacktestService) FreezeDataset(ctx context.Context, req *v1.FreezeDatasetRequest) (*v1.DatasetReply, error) {
+	m, err := s.uc.FreezeDataset(ctx, rawOf(req.GetConfig()))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return datasetReply(m)
+}
+
+func (s *BacktestService) GetDataset(ctx context.Context, req *v1.GetDatasetRequest) (*v1.DatasetReply, error) {
+	m, err := s.uc.Dataset(ctx, req.GetManifestId())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return datasetReply(m)
+}
+
+func datasetReply(m *dataset.Manifest) (*v1.DatasetReply, error) {
+	p, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.DatasetReply{ManifestId: m.ManifestID, Hash: m.Hash, ManifestJson: string(p), RecordCount: int32(len(m.Records)), ExcludedCount: int32(len(m.Excluded) + len(m.ReplayExcluded))}, nil
+}
 
 func mapErr(err error) error {
 	switch {
@@ -125,7 +150,7 @@ func (s *BacktestService) ListStrategies(ctx context.Context, _ *v1.ListStrategi
 
 func (s *BacktestService) CreateTask(ctx context.Context, req *v1.CreateTaskRequest) (*v1.Task, error) {
 	t, err := s.uc.CreateTask(ctx, biz.CreateRequest{
-		Kind: req.GetKind(), Name: req.GetName(),
+		Kind: req.GetKind(), Name: req.GetName(), ManifestID: req.GetManifestId(),
 		Config: rawOf(req.GetConfig()), Search: rawOf(req.GetSearch()), CreatedBy: operator(ctx),
 	})
 	if err != nil {

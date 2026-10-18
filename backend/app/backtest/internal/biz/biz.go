@@ -12,6 +12,7 @@ import (
 
 	"server/conf"
 	"server/pkg/backtest"
+	"server/pkg/dataset"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -49,10 +50,19 @@ var (
 
 // Spec 是任务 config 列的内容：引擎配置加上各类任务自己的参数。
 type Spec struct {
+	ManifestID     string                 `json:"manifest_id,omitempty"`
+	ManifestHash   string                 `json:"manifest_hash,omitempty"`
 	Config         backtest.Config        `json:"config"`
 	Search         *backtest.SearchConfig `json:"search,omitempty"`
 	Evolve         *EvolveSpec            `json:"evolve,omitempty"`
 	MonteCarloRuns int                    `json:"monte_carlo_runs"`
+}
+
+// DatasetSource is mandatory for production task inputs. Tests may still use computation-only Memory sources.
+type DatasetSource interface {
+	FreezeDataset(context.Context, backtest.Config, time.Time) (*dataset.Manifest, error)
+	GetDataset(context.Context, string) (*dataset.Manifest, error)
+	OpenDataset(context.Context, string) (backtest.Source, *dataset.Manifest, error)
 }
 
 // EvolveSpec 是 evolve 任务的输入：有界候选和样本内外交易日数。

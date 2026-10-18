@@ -11,6 +11,7 @@ import (
 	"server/app/risk/internal/biz"
 	"server/app/risk/internal/data"
 	"server/pkg/events"
+	"server/pkg/observe"
 	"server/pkg/outbox"
 	"server/pkg/tradecal"
 
@@ -45,6 +46,7 @@ type Runner struct {
 	auditCancel context.CancelFunc
 	wg          sync.WaitGroup
 	subs        []*nats.Subscription
+	accountSub  *nats.Subscription
 }
 
 func NewRunner(e *biz.Engine, bus *events.Bus, box *outbox.Dispatcher, audit *data.Auditor, logger log.Logger) *Runner {
@@ -60,9 +62,12 @@ func (r *Runner) Start(ctx context.Context) error {
 	r.auditCancel = auditCancel
 	go r.audit.Run(auditCtx)
 
-	if err := r.e.Start(ctx); err != nil {
+	restoreFinish := observe.ForService("risk").Op("account_restore").Begin()
+	restoreErr := r.e.Start(ctx)
+	observe.FinishError(restoreFinish, restoreErr)
+	if restoreErr != nil {
 		auditCancel()
-		return err
+		return restoreErr
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
@@ -72,7 +77,6 @@ func (r *Runner) Start(ctx context.Context) error {
 		subject string
 		fn      func(context.Context, events.Envelope)
 	}{
-		{events.SubjectTradeAccount, r.onAccount},
 		{events.SubjectTradeOrder, r.onOrder},
 		{events.SubjectMarketSnapshot, r.onSnapshot},
 		{events.SubjectMarketState, r.onState},
@@ -82,7 +86,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		sub, err := nc.Subscribe(c.subject, func(m *nats.Msg) {
 			env, ok := r.envelope(m.Data)
 			if ok {
-				fn(events.WithTraceID(runCtx, env.TraceID), env)
+				fn(events.ContextWithEnvelope(runCtx, env), env)
 			}
 		})
 		if err != nil {
@@ -92,6 +96,26 @@ func (r *Runner) Start(ctx context.Context) error {
 		r.subs = append(r.subs, sub)
 	}
 	js := r.bus.JetStream()
+	accountSub, err := js.Subscribe(events.SubjectTradeAccount, func(m *nats.Msg) {
+		env, err := events.Unmarshal(m.Data)
+		if err != nil || env.Source != "trade" || env.Subject != events.SubjectTradeAccount {
+			op := observe.ForService("risk").Op("account_consume")
+			op.Received()
+			op.Begin()(observe.Rejected)
+			_ = m.Term()
+			return
+		}
+		r.onAccount(events.ContextWithEnvelope(runCtx, env), env)
+		// Invalid/old full snapshots are permanent rejections. The authoritative
+		// latest full row has already been restored before this subscription.
+		_ = m.Ack()
+	}, nats.Durable("risk-account-v1"), nats.ManualAck(), nats.DeliverLast(), nats.AckWait(10*time.Second), nats.MaxDeliver(5))
+	if err != nil {
+		r.stop()
+		return err
+	}
+	// Drain keeps the durable consumer on shutdown; Unsubscribe would delete it.
+	r.accountSub = accountSub
 	if _, err := js.Subscribe(events.SubjectKillSwitchRequest, func(m *nats.Msg) { r.onKillRequest(runCtx, m) },
 		nats.Durable(consumerKill), nats.ManualAck(), nats.DeliverNew(),
 		nats.AckWait(10*time.Second), nats.MaxDeliver(100),
@@ -129,6 +153,10 @@ func (r *Runner) Stop(context.Context) error {
 }
 
 func (r *Runner) stop() {
+	if r.accountSub != nil {
+		_ = r.accountSub.Drain()
+		r.accountSub = nil
+	}
 	for _, s := range r.subs {
 		_ = s.Unsubscribe()
 	}
@@ -175,8 +203,17 @@ func decode[T any](r *Runner, env events.Envelope) (T, bool) {
 }
 
 func (r *Runner) onAccount(ctx context.Context, env events.Envelope) {
-	if p, ok := decode[biz.AccountPayload](r, env); ok {
-		r.e.OnAccount(ctx, p)
+	op := observe.ForService("risk").Op("account_consume")
+	op.Received()
+	finish := op.Begin()
+	if env.Subject != events.SubjectTradeAccount || env.Source != "trade" {
+		finish(observe.Rejected)
+		return
+	}
+	err := r.e.ConsumeAccount(ctx, env.Payload)
+	observe.FinishError(finish, err)
+	if err != nil {
+		r.log.Warnf("reject account snapshot %s: %v", env.EventID, err)
 	}
 }
 
@@ -201,6 +238,12 @@ func (r *Runner) onState(ctx context.Context, env events.Envelope) {
 
 // poll 在 market.snapshot 断流时按间隔读持仓行情，止损不依赖事件。
 func (r *Runner) poll(ctx context.Context) {
+	finish := observe.ForService("risk").Op("config_reload").Begin()
+	err := r.e.ReloadConfig(ctx)
+	observe.FinishError(finish, err)
+	if err != nil {
+		r.log.Warn("risk configuration reload failed")
+	}
 	if time.Since(time.Unix(0, r.lastSnap.Load())) < pollEvery {
 		return
 	}
@@ -208,7 +251,10 @@ func (r *Runner) poll(ctx context.Context) {
 }
 
 func (r *Runner) dispatch(ctx context.Context) {
-	if _, err := r.box.Dispatch(ctx, 100); err != nil && ctx.Err() == nil {
+	finish := observe.ForService("risk").Op("outbox").Begin()
+	_, err := r.box.Dispatch(ctx, 100)
+	observe.FinishError(finish, err)
+	if err != nil && ctx.Err() == nil {
 		r.log.Warnf("outbox dispatch: %v", err)
 	}
 }
@@ -232,7 +278,7 @@ func (r *Runner) onKillRequest(ctx context.Context, m *nats.Msg) {
 	if p.Source == "" {
 		p.Source = env.Source
 	}
-	st, err := r.e.TriggerKill(events.WithTraceID(ctx, env.TraceID), p.Source, p.Reason, "")
+	st, err := r.e.TriggerKill(events.ContextWithEnvelope(ctx, env), p.Source, p.Reason, "")
 	switch {
 	case err == nil:
 		_ = m.Ack()

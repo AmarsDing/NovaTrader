@@ -10,6 +10,7 @@ import (
 
 	"server/app/market/internal/biz"
 	"server/pkg/events"
+	"server/pkg/observe"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
 
@@ -29,16 +30,17 @@ const (
 
 // Worker 实现 kratos 的 transport.Server。
 type Worker struct {
-	uc     *biz.Usecase
-	bus    *events.Bus
-	cfg    biz.Config
-	cal    *tradecal.Calendar
-	sched  *scheduler.Scheduler
-	log    *log.Helper
-	kick   chan struct{}
-	sub    *nats.Subscription
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	uc       *biz.Usecase
+	bus      *events.Bus
+	cfg      biz.Config
+	cal      *tradecal.Calendar
+	sched    *scheduler.Scheduler
+	log      *log.Helper
+	kick     chan struct{}
+	sub      *nats.Subscription
+	watchSub *nats.Subscription
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 }
 
 func NewWorker(uc *biz.Usecase, store scheduler.Store, bus *events.Bus, cfg biz.Config, logger log.Logger) (*Worker, error) {
@@ -69,7 +71,7 @@ func (w *Worker) jobs() ([]scheduler.Job, error) {
 		return func(ctx context.Context) error { return fn(ctx, time.Now()) }
 	}
 	jobs := []scheduler.Job{
-		{Name: "market.warmup", Spec: "40 8 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: now(w.uc.Warmup)},
+		{Name: "market.warmup", Spec: "40 8 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: now(w.warmup)},
 		{Name: "market.overseas", Spec: "50 8 * * *", TradingDayOnly: true, Timeout: time.Minute, Retry: 2, MaxDelay: 40 * time.Minute, Run: now(w.uc.Overseas)},
 		// 09:25 撮合，09:30 前没有成交；晚于开盘就不再补竞价截面。
 		{Name: "market.auction", Spec: "26 9 * * *", TradingDayOnly: true, Timeout: time.Minute, Retry: 1, MaxDelay: 3 * time.Minute, Run: now(w.uc.Auction)},
@@ -103,17 +105,19 @@ func (w *Worker) jobs() ([]scheduler.Job, error) {
 func (w *Worker) Start(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(context.Background())
 	w.cancel = cancel
-	sub, err := w.bus.Conn().Subscribe(events.SubjectMarketSnapshot, func(*nats.Msg) {
-		select {
-		case w.kick <- struct{}{}:
-		default:
-		}
-	})
+	sub, err := w.bus.Conn().Subscribe(events.SubjectMarketSnapshot, func(*nats.Msg) { w.onSnapshot() })
 	if err != nil {
 		cancel()
 		return err
 	}
 	w.sub = sub
+	watchSub, err := w.bus.Conn().Subscribe(events.SubjectMarketWatchlist, w.onWatchlist)
+	if err != nil {
+		_ = sub.Unsubscribe()
+		cancel()
+		return err
+	}
+	w.watchSub = watchSub
 	w.wg.Add(2)
 	go w.refreshLoop(runCtx)
 	go w.scheduleLoop(runCtx)
@@ -121,7 +125,29 @@ func (w *Worker) Start(ctx context.Context) error {
 	return nil
 }
 
+// A notification only wakes the refresh loop. It does not prove a successful refresh.
+func (w *Worker) onSnapshot() {
+	op := observe.ForService("market").Op("snapshot_notice")
+	op.Received()
+	select {
+	case w.kick <- struct{}{}:
+		op.Queued()
+	default:
+		op.Coalesced()
+	}
+}
+
+func (w *Worker) warmup(ctx context.Context, at time.Time) error {
+	finish := observe.ForService("market").Op("warmup").Begin()
+	err := w.uc.Warmup(ctx, at)
+	observe.FinishError(finish, err)
+	return err
+}
+
 func (w *Worker) Stop(ctx context.Context) error {
+	if w.watchSub != nil {
+		_ = w.watchSub.Unsubscribe()
+	}
 	if w.sub != nil {
 		_ = w.sub.Unsubscribe()
 	}
@@ -169,7 +195,10 @@ func (w *Worker) refreshLoop(ctx context.Context) {
 			continue
 		}
 		last = now
-		if err := w.uc.Refresh(ctx, now); err != nil && ctx.Err() == nil {
+		finish := observe.ForService("market").Op("refresh").Begin()
+		err := w.uc.Refresh(ctx, now)
+		observe.FinishError(finish, err)
+		if err != nil && ctx.Err() == nil {
 			w.log.Errorf("refresh: %v", err)
 		}
 	}
@@ -181,7 +210,7 @@ func (w *Worker) scheduleLoop(ctx context.Context) {
 	if err := w.uc.EnsureDefaults(ctx); err != nil && ctx.Err() == nil {
 		w.log.Errorf("seed defaults: %v", err)
 	}
-	if err := w.uc.Warmup(ctx, time.Now()); err != nil && ctx.Err() == nil {
+	if err := w.warmup(ctx, time.Now()); err != nil && ctx.Err() == nil {
 		w.log.Errorf("startup warmup: %v", err)
 	}
 	t := time.NewTicker(tickEvery)

@@ -48,6 +48,14 @@ func TestKillSwitchPayload(t *testing.T) {
 	if !r.uc.KillSwitch() {
 		t.Fatal("bad message must not reset state")
 	}
+	// encoding/json may populate active=false before encountering another invalid field.
+	// A rejected partial decode must keep the conservative state.
+	env, _ := events.New("test", events.SubjectKillSwitch, "", map[string]any{"active": false, "reason": 123})
+	body, _ := env.Marshal()
+	r.onKill(body)
+	if !r.uc.KillSwitch() {
+		t.Fatal("partially decoded invalid payload cleared kill switch")
+	}
 }
 
 func TestAlertDebounce(t *testing.T) {

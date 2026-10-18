@@ -8,6 +8,7 @@ import (
 	"server/app/brain/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -42,6 +43,7 @@ func NewHTTPServer(c *conf.Brain, svc *service.BrainService, logger log.Logger) 
 		_ = metrics.Write(w)
 	})
 	v1.RegisterBrainHTTPServer(srv, svc)
+	observe.RegisterHTTP(srv, observe.ForService("brain"))
 	return srv
 }
 

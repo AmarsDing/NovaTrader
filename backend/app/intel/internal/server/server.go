@@ -9,6 +9,7 @@ import (
 	"server/app/intel/internal/service/kbsvc"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -50,6 +51,7 @@ func NewHTTPServer(c *conf.Intel, svc *service.IntelService, kbs *kbsvc.Knowledg
 	})
 	v1.RegisterIntelHTTPServer(srv, svc)
 	v1.RegisterKnowledgeHTTPServer(srv, kbs)
+	observe.RegisterHTTP(srv, observe.ForService("intel"))
 	return srv
 }
 

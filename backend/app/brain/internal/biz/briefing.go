@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"server/pkg/llm"
+	"server/pkg/observe"
 	"server/pkg/tradecal"
 )
 
@@ -62,7 +63,9 @@ func holdingFacts(hs []Holding) []Fact {
 
 // GenerateBriefing 生成某日盘前晨报（FR-05-06），5 分钟内必有结果：
 // 模型不可用或两次不合格时写降级晨报，只列情报标题和持仓。同一天再生成会覆盖。
-func (uc *Usecase) GenerateBriefing(ctx context.Context, day time.Time) (*Briefing, error) {
+func (uc *Usecase) GenerateBriefing(ctx context.Context, day time.Time) (result *Briefing, retErr error) {
+	finish := observe.ForService("brain").Op("briefing").Begin()
+	defer func() { finishObservation(finish, retErr, result != nil, result != nil && result.Degraded, false) }()
 	ctx, cancel := context.WithTimeout(ctx, briefingTimeout)
 	defer cancel()
 	day = dayOf(day)

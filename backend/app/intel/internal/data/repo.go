@@ -25,10 +25,11 @@ import (
 type repo struct {
 	client *ent.Client
 	log    *log.Helper
+	shadow *newsShadow
 }
 
 func NewRepo(client *ent.Client, logger log.Logger) biz.Repo {
-	return &repo{client: client, log: log.NewHelper(log.With(logger, "module", "intel/data"))}
+	return &repo{client: client, log: log.NewHelper(log.With(logger, "module", "intel/data")), shadow: newNewsShadow(client)}
 }
 
 // clip 按字节截断到 n，且不切断多字节字符。ent 的 MaxLen 按字节校验。
@@ -268,7 +269,14 @@ func (r *repo) SaveScored(ctx context.Context, s *biz.Scored) error {
 			}
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// The score and alert are already committed. Shadow output cannot change either.
+	if r.shadow != nil && it.Head {
+		r.shadow.observe(ctx, s)
+	}
+	return nil
 }
 
 func (r *repo) Fingerprints(ctx context.Context, since time.Time) ([]biz.Fingerprint, error) {

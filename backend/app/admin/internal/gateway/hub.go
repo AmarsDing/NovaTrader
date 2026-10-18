@@ -3,6 +3,9 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,6 +13,7 @@ import (
 	"server/utils/websocket"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 )
 
@@ -20,28 +24,53 @@ var allowedTopics = map[string]struct{}{
 }
 
 type frame struct {
-	Topic string
-	Event string
-	Seq   int64
-	Raw   json.RawMessage
+	Topic    string
+	Event    string
+	Seq      int64
+	Raw      json.RawMessage
+	Epoch    string
+	Metadata map[string]any
 }
 
-// Hub 按主题转发 NATS，并按序号补推断线期间的消息。序号只活在本进程里。
+type topicCursor struct {
+	Head   int64  `json:"head"`
+	Oldest int64  `json:"oldest"`
+	After  int64  `json:"after"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type clientSubscription struct {
+	topics    []string
+	pending   map[string]int64 // REST recovery must acknowledge this frozen watermark.
+	requestID uint64
+}
+
+// Hub keeps a bounded replay ring. A cursor is only valid within its server epoch.
 type Hub struct {
-	log    *log.Helper
-	mu     sync.Mutex
-	seq    map[string]int64
-	buf    map[string][]frame
-	market json.RawMessage
-	bus    *events.Bus
+	log             *log.Helper
+	mu              sync.Mutex
+	seq             map[string]int64
+	buf             map[string][]frame
+	market          map[string]frame
+	epoch           string
+	clients         map[*websocket.Client]*clientSubscription
+	observations    *observationLedger
+	slowDisconnects uint64
+	resyncs         uint64
+	bus             *events.Bus
 }
 
 func NewHub(logger log.Logger) *Hub {
 	h := &Hub{
-		log: log.NewHelper(log.With(logger, "module", "admin/hub")),
-		seq: map[string]int64{},
-		buf: map[string][]frame{},
+		log:     log.NewHelper(log.With(logger, "module", "admin/hub")),
+		seq:     map[string]int64{},
+		buf:     map[string][]frame{},
+		market:  map[string]frame{},
+		epoch:   uuid.NewString(),
+		clients: map[*websocket.Client]*clientSubscription{},
 	}
+	h.observations = newObservationLedger(h.epoch, time.Now)
 	websocket.TextHandler = h.onText
 	return h
 }
@@ -85,9 +114,10 @@ func (h *Hub) Up() bool {
 func (h *Hub) Stats() map[string]any {
 	h.mu.Lock()
 	bus := h.bus
+	protocol := map[string]any{"server_epoch": h.epoch, "slow_disconnects": h.slowDisconnects, "resyncs": h.resyncs, "replay_capacity": ringCap}
 	h.mu.Unlock()
 	if bus == nil || bus.Conn() == nil || !bus.Conn().IsConnected() {
-		return map[string]any{"connected": false}
+		return map[string]any{"connected": false, "ws": protocol}
 	}
 	nc := bus.Conn()
 	stats := nc.Stats()
@@ -98,6 +128,7 @@ func (h *Hub) Stats() map[string]any {
 		"in_bytes":   stats.InBytes,
 		"out_bytes":  stats.OutBytes,
 		"reconnects": stats.Reconnects,
+		"ws":         protocol,
 	}
 	if bus.JetStream() != nil {
 		if info, err := bus.JetStream().StreamInfo(events.StreamName); err == nil {
@@ -121,17 +152,15 @@ func (h *Hub) Stats() map[string]any {
 					})
 					continue
 				}
-				lag := int64(info.State.LastSeq) - int64(ci.Delivered.Stream)
-				if lag < 0 {
-					lag = 0
-				}
 				consumers = append(consumers, map[string]any{
 					"durable":       route.durable,
 					"subject":       route.subject,
 					"pending":       ci.NumPending,
 					"ack_pending":   ci.NumAckPending,
 					"delivered_seq": ci.Delivered.Stream,
-					"lag":           lag,
+					"lag":           ci.NumPending,
+					"lag_basis":     "filtered_consumer_num_pending",
+					"redelivered":   ci.NumRedelivered,
 				})
 			}
 			stream["consumers"] = consumers
@@ -141,86 +170,276 @@ func (h *Hub) Stats() map[string]any {
 	return out
 }
 
-// Publish 写入环形缓冲并推给已订阅的连接。行情先攒着，由 flush 每秒发一次。
+// Publish is also used by local producers without an event envelope.
 func (h *Hub) Publish(topic, event string, payload any) {
+	h.publish(topic, event, asRaw(payload), nil)
+}
+
+func (h *Hub) publish(topic, event string, raw json.RawMessage, metadata map[string]any) {
 	if h == nil || topic == "" {
 		return
 	}
-	raw := asRaw(payload)
-	if topic == "market" {
-		h.mu.Lock()
-		h.market = raw
-		h.mu.Unlock()
+	if _, ok := allowedTopics[topic]; !ok {
 		return
 	}
-	h.add(topic, event, raw)
+	if event == "" {
+		event = topic
+	}
+	item := frame{Topic: topic, Event: event, Raw: append(json.RawMessage(nil), raw...), Metadata: metadata}
+	if topic == "market" {
+		if key := marketKey(item); key != "" {
+			h.mu.Lock()
+			_, exists := h.market[key]
+			if exists || len(h.market) < 5000 {
+				h.market[key] = item
+				h.mu.Unlock()
+				return
+			}
+			h.mu.Unlock()
+		}
+	}
+	h.addFrame(item)
+}
+
+// Only replaceable market states may be coalesced. Unknown payloads remain events.
+func marketKey(item frame) string {
+	var payload map[string]any
+	_ = json.Unmarshal(item.Raw, &payload)
+	kind := item.Event
+	if subject, ok := item.Metadata["subject"].(string); ok && subject != "" {
+		kind = subject
+	}
+	// Market alerts and limit transitions are events, not replaceable quotations.
+	switch kind {
+	case "tick", "quote", "market", "bar", events.SubjectMarketSnapshot, events.SubjectMarketBar, events.SubjectMarketFactor:
+	default:
+		return ""
+	}
+	bucket := ""
+	if strings.Contains(kind, "bar") {
+		values := payload
+		if nested, ok := payload["bar"].(map[string]any); ok {
+			values = nested
+		}
+		for _, field := range []string{"time", "timestamp", "start_time", "end_time", "bar_time"} {
+			if value, ok := values[field]; ok && value != nil {
+				bucket = fmt.Sprint(value)
+				break
+			}
+		}
+		if bucket == "" {
+			return ""
+		} // Do not erase a completed bar without its time key.
+	}
+	for _, name := range []string{"symbol", "stock_code", "code"} {
+		if symbol, ok := payload[name].(string); ok && symbol != "" {
+			freq, _ := payload["freq"].(string)
+			return kind + ":" + symbol + ":" + freq + ":" + bucket
+		}
+	}
+	if kind == events.SubjectMarketSnapshot {
+		source, _ := item.Metadata["source"].(string)
+		return kind + ":batch:" + source
+	}
+	return ""
 }
 
 func (h *Hub) onText(client *websocket.Client, message []byte) bool {
 	var req struct {
-		Op     string           `json:"op"`
-		Topics []string         `json:"topics"`
-		Resume map[string]int64 `json:"resume"`
+		Op        string           `json:"op"`
+		Topics    []string         `json:"topics"`
+		Resume    map[string]int64 `json:"resume"`
+		Epoch     string           `json:"server_epoch"`
+		RequestID uint64           `json:"request_id"`
 	}
 	if err := json.Unmarshal(message, &req); err != nil || req.Op == "" {
 		return false
 	}
-	if req.Op != "sub" {
-		return true
+	switch req.Op {
+	case "sub", "resync":
+		h.beginSubscription(client, req.Topics, req.Resume, req.Epoch, req.RequestID, req.Op == "resync")
+	case "resync_ack":
+		h.completeRecovery(client, req.Resume, req.Epoch, req.RequestID)
 	}
-	topics := make([]string, 0, len(req.Topics))
-	for _, topic := range req.Topics {
-		if _, ok := allowedTopics[topic]; ok {
-			topics = append(topics, topic)
-		}
-	}
-	for _, frame := range h.subscribe(client, topics, req.Resume) {
-		trySend(client, frame.response())
-	}
-	trySend(client, &websocket.WResponse{Event: "sub", Data: "ok"})
 	return true
 }
 
-func (h *Hub) subscribe(client *websocket.Client, topics []string, resume map[string]int64) []frame {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	client.SetTopics(topics)
-	if resume == nil {
-		return nil
+func (h *Hub) cursor(topic string, after int64) topicCursor {
+	oldest := h.seq[topic] + 1
+	if items := h.buf[topic]; len(items) > 0 {
+		oldest = items[0].Seq
 	}
-	var out []frame
-	for _, topic := range topics {
-		after, ok := resume[topic]
-		if !ok {
-			continue
-		}
-		for _, item := range h.buf[topic] {
-			if item.Seq > after {
-				out = append(out, item)
-			}
-		}
-	}
-	return out
+	return topicCursor{Head: h.seq[topic], Oldest: oldest, After: after, Status: "resumed"}
 }
 
-func (h *Hub) add(topic, event string, raw json.RawMessage) {
-	if event == "" {
-		event = topic
-	}
+func (h *Hub) control(op string, requestID uint64, data any) *websocket.WResponse {
+	return &websocket.WResponse{Event: op, Topic: op, Data: data, Payload: data, ServerEpoch: h.epoch, RequestID: requestID}
+}
+
+// The lock serializes ack, replay and live publication. No event can cross the handoff.
+func (h *Hub) beginSubscription(client *websocket.Client, topics []string, resume map[string]int64, epoch string, requestID uint64, force bool) {
 	h.mu.Lock()
-	h.seq[topic]++
-	item := frame{Topic: topic, Event: event, Seq: h.seq[topic], Raw: append(json.RawMessage(nil), raw...)}
-	h.buf[topic] = append(h.buf[topic], item)
-	if len(h.buf[topic]) > ringCap {
-		h.buf[topic] = append([]frame(nil), h.buf[topic][len(h.buf[topic])-ringCap:]...)
+	defer h.mu.Unlock()
+	if client == nil {
+		return
 	}
-	h.mu.Unlock()
-	msg := item.response()
-	websocket.RangeClients(func(client *websocket.Client) {
-		if client.Allows(topic) {
-			trySend(client, msg)
+	selected := []string{}
+	seen := map[string]bool{}
+	for _, topic := range topics {
+		if _, allowed := allowedTopics[topic]; allowed && !seen[topic] {
+			selected = append(selected, topic)
+			seen[topic] = true
 		}
-	})
+	}
+	state := &clientSubscription{topics: selected, pending: map[string]int64{}, requestID: requestID}
+	h.clients[client] = state
+	client.SetTopics(selected)
+	cursors := map[string]topicCursor{}
+	replays := []frame{}
+	for _, topic := range selected {
+		after, present := resume[topic]
+		cursor := h.cursor(topic, after)
+		switch {
+		case epoch == "":
+			cursor.Reason = "epoch_required"
+		case epoch != h.epoch:
+			cursor.Reason = "epoch_changed"
+		case !present:
+			cursor.Reason = "snapshot_required"
+		case after < 0 || after > cursor.Head:
+			cursor.Reason = "cursor_ahead"
+		case after < cursor.Oldest-1:
+			cursor.Reason = "replay_expired"
+		case force:
+			cursor.Reason = "client_resync"
+		}
+		if cursor.Reason != "" {
+			cursor.Status = "resync_required"
+			state.pending[topic] = cursor.Head
+			h.resyncs++
+		} else {
+			for _, item := range h.buf[topic] {
+				if item.Seq > after {
+					replays = append(replays, item)
+				}
+			}
+		}
+		cursors[topic] = cursor
+	}
+	if !h.sendLocked(client, h.control("sub_ack", requestID, map[string]any{"topics": cursors})) {
+		return
+	}
+	if len(state.pending) > 0 {
+		required := map[string]topicCursor{}
+		for topic := range state.pending {
+			required[topic] = cursors[topic]
+		}
+		if !h.sendLocked(client, h.control("resync_required", requestID, map[string]any{"topics": required})) {
+			return
+		}
+	}
+	h.replayLocked(client, replays, requestID)
+}
+
+func (h *Hub) completeRecovery(client *websocket.Client, watermarks map[string]int64, epoch string, requestID uint64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	state, ok := h.clients[client]
+	if !ok || epoch != h.epoch || state.requestID != requestID {
+		return
+	}
+	cursors := map[string]topicCursor{}
+	replays := []frame{}
+	for topic, after := range watermarks {
+		frozen, waiting := state.pending[topic]
+		if !waiting {
+			continue
+		}
+		cursor := h.cursor(topic, after)
+		if frozen != after || after < cursor.Oldest-1 || after > cursor.Head {
+			cursor.Status = "resync_required"
+			cursor.Reason = "recovery_window_expired"
+			state.pending[topic] = cursor.Head
+			h.resyncs++
+		} else {
+			delete(state.pending, topic)
+			for _, item := range h.buf[topic] {
+				if item.Seq > after {
+					replays = append(replays, item)
+				}
+			}
+		}
+		cursors[topic] = cursor
+	}
+	if len(cursors) == 0 {
+		return
+	}
+	// Ack carries the frozen REST boundary, then replay reaches the current head.
+	if !h.sendLocked(client, h.control("resync_ack", requestID, map[string]any{"topics": cursors})) {
+		return
+	}
+	required := map[string]topicCursor{}
+	for topic, cursor := range cursors {
+		if cursor.Status == "resync_required" {
+			required[topic] = cursor
+		}
+	}
+	if len(required) > 0 && !h.sendLocked(client, h.control("resync_required", requestID, map[string]any{"topics": required})) {
+		return
+	}
+	h.replayLocked(client, replays, requestID)
+}
+
+func (h *Hub) replayLocked(client *websocket.Client, frames []frame, requestID uint64) {
+	// Batch avoids overflowing the transport's 100-message queue with a 500-frame ring.
+	for start := 0; start < len(frames); start += 25 {
+		end := start + 25
+		if end > len(frames) {
+			end = len(frames)
+		}
+		batch := make([]*websocket.WResponse, 0, end-start)
+		for _, item := range frames[start:end] {
+			batch = append(batch, item.response())
+		}
+		if !h.sendLocked(client, h.control("replay_batch", requestID, map[string]any{"frames": batch})) {
+			return
+		}
+	}
+}
+
+func (h *Hub) sendLocked(client *websocket.Client, message *websocket.WResponse) bool {
+	if trySend(client, message) {
+		return true
+	}
+	h.slowDisconnects++
+	delete(h.clients, client)
+	client.SetTopics(nil)
+	// Closing the socket wakes both transport goroutines; never silently skip a delta.
+	if client.Socket != nil {
+		_ = client.Socket.Close()
+	}
+	return false
+}
+
+func (h *Hub) addFrame(item frame) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.seq[item.Topic]++
+	item.Seq = h.seq[item.Topic]
+	item.Epoch = h.epoch
+	h.buf[item.Topic] = append(h.buf[item.Topic], item)
+	if len(h.buf[item.Topic]) > ringCap {
+		h.buf[item.Topic] = append([]frame(nil), h.buf[item.Topic][len(h.buf[item.Topic])-ringCap:]...)
+	}
+	for client, state := range h.clients {
+		if client.IsClosed() {
+			delete(h.clients, client)
+			continue
+		}
+		if _, recovering := state.pending[item.Topic]; !recovering && client.Allows(item.Topic) {
+			h.sendLocked(client, item.response())
+		}
+	}
 }
 
 func (h *Hub) flushLoop(ctx context.Context) {
@@ -238,13 +457,23 @@ func (h *Hub) flushLoop(ctx context.Context) {
 
 func (h *Hub) flushMarket() {
 	h.mu.Lock()
-	raw := h.market
-	h.market = nil
-	h.mu.Unlock()
-	if len(raw) == 0 {
-		return
+	pending := h.market
+	h.market = map[string]frame{}
+	// Disconnected clients that never completed recovery must not accumulate.
+	for client := range h.clients {
+		if client.IsClosed() {
+			delete(h.clients, client)
+		}
 	}
-	h.add("market", "market", raw)
+	h.mu.Unlock()
+	keys := make([]string, 0, len(pending))
+	for key := range pending {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		h.addFrame(pending[key])
+	}
 }
 
 func (h *Hub) listen(ctx context.Context, natsURL string) {
@@ -301,6 +530,8 @@ var natsRoutes = []natsRoute{
 	{events.SubjectTradeAccount, "position", "position", "admin_trade_account", false},
 	{events.SubjectTradeOrder, "position", "position", "admin_trade_order", false},
 	{events.SubjectTradeFill, "position", "position", "admin_trade_fill", false},
+	{"trade.plan", "position", "plan", "admin_trade_plan", false},
+	{"sys.research", "brain", "research", "admin_research", false},
 	{events.SubjectRiskAlert, "alert", "alert", "admin_risk_alert", false},
 	{events.SubjectKillSwitch, "alert", "alert", "admin_killswitch", false},
 	{events.SubjectIntelAlert, "alert", "alert", "admin_intel_alert", false},
@@ -315,32 +546,54 @@ func (h *Hub) bind(bus *events.Bus) {
 	for _, item := range natsRoutes {
 		item := item
 		if item.core {
-			if _, err := bus.Conn().Subscribe(item.subject, func(m *nats.Msg) {
-				h.onRaw(item.topic, item.event, m.Data)
-			}); err != nil {
+			_, err := bus.Conn().Subscribe(item.subject, func(m *nats.Msg) { h.onRawSubject(m.Subject, item.topic, item.event, m.Data) })
+			h.observations.binding(item.subject, err == nil, time.Now().UTC())
+			if err != nil {
 				h.log.Warnf("订阅 %s：%v", item.subject, err)
 			}
 			continue
 		}
 		_, err := bus.JetStream().Subscribe(item.subject, func(m *nats.Msg) {
-			h.onRaw(item.topic, item.event, m.Data)
+			h.onRawSubject(m.Subject, item.topic, item.event, m.Data)
 			_ = m.Ack()
 		}, nats.Durable(item.durable), nats.ManualAck(), nats.DeliverNew(),
 			nats.AckWait(10*time.Second), nats.MaxDeliver(5))
+		h.observations.binding(item.subject, err == nil, time.Now().UTC())
 		if err != nil {
 			h.log.Warnf("订阅 %s：%v", item.subject, err)
 		}
 	}
-	h.log.Info("桌面推送已订阅")
+	h.log.Info("桌面推送订阅尝试完成；逐主题绑定状态见观测接口")
 }
 
-func (h *Hub) onRaw(topic, event string, body []byte) {
+func (h *Hub) onRaw(topic, event string, body []byte) { h.onRawSubject("", topic, event, body) }
+
+func (h *Hub) onRawSubject(subject, topic, event string, body []byte) {
+	at := h.observations.now().UTC()
 	env, err := events.Unmarshal(body)
 	if err != nil {
+		h.observations.reject(subject, topic, len(body), at)
 		h.log.Warnf("坏事件 %s：%v", topic, err)
 		return
 	}
-	h.Publish(topic, event, env.Payload)
+	if subject != "" && env.Subject != subject {
+		h.observations.reject(subject, topic, len(body), at)
+		h.log.Warnf("事件主题不匹配：route=%s", subject)
+		return
+	}
+	h.observations.receive(env, topic, len(body), at)
+	raw, marshalErr := json.Marshal(env)
+	if marshalErr != nil {
+		h.log.Warnf("坏信封 %s：%v", topic, marshalErr)
+		return
+	}
+	metadata := map[string]any{}
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return
+	}
+	delete(metadata, "payload")
+	metadata["gateway_received_at"] = observationTime(at)
+	h.publish(topic, event, env.Payload, metadata)
 }
 
 func (f frame) response() *websocket.WResponse {
@@ -350,24 +603,18 @@ func (f frame) response() *websocket.WResponse {
 		event = f.Topic
 	}
 	return &websocket.WResponse{
-		Event:   event,
-		Data:    payload,
-		Topic:   f.Topic,
-		Seq:     f.Seq,
-		Payload: payload,
+		Event:       event,
+		Data:        payload,
+		Topic:       f.Topic,
+		Seq:         f.Seq,
+		Payload:     payload,
+		ServerEpoch: f.Epoch,
+		TopicSeq:    f.Seq,
+		Metadata:    f.Metadata,
 	}
 }
 
-func trySend(client *websocket.Client, msg *websocket.WResponse) {
-	if client == nil || client.SendClose || msg == nil {
-		return
-	}
-	defer func() { _ = recover() }()
-	select {
-	case client.Send <- msg:
-	default:
-	}
-}
+func trySend(client *websocket.Client, msg *websocket.WResponse) bool { return client.TrySend(msg) }
 
 func asRaw(payload any) json.RawMessage {
 	switch v := payload.(type) {

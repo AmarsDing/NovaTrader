@@ -2,27 +2,37 @@ package biz
 
 import (
 	"context"
+	"server/pkg/accountstate"
+	"server/pkg/events"
 	"sort"
 	"sync"
+	"time"
 )
 
 // MemStore 是测试用的内存账本。
 type MemStore struct {
-	mu     sync.Mutex
-	orders map[string]Order
-	fills  []Fill
-	trails []Trail
-	cash   map[string]Cash
-	pos    map[string]Position
-	events []Event
-	snaps  []AccountView
+	ledgerMu   sync.Mutex
+	intents    map[string]Intent
+	mu         sync.Mutex
+	orders     map[string]Order
+	fills      []Fill
+	trails     []Trail
+	cash       map[string]Cash
+	pos        map[string]Position
+	events     []Event
+	snaps      []AccountView
+	states     []accountstate.Snapshot
+	generation int64
+	simBars    map[string]time.Time
 }
 
 func NewMemStore() *MemStore {
 	return &MemStore{
-		orders: map[string]Order{},
-		cash:   map[string]Cash{},
-		pos:    map[string]Position{},
+		intents: map[string]Intent{},
+		orders:  map[string]Order{},
+		cash:    map[string]Cash{},
+		pos:     map[string]Position{},
+		simBars: map[string]time.Time{},
 	}
 }
 
@@ -126,6 +136,11 @@ func (m *MemStore) Commit(_ context.Context, batch Batch) error {
 	defer m.mu.Unlock()
 	for _, o := range batch.Orders {
 		m.orders[o.ClientOrderID] = o
+		if in, ok := m.intents[o.ClientOrderID]; ok {
+			in.State = o.Status
+			in.Reason = o.Reason
+			m.intents[o.ClientOrderID] = in
+		}
 	}
 	m.fills = append(m.fills, batch.Fills...)
 	m.trails = append(m.trails, batch.Trails...)
@@ -139,11 +154,19 @@ func (m *MemStore) Commit(_ context.Context, batch Batch) error {
 	return nil
 }
 
-func (m *MemStore) SaveSnapshot(_ context.Context, _ string, view AccountView) error {
+func (m *MemStore) CommitSnapshot(_ context.Context, _ string, view AccountView, cash Cash, state accountstate.Snapshot) (accountstate.Snapshot, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	state.Generation = m.generation + 1
+	if err := state.Validate(); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	m.generation = state.Generation
+	m.cash[cash.Book] = cash
 	m.snaps = append(m.snaps, view)
-	return nil
+	m.states = append(m.states, state)
+	m.events = append(m.events, Event{Subject: events.SubjectTradeAccount, Payload: state})
+	return state, nil
 }
 
 func (m *MemStore) Events() []Event {

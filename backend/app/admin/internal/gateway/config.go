@@ -3,225 +3,290 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
-	"regexp"
+	"server/pkg/params"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-// ParamStore 读写 strategy_config。库没连上时 Enabled 为 false。
+// ParamStore retains the legacy type name, with versioning required at runtime.
 type ParamStore interface {
 	Enabled() bool
-	LoadParams(ctx context.Context) (map[string]string, error)
-	SaveParams(ctx context.Context, values map[string]string) error
+	LoadParams(context.Context) (map[string]string, error)
+	SaveParams(context.Context, map[string]string) error
+}
+type RevisionStore interface {
+	ReadConfig(context.Context) (params.Snapshot, error)
+	SaveConfig(context.Context, int, map[string]string) (params.Snapshot, error)
+	VersionConfig(context.Context, int) (params.Snapshot, error)
+	RollbackConfig(context.Context, int, int) (params.Snapshot, error)
+	ConfigReceipts(context.Context) ([]params.Receipt, error)
+	ConfigHistory(context.Context) ([]ConfigVersion, error)
+}
+type ConfigVersion struct {
+	Revision  int    `json:"revision"`
+	CreatedAt string `json:"created_at"`
+	Active    bool   `json:"active"`
+}
+type configChange struct {
+	Key       string `json:"key"`
+	Before    string `json:"before"`
+	After     string `json:"after"`
+	Secret    bool   `json:"secret"`
+	Service   string `json:"service"`
+	Effective string `json:"effective"`
+}
+type configPreview struct {
+	SchemaVersion    int            `json:"schema_version"`
+	BaseRevision     int            `json:"base_revision"`
+	Changes          []configChange `json:"changes"`
+	KnownEffects     []string       `json:"known_effects"`
+	UnknownEffects   []string       `json:"unknown_effects"`
+	Services         []string       `json:"services"`
+	InvalidatesPlans bool           `json:"invalidates_plans"`
 }
 
-var m06Key = regexp.MustCompile(`^m06\.[A-Za-z0-9._]{1,60}$`)
-
-// normalizeConfig 只放行配置页会写的键：选股标量，以及情绪、板块两份 JSON。
+// Kept for existing callers; new saves validate against their exact base snapshot.
 func normalizeConfig(values map[string]string) (map[string]string, error) {
-	if len(values) == 0 {
-		return nil, errString("没有要保存的参数")
-	}
-	if len(values) > 64 {
-		return nil, errString("一次最多保存 64 项")
-	}
-	out := make(map[string]string, len(values))
-	for key, value := range values {
-		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return nil, errString("参数值不能为空")
+	return params.ValidatePatch(nil, values)
+}
+func configPublic(s params.Snapshot) map[string]any {
+	values := map[string]string{}
+	secret := map[string]bool{}
+	for k, v := range s.Values {
+		if service, _ := params.Target(k); service == "unknown" {
+			continue
 		}
-		if len(value) > 8192 {
-			return nil, errString("参数值过长")
+		if params.Secret(k) {
+			secret[k] = v != ""
+		} else {
+			values[k] = v
 		}
-		switch {
-		case strings.HasPrefix(key, "risk."):
-			return nil, errString("风控参数在风控分类里保存")
-		case key == "market.sentiment.rules" || key == "market.sector.weights":
-			if !jsonObject(value) {
-				return nil, errString("情绪和板块参数要是 JSON 对象")
+	}
+	return map[string]any{"schema_version": 1, "revision": s.Revision, "created_at": s.CreatedAt, "values": values, "secret_set": secret, "note": "保存版本和服务加载版本分别展示；无回执表示尚未观测，不代表已生效。"}
+}
+func previewConfig(current params.Snapshot, values map[string]string, replace bool) configPreview {
+	out := configPreview{SchemaVersion: 1, BaseRevision: current.Revision, Changes: []configChange{}, Services: []string{}, KnownEffects: []string{}, UnknownEffects: []string{"未执行策略回测；收益、信号数量、外部服务连通性及在途任务影响尚未测定。"}}
+	keys := map[string]bool{}
+	for k := range values {
+		keys[k] = true
+	}
+	if replace {
+		for k := range current.Values {
+			keys[k] = true
+		}
+	}
+	services := map[string]bool{}
+	for k := range keys {
+		old := current.Values[k]
+		next, ok := values[k]
+		if !ok && !replace {
+			continue
+		}
+		if old == next {
+			continue
+		}
+		svc, when := params.Target(k)
+		c := configChange{Key: k, Before: old, After: next, Secret: params.Secret(k), Service: svc, Effective: when}
+		if c.Secret {
+			c.Before = "未设置"
+			if old != "" {
+				c.Before = "已设置"
 			}
-		case m06Key.MatchString(key) && len(key) <= 64:
-			if _, err := strconv.ParseFloat(value, 64); err != nil {
-				return nil, errString("选股参数要是数字")
+			c.After = "清除覆盖值"
+			if next != "" {
+				c.After = "设置新值"
 			}
-		case strings.HasPrefix(key, "app."):
-			if err := checkApp(key, value); err != nil {
-				return nil, err
-			}
-		default:
-			return nil, errString("参数键无效")
 		}
-		out[key] = value
+		out.Changes = append(out.Changes, c)
+		services[svc] = true
 	}
-	return out, nil
-}
-
-func jsonObject(raw string) bool {
-	var body map[string]json.RawMessage
-	return json.Unmarshal([]byte(raw), &body) == nil
-}
-
-const (
-	appText appKind = iota
-	appBool
-	appTier
-	appProvider
-	appWeight
-)
-
-type appKind int
-
-var appFields = map[string]appKind{
-	"app.ds.tushare.token":  appText,
-	"app.ds.tushare.on":     appBool,
-	"app.ds.tavily.token":   appText,
-	"app.ds.tavily.on":      appBool,
-	"app.ds.tavily.feeds":   appText,
-	"app.ds.pyworker":       appText,
-	"app.ds.tdx_local.on":   appBool,
-	"app.ds.tdx_file.on":    appBool,
-	"app.ds.tdx_tcp.on":     appBool,
-	"app.ds.akshare.on":     appBool,
-	"app.ds.eastmoney.on":   appBool,
-	"app.ds.sina.on":        appBool,
-	"app.ds.tencent.on":     appBool,
-	"app.ds.cninfo.on":      appBool,
-	"app.ds.rss.on":         appBool,
-	"app.ds.rss.feeds":      appText,
-	"app.brain.large.url":   appText,
-	"app.brain.large.model": appText,
-	"app.brain.large.key":   appText,
-	"app.brain.small.url":   appText,
-	"app.brain.small.model": appText,
-	"app.brain.small.key":   appText,
-	"app.intel.enabled":     appBool,
-	"app.intel.url":         appText,
-	"app.intel.key":         appText,
-	"app.intel.small":       appText,
-	"app.intel.large":       appText,
-	"app.kb.provider":       appProvider,
-	"app.kb.endpoint":       appText,
-	"app.kb.model":          appText,
-	"app.kb.key":            appText,
-	"app.agent.technical":   appTier,
-	"app.agent.capital":     appTier,
-	"app.agent.news":        appTier,
-	"app.agent.external":    appTier,
-	"app.agent.synthesis":   appTier,
-	"app.agent.briefing":    appTier,
-	"app.agent.explain":     appTier,
-	"app.agent.ask":         appTier,
-	"app.agent.w.technical": appWeight,
-	"app.agent.w.news":      appWeight,
-	"app.agent.w.capital":   appWeight,
-	"app.agent.w.external":  appWeight,
-	"app.notify.webhook":    appText,
-	"app.notify.secret":     appText,
-}
-
-func checkApp(key, value string) error {
-	kind, ok := appFields[key]
-	if !ok || len(key) > 64 {
-		return errString("参数键无效")
+	sort.Slice(out.Changes, func(i, j int) bool { return out.Changes[i].Key < out.Changes[j].Key })
+	for svc := range services {
+		out.Services = append(out.Services, svc)
 	}
-	switch kind {
-	case appBool:
-		if value != "true" && value != "false" {
-			return errString("开关只能是 true 或 false")
-		}
-	case appTier:
-		if value != "small" && value != "large" {
-			return errString("档位只能是 small 或 large")
-		}
-	case appProvider:
-		if value != "none" && value != "openai" && value != "hash" {
-			return errString("嵌入方式只能是 none、openai 或 hash")
-		}
-	case appWeight:
-		f, err := strconv.ParseFloat(value, 64)
-		if err != nil || f < 0 || f > 10 {
-			return errString("权重要是 0 到 10 的数字")
-		}
+	sort.Strings(out.Services)
+	out.InvalidatesPlans = len(out.Changes) > 0
+	if out.InvalidatesPlans {
+		out.KnownEffects = append(out.KnownEffects, "保存会产生新配置版本；绑定旧配置版本的条件计划需重新核验。")
 	}
-	return nil
+	if services["risk"] {
+		out.KnownEffects = append(out.KnownEffects, "风控规则将在服务实际加载后用于新检查；关闭准入会使高于L1的模式收缩。")
+	}
+	if services["market"] {
+		out.KnownEffects = append(out.KnownEffects, "盘中行情引擎保留当前参数，下一次预热才加载；保存不会触发进程重启。")
+	}
+	return out
 }
-
 func (g *Gate) config(w http.ResponseWriter, r *http.Request) {
 	principal, ok := g.principal(r)
 	if !ok {
-		writeErr(w, http.StatusUnauthorized, "未登录")
+		writeErr(w, 401, "未登录")
 		return
 	}
 	if g.Params == nil || !g.Params.Enabled() {
-		writeErr(w, http.StatusServiceUnavailable, "参数表不可用")
+		writeErr(w, 503, "参数表不可用")
 		return
 	}
-	switch r.Method {
-	case http.MethodGet:
-		values, err := g.Params.LoadParams(r.Context())
-		if err != nil {
-			if g.Log != nil {
-				g.Log.Errorf("config load: %v", err)
-			}
-			writeErr(w, http.StatusServiceUnavailable, "参数读取失败")
-			return
-		}
-		if values == nil {
-			values = map[string]string{}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"values": values})
-	case http.MethodPut:
-		if principal.Role == "viewer" {
-			writeErr(w, http.StatusForbidden, "当前是查看角色，不能改配置")
-			return
-		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, "请求读不了")
-			return
-		}
-		var req struct {
-			Values map[string]string `json:"values"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			writeErr(w, http.StatusBadRequest, "请求不是 JSON")
-			return
-		}
-		values, err := normalizeConfig(req.Values)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		keys := make([]string, 0, len(values))
-		for key := range values {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		if err := g.audit(r.Context(), Entry{
-			Actor: principal.Name, Role: principal.Role, Action: "config.save",
-			Target: clip(strings.Join(keys, ","), 256), OK: true, Detail: "配置页",
-		}); err != nil {
-			writeErr(w, http.StatusServiceUnavailable, "审计写入失败")
-			return
-		}
-		if err := g.Params.SaveParams(r.Context(), values); err != nil {
-			if g.Log != nil {
-				g.Log.Errorf("config save: %v", err)
-			}
-			writeErr(w, http.StatusServiceUnavailable, "参数保存失败")
-			return
-		}
-		stored, err := g.Params.LoadParams(r.Context())
-		if err != nil || stored == nil {
-			stored = values
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"values": stored})
-	default:
-		writeErr(w, http.StatusMethodNotAllowed, "不支持的方法")
+	store, ok := g.Params.(RevisionStore)
+	if !ok {
+		writeErr(w, 503, "配置版本存储未就绪")
+		return
 	}
+	current, err := store.ReadConfig(r.Context())
+	if err != nil {
+		writeErr(w, 503, "参数读取失败")
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/api/config" {
+		g.writeConfig(w, r, store, current)
+		return
+	}
+	if principal.Role == "viewer" {
+		writeErr(w, 403, "当前是查看角色，不能改配置")
+		return
+	}
+	isPreview := r.URL.Path == "/api/config/preview" && r.Method == http.MethodPost
+	isRollback := r.URL.Path == "/api/config/rollback" && r.Method == http.MethodPost
+	if !isPreview && !isRollback && !(r.URL.Path == "/api/config" && r.Method == http.MethodPut) {
+		writeErr(w, 405, "不支持的方法")
+		return
+	}
+	var req struct {
+		Base   *int              `json:"base_revision"`
+		Values map[string]string `json:"values"`
+		Target *int              `json:"target_revision"`
+	}
+	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	d.DisallowUnknownFields()
+	if d.Decode(&req) != nil {
+		writeErr(w, 400, "请求不是有效配置JSON")
+		return
+	}
+	// Legacy clients may use If-Match from GET's ETag. Omitting both is never blind-write.
+	if req.Base == nil {
+		if raw := strings.Trim(r.Header.Get("If-Match"), "\""); raw != "" {
+			if v, e := strconv.Atoi(raw); e == nil {
+				req.Base = &v
+			}
+		}
+	}
+	if req.Base == nil {
+		writeErr(w, 428, "保存需base_revision，请重新读取配置后提交")
+		return
+	}
+	if *req.Base != current.Revision {
+		writeErr(w, 409, "配置已被其他窗口或服务修改，请重新读取并核对变更")
+		return
+	}
+	values := req.Values
+	replace := req.Target != nil
+	if replace {
+		if *req.Target <= 0 {
+			writeErr(w, 400, "回滚目标版本无效")
+			return
+		}
+		target, e := store.VersionConfig(r.Context(), *req.Target)
+		if e != nil {
+			writeErr(w, 404, "历史版本不存在")
+			return
+		}
+		values = target.Values
+	}
+	if isRollback && !replace {
+		writeErr(w, 400, "缺少回滚目标版本")
+		return
+	}
+	// Validate only changed registered keys; unchanged historical keys are preserved.
+	patch := map[string]string{}
+	for k, v := range values {
+		if current.Values[k] != v {
+			patch[k] = v
+		}
+	}
+	if replace {
+		for k := range current.Values {
+			if _, ok := values[k]; !ok {
+				patch[k] = ""
+			}
+		}
+	}
+	if len(patch) > 0 {
+		if patch, err = params.ValidatePatch(current.Values, patch); err != nil {
+			writeErr(w, 400, err.Error())
+			return
+		}
+	}
+	if !replace {
+		values = patch
+	}
+	preview := previewConfig(current, values, replace)
+	if isPreview {
+		writeJSON(w, 200, preview)
+		return
+	}
+	if len(preview.Changes) == 0 {
+		writeErr(w, 400, "没有配置变更")
+		return
+	}
+	keys := make([]string, 0, len(patch))
+	for k := range patch {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if err = g.audit(r.Context(), Entry{Actor: principal.Name, Role: principal.Role, Action: "config.save", Target: clip(strings.Join(keys, ","), 256), OK: true, Detail: "attempt base_revision=" + strconv.Itoa(*req.Base)}); err != nil {
+		writeErr(w, 503, "审计写入失败")
+		return
+	}
+	var saved params.Snapshot
+	if isRollback {
+		saved, err = store.RollbackConfig(r.Context(), *req.Base, *req.Target)
+	} else if replace {
+		writeErr(w, 400, "回滚须使用rollback接口")
+		return
+	} else {
+		saved, err = store.SaveConfig(r.Context(), *req.Base, patch)
+	}
+	if errors.Is(err, params.ErrConflict) {
+		writeErr(w, 409, "配置版本冲突，请重新读取")
+		return
+	}
+	if err != nil {
+		writeErr(w, 503, "配置保存失败")
+		return
+	}
+	g.writeConfig(w, r, store, saved)
+}
+func (g *Gate) writeConfig(w http.ResponseWriter, r *http.Request, store RevisionStore, s params.Snapshot) {
+	out := configPublic(s)
+	// Every registered reader observes the same global snapshot version. Include
+	// readers whose last override was removed, so clear/rollback still waits for
+	// their real load acknowledgement instead of silently dropping the target.
+	targets := map[string]bool{"datahub": true, "market": true, "intel": true, "brain": true, "strategy": true, "risk": true, "notify": true}
+	for key := range s.Values {
+		if target, _ := params.Target(key); target != "unknown" {
+			targets[target] = true
+		}
+	}
+	names := make([]string, 0, len(targets))
+	for target := range targets {
+		names = append(names, target)
+	}
+	sort.Strings(names)
+	out["target_services"] = names
+	receipts, err := store.ConfigReceipts(r.Context())
+	if err == nil {
+		out["receipts"] = receipts
+	} else {
+		out["receipt_error"] = "回执读取失败"
+	}
+	history, err := store.ConfigHistory(r.Context())
+	if err == nil {
+		out["history"] = history
+	}
+	w.Header().Set("ETag", strconv.Quote(strconv.Itoa(s.Revision)))
+	writeJSON(w, 200, out)
 }

@@ -8,6 +8,7 @@ import (
 	"server/app/market/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -49,6 +50,7 @@ func NewHTTPServer(c *conf.Market, svc *service.MarketService, logger log.Logger
 		_ = metrics.Write(w)
 	})
 	v1.RegisterMarketHTTPServer(srv, svc)
+	observe.RegisterHTTP(srv, observe.ForService("market"))
 	return srv
 }
 

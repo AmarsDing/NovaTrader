@@ -82,6 +82,11 @@ func (c *Collector) collectBars(ctx context.Context, domain, freq string, day ti
 				return fmt.Errorf("%s %s 没有 K 线", freq, day.Format("2006-01-02"))
 			}
 			got := distinctSymbols(b.Bars)
+			if b.CoverageUnknown && len(symbols) == 0 {
+				coverage = -1
+				issues = append(issues, Issue{Check: CheckCompleteness, Severity: "warn", Message: "补源历史覆盖率未知：记录总数不是已上市/退市/停牌分母"})
+				return nil
+			}
 			coverage, _ = Completeness(got, expect)
 			if coverage < c.opt.CompletenessFail {
 				return fmt.Errorf("%s 覆盖率 %.1f%%，低于 %.0f%%", freq, coverage*100, c.opt.CompletenessFail*100)
@@ -95,7 +100,7 @@ func (c *Collector) collectBars(ctx context.Context, domain, freq string, day ti
 		}
 		return Result{Domain: domain}, err
 	}
-	if coverage < c.opt.CompletenessWarn {
+	if coverage >= 0 && coverage < c.opt.CompletenessWarn {
 		_, missing := Completeness(distinctSymbols(batch.Bars), expect)
 		issues = append(issues, Issue{Check: CheckCompleteness, Severity: "warn",
 			Message: fmt.Sprintf("%s 覆盖率 %.2f%%，缺 %d 只", freq, coverage*100, len(missing)),

@@ -29,6 +29,11 @@ func (w *Watchlist) Set(owner string, symbols []string, ttl time.Duration, now t
 	}
 	exp := now.Add(ttl)
 	w.mu.Lock()
+	for key, old := range w.owners {
+		if !now.Before(old.expires) {
+			delete(w.owners, key)
+		}
+	}
 	if len(set) == 0 {
 		delete(w.owners, owner)
 	} else {

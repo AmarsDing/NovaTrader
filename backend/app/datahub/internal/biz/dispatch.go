@@ -3,11 +3,19 @@ package biz
 import (
 	"context"
 	"fmt"
+	"server/pkg/observe"
 	"time"
 )
 
 // RunDomain 按数据域名采集一次。date 为空则用最近一个交易日。供 RPC 和调度调用。
 func (c *Collector) RunDomain(ctx context.Context, domain, date, only string) (Result, error) {
+	finish := observe.ForService("datahub").Op("collect_request").Begin()
+	result, err := c.runDomain(ctx, domain, date, only)
+	observe.FinishError(finish, err)
+	return result, err
+}
+
+func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (Result, error) {
 	day, err := c.parseDay(date)
 	if err != nil {
 		return Result{Domain: domain}, err
@@ -87,12 +95,18 @@ func (c *Collector) PreviousOpenDay(day time.Time) (time.Time, error) {
 
 // PersistHealth 把运行统计写进 source_health。
 func (c *Collector) PersistHealth(ctx context.Context) error {
-	return c.repo.SaveHealth(ctx, c.p.Health())
+	finish := observe.ForService("datahub").Op("health_persist").Begin()
+	err := c.repo.SaveHealth(ctx, c.p.Health())
+	observe.FinishError(finish, err)
+	return err
 }
 
 // DispatchOutbox 投递 md.*.ready。
 func (c *Collector) DispatchOutbox(ctx context.Context) (int, error) {
-	return c.repo.DispatchOutbox(ctx, c.bus, 100)
+	finish := observe.ForService("datahub").Op("outbox").Begin()
+	n, err := c.repo.DispatchOutbox(ctx, c.bus, 100)
+	observe.FinishError(finish, err)
+	return n, err
 }
 
 // PurgeRaw 删掉 keep 天之前的原始响应。

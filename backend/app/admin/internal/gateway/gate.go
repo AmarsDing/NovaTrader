@@ -75,16 +75,22 @@ type Gate struct {
 	NATSUp   func() bool
 	PingDB   func(context.Context) error
 	// P2 运维只读口：连接池/库内省/NATS 统计。由 data.AuditStore 与 Hub 注入。
-	PoolStats PoolStatsFunc
-	DBStats   DBStatsFunc
-	NATSStats NATSStatsFunc
-	Now       func() time.Time
+	PoolStats    PoolStatsFunc
+	DBStats      DBStatsFunc
+	NATSStats    NATSStatsFunc
+	Observations *Hub
+	Now          func() time.Time
 	// ServerContext 返回一个不被单个请求超时约束的 ctx（备份跑 pg_dump 要几分钟，
 	// 不能挂在 kratos 默认 1s 的请求超时上）。nil 时退化为 Background。
 	ServerContext func() context.Context
 
-	once    sync.Once
-	proxies map[string]*httputil.ReverseProxy
+	once               sync.Once
+	proxies            map[string]*httputil.ReverseProxy
+	observationOnce    sync.Once
+	observationHandler http.Handler
+	environmentOnce    sync.Once
+	environmentHandler http.Handler
+	environment        environmentCache
 }
 
 type route struct {
@@ -121,11 +127,15 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.opsDB(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/nats":
 		g.opsNATS(w, r)
+	case r.URL.Path == "/api/ops/observability" || r.URL.Path == "/api/ops/traces":
+		g.serveObservability(w, r)
+	case r.URL.Path == "/api/ops/environment":
+		g.serveEnvironment(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/ops/backup":
 		g.backup(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/audit":
 		g.listAudit(w, r)
-	case r.URL.Path == "/api/config" && (r.Method == http.MethodGet || r.Method == http.MethodPut):
+	case r.URL.Path == "/api/config" || strings.HasPrefix(r.URL.Path, "/api/config/"):
 		g.config(w, r)
 	default:
 		g.forward(w, r)
@@ -336,6 +346,9 @@ type errString string
 func (e errString) Error() string { return string(e) }
 
 func sensitive(action string) bool {
+	if action == "trade.plan" || action == "backtest.dataset" || action == "research.job" {
+		return true
+	}
 	switch action {
 	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params", "config.save",
 		"trade.order", "trade.cancel", "trade.confirm", "strategy.approve", "strategy.reject", "strategy.rollback",
@@ -348,6 +361,12 @@ func sensitive(action string) bool {
 
 func auditAction(method, path string) string {
 	switch {
+	case method == http.MethodPost && strings.HasPrefix(path, "/api/backtest/research/"):
+		return "research.job"
+	case method == http.MethodPost && strings.HasPrefix(path, "/api/trade/plans"):
+		return "trade.plan"
+	case method == http.MethodPost && path == "/api/backtest/datasets":
+		return "backtest.dataset"
 	case method == http.MethodPost && path == "/api/risk/mode":
 		return "risk.mode"
 	case method == http.MethodPost && path == "/api/risk/killswitch/reset":

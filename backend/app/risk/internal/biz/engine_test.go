@@ -3,10 +3,12 @@ package biz
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	"server/pkg/accountstate"
 	"server/pkg/risk"
 	"server/pkg/tradecal"
 
@@ -14,17 +16,23 @@ import (
 )
 
 type fakeRepo struct {
-	mu       sync.Mutex
-	params   map[string]string
-	kill     risk.KillState
-	mode     risk.Mode
-	haveMode bool
-	failKill bool
-	alerts   []string
-	day      DayState
-	kills    []risk.KillState
-	modes    []risk.Mode
-	breakers []string
+	mu         sync.Mutex
+	params     map[string]string
+	kill       risk.KillState
+	mode       risk.Mode
+	haveMode   bool
+	failKill   bool
+	alerts     []string
+	day        DayState
+	kills      []risk.KillState
+	modes      []risk.Mode
+	breakers   []string
+	snapshots  []accountstate.Snapshot
+	accountErr error
+}
+
+func (f *fakeRepo) LoadAccountSnapshots(context.Context) ([]accountstate.Snapshot, error) {
+	return f.snapshots, f.accountErr
 }
 
 func (f *fakeRepo) LoadParams(context.Context) (map[string]string, error) { return f.params, nil }
@@ -122,12 +130,13 @@ func (f *fakePub) Publish(_ context.Context, _ string, p any) error {
 var t0 = time.Date(2026, 10, 9, 10, 0, 0, 0, tradecal.Shanghai())
 
 type rig struct {
-	e     *Engine
-	repo  *fakeRepo
-	q     *fakeQuotes
-	audit *fakeAudit
-	pub   *fakePub
-	clock time.Time
+	e          *Engine
+	repo       *fakeRepo
+	q          *fakeQuotes
+	audit      *fakeAudit
+	pub        *fakePub
+	clock      time.Time
+	generation int64
 }
 
 func newRig(t *testing.T, repo *fakeRepo) *rig {
@@ -151,10 +160,28 @@ func (r *rig) snap(last float64) Snapshot {
 }
 
 func (r *rig) account(equity, avail float64, holdings ...risk.Holding) {
-	r.e.OnAccount(context.Background(), AccountPayload{
+	r.generation++
+	if holdings == nil {
+		holdings = []risk.Holding{}
+	}
+	for i := range holdings {
+		if holdings[i].MarketValue == 0 && holdings[i].Quantity > 0 {
+			holdings[i].MarketValue = float64(holdings[i].Quantity) * holdings[i].AvgCost
+		}
+	}
+	cash := equity
+	for _, h := range holdings {
+		cash -= h.MarketValue
+	}
+	if err := r.e.OnAccount(context.Background(), AccountPayload{
+		Version: 1, Kind: "full", AccountID: "default", SnapshotID: fmt.Sprint(r.generation), Generation: r.generation,
+		TradingDay: r.clock.In(tradecal.Shanghai()).Format("2006-01-02"), Cash: cash, FrozenCash: cash - avail, DayStartKnown: true,
 		AccountType: risk.SIM, Equity: equity, Available: avail, DayStartEquity: 1_000_000,
-		Holdings: holdings, AsOf: r.clock,
-	})
+		Holdings: holdings, AsOf: r.clock, OpenOrders: []risk.OpenOrder{}, ObservedOrders: []string{},
+		Reconciliation: accountstate.Reconciliation{Status: "matched", AsOf: r.clock},
+	}); err != nil {
+		panic(err)
+	}
 }
 
 func buy(id string, vol int) risk.Order {
@@ -173,12 +200,12 @@ func TestReservationPreventsDoubleSpend(t *testing.T) {
 	if !d2.Approved || d2.Volume != 400 {
 		t.Fatalf("second order should only get the remaining cash: %+v", d2)
 	}
-	// 快照晚于放行 2 秒以上，预留清掉，以快照里的可用资金为准。
+	// Merely advancing time cannot clear an order absent from the ledger.
 	r.clock = r.clock.Add(3 * time.Second)
 	r.q.m["000001.SZ"] = r.snap(10)
 	r.account(1_000_000, 15_000)
-	if d3, _ := r.e.Check(ctx, buy("c", 1000)); d3.Volume != 1000 {
-		t.Fatal(d3.Volume)
+	if d3, _ := r.e.Check(ctx, buy("c", 1000)); d3.Approved {
+		t.Fatal("unobserved approvals must remain reserved", d3.Volume)
 	}
 	if r.audit.n != 3 {
 		t.Fatal("every check is audited", r.audit.n)
@@ -360,6 +387,7 @@ func TestWatchPublishesExitOnce(t *testing.T) {
 		t.Fatalf("%+v", ex)
 	}
 	r.clock = r.clock.Add(61 * time.Second)
+	r.account(1_000_000, 500_000, risk.Holding{Symbol: "000001.SZ", Quantity: 1000, Available: 1000, AvgCost: 10, StopPrice: 9.5})
 	r.q.m["000001.SZ"] = r.snap(9.40)
 	r.e.OnSnapshot(ctx, SnapshotMetaPayload{})
 	if len(r.pub.msgs) != 2 {

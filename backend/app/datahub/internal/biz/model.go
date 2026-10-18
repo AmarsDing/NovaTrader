@@ -5,6 +5,7 @@ package biz
 import (
 	"time"
 
+	"server/pkg/dataset"
 	"server/pkg/market"
 )
 
@@ -34,17 +35,19 @@ const (
 
 // 源名。配置 datahub.sources 的键与这里一致。
 const (
-	SourceTdxLocal  = "tdx_local"
-	SourceTdxFile   = "tdx_file"
-	SourceTdxTCP    = "tdx_tcp"
-	SourceAkshare   = "akshare"
-	SourceTushare   = "tushare"
-	SourceEastmoney = "eastmoney"
-	SourceSina      = "sina"
-	SourceTencent   = "tencent"
-	SourceCninfo    = "cninfo"
-	SourceTavily    = "tavily"
-	SourceRSS       = "rss"
+	SourceTdxLocal   = "tdx_local"
+	SourceTdxFile    = "tdx_file"
+	SourceTdxTCP     = "tdx_tcp"
+	SourceAkshare    = "akshare"
+	SourceTushare    = "tushare"
+	SourceEastmoney  = "eastmoney"
+	SourceSina       = "sina"
+	SourceTencent    = "tencent"
+	SourceCninfo     = "cninfo"
+	SourceTavily     = "tavily"
+	SourceRSS        = "rss"
+	SourceTdxArchive = "tdx_http_archive"
+	SourceOpenBBFred = "openbb_fred"
 )
 
 // Snapshot 与 M02 共用 pkg/market 的定义，写进 Redis snap:latest。
@@ -57,6 +60,7 @@ type SnapshotBatch struct {
 
 // Security 证券基础信息。股本单位股。
 type Security struct {
+	dataset.Availability
 	Symbol     string
 	Name       string
 	Market     string
@@ -71,6 +75,7 @@ type Security struct {
 
 // Bar 不复权 K 线。Time 为开始时刻；价格元、成交量股、成交额元。
 type Bar struct {
+	dataset.Availability
 	Symbol   string
 	Time     time.Time
 	Freq     string
@@ -85,10 +90,11 @@ type Bar struct {
 
 // BarBatch 是一次 K 线拉取的结果。Stale 为真表示源头数据没有到应有交易日。
 type BarBatch struct {
-	Bars     []Bar
-	Stale    bool
-	LastDate string
-	Expect   string
+	CoverageUnknown bool // The archive row count has no authoritative historical denominator.
+	Bars            []Bar
+	Stale           bool
+	LastDate        string
+	Expect          string
 }
 
 // BarQuery 是 K 线拉取条件。Symbols 为空表示全市场。Expect 是应有的最新交易日。
@@ -102,6 +108,7 @@ type BarQuery struct {
 
 // AdjFactor 后复权因子。
 type AdjFactor struct {
+	dataset.Availability
 	Symbol string
 	Date   time.Time
 	Factor float64
@@ -174,6 +181,7 @@ type HsgtTop struct {
 
 // Sector 板块与成分。
 type Sector struct {
+	dataset.Availability
 	Code    string
 	Name    string
 	Kind    string
@@ -217,6 +225,7 @@ type IntradayFlow struct {
 
 // FinanceItem 业绩预告、快报、指标。
 type FinanceItem struct {
+	dataset.Availability
 	Symbol       string
 	EndDate      time.Time
 	Kind         string
@@ -273,6 +282,7 @@ type OverseasQuote struct {
 
 // MacroPoint 宏观序列的一期。
 type MacroPoint struct {
+	dataset.Availability
 	Code  string
 	Name  string
 	Date  time.Time

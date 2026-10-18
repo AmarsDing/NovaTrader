@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,11 +25,22 @@ var ctx = context.Background()
 
 func newTestData(t *testing.T) *Data {
 	t.Helper()
+	port := int32(5432)
+	if raw := os.Getenv("NT_TEST_PG_PORT"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > 65535 {
+			t.Fatal("invalid NT_TEST_PG_PORT")
+		}
+		port = int32(value)
+	}
 	d, cleanup, err := NewData(&conf.Postgres{
-		Host: "127.0.0.1", Port: 5432, User: "postgres", Password: "postgres",
+		Host: "127.0.0.1", Port: port, User: "postgres", Password: "postgres",
 		Database: "novatrader_strategytest", SslMode: "disable",
 	}, &conf.Redis{}, log.DefaultLogger)
 	if err != nil {
+		if os.Getenv("NT_TEST_PG_PORT") != "" {
+			t.Fatal(err)
+		}
 		t.Skip(err)
 	}
 	t.Cleanup(cleanup)

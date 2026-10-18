@@ -11,6 +11,7 @@ import (
 
 	"server/app/intel/internal/biz"
 	"server/pkg/events"
+	"server/pkg/observe"
 	"server/pkg/outbox"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -64,8 +65,11 @@ func (w *Worker) Start(ctx context.Context) error {
 	}
 	_, err := w.bus.JetStream().QueueSubscribe(events.SubjectIntelRawAll, consumerName,
 		func(m *nats.Msg) {
+			op := observe.ForService("intel").Op("raw")
+			op.Received()
 			select {
 			case w.msgs <- m:
+				op.Queued()
 			case <-runCtx.Done():
 			}
 		},
@@ -115,14 +119,17 @@ func (w *Worker) consume(ctx context.Context) {
 
 // handle 处理一条 intel.raw.<kind>。坏消息直接终止投递；其他错误稍后重投，靠库上的去重保证幂等。
 func (w *Worker) handle(ctx context.Context, m *nats.Msg) {
+	finish := observe.ForService("intel").Op("raw").Begin()
 	env, err := events.Unmarshal(m.Data)
 	if err != nil {
+		finish(observe.Rejected)
 		w.log.Warnf("drop bad envelope on %s: %v", m.Subject, err)
 		_ = m.Term()
 		return
 	}
 	var raw biz.Raw
 	if err := json.Unmarshal(env.Payload, &raw); err != nil {
+		finish(observe.Rejected)
 		w.log.Warnf("drop bad payload event=%s: %v", env.EventID, err)
 		_ = m.Term()
 		return
@@ -131,6 +138,11 @@ func (w *Worker) handle(ctx context.Context, m *nats.Msg) {
 		raw.Kind = strings.TrimPrefix(m.Subject, events.SubjectIntelRawPrefix)
 	}
 	res, err := w.uc.Process(events.WithTraceID(ctx, env.TraceID), raw)
+	if errors.Is(err, biz.ErrInvalid) {
+		finish(observe.Rejected)
+	} else {
+		observe.FinishError(finish, err)
+	}
 	switch {
 	case errors.Is(err, biz.ErrInvalid):
 		w.log.Warnf("drop invalid item event=%s: %v", env.EventID, err)
@@ -163,13 +175,19 @@ func (w *Worker) loop(ctx context.Context, every time.Duration, fn func(context.
 }
 
 func (w *Worker) dispatch(ctx context.Context) {
-	if _, err := w.box.Dispatch(ctx, 100); err != nil && ctx.Err() == nil {
+	finish := observe.ForService("intel").Op("outbox").Begin()
+	_, err := w.box.Dispatch(ctx, 100)
+	observe.FinishError(finish, err)
+	if err != nil && ctx.Err() == nil {
 		w.log.Warnf("outbox dispatch: %v", err)
 	}
 }
 
 func (w *Worker) reloadDictionary(ctx context.Context) {
-	if _, err := w.uc.ReloadDictionary(ctx); err != nil && ctx.Err() == nil {
+	finish := observe.ForService("intel").Op("dictionary").Begin()
+	_, err := w.uc.ReloadDictionary(ctx)
+	observe.FinishError(finish, err)
+	if err != nil && ctx.Err() == nil {
 		w.log.Warnf("reload dictionary: %v", err)
 	}
 }

@@ -13,7 +13,7 @@ import (
 // 在途/排队与今日 tokens/s（打 brain 的 /v1/brain/stats 与 /v1/brain/usage，800ms）。
 // 两路任一失败都诚实标注，不填 0。
 //
-// GET /api/ops/broker-files：东财 CSV 文件单目录状态。broker-gw 边车当前不存在
+// GET /api/ops/broker-files：生产东财文件通道状态，隔离网关代码不代表已部署。
 // （pkg/brokerif/emfile 只有写入方），接口如实返回 available=false 并点名缺口，
 // 不编「待写 0」这种看似正常的假数据。
 
@@ -103,11 +103,10 @@ func (g *Gate) opsBrokerFiles(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	// broker-gw 边车当前不存在：没有消费方在读文件单目录，目录状态无从谈起。
-	// 如实说缺口，待 M09 边车落地后再补真实计数。
+	// The isolated gateway exists; no production endpoint or terminal is wired.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"available": false,
-		"note":      "broker-gw 进程不存在：东财 CSV 文件单目录没有消费方（pkg/brokerif/emfile 只有写入方）。此接口待 M09 边车落地后返回真实计数。",
+		"note":      "隔离文件单网关与mTLS运输层已实现；生产终端、远端回报及持续对账未接入，当前目录计数未知。",
 		"pending":   nil,
 		"written":   nil,
 		"consumed":  nil,

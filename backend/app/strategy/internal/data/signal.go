@@ -52,6 +52,7 @@ func toSignal(r *ent.TradeSignal) *biz.Signal {
 		s.ATR = *r.Atr
 	}
 	s.ExitPrice, s.PnlPct, s.HoldingDays = r.ExitPrice, r.PnlPct, r.HoldingDays
+	s.ExecutedPrice, s.ExecutedVolume = r.ExecutedPrice, r.ExecutedVolume
 	if r.ClosedAt != nil {
 		s.ClosedAt = *r.ClosedAt
 	}
@@ -130,6 +131,25 @@ func (r *signalRepo) Transition(ctx context.Context, id int, from, to biz.Status
 		return nil, err
 	}
 	defer tx.Rollback()
+	row, err := tx.TradeSignal.Query().Where(tradesignal.ID(id)).ForUpdate().Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, biz.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.Status != string(from) {
+		return nil, biz.ErrConflict
+	}
+	if to == biz.StatusExpired || to == biz.StatusCancelled {
+		protected, err := protectsExecution(ctx, tx.Client(), toSignal(row))
+		if err != nil {
+			return nil, err
+		}
+		if protected {
+			return nil, biz.ErrExecutionProtected
+		}
+	}
 	u := tx.TradeSignal.Update().
 		Where(tradesignal.ID(id), tradesignal.Status(string(from))).
 		SetStatus(string(to))
@@ -144,7 +164,7 @@ func (r *signalRepo) Transition(ctx context.Context, id int, from, to biz.Status
 	if n == 0 {
 		return nil, biz.ErrConflict
 	}
-	row, err := tx.TradeSignal.Get(ctx, id)
+	row, err = tx.TradeSignal.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}

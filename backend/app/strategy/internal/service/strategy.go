@@ -32,7 +32,7 @@ func toErr(err error) error {
 		return kerrors.BadRequest("BAD_REQUEST", err.Error())
 	case errors.Is(err, biz.ErrNotFound):
 		return kerrors.NotFound("NOT_FOUND", err.Error())
-	case errors.Is(err, biz.ErrConflict):
+	case errors.Is(err, biz.ErrConflict), errors.Is(err, biz.ErrExecutionProtected):
 		return kerrors.Conflict("CONFLICT", err.Error())
 	}
 	return kerrors.InternalServer("INTERNAL", err.Error())
@@ -79,7 +79,8 @@ func toPB(s *biz.Signal) *v1.Signal {
 		RuleScore: s.RuleScore, FinalScore: s.FinalScore, Dims: s.Dims, Evidence: s.Evidence,
 		AiDegraded: s.AIDegraded, HighValue: s.HighValue, ExitKind: s.ExitKind, Reason: s.Reason,
 		Status: string(s.Status), TraceId: s.TraceID, CreatedAt: fmtTime(s.CreatedAt), UpdatedAt: fmtTime(s.UpdatedAt),
-		ClosedAt: fmtTime(s.ClosedAt),
+		ClosedAt:      fmtTime(s.ClosedAt),
+		ExecutedPrice: s.ExecutedPrice,
 	}
 	if s.AIScore != nil {
 		out.AiScore = *s.AIScore
@@ -93,6 +94,10 @@ func toPB(s *biz.Signal) *v1.Signal {
 	}
 	if s.HoldingDays != nil {
 		out.HoldingDays = int32(*s.HoldingDays)
+	}
+	if s.ExecutedVolume != nil {
+		v := int32(*s.ExecutedVolume)
+		out.ExecutedVolume = &v
 	}
 	return out
 }

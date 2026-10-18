@@ -28,6 +28,7 @@ func TestDeskRoutes(t *testing.T) {
 	if _, err := engine.Place(context.Background(), biz.PlaceRequest{
 		ClientOrderID: "d1", Account: "SIM", Symbol: "600519.SH", Side: "buy",
 		Price: 10.05, Volume: 100, Quote: &q,
+		SignalID: "42", StrategyVersion: "9",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -40,6 +41,10 @@ func TestDeskRoutes(t *testing.T) {
 	list, _ := orders["orders"].([]any)
 	if len(list) != 1 {
 		t.Fatalf("orders %#v", orders)
+	}
+	row, _ := list[0].(map[string]any)
+	if row["signal_id"] != "42" || row["strategy_version"] != "9" {
+		t.Fatalf("decision identity lost: %#v", row)
 	}
 	fills := getJSON(t, ts.URL+"/v1/trade/fills?account=SIM")
 	got, _ := fills["fills"].([]any)

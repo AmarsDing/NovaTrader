@@ -36,9 +36,27 @@ func (e *Engine) Limits(accountType string) []LimitItem {
 
 	// 选定账本集合
 	types := []risk.AccountType{risk.SIM, risk.LIVE}
+	explicit := false
 	if t := risk.AccountType(strings.ToUpper(strings.TrimSpace(accountType))); t == risk.SIM || t == risk.LIVE {
 		types = []risk.AccountType{t}
+		explicit = true
 	}
+	selected := map[risk.AccountType]bool{}
+	known, accountReady := 0, true
+	for _, t := range types {
+		selected[t] = true
+		if _, ok := e.accounts[t]; !ok {
+			if explicit {
+				accountReady = false
+			}
+			continue
+		}
+		known++
+		if !e.accountStates[t].Ready(now, p.AccountMaxAge) {
+			accountReady = false
+		}
+	}
+	accountReady = accountReady && known > 0
 
 	var equity, usedTotal, usedSingleMax float64
 	var buysToday, lastSecond, ordersToday int
@@ -75,8 +93,20 @@ func (e *Engine) Limits(accountType string) []LimitItem {
 			}
 		}
 	}
-	for _, res := range e.reservations {
-		usedTotal += res.Amount
+	for id, res := range e.reservations {
+		if !selected[res.account] {
+			continue
+		}
+		observed := false
+		for _, o := range e.accounts[res.account].Open {
+			if o.ClientID == id {
+				observed = true
+				break
+			}
+		}
+		if !observed {
+			usedTotal += res.Amount
+		}
 	}
 	usedSectorMax := 0.0
 	for _, v := range sectorUsed {
@@ -121,6 +151,17 @@ func (e *Engine) Limits(accountType string) []LimitItem {
 			Note: "R14 速度上限·当日"},
 	}
 	for i := range items {
+		switch items[i].Key {
+		case "risk.max_single_pct", "risk.max_total_pct", "risk.max_sector_pct", "risk.daily_loss_pct":
+			if !accountReady {
+				items[i].Used = -1
+				items[i].Ratio = -1
+				items[i].Note += "；账户完整快照缺失、陈旧、日初未知或未对账"
+				if items[i].Key != "risk.daily_loss_pct" {
+					items[i].Limit = -1
+				}
+			}
+		}
 		items[i].Ratio = ratio(items[i].Used, items[i].Limit)
 	}
 	return items

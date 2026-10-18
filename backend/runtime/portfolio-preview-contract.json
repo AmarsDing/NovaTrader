@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "scope": "portfolio_shadow_preview",
+  "state": "blocked",
+  "allocation_ready": false,
+  "can_execute": false,
+  "risk_checked": false,
+  "research": {
+    "run_id": "allocation_fc4a61b8-1910-421d-9fec-4854425741b3",
+    "manifest_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "input_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "result_hash": "c25dbbe98e488fcacc306dd7dd730f3a5c994c5e7734403c169c8f8bf5e9e969",
+    "fixture_type": "synthetic_not_market_evidence",
+    "weights": {
+      "000001.SZ": 0.05
+    },
+    "cash_weight": 0.95,
+    "constraints": {
+      "max_weight": 0.05,
+      "max_weights": null,
+      "sector_caps": null,
+      "sectors": null,
+      "locked_symbols": null,
+      "max_turnover": null
+    }
+  },
+  "formed_at": "2026-10-18T07:39:25.0506052Z",
+  "account_type": "SIM",
+  "account_id": "default",
+  "account_snapshot_id": "a5e07611-ad48-4e63-989e-335484e455ce",
+  "account_generation": "1",
+  "account_state_hash": "72575166dde9fc36e5560455ca53f318c35971341274c4812588792612f352b3",
+  "account_snapshot_hash": "b5aa2c032ad3be289887e65650ea9bd65603b3477218d1c04002b1640a2fb539",
+  "price_rule": "server_current_last_rounded_to_tick_reference_only",
+  "config_revision": 0,
+  "summary": {
+    "fresh_equity": 100000,
+    "available_cash": 100000,
+    "frozen_cash": 0,
+    "cash_weight": 0.95,
+    "required_cash": 95000,
+    "estimated_fees": 0,
+    "buy_cost": 0,
+    "sell_proceeds": 0,
+    "projected_cash": 100000,
+    "buy_funding_gap": 0,
+    "residual_weight": 0.05,
+    "turnover": 0,
+    "constraints": [
+      {
+        "code": "config",
+        "status": "unknown",
+        "message": "服务端配置版本或约束无法完整读取"
+      }
+    ]
+  },
+  "rows": [
+    {
+      "symbol": "000001.SZ",
+      "target_weight": 0.05,
+      "current_quantity": 0,
+      "available_to_sell": 0,
+      "frozen_sell": 0,
+      "t1_locked": 0,
+      "reference_price": 10.13,
+      "source_time": "2026-10-18T15:39:25.0500649+08:00",
+      "quote_as_of": "2026-10-18T15:39:25.0500649+08:00",
+      "quote_source": "",
+      "target_quantity": 400,
+      "delta_quantity": 400,
+      "buy_quantity": 0,
+      "sell_quantity": 0,
+      "estimated_fee": 0,
+      "projected_weight": 0,
+      "sector": "",
+      "status": "blocked",
+      "reasons": [
+        "基础股身份未知"
+      ]
+    }
+  ],
+  "unknowns": [
+    "未调用有副作用的CheckOrder；动态市场风险缩放、申报速度、最终流动性与成交未知"
+  ],
+  "execution_requirements": [
+    "有效独立交易信号",
+    "当前账户重新核验",
+    "独立条件计划及授权",
+    "提交前最终风控"
+  ]
+}

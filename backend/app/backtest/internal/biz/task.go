@@ -11,15 +11,17 @@ import (
 	"time"
 
 	"server/pkg/backtest"
+	"server/pkg/observe"
 )
 
 // CreateRequest 是客户端建任务的输入。Config 未给的字段取 backtest.DefaultConfig。
 type CreateRequest struct {
-	Kind      string
-	Name      string
-	Config    json.RawMessage
-	Search    json.RawMessage
-	CreatedBy string
+	ManifestID string
+	Kind       string
+	Name       string
+	Config     json.RawMessage
+	Search     json.RawMessage
+	CreatedBy  string
 }
 
 // CreateTask 校验配置后写一条 queued 任务。
@@ -37,7 +39,7 @@ func (uc *Usecase) CreateTask(ctx context.Context, req CreateRequest) (*Task, er
 			return nil, fmt.Errorf("%w: config: %v", ErrBadRequest, err)
 		}
 	}
-	spec := Spec{Config: cfg, MonteCarloRuns: uc.cfg.MonteCarloRuns}
+	spec := Spec{Config: cfg, ManifestID: req.ManifestID, MonteCarloRuns: uc.cfg.MonteCarloRuns}
 	if req.Kind != KindSingle {
 		sc := backtest.SearchConfig{Workers: uc.cfg.SearchWorkers}
 		if len(req.Search) > 0 {
@@ -66,6 +68,29 @@ func (uc *Usecase) enqueue(ctx context.Context, kind, name string, spec Spec, by
 	}
 	if by == "" {
 		by = "local"
+	}
+	port, ok := uc.src.(DatasetSource)
+	if !ok {
+		return nil, fmt.Errorf("%w: 数据源不支持冻结 manifest，不能创建研究任务", ErrConflict)
+	}
+	if spec.ManifestID == "" {
+		m, err := port.FreezeDataset(ctx, spec.Config, uc.now())
+		if err != nil {
+			return nil, fmt.Errorf("%w: 冻结数据失败: %v", ErrConflict, err)
+		}
+		spec.ManifestID, spec.ManifestHash = m.ManifestID, m.Hash
+	} else {
+		m, err := port.GetDataset(ctx, spec.ManifestID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: manifest: %v", ErrBadRequest, err)
+		}
+		if m.Freq != spec.Config.Freq || m.From.After(start.AddDate(0, 0, -(spec.Config.HistoryBars*3/2+10))) || m.To.Before(end.Add(15*time.Hour)) {
+			return nil, fmt.Errorf("%w: manifest不能覆盖任务频率/区间/回看期", ErrBadRequest)
+		}
+		if spec.ManifestHash != "" && spec.ManifestHash != m.Hash {
+			return nil, fmt.Errorf("%w: manifest hash mismatch", ErrConflict)
+		}
+		spec.ManifestHash = m.Hash
 	}
 	return uc.repo.CreateTask(ctx, &Task{
 		Kind: kind, Name: name, Strategy: spec.Config.Strategy, Freq: spec.Config.Freq,
@@ -150,7 +175,9 @@ func (uc *Usecase) RerunTask(ctx context.Context, id int, by string) (*Task, err
 }
 
 // Recover 把上次进程遗留的 running 任务置为失败。启动时调用一次。
-func (uc *Usecase) Recover(ctx context.Context) error {
+func (uc *Usecase) Recover(ctx context.Context) (err error) {
+	finish := observe.ForService("backtest").Op("recovery").Begin()
+	defer func() { observe.FinishError(finish, err) }()
 	n, err := uc.repo.FailRunning(ctx, "服务重启中断")
 	if n > 0 {
 		uc.log.Warnf("marked %d running tasks failed after restart", n)
@@ -160,10 +187,20 @@ func (uc *Usecase) Recover(ctx context.Context) error {
 
 // RunNext 认领一条排队任务并执行。没有任务时返回 false。
 func (uc *Usecase) RunNext(ctx context.Context) (bool, error) {
+	claimFinish := observe.ForService("backtest").Op("task_claim").Begin()
 	t, err := uc.repo.ClaimTask(ctx)
 	if err != nil || t == nil {
+		if err == nil {
+			claimFinish(observe.Skipped)
+		} else {
+			observe.FinishError(claimFinish, err)
+		}
 		return false, err
 	}
+	claimFinish(observe.Succeeded)
+	runFinish := observe.ForService("backtest").Op("run").Begin()
+	runOutcome := observe.Failed
+	defer func() { runFinish(runOutcome) }()
 	runCtx, cancel := context.WithCancel(ctx)
 	uc.mu.Lock()
 	uc.running[t.ID] = cancel
@@ -178,13 +215,18 @@ func (uc *Usecase) RunNext(ctx context.Context) (bool, error) {
 	err = uc.execute(runCtx, t)
 	switch {
 	case err == nil:
+		runOutcome = observe.Succeeded
 		uc.publish(ctx, t.ID, StatusSucceeded, 1, "完成")
 	case errors.Is(err, context.Canceled) && ctx.Err() == nil:
 		if ferr := uc.repo.FinishTask(ctx, t.ID, StatusCancelled, "已取消", ""); ferr != nil {
 			return true, ferr
 		}
+		runOutcome = observe.Cancelled
 		uc.publish(ctx, t.ID, StatusCancelled, 0, "已取消")
 	default:
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			runOutcome = observe.Cancelled
+		}
 		fctx := ctx
 		if ctx.Err() != nil {
 			var c context.CancelFunc
@@ -245,6 +287,17 @@ func (p *progress) report(done, total int) {
 func (uc *Usecase) execute(ctx context.Context, t *Task) error {
 	pg := &progress{uc: uc, ctx: ctx, id: t.ID}
 	cfg := t.Spec.Config
+	port, ok := uc.src.(DatasetSource)
+	if !ok || t.Spec.ManifestID == "" {
+		return fmt.Errorf("任务缺少冻结数据 manifest；请重新建任务，旧任务不会自动读取可变行情")
+	}
+	src, manifest, err := port.OpenDataset(ctx, t.Spec.ManifestID)
+	if err != nil {
+		return err
+	}
+	if manifest.Hash != t.Spec.ManifestHash {
+		return fmt.Errorf("dataset: task manifest hash mismatch")
+	}
 	var (
 		rep    *backtest.Report
 		trades []backtest.Trade
@@ -256,14 +309,14 @@ func (uc *Usecase) execute(ctx context.Context, t *Task) error {
 			hi = 0.5
 		}
 		pg.stage(0, hi, "回测")
-		res, err := backtest.Run(ctx, cfg, uc.src, pg.report)
+		res, err := backtest.Run(ctx, cfg, src, pg.report)
 		if err != nil {
 			return err
 		}
 		rep = backtest.BuildReport(t.Kind, res)
 		if cfg.LookaheadCheck {
 			pg.stage(0.5, 1, "截断自检")
-			if rep.Lookahead, err = backtest.LookaheadCheck(ctx, cfg, uc.src, res); err != nil {
+			if rep.Lookahead, err = backtest.LookaheadCheck(ctx, cfg, src, res); err != nil {
 				return err
 			}
 		}
@@ -271,7 +324,7 @@ func (uc *Usecase) execute(ctx context.Context, t *Task) error {
 		trades = res.Trades
 	case KindOptimize:
 		pg.stage(0, 1, "参数搜索")
-		out, oos, err := backtest.Optimize(ctx, cfg, *t.Spec.Search, uc.src, pg.report)
+		out, oos, err := backtest.Optimize(ctx, cfg, *t.Spec.Search, src, pg.report)
 		if err != nil {
 			return err
 		}
@@ -282,7 +335,7 @@ func (uc *Usecase) execute(ctx context.Context, t *Task) error {
 		}
 	case KindWalkForward:
 		pg.stage(0, 1, "滚动前推")
-		wf, comb, err := backtest.WalkForward(ctx, cfg, *t.Spec.Search, uc.src, pg.report)
+		wf, comb, err := backtest.WalkForward(ctx, cfg, *t.Spec.Search, src, pg.report)
 		if err != nil {
 			return err
 		}
@@ -296,7 +349,7 @@ func (uc *Usecase) execute(ctx context.Context, t *Task) error {
 		if t.Spec.Search != nil {
 			sc = *t.Spec.Search
 		}
-		out, err := backtest.Evolve(ctx, cfg, sc, ev.Candidates, ev.ISDays, ev.OOSDays, uc.src)
+		out, err := backtest.Evolve(ctx, cfg, sc, ev.Candidates, ev.ISDays, ev.OOSDays, src)
 		if err != nil {
 			return err
 		}
@@ -311,6 +364,9 @@ func (uc *Usecase) execute(ctx context.Context, t *Task) error {
 	if t.RerunOf != nil {
 		rep.Reproduce = uc.reproduce(ctx, *t.RerunOf, rep)
 	}
+	rep.DatasetManifestID = manifest.ManifestID
+	rep.DatasetManifestHash = manifest.Hash
+	rep.DatasetExcludedCount = len(manifest.Excluded) + len(manifest.ReplayExcluded)
 	return uc.repo.SaveResult(ctx, t.ID, rep, trades, summarize(rep))
 }
 

@@ -4,6 +4,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"server/pkg/accountstate"
 	"time"
 
 	"github.com/google/wire"
@@ -12,8 +13,11 @@ import (
 var ProviderSet = wire.NewSet(NewEngine)
 
 var (
-	ErrInvalid  = errors.New("invalid")
-	ErrNotFound = errors.New("not found")
+	ErrInvalid              = errors.New("invalid")
+	ErrNotFound             = errors.New("not found")
+	ErrConflict             = errors.New("conflict")
+	ErrUncertain            = errors.New("original intent requires reconciliation")
+	ErrExecutionInterrupted = errors.New("new execution interrupted")
 )
 
 const (
@@ -40,14 +44,15 @@ type Checker interface {
 }
 
 type CheckIn struct {
-	ClientOrderID string
-	Account       string
-	Symbol        string
-	Side          string
-	Price         float64
-	Volume        int
-	Source        string
-	Operator      string
+	ExpectedConfigRevision *int
+	ClientOrderID          string
+	Account                string
+	Symbol                 string
+	Side                   string
+	Price                  float64
+	Volume                 int
+	Source                 string
+	Operator               string
 }
 
 type CheckOut struct {
@@ -67,7 +72,9 @@ type Store interface {
 	ListFills(ctx context.Context, book string, limit int) ([]Fill, error)
 	ListByStatus(ctx context.Context, status string) ([]Order, error)
 	Commit(ctx context.Context, batch Batch) error
-	SaveSnapshot(ctx context.Context, book string, view AccountView) error
+	// CommitSnapshot persists the complete snapshot and its outbox event in one
+	// transaction. It assigns a durable, increasing generation before publishing.
+	CommitSnapshot(ctx context.Context, book string, view AccountView, cash Cash, snapshot accountstate.Snapshot) (accountstate.Snapshot, error)
 }
 
 // Batch 是一次状态变化要落库的内容。

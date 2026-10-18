@@ -17,5 +17,5 @@ import (
 )
 
 func wireApp(*conf.Backtest, *conf.Postgres, *conf.Nats, log.Logger) (*kratos.App, func(), error) {
-	panic(wire.Build(data.ProviderSet, biz.ProviderSet, service.ProviderSet, server.ProviderSet, core.ProviderSet, newApp))
+	panic(wire.Build(data.ProviderSet, data.ResearchProviderSet, biz.ProviderSet, biz.ResearchProviderSet, service.ProviderSet, service.ResearchProviderSet, server.ProviderSet, core.ProviderSet, core.ResearchProviderSet, newApp))
 }

@@ -7,6 +7,7 @@ import (
 	"server/app/datahub/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -44,6 +45,7 @@ func NewHTTPServer(c *conf.Datahub, svc *service.DatahubService, logger log.Logg
 		_ = metrics.Write(w)
 	})
 	v1.RegisterDatahubHTTPServer(srv, svc)
+	observe.RegisterHTTP(srv, observe.ForService("datahub"))
 	return srv
 }
 

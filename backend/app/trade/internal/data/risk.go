@@ -34,15 +34,21 @@ func (c *RiskClient) Check(ctx context.Context, in biz.CheckIn) (biz.CheckOut, e
 	if c.addr == "" {
 		return biz.CheckOut{}, fmt.Errorf("risk addr is empty")
 	}
+	var expected *int32
+	if in.ExpectedConfigRevision != nil {
+		n := int32(*in.ExpectedConfigRevision)
+		expected = &n
+	}
 	body, err := protojson.Marshal(&riskv1.CheckOrderRequest{
-		ClientOrderId: in.ClientOrderID,
-		AccountType:   in.Account,
-		Symbol:        in.Symbol,
-		Side:          in.Side,
-		Price:         in.Price,
-		Volume:        int32(in.Volume),
-		Source:        in.Source,
-		Operator:      in.Operator,
+		ExpectedConfigRevision: expected,
+		ClientOrderId:          in.ClientOrderID,
+		AccountType:            in.Account,
+		Symbol:                 in.Symbol,
+		Side:                   in.Side,
+		Price:                  in.Price,
+		Volume:                 int32(in.Volume),
+		Source:                 in.Source,
+		Operator:               in.Operator,
 	})
 	if err != nil {
 		return biz.CheckOut{}, err

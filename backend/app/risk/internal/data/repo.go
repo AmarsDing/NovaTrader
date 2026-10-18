@@ -320,7 +320,7 @@ func (r *Repo) inTx(ctx context.Context, fn func(tx *ent.Tx) error) error {
 }
 
 func insert(ctx context.Context, tx *ent.Tx, subject string, payload any) error {
-	env, err := events.New(Source, subject, events.TraceID(ctx), payload)
+	env, err := events.NewWithContext(ctx, Source, subject, payload)
 	if err != nil {
 		return err
 	}

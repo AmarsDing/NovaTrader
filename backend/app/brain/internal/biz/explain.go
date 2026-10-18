@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"server/pkg/llm"
+	"server/pkg/observe"
 )
 
 // ErrNotFound 表示请求的晨报或研判记录不存在。
@@ -20,7 +21,11 @@ const (
 )
 
 // Explain 解读持仓或候选的异动（FR-05-07）。持仓走最高优先级。
-func (uc *Usecase) Explain(ctx context.Context, in ExplainInput) (*Explanation, error) {
+func (uc *Usecase) Explain(ctx context.Context, in ExplainInput) (result *Explanation, retErr error) {
+	finish := observe.ForService("brain").Op("explain").Begin()
+	defer func() {
+		finishObservation(finish, retErr, result != nil, result != nil && result.Degraded, result != nil && result.Discarded)
+	}()
 	sym, err := normalizeSymbol(in.Symbol)
 	if err != nil {
 		return nil, err
@@ -84,7 +89,11 @@ func (uc *Usecase) Explain(ctx context.Context, in ExplainInput) (*Explanation, 
 }
 
 // Ask 针对某次研判追问（FR-05-11）。回答里的数字要能在原事实包或此前结论里找到。
-func (uc *Usecase) Ask(ctx context.Context, decisionID int, question string) (*AskReply, error) {
+func (uc *Usecase) Ask(ctx context.Context, decisionID int, question string) (result *AskReply, retErr error) {
+	finish := observe.ForService("brain").Op("ask").Begin()
+	defer func() {
+		finishObservation(finish, retErr, result != nil, result != nil && result.Degraded, result != nil && result.Discarded)
+	}()
 	question = strings.TrimSpace(question)
 	if question == "" || utf8.RuneCountInString(question) > maxQuestionRunes {
 		return nil, badRequest("question 不能为空，且不超过 %d 字", maxQuestionRunes)

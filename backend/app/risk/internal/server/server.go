@@ -8,6 +8,7 @@ import (
 	"server/app/risk/internal/service"
 	"server/conf"
 	"server/pkg/metrics"
+	"server/pkg/observe"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/logging"
@@ -45,6 +46,7 @@ func NewHTTPServer(c *conf.Risk, svc *service.RiskService, logger log.Logger) *k
 		_ = metrics.Write(w)
 	})
 	v1.RegisterRiskHTTPServer(srv, svc)
+	observe.RegisterHTTP(srv, observe.ForService("risk"))
 	return srv
 }
 

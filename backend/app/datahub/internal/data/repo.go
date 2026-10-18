@@ -28,6 +28,7 @@ import (
 	"server/ent/sectormember"
 	"server/ent/sourcehealth"
 	"server/ent/stockbasic"
+	"server/pkg/dataset"
 	"server/pkg/events"
 	"server/pkg/outbox"
 	"server/pkg/tradecal"
@@ -97,6 +98,15 @@ func day(t time.Time) time.Time {
 
 func (r *Repo) UpsertSecurities(ctx context.Context, items []biz.Security, source string, rd biz.Ready) (int, error) {
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		for _, s := range items {
+			event := day(time.Now())
+			if s.AvailableAt != nil {
+				event = *s.AvailableAt
+			}
+			if err := captureDataset(ctx, tx, "security", s.Symbol, source, event, s.Availability, dataset.Security{Symbol: s.Symbol, Name: s.Name, ListDate: s.ListDate, DelistDate: s.DelistDate, ST: s.ST, Suspended: s.Suspended}); err != nil {
+				return 0, err
+			}
+		}
 		err := chunks(items, func(part []biz.Security) error {
 			bulk := make([]*ent.StockBasicCreate, 0, len(part))
 			for _, s := range part {
@@ -165,7 +175,16 @@ func (r *Repo) UpsertSecurities(ctx context.Context, items []biz.Security, sourc
 }
 
 func (r *Repo) UpsertBars(ctx context.Context, bars []biz.Bar, source string, rd biz.Ready) (int, error) {
+	if source == biz.SourceTdxArchive {
+		return r.upsertSupplementBars(ctx, bars, source, rd)
+	}
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		for _, b := range bars {
+			key := b.Symbol + "/" + b.Freq + "/" + b.Time.UTC().Format(time.RFC3339Nano)
+			if err := captureDataset(ctx, tx, "bar", key, source, b.Time, b.Availability, dataset.Bar{Symbol: b.Symbol, Time: b.Time, Freq: b.Freq, Open: b.Open, High: b.High, Low: b.Low, Close: b.Close, PreClose: b.PreClose, Volume: b.Volume, Amount: b.Amount}); err != nil {
+				return 0, err
+			}
+		}
 		err := chunks(bars, func(part []biz.Bar) error {
 			bulk := make([]*ent.MarketDataCreate, 0, len(part))
 			for _, b := range part {
@@ -216,6 +235,9 @@ func (r *Repo) UpdateAdjFactors(ctx context.Context, items []biz.AdjFactor, rd b
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
 		n := 0
 		for _, a := range items {
+			if err := captureDataset(ctx, tx, "adj_factor", a.Symbol+"/"+day(a.Date).Format("2006-01-02"), rd.Source, day(a.Date), a.Availability, dataset.AdjFactor{Symbol: a.Symbol, Date: day(a.Date), Factor: a.Factor}); err != nil {
+				return 0, err
+			}
 			k, err := tx.MarketData.Update().
 				Where(marketdata.SymbolEQ(a.Symbol), marketdata.BarTimeEQ(day(a.Date)), marketdata.FreqEQ("1d")).
 				SetAdjFactor(a.Factor).Save(ctx)
@@ -372,6 +394,13 @@ func (r *Repo) UpsertHsgtTop10(ctx context.Context, d time.Time, items []biz.Hsg
 func (r *Repo) SyncSectors(ctx context.Context, d time.Time, items []biz.Sector, source string, rd biz.Ready) (int, error) {
 	today := day(d)
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		for _, s := range items {
+			s.Members = append([]string{}, s.Members...)
+			sort.Strings(s.Members)
+			if err := captureDataset(ctx, tx, "sector_members", s.Code+"/"+today.Format("2006-01-02"), source, today, s.Availability, s); err != nil {
+				return 0, err
+			}
+		}
 		bulk := make([]*ent.SectorCreate, 0, len(items))
 		codes := make([]string, 0, len(items))
 		for _, s := range items {
@@ -477,6 +506,11 @@ func writeStockSectors(ctx context.Context, tx *ent.Tx, items []biz.Sector) erro
 
 func (r *Repo) UpsertFinance(ctx context.Context, items []biz.FinanceItem, source string, rd biz.Ready) (int, error) {
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		for _, f := range items {
+			if err := captureDataset(ctx, tx, "finance", f.Symbol+"/"+f.EndDate.Format("2006-01-02")+"/"+f.Kind, source, f.EndDate, f.Availability, f); err != nil {
+				return 0, err
+			}
+		}
 		bulk := make([]*ent.FinanceReportCreate, 0, len(items))
 		seen := map[string]bool{}
 		for _, f := range items {
@@ -531,10 +565,16 @@ func (r *Repo) UpsertOverseas(ctx context.Context, items []biz.OverseasQuote, so
 }
 
 func (r *Repo) UpsertMacro(ctx context.Context, items []biz.MacroPoint, source string, rd biz.Ready) (int, error) {
+	if source == biz.SourceOpenBBFred {
+		return r.upsertSupplementMacro(ctx, items, source, rd)
+	}
 	now := time.Now()
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
 		bulk := make([]*ent.MacroSeriesCreate, 0, len(items))
 		for _, m := range items {
+			if err := captureDataset(ctx, tx, "macro", m.Code+"/"+day(m.Date).Format("2006-01-02"), source, day(m.Date), m.Availability, m); err != nil {
+				return 0, err
+			}
 			bulk = append(bulk, tx.MacroSeries.Create().
 				SetCode(m.Code).
 				SetName(truncate(m.Name, 64)).

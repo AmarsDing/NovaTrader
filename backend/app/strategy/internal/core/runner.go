@@ -11,6 +11,7 @@ import (
 	"server/app/strategy/internal/data"
 	"server/conf"
 	"server/pkg/events"
+	"server/pkg/observe"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
 
@@ -50,13 +51,14 @@ type Runner struct {
 	log   *log.Helper
 	now   func() time.Time
 
-	mu       sync.Mutex
-	alerted  map[string]struct{}
-	alertAt  time.Time
-	lastScan time.Time
-	lastFull time.Time
-	lastExp  time.Time
-	lastSch  time.Time
+	mu              sync.Mutex
+	alerted         map[string]struct{}
+	alertAt         time.Time
+	lastScan        time.Time
+	lastFull        time.Time
+	lastExp         time.Time
+	lastSch         time.Time
+	executionCursor int
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -75,7 +77,7 @@ func NewRunner(uc *biz.Usecase, d *data.Data, bus *events.Bus, logger log.Logger
 			Name: jobPremarket, Spec: "0 9 * * *", TradingDayOnly: true,
 			Timeout: 3 * time.Minute, Retry: 1, MaxDelay: 25 * time.Minute,
 			Run: func(ctx context.Context) error {
-				rep, err := uc.Scan(ctx, biz.ScanRequest{Pool: biz.PoolPre, Full: true, AsOf: r.now()})
+				rep, err := r.scan(ctx, biz.ScanRequest{Pool: biz.PoolPre, Full: true, AsOf: r.now()})
 				r.report(rep, err)
 				return err
 			},
@@ -84,7 +86,9 @@ func NewRunner(uc *biz.Usecase, d *data.Data, bus *events.Bus, logger log.Logger
 			Name: jobOutcomes, Spec: "40 15 * * *", TradingDayOnly: true,
 			Timeout: 5 * time.Minute, Retry: 1, MaxDelay: 6 * time.Hour,
 			Run: func(ctx context.Context) error {
+				finish := observe.ForService("strategy").Op("outcomes").Begin()
 				n, err := uc.FillOutcomes(ctx, r.now())
+				observe.FinishError(finish, err)
 				r.log.Infof("outcomes filled=%d err=%v", n, err)
 				return err
 			},
@@ -99,9 +103,10 @@ func (r *Runner) Start(ctx context.Context) error {
 	}
 	loopCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	r.wg.Add(2)
+	r.wg.Add(3)
 	go r.loop(loopCtx, r.housekeep)
 	go r.loop(loopCtx, r.step)
+	go r.executionLoop(loopCtx)
 	return nil
 }
 
@@ -139,13 +144,19 @@ func (r *Runner) loop(ctx context.Context, fn func(context.Context, time.Time)) 
 // housekeep 投递 outbox、过期信号。单独一个协程，扫描再慢也不耽误信号送到风控。
 func (r *Runner) housekeep(ctx context.Context, now time.Time) {
 	if r.bus != nil {
-		if _, err := r.d.DispatchOutbox(ctx, r.bus, 200); err != nil {
+		finish := observe.ForService("strategy").Op("outbox").Begin()
+		_, err := r.d.DispatchOutbox(ctx, r.bus, 200)
+		observe.FinishError(finish, err)
+		if err != nil {
 			r.log.Warnf("outbox dispatch: %v", err)
 		}
 	}
 	if now.Sub(r.lastExp) >= expireEvery {
 		r.lastExp = now
-		if n, err := r.uc.ExpireDue(ctx, now); err != nil {
+		finish := observe.ForService("strategy").Op("expire").Begin()
+		n, err := r.uc.ExpireDue(ctx, now)
+		observe.FinishError(finish, err)
+		if err != nil {
 			r.log.Errorf("expire: %v", err)
 		} else if n > 0 {
 			r.log.Infof("expired %d signals", n)
@@ -170,25 +181,34 @@ func (r *Runner) step(ctx context.Context, now time.Time) {
 	case now.Sub(r.lastFull) >= cfg.FullScanInterval:
 		r.lastFull, r.lastScan = now, now
 		r.takeAlerts(now, true)
-		rep, err := r.uc.Scan(ctx, biz.ScanRequest{Pool: biz.PoolIntraday, Full: true, AsOf: now})
+		rep, err := r.scan(ctx, biz.ScanRequest{Pool: biz.PoolIntraday, Full: true, AsOf: now})
 		r.report(rep, err)
 		r.exits(ctx, now)
 	case now.Sub(r.lastScan) >= cfg.ScanInterval:
 		r.lastScan = now
 		syms := r.takeAlerts(now, true)
-		rep, err := r.uc.Scan(ctx, biz.ScanRequest{Pool: biz.PoolIntraday, Symbols: syms, AsOf: now})
+		rep, err := r.scan(ctx, biz.ScanRequest{Pool: biz.PoolIntraday, Symbols: syms, AsOf: now})
 		r.report(rep, err)
 		r.exits(ctx, now)
 	default:
 		if syms := r.takeAlerts(now, false); len(syms) > 0 {
-			rep, err := r.uc.Scan(ctx, biz.ScanRequest{Pool: biz.PoolIntraday, Symbols: syms, AsOf: now})
+			rep, err := r.scan(ctx, biz.ScanRequest{Pool: biz.PoolIntraday, Symbols: syms, AsOf: now})
 			r.report(rep, err)
 		}
 	}
 }
 
+func (r *Runner) scan(ctx context.Context, req biz.ScanRequest) (*biz.ScanReport, error) {
+	finish := observe.ForService("strategy").Op("scan").Begin()
+	rep, err := r.uc.Scan(ctx, req)
+	observe.FinishError(finish, err)
+	return rep, err
+}
+
 func (r *Runner) exits(ctx context.Context, now time.Time) {
+	finish := observe.ForService("strategy").Op("exit_scan").Begin()
 	ids, err := r.uc.ScanExits(ctx, now)
+	observe.FinishError(finish, err)
 	if err != nil {
 		r.log.Errorf("exit scan: %v", err)
 		return
@@ -253,33 +273,58 @@ func (r *Runner) subscribe() error {
 		return err
 	}
 	r.subs = append(r.subs, al)
-	return nil
+	return r.subscribeExecutions()
 }
 
 // onKill 缺 active 字段时按触发处理。
 func (r *Runner) onKill(body []byte) {
+	op := observe.ForService("strategy").Op("kill_switch")
+	op.Received()
+	finish := op.Begin()
 	env, err := events.Unmarshal(body)
 	if err != nil {
+		finish(observe.Rejected)
 		r.log.Warnf("killswitch: %v", err)
 		return
 	}
 	var p killPayload
-	_ = json.Unmarshal(env.Payload, &p)
-	active := p.Active == nil || *p.Active
+	payloadErr := json.Unmarshal(env.Payload, &p)
+	active := payloadErr != nil || p.Active == nil || *p.Active
 	r.uc.SetKillSwitch(active)
+	if payloadErr != nil {
+		finish(observe.Rejected) // A partial JSON decode cannot clear the kill switch.
+	} else {
+		finish(observe.Succeeded)
+	}
 }
 
 func (r *Runner) onAlert(body []byte) {
+	op := observe.ForService("strategy").Op("market_alert_notice")
+	op.Received()
+	finish := op.Begin()
 	env, err := events.Unmarshal(body)
-	if err != nil || !r.seen.First(env.EventID) {
+	if err != nil {
+		finish(observe.Rejected)
+		return
+	}
+	if !r.seen.First(env.EventID) {
+		finish(observe.Skipped)
 		return
 	}
 	var p alertPayload
 	if err := json.Unmarshal(env.Payload, &p); err != nil || p.Symbol == "" {
+		finish(observe.Rejected)
 		return
 	}
 	r.mu.Lock()
+	_, exists := r.alerted[p.Symbol]
 	r.alerted[p.Symbol] = struct{}{}
 	r.alertAt = r.now()
 	r.mu.Unlock()
+	if exists {
+		op.Coalesced()
+	} else {
+		op.Queued()
+	}
+	finish(observe.Succeeded) // Local queue only; the scan has its own completion counter.
 }

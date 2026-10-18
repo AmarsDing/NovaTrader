@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"server/pkg/ashare"
+	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
@@ -66,6 +67,8 @@ func TestPartialFill(t *testing.T) {
 
 func TestT1ThenSellAfterRoll(t *testing.T) {
 	e, _ := newEngine(t, allow{})
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, tradecal.Shanghai())
+	e.now = func() time.Time { return now }
 	q := bar()
 	if _, err := e.Place(context.Background(), PlaceRequest{
 		ClientOrderID: "t1", Account: "SIM", Symbol: "600519.SH", Side: "buy",
@@ -83,6 +86,7 @@ func TestT1ThenSellAfterRoll(t *testing.T) {
 	if sell.Status != StatusRejected {
 		t.Fatalf("same-day sell status %s reason %s", sell.Status, sell.Reason)
 	}
+	now = time.Date(2026, 10, 12, 10, 0, 0, 0, tradecal.Shanghai())
 	if _, err := e.RollDay(context.Background(), "SIM"); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +166,7 @@ func TestRiskRejectAndIdempotent(t *testing.T) {
 	}
 	again, err := e.Place(context.Background(), PlaceRequest{
 		ClientOrderID: "r1", Account: "SIM", Symbol: "600519.SH", Side: "buy",
-		Price: 10, Volume: 100,
+		Price: 10, Volume: 100, SignalID: "sig-1", StrategyVersion: "v1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -239,9 +243,11 @@ func TestListOrdersAndFills(t *testing.T) {
 func TestLiveConfirmWindow(t *testing.T) {
 	e, mem := newEngine(t, allow{})
 	e.set.LiveEnabled = true
+	e.set.BrokerConnected = true // Explicit state-machine fixture; no external broker in this test.
+	withSyntheticAdmission(t, e, mem)
 	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
 	e.now = func() time.Time { return now }
-	if err := mem.Commit(context.Background(), Batch{Cash: &Cash{Book: BookPaper, Cash: 1_000_000, PaperDays: 20}}); err != nil {
+	if err := mem.Commit(context.Background(), Batch{Cash: &Cash{Book: BookLive, Cash: 1_000_000, DayStartDate: now.In(tradecal.Shanghai()).Format("2006-01-02"), DayStartEquity: 1_000_000}}); err != nil {
 		t.Fatal(err)
 	}
 	q := bar()
@@ -315,6 +321,7 @@ func TestWatchTimeoutChase(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	now = now.AddDate(0, 0, 3)
 	if _, err := e.RollDay(context.Background(), "SIM"); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +339,7 @@ func TestWatchTimeoutChase(t *testing.T) {
 		t.Fatalf("early sweep %+v", got)
 	}
 
-	now = now.Add(61 * time.Second)
+	now = workingDeadline(sell, time.Minute).Add(time.Second)
 	if err := e.SweepWorking(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +360,7 @@ func TestWatchTimeoutChase(t *testing.T) {
 	if err != nil || manual.Status != StatusSubmitted {
 		t.Fatalf("manual %+v %v", manual, err)
 	}
-	now = now.Add(2 * time.Minute)
+	now = workingDeadline(child, time.Minute).Add(time.Second)
 	if err := e.SweepWorking(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +371,7 @@ func TestWatchTimeoutChase(t *testing.T) {
 	if err != nil || second.Price != 9.98 {
 		t.Fatalf("second %+v %v", second, err)
 	}
-	now = now.Add(2 * time.Minute)
+	now = workingDeadline(second, time.Minute).Add(time.Second)
 	if err := e.SweepWorking(context.Background()); err != nil {
 		t.Fatal(err)
 	}

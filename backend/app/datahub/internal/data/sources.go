@@ -30,7 +30,10 @@ func NewCollector(cfg *conf.Datahub, repo *Repo, snap *SnapshotStore, bus biz.Pu
 			go func() { _ = repo.SaveRaw(context.WithoutCancel(ctx), r) }()
 		}
 	}
-	srcs := opt.build()
+	srcs, err := opt.build()
+	if err != nil {
+		return nil, err
+	}
 	p, warnings := biz.NewPipeline(toBizConfig(cfg), srcs, alert)
 	for _, w := range warnings {
 		opt.log.Warn(w)
@@ -101,11 +104,11 @@ func (o sourceOpts) feeds(name string) []string {
 	return nil
 }
 
-func (o sourceOpts) build() []biz.Source {
+func (o sourceOpts) build() ([]biz.Source, error) {
 	universe := func(ctx context.Context) ([]string, error) {
 		return o.repo.ActiveSymbols(ctx, time.Now())
 	}
-	return []biz.Source{
+	sources := []biz.Source{
 		NewTushare("", o.token(biz.SourceTushare), o.httpOpt(biz.SourceTushare)),
 		NewTdxLocal(o.url(biz.SourceTdxLocal), o.httpOpt(biz.SourceTdxLocal)),
 		NewTdxFile(o.url(biz.SourceTdxFile), o.httpOpt(biz.SourceTdxFile)),
@@ -118,6 +121,22 @@ func (o sourceOpts) build() []biz.Source {
 		NewTavily(o.token(biz.SourceTavily), o.feeds(biz.SourceTavily), o.httpOpt(biz.SourceTavily)),
 		NewRSS(o.feeds(biz.SourceRSS), o.httpOpt(biz.SourceRSS)),
 	}
+	// No default config or snapshot registration. Both service and source must be explicitly enabled.
+	if cfg := o.src(biz.SourceTdxArchive); cfg != nil && cfg.GetEnabled() {
+		s, err := NewTdxArchiveSource(cfg.GetUrl())
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	if cfg := o.src(biz.SourceOpenBBFred); cfg != nil && cfg.GetEnabled() {
+		s, err := NewOpenBBFredSource(cfg.GetUrl())
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	return sources, nil
 }
 
 func toBizConfig(cfg *conf.Datahub) biz.Config {

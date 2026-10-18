@@ -10,6 +10,7 @@ import (
 
 	v1 "server/api/risk/v1"
 	"server/app/risk/internal/biz"
+	"server/pkg/params"
 	"server/pkg/risk"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -35,22 +36,31 @@ func mapErr(err error) error {
 	if errors.Is(err, biz.ErrInvalid) {
 		return kerrors.BadRequest("RISK_INVALID", err.Error())
 	}
+	if errors.Is(err, params.ErrConflict) {
+		return kerrors.New(409, "CONFIG_CONFLICT", "配置已改变，请重新读取后修改")
+	}
 	return err
 }
 
 func (s *RiskService) CheckOrder(ctx context.Context, req *v1.CheckOrderRequest) (*v1.CheckOrderReply, error) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
+	var expected *int
+	if req.ExpectedConfigRevision != nil {
+		n := int(*req.ExpectedConfigRevision)
+		expected = &n
+	}
 	d, lat := s.e.Check(ctx, risk.Order{
-		ClientID: strings.TrimSpace(req.GetClientOrderId()),
-		Account:  risk.AccountType(strings.ToUpper(strings.TrimSpace(req.GetAccountType()))),
-		Symbol:   strings.TrimSpace(req.GetSymbol()),
-		Side:     risk.Side(strings.ToLower(strings.TrimSpace(req.GetSide()))),
-		Price:    req.GetPrice(),
-		Volume:   int(req.GetVolume()),
-		Source:   risk.Source(strings.ToLower(strings.TrimSpace(req.GetSource()))),
-		Operator: strings.TrimSpace(req.GetOperator()),
-		Sector:   strings.TrimSpace(req.GetSector()),
+		ExpectedConfigRevision: expected,
+		ClientID:               strings.TrimSpace(req.GetClientOrderId()),
+		Account:                risk.AccountType(strings.ToUpper(strings.TrimSpace(req.GetAccountType()))),
+		Symbol:                 strings.TrimSpace(req.GetSymbol()),
+		Side:                   risk.Side(strings.ToLower(strings.TrimSpace(req.GetSide()))),
+		Price:                  req.GetPrice(),
+		Volume:                 int(req.GetVolume()),
+		Source:                 risk.Source(strings.ToLower(strings.TrimSpace(req.GetSource()))),
+		Operator:               strings.TrimSpace(req.GetOperator()),
+		Sector:                 strings.TrimSpace(req.GetSector()),
 	})
 	out := &v1.CheckOrderReply{
 		Approved: d.Approved, Volume: int32(d.Volume), Adjusted: d.Adjusted,
@@ -95,6 +105,14 @@ func (s *RiskService) ResetKillSwitch(ctx context.Context, req *v1.ResetKillSwit
 }
 
 func (s *RiskService) UpdateParam(ctx context.Context, req *v1.UpdateParamRequest) (*v1.StateReply, error) {
+	if req.BaseRevision == nil || req.GetBaseRevision() < 0 {
+		return nil, kerrors.New(428, "CONFIG_BASE_REQUIRED", "保存需base_revision")
+	}
+	ctx = params.WithBase(ctx, int(req.GetBaseRevision()))
+	key := risk.KeyPrefix + strings.TrimPrefix(strings.TrimSpace(req.GetKey()), risk.KeyPrefix)
+	if _, err := params.ValidatePatch(s.e.State().Params, map[string]string{key: req.GetValue()}); err != nil {
+		return nil, kerrors.BadRequest("CONFIG_INVALID", err.Error())
+	}
 	st, err := s.e.UpdateParam(ctx, req.GetKey(), req.GetValue(), strings.TrimSpace(req.GetOperator()))
 	if err != nil {
 		return nil, mapErr(err)
@@ -141,18 +159,23 @@ func (s *RiskService) Limits(_ context.Context, req *v1.LimitsRequest) (*v1.Limi
 }
 
 func toState(st biz.State) *v1.StateReply {
+	configReady := st.ConfigReady
+	ready := st.Ready
 	out := &v1.StateReply{
 		Mode: st.Mode.String(),
 		KillSwitch: &v1.KillSwitch{
 			Active: st.Kill.Active, Source: st.Kill.Source, Reason: st.Kill.Reason,
 			Operator: st.Kill.Operator, At: formatTime(st.Kill.At),
 		},
-		Breakers:      st.Breakers,
-		MarketBreaker: st.MarketBreaker,
-		BuysToday:     int32(st.BuysToday),
-		Params:        st.Params,
-		AccountAsOf:   map[string]string{},
-		LastQuoteAt:   formatTime(st.LastQuoteAt),
+		Breakers:       st.Breakers,
+		MarketBreaker:  st.MarketBreaker,
+		BuysToday:      int32(st.BuysToday),
+		Params:         st.Params,
+		AccountAsOf:    map[string]string{},
+		LastQuoteAt:    formatTime(st.LastQuoteAt),
+		ConfigRevision: int64(st.ConfigRevision),
+		ConfigReady:    &configReady,
+		Ready:          &ready,
 	}
 	for k, t := range st.AccountAsOf {
 		out.AccountAsOf[k] = formatTime(t)

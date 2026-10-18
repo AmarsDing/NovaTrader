@@ -240,6 +240,17 @@ func TestUsecaseDayLifecycle(t *testing.T) {
 	if pub.subs[events.SubjectMarketFactor] == before {
 		t.Fatal("watched symbol must get market.factor.updated")
 	}
+	watched, ok := pub.last[events.SubjectMarketBar].(map[string]any)
+	if !ok {
+		t.Fatal("watched minute bar event missing")
+	}
+	liveBars, ok := watched["bars"].([]market.Bar)
+	if !ok || len(liveBars) == 0 {
+		t.Fatalf("invalid watched bar event: %+v", watched)
+	}
+	if up, down, known := liveBars[0].ExecutionPrices(); !known || up != 11 || down != 9 {
+		t.Fatalf("producer omitted known limits: %+v", liveBars[0])
+	}
 
 	cp := day.Add(10 * time.Hour)
 	if err := uc.Checkpoint(ctx, cp); err != nil {

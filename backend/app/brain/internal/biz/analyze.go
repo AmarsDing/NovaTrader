@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"server/pkg/llm"
+	"server/pkg/observe"
 	"server/pkg/symbol"
 )
 
@@ -68,7 +69,11 @@ func (uc *Usecase) loadPack(ctx context.Context, sym string, asOf time.Time, in 
 
 // Analyze 对单只候选做四维研判（FR-05-02～05）。
 // 模型不可用：综合分取 rule_score，标 ai_degraded。输出两次不合格：标 discarded。
-func (uc *Usecase) Analyze(ctx context.Context, in AnalyzeInput) (*Analysis, error) {
+func (uc *Usecase) Analyze(ctx context.Context, in AnalyzeInput) (result *Analysis, retErr error) {
+	finish := observe.ForService("brain").Op("analyze").Begin()
+	defer func() {
+		finishObservation(finish, retErr, result != nil, result != nil && result.Degraded, result != nil && result.Discarded)
+	}()
 	sym, err := normalizeSymbol(in.Symbol)
 	if err != nil {
 		return nil, err

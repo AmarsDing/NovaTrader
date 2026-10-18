@@ -9,24 +9,25 @@ import (
 
 // Health 是一个「数据域 + 源」的运行统计。FR-01-08。
 type Health struct {
-	Domain        string
-	Source        string
-	Priority      int
-	Enabled       bool
-	Official      bool
-	State         string
-	Failures      int
-	Success       int64
-	Failure       int64
-	LastLatency   time.Duration
-	AvgLatency    time.Duration
-	LastSuccessAt time.Time
-	LastFailureAt time.Time
-	LastError     string
-	QuotaUsed     int64
-	QuotaLimit    int64
-	Active        bool
-	unavailable   bool
+	Domain          string
+	Source          string
+	Priority        int
+	Enabled         bool
+	Official        bool
+	State           string
+	Failures        int
+	Success         int64
+	Failure         int64
+	LastLatency     time.Duration
+	AvgLatency      time.Duration
+	LastSuccessAt   time.Time
+	LastFailureAt   time.Time
+	LastError       string
+	QuotaUsed       int64
+	QuotaLimit      int64
+	Active          bool
+	unavailable     bool
+	coverageUnknown bool
 }
 
 // SuccessRate 返回成功率，没有调用时为 0。
@@ -56,6 +57,14 @@ func (b *healthBook) ensure(domain, source string, priority int, official bool) 
 	k := healthKey(domain, source)
 	if _, ok := b.rows[k]; !ok {
 		b.rows[k] = &Health{Domain: domain, Source: source, Priority: priority, Official: official, Enabled: true, State: StateClosed}
+	}
+}
+
+func (b *healthBook) unknownCoverage(domain, source string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if h := b.rows[healthKey(domain, source)]; h != nil {
+		h.coverageUnknown = true
 	}
 }
 
@@ -112,6 +121,12 @@ func (b *healthBook) list(fill func(h *Health)) []Health {
 		}
 		if c.State == StateClosed && c.unavailable {
 			c.State = StateUnavailable
+		}
+		if c.State == StateClosed && c.coverageUnknown {
+			c.State = "coverage_unknown"
+			if c.LastError == "" {
+				c.LastError = "补源返回记录不等于历史全市场覆盖率或发布时间已验证"
+			}
 		}
 		out = append(out, c)
 	}

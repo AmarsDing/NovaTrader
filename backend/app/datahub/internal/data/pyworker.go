@@ -13,6 +13,7 @@ import (
 
 	"server/app/datahub/internal/biz"
 	"server/pkg/appcfg"
+	"server/pkg/dataset"
 	"server/pkg/market"
 )
 
@@ -97,6 +98,7 @@ func isConnRefused(err error) bool {
 }
 
 type pyBar struct {
+	dataset.Availability
 	Symbol   string    `json:"symbol"`
 	Time     time.Time `json:"time"`
 	Freq     string    `json:"freq"`
@@ -142,7 +144,7 @@ func (p pyworker) bars(ctx context.Context, path string, q biz.BarQuery) (biz.Ba
 		if freq == "" {
 			freq = q.Freq
 		}
-		bars = append(bars, biz.Bar{Symbol: b.Symbol, Time: b.Time, Freq: freq, Open: b.Open, High: b.High, Low: b.Low,
+		bars = append(bars, biz.Bar{Availability: b.Availability, Symbol: b.Symbol, Time: b.Time, Freq: freq, Open: b.Open, High: b.High, Low: b.Low,
 			Close: b.Close, PreClose: b.PreClose, Volume: b.Volume, Amount: b.Amount})
 	}
 	return biz.BarBatch{Bars: bars, Stale: out.Stale, LastDate: out.LastDate, Expect: ymd(q.Expect)}, nil
@@ -191,6 +193,7 @@ func (s *TdxLocal) Securities(ctx context.Context) ([]biz.Security, error) {
 func (p pyworker) securities(ctx context.Context, path string) ([]biz.Security, error) {
 	var out struct {
 		Items []struct {
+			dataset.Availability
 			Symbol string `json:"symbol"`
 			Name   string `json:"name"`
 			Market string `json:"market"`
@@ -202,7 +205,7 @@ func (p pyworker) securities(ctx context.Context, path string) ([]biz.Security, 
 	}
 	items := make([]biz.Security, 0, len(out.Items))
 	for _, x := range out.Items {
-		items = append(items, biz.Security{Symbol: x.Symbol, Name: x.Name, Market: x.Market, ST: x.ST || isST(x.Name)})
+		items = append(items, biz.Security{Availability: x.Availability, Symbol: x.Symbol, Name: x.Name, Market: x.Market, ST: x.ST || isST(x.Name)})
 	}
 	return items, nil
 }

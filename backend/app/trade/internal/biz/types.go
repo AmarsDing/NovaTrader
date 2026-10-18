@@ -1,6 +1,9 @@
 package biz
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Order 是一张委托。Account 对外用 SIM/LIVE，库里用 paper/live。
 type Order struct {
@@ -42,12 +45,14 @@ type Trail struct {
 }
 
 type Cash struct {
-	Book        string
-	Cash        float64
-	RealizedPnL float64
-	PaperDays   int
-	OpenHalted  bool
-	HaltReason  string
+	Book           string
+	Cash           float64
+	RealizedPnL    float64
+	PaperDays      int
+	OpenHalted     bool
+	HaltReason     string
+	DayStartDate   string
+	DayStartEquity float64
 }
 
 type Position struct {
@@ -72,21 +77,27 @@ type AccountView struct {
 }
 
 type PlaceRequest struct {
-	ClientOrderID   string
-	Account         string
-	Symbol          string
-	Side            string
-	Price           float64
-	Volume          int
-	Source          string
-	Operator        string
-	SignalID        string
-	StrategyVersion string
-	Quote           *Quote
+	ExpectedConfigRevision *int
+	FinalCheck             func(context.Context) error
+	BusinessKey            string
+	PlanID                 string
+	PlanRevision           int
+	ClientOrderID          string
+	Account                string
+	Symbol                 string
+	Side                   string
+	Price                  float64
+	Volume                 int
+	Source                 string
+	Operator               string
+	SignalID               string
+	StrategyVersion        string
+	Quote                  *Quote
 }
 
 // Quote 是撮合用的一根不复权 K 线。
 type Quote struct {
+	Time                   time.Time // Bar start; runtime fills may only use bars starting after the order.
 	Open, High, Low, Close float64
 	Volume                 int64
 	LimitUp, LimitDown     float64

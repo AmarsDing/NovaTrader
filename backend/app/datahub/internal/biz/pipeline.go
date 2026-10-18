@@ -111,6 +111,9 @@ func NewPipeline(cfg Config, srcs []Source, alert Alerter) (*Pipeline, []string)
 			}
 			ds.entries = append(ds.entries, &entry{state: st, breaker: NewBreaker(cfg.BreakerFailures, cfg.BreakerCooldown), priority: i})
 			p.health.ensure(domain, name, i, st.cfg.Official)
+			if scope, ok := st.src.(interface{ CoverageUnknown() bool }); ok && scope.CoverageUnknown() {
+				p.health.unknownCoverage(domain, name)
+			}
 		}
 		p.domains[domain] = ds
 	}

@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"server/pkg/events"
+	"server/pkg/market"
+	"server/pkg/tradecal"
 )
 
 const chaseTick = 0.01
 
 // SweepWorking 撤掉超时的盯盘限价单，并在追价上限内重报剩余数量。
-func (e *Engine) SweepWorking(ctx context.Context) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) sweepWorking(ctx context.Context) error {
 	now := e.clock()
 	var due []Order
 	for _, status := range []string{StatusSubmitted, StatusPartial} {
@@ -47,7 +47,34 @@ func chaseable(order Order, now time.Time, timeout time.Duration) bool {
 	if order.CreatedAt.IsZero() {
 		return false
 	}
-	return !now.Before(order.CreatedAt.Add(timeout))
+	return !now.Before(workingDeadline(order, timeout))
+}
+
+// Runtime SIM matching uses closed minute bars labelled by their start. The
+// first entire bar after an intra-minute order cannot be visible until the
+// following minute closes. Give it a normal working window after that point;
+// otherwise a 60-second chase repeatedly cancels before any eligible bar.
+// LIVE remains based on actual submission age and never uses SIM bars.
+func workingDeadline(order Order, timeout time.Duration) time.Time {
+	if order.Book != BookPaper {
+		return order.CreatedAt.Add(timeout)
+	}
+	first, ok := market.Slot(order.CreatedAt)
+	if !ok {
+		return order.CreatedAt.Add(timeout)
+	}
+	if first.Before(order.CreatedAt) {
+		first, ok = market.NextSlot(first)
+		if !ok {
+			return order.CreatedAt.Add(timeout)
+		}
+	}
+	visible := first.Add(time.Minute + 5*time.Second)
+	sh := first.In(tradecal.Shanghai())
+	if sh.Hour() == 11 && sh.Minute() == 29 || sh.Hour() == 14 && sh.Minute() == 59 {
+		visible = visible.Add(25 * time.Second)
+	}
+	return visible.Add(timeout)
 }
 
 func (e *Engine) chase(ctx context.Context, order Order) error {
@@ -89,7 +116,8 @@ func (e *Engine) chase(ctx context.Context, order Order) error {
 	if reason != "超时撤单" || remain <= 0 {
 		return nil
 	}
-	_, err = e.place(ctx, PlaceRequest{
+	_, err = e.placeDurable(ctx, PlaceRequest{
+		BusinessKey:     "chase:" + root + "#" + strconv.Itoa(gen+1),
 		ClientOrderID:   root + "#" + strconv.Itoa(gen+1),
 		Account:         accountOf(fresh.Book),
 		Symbol:          fresh.Symbol,

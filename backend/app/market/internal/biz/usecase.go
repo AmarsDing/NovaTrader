@@ -10,6 +10,7 @@ import (
 	"server/pkg/events"
 	"server/pkg/market"
 	"server/pkg/metrics"
+	"server/pkg/params"
 	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -103,7 +104,10 @@ func (u *Usecase) Warmup(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("warmup: prev phase: %w", err)
 	}
-	rules, weights := u.loadParams(ctx)
+	rules, weights, revision, err := u.loadParams(ctx)
+	if err != nil {
+		return err
+	}
 	members, names, err := u.repo.SectorMembers(ctx, day)
 	if err != nil {
 		return fmt.Errorf("warmup: sectors: %w", err)
@@ -141,6 +145,13 @@ func (u *Usecase) Warmup(ctx context.Context, now time.Time) error {
 		u.impulse = map[string]float64{}
 	}
 	u.mu.Unlock()
+	if revision != nil {
+		if repo, ok := u.repo.(marketConfigRepository); ok {
+			if err := repo.RecordConfig(ctx, *revision, "applied"); err != nil {
+				u.log.Warn("configuration load receipt unavailable")
+			}
+		}
+	}
 	u.log.Infof("warmup %s: %d stocks, %d sectors, prev phase %q", day.Format("2006-01-02"), len(stocks), len(members), phase)
 	return nil
 }
@@ -157,7 +168,33 @@ func sortHeat(rows []market.SectorHeat) {
 	}
 }
 
-func (u *Usecase) loadParams(ctx context.Context) (market.Rules, market.SectorWeights) {
+type marketConfigRepository interface {
+	ConfigSnapshot(context.Context) (params.Snapshot, error)
+	RecordConfig(context.Context, int, string) error
+}
+
+func (u *Usecase) loadParams(ctx context.Context) (market.Rules, market.SectorWeights, *int, error) {
+	if repo, ok := u.repo.(marketConfigRepository); ok {
+		s, err := repo.ConfigSnapshot(ctx)
+		if err != nil {
+			return market.Rules{}, market.SectorWeights{}, nil, fmt.Errorf("market configuration unavailable")
+		}
+		patch := map[string]string{}
+		for _, key := range []string{market.RulesKey, market.SectorWeightsKey} {
+			if v, ok := s.Values[key]; ok {
+				patch[key] = v
+			}
+		}
+		if len(patch) > 0 {
+			if _, err = params.ValidatePatch(s.Values, patch); err != nil {
+				_ = repo.RecordConfig(ctx, s.Revision, "failed")
+				return market.Rules{}, market.SectorWeights{}, nil, err
+			}
+		}
+		rules, _ := market.ParseRules(s.Values[market.RulesKey])
+		weights, _ := market.ParseSectorWeights(s.Values[market.SectorWeightsKey])
+		return rules, weights, &s.Revision, nil
+	}
 	raw, err := u.repo.Config(ctx, market.RulesKey)
 	if err != nil {
 		u.log.Warnf("read %s: %v, using defaults", market.RulesKey, err)
@@ -174,7 +211,7 @@ func (u *Usecase) loadParams(ctx context.Context) (market.Rules, market.SectorWe
 	if err != nil {
 		u.log.Warnf("%v, using defaults", err)
 	}
-	return rules, weights
+	return rules, weights, nil, nil
 }
 
 func sameDate(a, b time.Time) bool {
@@ -277,7 +314,7 @@ func (u *Usecase) publish(ctx context.Context, eng *market.Engine, up market.Upd
 		var wb []market.Bar
 		for _, b := range bars {
 			if _, ok := in[b.Symbol]; ok {
-				wb = append(wb, b)
+				wb = append(wb, eng.WithExecutionLimits(b))
 			}
 		}
 		if len(wb) > 0 {

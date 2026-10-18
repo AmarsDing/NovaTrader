@@ -6,17 +6,23 @@ import (
 
 	"server/app/trade/internal/biz"
 	"server/ent"
+	"server/ent/executionintent"
 	"server/ent/position"
 	"server/ent/tradecash"
 	"server/ent/tradefill"
 	"server/ent/tradeorder"
+	"server/pkg/accountstate"
 	"server/pkg/events"
+	"server/pkg/market"
 	"server/pkg/outbox"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/go-redis/redis/v8"
 )
 
 type Repo struct {
+	quote  func(context.Context, string) (market.Snapshot, error)
+	rdb    *redis.Client
 	client *ent.Client
 	log    *log.Helper
 }
@@ -26,7 +32,7 @@ func NewRepo(client *ent.Client, logger log.Logger) *Repo {
 }
 
 func (r *Repo) LoadOrder(ctx context.Context, clientID string) (biz.Order, bool, error) {
-	row, err := r.client.TradeOrder.Query().Where(tradeorder.ClientOrderIDEQ(clientID)).Only(ctx)
+	row, err := r.clientFor(ctx).TradeOrder.Query().Where(tradeorder.ClientOrderIDEQ(clientID)).Only(ctx)
 	if ent.IsNotFound(err) {
 		return biz.Order{}, false, nil
 	}
@@ -37,7 +43,7 @@ func (r *Repo) LoadOrder(ctx context.Context, clientID string) (biz.Order, bool,
 }
 
 func (r *Repo) LoadCash(ctx context.Context, book string) (biz.Cash, bool, error) {
-	row, err := r.client.TradeCash.Query().Where(tradecash.BookEQ(book)).Only(ctx)
+	row, err := r.clientFor(ctx).TradeCash.Query().Where(tradecash.BookEQ(book)).Only(ctx)
 	if ent.IsNotFound(err) {
 		return biz.Cash{}, false, nil
 	}
@@ -47,11 +53,12 @@ func (r *Repo) LoadCash(ctx context.Context, book string) (biz.Cash, bool, error
 	return biz.Cash{
 		Book: row.Book, Cash: row.Cash, RealizedPnL: row.RealizedPnl,
 		PaperDays: row.PaperDays, OpenHalted: row.OpenHalted, HaltReason: row.HaltReason,
+		DayStartDate: row.DayStartDate, DayStartEquity: row.DayStartEquity,
 	}, true, nil
 }
 
 func (r *Repo) LoadPosition(ctx context.Context, book, symbol string) (biz.Position, bool, error) {
-	row, err := r.client.Position.Query().Where(position.BookEQ(book), position.SymbolEQ(symbol)).Only(ctx)
+	row, err := r.clientFor(ctx).Position.Query().Where(position.BookEQ(book), position.SymbolEQ(symbol)).Only(ctx)
 	if ent.IsNotFound(err) {
 		return biz.Position{}, false, nil
 	}
@@ -62,7 +69,7 @@ func (r *Repo) LoadPosition(ctx context.Context, book, symbol string) (biz.Posit
 }
 
 func (r *Repo) ListPositions(ctx context.Context, book string) ([]biz.Position, error) {
-	rows, err := r.client.Position.Query().Where(position.BookEQ(book)).All(ctx)
+	rows, err := r.clientFor(ctx).Position.Query().Where(position.BookEQ(book)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +81,7 @@ func (r *Repo) ListPositions(ctx context.Context, book string) ([]biz.Position, 
 }
 
 func (r *Repo) ListOpen(ctx context.Context, book, symbol string) ([]biz.Order, error) {
-	q := r.client.TradeOrder.Query().Where(
+	q := r.clientFor(ctx).TradeOrder.Query().Where(
 		tradeorder.BookEQ(book),
 		tradeorder.StatusIn(biz.StatusSubmitted, biz.StatusPartial),
 	)
@@ -93,11 +100,14 @@ func (r *Repo) ListOpen(ctx context.Context, book, symbol string) ([]biz.Order, 
 }
 
 func (r *Repo) ListOrders(ctx context.Context, book string, limit int) ([]biz.Order, error) {
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 100
 	}
-	rows, err := r.client.TradeOrder.Query().Where(tradeorder.BookEQ(book)).
-		Order(ent.Desc(tradeorder.FieldCreatedAt)).Limit(limit).All(ctx)
+	q := r.clientFor(ctx).TradeOrder.Query().Where(tradeorder.BookEQ(book)).Order(ent.Desc(tradeorder.FieldCreatedAt))
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	rows, err := q.All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +119,14 @@ func (r *Repo) ListOrders(ctx context.Context, book string, limit int) ([]biz.Or
 }
 
 func (r *Repo) ListFills(ctx context.Context, book string, limit int) ([]biz.Fill, error) {
-	if limit <= 0 {
+	if limit == 0 {
 		limit = 100
 	}
-	rows, err := r.client.TradeFill.Query().Where(tradefill.BookEQ(book)).
-		Order(ent.Desc(tradefill.FieldCreatedAt)).Limit(limit).All(ctx)
+	q := r.clientFor(ctx).TradeFill.Query().Where(tradefill.BookEQ(book)).Order(ent.Desc(tradefill.FieldCreatedAt))
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	rows, err := q.All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +138,7 @@ func (r *Repo) ListFills(ctx context.Context, book string, limit int) ([]biz.Fil
 }
 
 func (r *Repo) ListByStatus(ctx context.Context, status string) ([]biz.Order, error) {
-	rows, err := r.client.TradeOrder.Query().Where(tradeorder.StatusEQ(status)).All(ctx)
+	rows, err := r.clientFor(ctx).TradeOrder.Query().Where(tradeorder.StatusEQ(status)).All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -137,13 +150,16 @@ func (r *Repo) ListByStatus(ctx context.Context, status string) ([]biz.Order, er
 }
 
 func (r *Repo) Commit(ctx context.Context, batch biz.Batch) error {
-	tx, err := r.client.Tx(ctx)
+	tx, commit, rollback, err := r.transaction(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer rollback()
 	now := time.Now()
 	for _, o := range batch.Orders {
+		if _, err := tx.ExecutionIntent.Update().Where(executionintent.ClientOrderID(o.ClientOrderID)).SetState(o.Status).SetReason(o.Reason).Save(ctx); err != nil {
+			return err
+		}
 		if err := tx.TradeOrder.Create().
 			SetClientOrderID(o.ClientOrderID).
 			SetBook(o.Book).
@@ -197,6 +213,8 @@ func (r *Repo) Commit(ctx context.Context, batch biz.Batch) error {
 			SetBook(c.Book).
 			SetCash(c.Cash).
 			SetRealizedPnl(c.RealizedPnL).
+			SetDayStartDate(c.DayStartDate).
+			SetDayStartEquity(c.DayStartEquity).
 			SetPaperDays(c.PaperDays).
 			SetOpenHalted(c.OpenHalted).
 			SetHaltReason(c.HaltReason).
@@ -229,7 +247,7 @@ func (r *Repo) Commit(ctx context.Context, batch biz.Batch) error {
 		}
 	}
 	for _, ev := range batch.Events {
-		env, err := events.New("trade", ev.Subject, events.TraceID(ctx), ev.Payload)
+		env, err := events.NewWithContext(ctx, "trade", ev.Subject, ev.Payload)
 		if err != nil {
 			return err
 		}
@@ -237,25 +255,69 @@ func (r *Repo) Commit(ctx context.Context, batch biz.Batch) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	return commit()
 }
 
-func (r *Repo) SaveSnapshot(ctx context.Context, book string, view biz.AccountView) error {
+func (r *Repo) CommitSnapshot(ctx context.Context, book string, view biz.AccountView, cash biz.Cash, state accountstate.Snapshot) (accountstate.Snapshot, error) {
+	// PostgreSQL timestamptz persists microseconds. Keep the complete JSON,
+	// indexed timestamp and transactional outbox on exactly the same clock value.
+	state.AsOf = state.AsOf.UTC().Truncate(time.Microsecond)
+	state.Reconciliation.AsOf = state.Reconciliation.AsOf.UTC().Truncate(time.Microsecond)
+	tx, commit, rollback, err := r.transaction(ctx)
+	if err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	defer rollback()
 	ratio := 0.0
 	if view.Equity > 0 {
 		ratio = (view.Equity - view.Cash) / view.Equity
 	}
-	return r.client.AccountSnapshot.Create().
+	row, err := tx.AccountSnapshot.Create().
 		SetBook(book).
-		SetSnapshotTime(time.Now()).
+		SetSnapshotTime(state.AsOf).
 		SetTotalEquity(view.Equity).
-		SetAvailableFunds(view.Cash).
+		SetAvailableFunds(state.Available).
 		SetUnrealizedPnl(view.UnrealizedPnL).
 		SetRealizedPnl(view.RealizedPnL).
 		SetMarginUsed(0).
 		SetRiskRatio(ratio).
 		SetPositionCount(view.PositionCount).
-		Exec(ctx)
+		Save(ctx)
+	if err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	state.Generation = int64(row.ID)
+	if err := snapshotValuation(ctx, tx.Client(), book, &state); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	if err := state.Validate(); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	env, err := events.NewWithContext(ctx, "trade", events.SubjectTradeAccount, state)
+	if err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	env.EntityID = string(state.AccountType) + ":" + state.AccountID
+	env.EntityVersion = state.Generation
+	if err := tx.AccountSnapshot.UpdateOne(row).SetState(env.Payload).Exec(ctx); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	// The baseline and initial cash are committed with the snapshot. A crash can
+	// never expose an outbox frame whose full state was not stored.
+	if err := tx.TradeCash.Create().SetBook(cash.Book).SetCash(cash.Cash).
+		SetRealizedPnl(cash.RealizedPnL).SetPaperDays(cash.PaperDays).
+		SetOpenHalted(cash.OpenHalted).SetHaltReason(cash.HaltReason).
+		SetDayStartDate(cash.DayStartDate).SetDayStartEquity(cash.DayStartEquity).
+		OnConflictColumns(tradecash.FieldBook).UpdateNewValues().Exec(ctx); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	if err := outbox.Insert(ctx, tx, env); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	if err := commit(); err != nil {
+		return accountstate.Snapshot{}, err
+	}
+	return state, nil
 }
 
 func orderFrom(row *ent.TradeOrder) biz.Order {

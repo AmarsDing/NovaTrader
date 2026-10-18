@@ -2,6 +2,7 @@ package biz
 
 import (
 	"testing"
+	"time"
 
 	"server/pkg/risk"
 )
@@ -19,8 +20,8 @@ func TestLimitsUsage(t *testing.T) {
 	r := newRig(t, nil)
 	// 权益 100 万，持仓市值 30 万（银行 20 万 + 券商 10 万）
 	r.account(1_000_000, 500_000,
-		risk.Holding{Symbol: "000001.SZ", MarketValue: 200_000, Sector: "银行"},
-		risk.Holding{Symbol: "600030.SH", MarketValue: 100_000, Sector: "券商"},
+		risk.Holding{Symbol: "000001.SZ", Quantity: 20000, Available: 20000, AvgCost: 10, MarketValue: 200_000, Sector: "银行"},
+		risk.Holding{Symbol: "600030.SH", Quantity: 10000, Available: 10000, AvgCost: 10, MarketValue: 100_000, Sector: "券商"},
 	)
 
 	items := r.e.Limits("")
@@ -83,16 +84,26 @@ func TestLimitsDailyLoss(t *testing.T) {
 
 func TestLimitsAccountFilter(t *testing.T) {
 	r := newRig(t, nil)
-	r.account(1_000_000, 500_000, risk.Holding{Symbol: "000001.SZ", MarketValue: 100_000})
+	r.account(1_000_000, 500_000, risk.Holding{Symbol: "000001.SZ", Quantity: 10000, Available: 10000, AvgCost: 10, MarketValue: 100_000})
 	items := r.e.Limits("SIM")
 	total := findLimit(items, "risk.max_total_pct")
 	if total.Used != 100_000 {
 		t.Fatalf("SIM 总仓用量 = %v，want 100000", total.Used)
 	}
-	// 选 LIVE：没有 LIVE 账户快照，权益为 0，上限随之归零
+	// Missing LIVE is unknown, never a confirmed zero-position account.
 	live := r.e.Limits("LIVE")
 	lt := findLimit(live, "risk.max_total_pct")
-	if lt.Used != 0 || lt.Limit != 0 {
-		t.Fatalf("LIVE 总仓 = %v/%v，want 0/0（无快照）", lt.Used, lt.Limit)
+	if lt.Used != -1 || lt.Limit != -1 || lt.Ratio != -1 {
+		t.Fatalf("LIVE 总仓 = %v/%v，want unknown（无完整快照）", lt.Used, lt.Limit)
+	}
+}
+
+func TestStaleAccountLimitsAreUnknown(t *testing.T) {
+	r := newRig(t, nil)
+	r.account(1_000_000, 500_000)
+	r.clock = r.clock.Add(61 * time.Second)
+	item := findLimit(r.e.Limits("SIM"), "risk.max_total_pct")
+	if item.Used != -1 || item.Limit != -1 || item.Ratio != -1 {
+		t.Fatal("stale account displayed as live exposure", item)
 	}
 }

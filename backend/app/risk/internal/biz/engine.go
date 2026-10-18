@@ -10,7 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"server/pkg/accountstate"
 	"server/pkg/events"
+	"server/pkg/market"
 	"server/pkg/risk"
 	"server/pkg/symbol"
 	"server/pkg/tradecal"
@@ -20,11 +22,10 @@ import (
 )
 
 const (
-	reservationTTL   = 60 * time.Second
-	reservationGrace = 2 * time.Second
-	exitCooldown     = 60 * time.Second
-	quoteCacheTTL    = time.Second
-	refRefresh       = 10 * time.Minute
+	reservationTTL = 60 * time.Second
+	exitCooldown   = 60 * time.Second
+	quoteCacheTTL  = time.Second
+	refRefresh     = 10 * time.Minute
 )
 
 // ErrInvalid 是参数错误，service 层转成 400。
@@ -56,20 +57,23 @@ type Engine struct {
 	session func(time.Time) tradecal.Session
 	cal     *tradecal.Calendar
 
-	ready   atomic.Bool
-	checkMu sync.Mutex
-	killMu  sync.Mutex
-	mu      sync.RWMutex
+	ready          atomic.Bool
+	checkMu        sync.Mutex
+	killMu         sync.Mutex
+	mu             sync.RWMutex
+	configMu       sync.Mutex
+	configRevision int
 
-	params      risk.Params
-	mode        risk.Mode
-	kill        risk.KillState
-	killUnsaved bool
-	accounts    map[risk.AccountType]risk.Account
-	cache       map[string]cachedQuote
-	ref         map[string]RefInfo
-	refAt       time.Time
-	market      risk.Market
+	params        risk.Params
+	mode          risk.Mode
+	kill          risk.KillState
+	killUnsaved   bool
+	accounts      map[risk.AccountType]risk.Account
+	accountStates map[risk.AccountType]accountstate.Snapshot
+	cache         map[string]cachedQuote
+	ref           map[string]RefInfo
+	refAt         time.Time
+	market        risk.Market
 
 	lastQuoteAt  time.Time
 	tradingSince time.Time
@@ -90,20 +94,21 @@ type Engine struct {
 func NewEngine(repo Repo, quotes QuoteSource, audit Auditor, pub Publisher, logger log.Logger) *Engine {
 	e := &Engine{
 		repo: repo, quotes: quotes, audit: audit, pub: pub,
-		log:          log.NewHelper(log.With(logger, "module", "risk/biz")),
-		now:          time.Now,
-		cal:          tradecal.Default,
-		params:       risk.Defaults(),
-		accounts:     map[risk.AccountType]risk.Account{},
-		cache:        map[string]cachedQuote{},
-		ref:          map[string]RefInfo{},
-		reservations: map[string]reservation{},
-		buys:         map[risk.AccountType]int{},
-		rates:        map[risk.AccountType]*risk.Rate{risk.SIM: {}, risk.LIVE: {}},
-		breakers:     map[risk.AccountType]string{},
-		highs:        map[string]float64{},
-		news:         map[string]string{},
-		exits:        map[string]time.Time{},
+		log:           log.NewHelper(log.With(logger, "module", "risk/biz")),
+		now:           time.Now,
+		cal:           tradecal.Default,
+		params:        risk.Defaults(),
+		accounts:      map[risk.AccountType]risk.Account{},
+		accountStates: map[risk.AccountType]accountstate.Snapshot{},
+		cache:         map[string]cachedQuote{},
+		ref:           map[string]RefInfo{},
+		reservations:  map[string]reservation{},
+		buys:          map[risk.AccountType]int{},
+		rates:         map[risk.AccountType]*risk.Rate{risk.SIM: {}, risk.LIVE: {}},
+		breakers:      map[risk.AccountType]string{},
+		highs:         map[string]float64{},
+		news:          map[string]string{},
+		exits:         map[string]time.Time{},
 	}
 	e.session = func(t time.Time) tradecal.Session {
 		s, err := e.cal.SessionAt(t)
@@ -117,6 +122,7 @@ func NewEngine(repo Repo, quotes QuoteSource, audit Auditor, pub Publisher, logg
 
 // Start 从库里恢复参数、Kill Switch 和模式。Kill Switch 已触发时保持触发。
 func (e *Engine) Start(ctx context.Context) error {
+	e.ready.Store(false)
 	rows, err := e.repo.LoadParams(ctx)
 	if err != nil {
 		return fmt.Errorf("risk: load params: %w", err)
@@ -158,6 +164,18 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.mu.Unlock()
 	e.refreshRef(ctx)
+	snapshots, err := e.repo.LoadAccountSnapshots(ctx)
+	if err != nil {
+		return fmt.Errorf("risk: restore accounts: %w", err)
+	}
+	for _, state := range snapshots {
+		if err := e.installAccount(ctx, state, true); err != nil {
+			return fmt.Errorf("risk: restore account: %w", err)
+		}
+	}
+	if err := e.ReloadConfig(ctx); err != nil {
+		return err
+	}
 	e.ready.Store(true)
 	e.log.Infof("risk started: mode=%s kill_switch=%v", mode, kill.Active)
 	return nil
@@ -188,6 +206,25 @@ func (e *Engine) Check(ctx context.Context, o risk.Order) (risk.Decision, time.D
 	now := e.now()
 	in, p := e.input(o, now, snap, haveSnap)
 	d := risk.Check(in, p)
+	if o.ExpectedConfigRevision != nil && *o.ExpectedConfigRevision != in.ConfigRevision {
+		d = risk.Reject(risk.RuleInvalid, "风控尚未加载计划绑定的配置版本")
+	}
+	if d.Approved {
+		e.mu.RLock()
+		state, known := e.accountStates[o.Account]
+		unresolved := false
+		for _, r := range e.reservations {
+			if r.account == o.Account && now.Sub(r.At) > reservationTTL {
+				unresolved = true
+			}
+		}
+		e.mu.RUnlock()
+		if !known || !state.Ready(now, p.AccountMaxAge) {
+			d = risk.Reject(risk.RuleInvalid, "账户完整快照缺失、过期、日初权益未知或对账未就绪")
+		} else if o.Side == risk.Buy && unresolved {
+			d = risk.Reject(risk.RuleInvalid, "已批准委托仍未进入账户账本，请核对原委托")
+		}
+	}
 	if !e.ready.Load() {
 		d = risk.Reject(risk.RuleInvalid, "风控尚未从库里恢复状态")
 	}
@@ -227,14 +264,15 @@ func (e *Engine) input(o risk.Order, now time.Time, snap Snapshot, haveSnap bool
 		o.Sector = e.ref[o.Symbol].Industry
 	}
 	in := risk.Input{
-		Now:        now,
-		Session:    e.session(now),
-		Mode:       e.mode,
-		KillSwitch: e.kill.Active,
-		Breaker:    e.breakers[o.Account],
-		Order:      o,
-		Account:    acct,
-		Market:     e.marketView(),
+		ConfigRevision: e.configRevision,
+		Now:            now,
+		Session:        e.session(now),
+		Mode:           e.mode,
+		KillSwitch:     e.kill.Active,
+		Breaker:        e.breakers[o.Account],
+		Order:          o,
+		Account:        acct,
+		Market:         e.marketView(),
 	}
 	if haveSnap {
 		q := e.toQuote(snap, now)
@@ -268,12 +306,9 @@ func (e *Engine) toQuote(s Snapshot, now time.Time) risk.Quote {
 		Symbol: s.Symbol, Last: s.Last, PrevClose: s.PreClose, Bid1: s.Bid1, Ask1: s.Ask1,
 		Amount: s.Amount, PrevAmount: ref.PrevAmount, ST: ref.ST, Suspended: ref.Suspended,
 		ListedDays: e.listedDays(ref.ListDate, now),
-		Time:       s.AsOf,
+		Time:       (market.Snapshot{Time: s.Time, AsOf: s.AsOf}).FreshnessTime(),
 	}
-	if q.Time.IsZero() {
-		q.Time = s.Time
-	}
-	if s.Stale {
+	if s.Stale || s.Time.After(now.Add(time.Minute)) || s.AsOf.After(now.Add(time.Minute)) {
 		q.Time = time.Time{}
 	}
 	return q
@@ -346,8 +381,9 @@ func (e *Engine) storeQuotes(m map[string]Snapshot) {
 	defer e.mu.Unlock()
 	for sym, s := range m {
 		e.cache[sym] = cachedQuote{snap: s, fetched: now}
-		if !s.Stale && s.AsOf.After(e.lastQuoteAt) {
-			e.lastQuoteAt = s.AsOf
+		at := (market.Snapshot{Time: s.Time, AsOf: s.AsOf}).FreshnessTime()
+		if !s.Stale && !s.Time.After(now.Add(time.Minute)) && !s.AsOf.After(now.Add(time.Minute)) && at.After(e.lastQuoteAt) {
+			e.lastQuoteAt = at
 		}
 	}
 }
@@ -368,11 +404,37 @@ func (e *Engine) rollDay(now time.Time) {
 }
 
 // OnAccount 收到账户快照：替换内存账本，清掉已进入快照的预留，检查当日亏损熔断。
-func (e *Engine) OnAccount(ctx context.Context, p AccountPayload) {
-	if p.AccountType != risk.SIM && p.AccountType != risk.LIVE {
-		e.log.Warnf("account snapshot with bad type %q", p.AccountType)
-		return
+func (e *Engine) OnAccount(ctx context.Context, p AccountPayload) error {
+	return e.installAccount(ctx, p, false)
+}
+
+// ConsumeAccount is shared by the actual event consumer and contract tests.
+// It checks required JSON fields before zero-valued fields can be mistaken for
+// a confirmed empty account.
+func (e *Engine) ConsumeAccount(ctx context.Context, raw []byte) error {
+	p, err := accountstate.Decode(raw)
+	if err != nil {
+		return err
 	}
+	return e.OnAccount(ctx, p)
+}
+
+func (e *Engine) installAccount(ctx context.Context, p AccountPayload, restore bool) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	now := e.now()
+	if p.AsOf.After(now.Add(5 * time.Second)) {
+		return fmt.Errorf("account snapshot: future time")
+	}
+	e.mu.RLock()
+	maxAge := e.params.AccountMaxAge
+	e.mu.RUnlock()
+	if !restore && !p.Fresh(now, maxAge) {
+		return fmt.Errorf("account snapshot: stale")
+	}
+	e.checkMu.Lock()
+	defer e.checkMu.Unlock()
 	acct := risk.Account{
 		Type: p.AccountType, Equity: p.Equity, Available: p.Available, DayStartEquity: p.DayStartEquity,
 		Holdings: make(map[string]risk.Holding, len(p.Holdings)), AsOf: p.AsOf,
@@ -389,12 +451,11 @@ func (e *Engine) OnAccount(ctx context.Context, p AccountPayload) {
 			acct.Open = append(acct.Open, o)
 		}
 	}
-	now := e.now()
 	e.rollDay(now)
 	e.mu.Lock()
-	if prev, ok := e.accounts[p.AccountType]; ok && prev.AsOf.After(p.AsOf) {
+	if prev, ok := e.accountStates[p.AccountType]; ok && (prev.Generation >= p.Generation || prev.AsOf.After(p.AsOf) || prev.SnapshotID == p.SnapshotID) {
 		e.mu.Unlock()
-		return
+		return fmt.Errorf("account snapshot: duplicate or out of order")
 	}
 	for s, h := range acct.Holdings {
 		if h.Sector == "" {
@@ -408,8 +469,13 @@ func (e *Engine) OnAccount(ctx context.Context, p AccountPayload) {
 		}
 	}
 	e.accounts[p.AccountType] = acct
+	e.accountStates[p.AccountType] = p
+	observed := make(map[string]bool, len(p.ObservedOrders))
+	for _, id := range p.ObservedOrders {
+		observed[id] = true
+	}
 	for id, r := range e.reservations {
-		if r.account == p.AccountType && r.At.Add(reservationGrace).Before(p.AsOf) {
+		if r.account == p.AccountType && observed[id] {
 			delete(e.reservations, id)
 		}
 	}
@@ -425,6 +491,7 @@ func (e *Engine) OnAccount(ctx context.Context, p AccountPayload) {
 			e.log.Errorf("save breaker: %v", err)
 		}
 	}
+	return nil
 }
 
 // OnOrderAction 把撤单计入速度上限。申报在 Check 放行时已经计过。
@@ -482,6 +549,7 @@ func (e *Engine) OnIntelAlert(p IntelAlertPayload) {
 
 // OnSnapshot 在每轮快照后刷新持仓标的的行情并盯盘。兜底轮询时 meta 为零值。
 func (e *Engine) OnSnapshot(ctx context.Context, meta SnapshotMetaPayload) {
+	now := e.now()
 	e.mu.Lock()
 	if meta.Count > 0 && !meta.Stale && meta.AsOf.After(e.lastQuoteAt) {
 		e.lastQuoteAt = meta.AsOf
@@ -490,6 +558,9 @@ func (e *Engine) OnSnapshot(ctx context.Context, meta SnapshotMetaPayload) {
 	e.mu.RLock()
 	set := map[string]struct{}{}
 	for _, a := range e.accounts {
+		if !e.accountStates[a.Type].Ready(now, e.params.AccountMaxAge) {
+			continue
+		}
 		for sym, h := range a.Holdings {
 			if h.Quantity > 0 {
 				set[sym] = struct{}{}
@@ -520,9 +591,15 @@ func (e *Engine) watch(ctx context.Context, snaps map[string]Snapshot) {
 	e.mu.Lock()
 	sess := e.session(now)
 	for _, a := range e.accounts {
+		if !e.accountStates[a.Type].Ready(now, e.params.AccountMaxAge) {
+			continue
+		}
 		for sym, h := range a.Holdings {
 			s, ok := snaps[sym]
 			if !ok || h.Quantity <= 0 {
+				continue
+			}
+			if (market.Snapshot{Time: s.Time, AsOf: s.AsOf, Stale: s.Stale}).Expired(now, e.params.QuoteMaxDelay) {
 				continue
 			}
 			key := string(a.Type) + "|" + sym
@@ -562,11 +639,8 @@ func (e *Engine) Tick(ctx context.Context) {
 	e.rollDay(now)
 	sess := e.session(now)
 	e.mu.Lock()
-	for id, r := range e.reservations {
-		if now.Sub(r.At) > reservationTTL {
-			delete(e.reservations, id)
-		}
-	}
+	// An elapsed TTL is not proof an order was rejected. Keep unresolved
+	// reservations and block new buys until a full ledger observes the order ID.
 	refDue := now.Sub(e.refAt) > refRefresh
 	down := false
 	var since time.Duration
@@ -763,6 +837,12 @@ func (e *Engine) UpdateParam(ctx context.Context, key, value, operator string) (
 	if err := e.repo.SaveParam(ctx, risk.KeyPrefix+key, canonical, old, operator); err != nil {
 		return State{}, err
 	}
+	if _, ok := e.repo.(configRepository); ok {
+		if err := e.ReloadConfig(ctx); err != nil {
+			return State{}, err
+		}
+		return e.State(), nil
+	}
 	e.mu.Lock()
 	cur := e.params.Clone()
 	_ = cur.Set(key, canonical)
@@ -782,22 +862,28 @@ func (e *Engine) UpdateParam(ctx context.Context, key, value, operator string) (
 
 // State 是对外展示的状态。
 type State struct {
-	Mode          risk.Mode
-	Kill          risk.KillState
-	Breakers      map[string]string
-	MarketBreaker string
-	BuysToday     int
-	Params        map[string]string
-	AccountAsOf   map[string]time.Time
-	LastQuoteAt   time.Time
+	Ready          bool
+	Mode           risk.Mode
+	Kill           risk.KillState
+	Breakers       map[string]string
+	MarketBreaker  string
+	BuysToday      int
+	Params         map[string]string
+	AccountAsOf    map[string]time.Time
+	LastQuoteAt    time.Time
+	ConfigRevision int
+	ConfigReady    bool
 }
 
 func (e *Engine) State() State {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	s := State{
-		Mode: e.mode, Kill: e.kill, MarketBreaker: e.marketBrk, Params: e.params.Values(),
+		Ready: e.ready.Load(),
+		Mode:  e.mode, Kill: e.kill, MarketBreaker: e.marketBrk, Params: e.params.Values(),
 		Breakers: map[string]string{}, AccountAsOf: map[string]time.Time{}, LastQuoteAt: e.lastQuoteAt,
+		ConfigRevision: e.configRevision,
+		ConfigReady:    e.ready.Load(),
 	}
 	for k, v := range e.breakers {
 		s.Breakers[string(k)] = v

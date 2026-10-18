@@ -11,10 +11,12 @@ import (
 	"github.com/google/wire"
 )
 
-var ProviderSet = wire.NewSet(NewTradeService)
+var ProviderSet = wire.NewSet(NewTradeService, NewAdmissionService, NewNavService)
 
 type TradeService struct {
 	v1.UnimplementedTradeServer
+	v1.UnimplementedAutomationServer
+	v1.UnimplementedPortfolioAllocationServer
 	e *biz.Engine
 }
 
@@ -23,6 +25,9 @@ func NewTradeService(e *biz.Engine) *TradeService { return &TradeService{e: e} }
 func mapErr(err error) error {
 	if err == nil {
 		return nil
+	}
+	if errors.Is(err, biz.ErrConflict) || errors.Is(err, biz.ErrUncertain) {
+		return kerrors.Conflict("TRADE_CONFLICT", err.Error())
 	}
 	if errors.Is(err, biz.ErrInvalid) {
 		return kerrors.BadRequest("TRADE_INVALID", err.Error())
@@ -34,14 +39,14 @@ func mapErr(err error) error {
 }
 
 func (s *TradeService) PlaceOrder(ctx context.Context, req *v1.PlaceOrderRequest) (*v1.Order, error) {
+	if req.GetBar() != nil {
+		return nil, kerrors.BadRequest("CLIENT_MARKET_INPUT_DISABLED", "委托不能携带客户端撮合行情；模拟成交仅使用服务器行情")
+	}
 	in := biz.PlaceRequest{
 		ClientOrderID: req.GetClientOrderId(), Account: req.GetAccount(), Symbol: req.GetSymbol(),
 		Side: req.GetSide(), Price: req.GetPrice(), Volume: int(req.GetVolume()),
 		Source: req.GetSource(), Operator: req.GetOperator(),
 		SignalID: req.GetSignalId(), StrategyVersion: req.GetStrategyVersion(),
-	}
-	if b := req.GetBar(); b != nil && (b.GetOpen() > 0 || b.GetVolume() > 0) {
-		in.Quote = quoteOf(b)
 	}
 	o, err := s.e.Place(ctx, in)
 	if err != nil {
@@ -90,19 +95,7 @@ func (s *TradeService) GetAccount(ctx context.Context, req *v1.GetAccountRequest
 }
 
 func (s *TradeService) ApplyBar(ctx context.Context, req *v1.ApplyBarRequest) (*v1.ApplyBarReply, error) {
-	q := biz.Quote{}
-	if req.GetBar() != nil {
-		q = *quoteOf(req.GetBar())
-	}
-	orders, err := s.e.ApplyBar(ctx, req.GetAccount(), req.GetSymbol(), q)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	out := &v1.ApplyBarReply{}
-	for _, o := range orders {
-		out.Orders = append(out.Orders, toOrder(o))
-	}
-	return out, nil
+	return nil, kerrors.Forbidden("CLIENT_MARKET_INPUT_DISABLED", "公开接口不接受撮合行情；模拟账本由服务器行情驱动")
 }
 
 func (s *TradeService) RollDay(ctx context.Context, req *v1.RollDayRequest) (*v1.Account, error) {
