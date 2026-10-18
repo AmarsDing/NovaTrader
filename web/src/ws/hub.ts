@@ -5,6 +5,9 @@
  * - 按主题去重：回放帧若 seq 不大于已见值则丢弃，避免重复套用；
  * - 动态订阅：subscribe('market'|'brain') 引用计数，server 端 sub 是整体替换，
  *   每次增删都重发当前期望全集；signal/position/alert 常驻。
+ * - 行情订阅可带证券兴趣（P0-3）：subscribe('market', {symbol, freq?}) 把期望并集
+ *   作为 market_filters 随 sub 下发，服务端按 symbol/freq 收窄推送与回放；
+ *   任何一个 market 订阅者未声明兴趣即整体回退为全量（字段不下发，兼容旧服务端）。
  */
 import { reactive } from 'vue'
 import { healthz } from '@/api/system'
@@ -23,12 +26,18 @@ export interface HubDeps {
   deskNotify: (title: string, body: string) => Promise<boolean>
 }
 
+/** market 主题的证券兴趣声明：symbol 必填；省略 freq 表示该证券全部周期。 */
+export interface MarketInterest {
+  symbol: string
+  freq?: string
+}
+
 export interface WsHub {
   link: { health: string; ws: string; sync: string; lastAt: Date | null; error: string }
   isLive: () => boolean
   onPush: (fn: (msg: WsPushMessage) => void | Promise<void>) => () => void
-  /** 按需订阅主题；返回取消函数。取消后引用归零才真正退订。 */
-  subscribe: (topic: WsTopic) => () => void
+  /** 按需订阅主题；返回取消函数。取消后引用归零才真正退订。market 可用 interest 收窄到证券。 */
+  subscribe: (topic: WsTopic, interest?: MarketInterest) => () => void
   onResync: (topics: readonly WsTopic[], handler: (context: WsResyncContext) => Promise<void>) => () => void
   startLink: () => void
   stopLink: () => void
@@ -76,6 +85,33 @@ export function createWsHub(deps: HubDeps): WsHub {
   let requestAbort = new AbortController()
   let buffer: WsEnvelope[] = []
   let initialized = false
+  /** market 兴趣 handle：每个订阅者一份；null = 该订阅者未收窄（一票全量）。 */
+  let interestSeq = 0
+  const marketInterests = new Map<number, MarketInterest | null>()
+  let sentFiltersKey = ''
+
+  /** 当前期望的 market_filters 并集；undefined = 不下发字段（未订阅 market 或存在未收窄订阅者）。 */
+  function desiredMarketFilters(): MarketInterest[] | undefined {
+    if ((counters.get('market') ?? 0) <= 0) return undefined
+    if (!marketInterests.size) return undefined
+    const out: MarketInterest[] = []
+    const seen = new Set<string>()
+    for (const interest of marketInterests.values()) {
+      if (!interest) return undefined
+      const symbol = interest.symbol.trim()
+      if (!symbol) return undefined
+      const freq = interest.freq?.trim() || ''
+      const key = `${symbol} ${freq}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(freq ? { symbol, freq } : { symbol })
+    }
+    return out.length ? out : undefined
+  }
+
+  function filtersKey(): string {
+    return JSON.stringify(desiredMarketFilters() ?? null)
+  }
 
   function loadCursor() {
     try {
@@ -140,6 +176,8 @@ export function createWsHub(deps: HubDeps): WsHub {
     deliveryCount = 0
     Object.keys(acceptedSeq).forEach((key) => delete acceptedSeq[key])
     link.sync = 'syncing'
+    const marketFilters = desiredMarketFilters()
+    sentFiltersKey = filtersKey()
     socket.send(
       JSON.stringify({
         op: force ? 'resync' : 'sub',
@@ -147,20 +185,31 @@ export function createWsHub(deps: HubDeps): WsHub {
         resume: { ...seq },
         server_epoch: epoch,
         request_id: requestID,
+        ...(marketFilters ? { market_filters: marketFilters } : {}),
       }),
     )
   }
 
-  function subscribe(topic: WsTopic): () => void {
+  function subscribe(topic: WsTopic, interest?: MarketInterest): () => void {
     counters.set(topic, (counters.get(topic) || 0) + 1)
+    let handle = 0
+    if (topic === 'market') {
+      handle = ++interestSeq
+      const symbol = interest?.symbol.trim() || ''
+      marketInterests.set(handle, symbol ? { symbol, ...(interest?.freq?.trim() ? { freq: interest.freq.trim() } : {}) } : null)
+    }
     if (counters.get(topic) === 1) syncTopics()
+    else if (topic === 'market' && filtersKey() !== sentFiltersKey) syncTopics()
     let released = false
     return () => {
       if (released) return
       released = true
       const left = (counters.get(topic) || 1) - 1
-      if (left > 0) counters.set(topic, left)
-      else {
+      if (handle) marketInterests.delete(handle)
+      if (left > 0) {
+        counters.set(topic, left)
+        if (topic === 'market' && filtersKey() !== sentFiltersKey) syncTopics()
+      } else {
         counters.delete(topic)
         syncTopics()
       }

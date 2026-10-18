@@ -503,6 +503,80 @@ describe('contiguous delivery and windows', () => {
   })
 })
 
+describe('market_filters 订阅收窄（P0-3）', () => {
+  it('声明 symbol+freq 的 market 订阅在 sub 帧携带 market_filters', () => {
+    const h = makeHub()
+    h.startLink()
+    const ws = FakeWebSocket.last()
+    ws.serverOpen()
+    const before = ws.sent.length
+    h.subscribe('market', { symbol: '600000.SH', freq: '1m' })
+    const frame = FakeWebSocket.frames(ws).at(-1)!
+    expect(ws.sent.length).toBe(before + 1)
+    expect(frame.op).toBe('sub')
+    expect(frame.market_filters).toEqual([{ symbol: '600000.SH', freq: '1m' }])
+  })
+  it('未声明兴趣的订阅不下发字段；多个收窄订阅者取并集并去重', () => {
+    const h = makeHub()
+    h.startLink()
+    const ws = FakeWebSocket.last()
+    ws.serverOpen()
+    h.subscribe('market')
+    expect(FakeWebSocket.frames(ws).at(-1)!).not.toHaveProperty('market_filters')
+    const offA = h.subscribe('market', { symbol: '600000.SH', freq: '1m' })
+    const count = ws.sent.length
+    // 已有一个未收窄订阅者 → 一票全量，字段仍缺席
+    expect(FakeWebSocket.frames(ws).at(-1)!).not.toHaveProperty('market_filters')
+    offA()
+    expect(ws.sent.length).toBe(count) // 收窄者离开、全量者仍在：期望未变不重发
+  })
+  it('两个收窄订阅者并集下发；其一退订后立即重发更新后的 filters', () => {
+    const h = makeHub()
+    h.startLink()
+    const ws = FakeWebSocket.last()
+    ws.serverOpen()
+    const offA = h.subscribe('market', { symbol: '600000.SH', freq: '1m' })
+    const offB = h.subscribe('market', { symbol: '000001.SZ' })
+    expect(FakeWebSocket.frames(ws).at(-1)!.market_filters).toEqual([
+      { symbol: '600000.SH', freq: '1m' },
+      { symbol: '000001.SZ' },
+    ])
+    offB()
+    expect(FakeWebSocket.frames(ws).at(-1)!.market_filters).toEqual([{ symbol: '600000.SH', freq: '1m' }])
+    offA()
+    expect(FakeWebSocket.frames(ws).at(-1)!).not.toHaveProperty('market_filters')
+    expect(h.desiredTopics()).not.toContain('market')
+  })
+  it('相同兴趣重复订阅去重且不额外重发；切换代码等价于退订+新订阅', () => {
+    const h = makeHub()
+    h.startLink()
+    const ws = FakeWebSocket.last()
+    ws.serverOpen()
+    const offA1 = h.subscribe('market', { symbol: '600000.SH', freq: '1d' })
+    const count = ws.sent.length
+    const offA2 = h.subscribe('market', { symbol: '600000.SH', freq: '1d' })
+    expect(ws.sent.length).toBe(count) // 并集未变
+    const offB = h.subscribe('market', { symbol: '600519.SH', freq: '1d' })
+    offA1()
+    offA2()
+    expect(FakeWebSocket.frames(ws).at(-1)!.market_filters).toEqual([{ symbol: '600519.SH', freq: '1d' }])
+    offB()
+  })
+  it('空白 symbol 视为未声明（回退全量）；非 market 主题不受影响', () => {
+    const h = makeHub()
+    h.startLink()
+    const ws = FakeWebSocket.last()
+    ws.serverOpen()
+    h.subscribe('market', { symbol: '  ', freq: '1m' })
+    expect(FakeWebSocket.frames(ws).at(-1)!).not.toHaveProperty('market_filters')
+    const count = ws.sent.length
+    const off = h.subscribe('brain', { symbol: '600000.SH' })
+    expect(FakeWebSocket.frames(ws).at(-1)!).not.toHaveProperty('market_filters')
+    expect(ws.sent.length).toBe(count + 1)
+    off()
+  })
+})
+
 describe('lifecycle and bounded failure', () => {
   it('reference counts and repeated unsubscribe remain idempotent', () => {
     const h = makeHub()

@@ -50,7 +50,7 @@ func subscribeReady(h *Hub, c *websocket.Client, topics []string) {
 	for _, t := range topics {
 		resume[t] = h.seq[t]
 	}
-	h.beginSubscription(c, topics, resume, h.epoch, 1, false)
+	h.beginSubscription(c, topics, resume, h.epoch, 1, false, nil)
 	drain(c)
 }
 
@@ -63,7 +63,7 @@ func TestHubMetadataAndCompatiblePayload(t *testing.T) {
 	raw, _ := env.Marshal()
 	h.onRaw("signal", "signal", raw)
 	c := testClient(8)
-	h.beginSubscription(c, []string{"signal"}, map[string]int64{"signal": 0}, h.epoch, 1, false)
+	h.beginSubscription(c, []string{"signal"}, map[string]int64{"signal": 0}, h.epoch, 1, false, nil)
 	frames := framesOf(drain(c))
 	if len(frames) != 1 {
 		t.Fatalf("frames %+v", frames)
@@ -89,7 +89,7 @@ func TestHubRestartRejectsOldHighCursor(t *testing.T) {
 	h := NewHub(log.DefaultLogger)
 	h.Publish("signal", "signal", 1)
 	c := testClient(8)
-	h.beginSubscription(c, []string{"signal"}, map[string]int64{"signal": 1000}, "old-admin", 4, false)
+	h.beginSubscription(c, []string{"signal"}, map[string]int64{"signal": 1000}, "old-admin", 4, false, nil)
 	messages := drain(c)
 	if len(messages) != 2 || messages[0].Topic != "sub_ack" || messages[1].Topic != "resync_required" {
 		t.Fatalf("messages %+v", messages)
@@ -119,7 +119,7 @@ func TestHubReplayExpiredAndCursorAhead(t *testing.T) {
 				h.Publish("signal", "signal", i)
 			}
 			c := testClient(8)
-			h.beginSubscription(c, []string{"signal"}, map[string]int64{"signal": tc.after}, h.epoch, 1, false)
+			h.beginSubscription(c, []string{"signal"}, map[string]int64{"signal": tc.after}, h.epoch, 1, false, nil)
 			messages := drain(c)
 			cursor := cursorsOf(messages[1])["signal"]
 			if cursor.Reason != tc.reason || cursor.Head != 501 || cursor.Oldest != 2 || len(framesOf(messages)) != 0 {
@@ -133,7 +133,7 @@ func TestHubSnapshotWindowReplayAndExpiry(t *testing.T) {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			h := NewHub(log.DefaultLogger)
 			c := testClient(100)
-			h.beginSubscription(c, []string{"position"}, nil, "", 9, false)
+			h.beginSubscription(c, []string{"position"}, nil, "", 9, false, nil)
 			drain(c)
 			for i := 0; i < count; i++ {
 				h.Publish("position", "position", i)
@@ -171,7 +171,7 @@ func TestHubSnapshotWindowReplayAndExpiry(t *testing.T) {
 func TestHubAckAndPublishHandoffHasNoGap(t *testing.T) {
 	h := NewHub(log.DefaultLogger)
 	c := testClient(200)
-	h.beginSubscription(c, []string{"position"}, nil, "", 10, false)
+	h.beginSubscription(c, []string{"position"}, nil, "", 10, false, nil)
 	drain(c)
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -240,14 +240,14 @@ func TestHubSlowClientIsRemovedRatherThanDropping(t *testing.T) {
 func TestHubIndependentWindowsAndStaleAcknowledgement(t *testing.T) {
 	h := NewHub(log.DefaultLogger)
 	one, two := testClient(8), testClient(8)
-	h.beginSubscription(one, []string{"signal"}, nil, "", 1, false)
+	h.beginSubscription(one, []string{"signal"}, nil, "", 1, false, nil)
 	drain(one)
 	subscribeReady(h, two, []string{"signal"})
 	h.Publish("signal", "signal", 1)
 	if len(one.Send) != 0 || len(two.Send) != 1 {
 		t.Fatal("shared recovery state")
 	}
-	h.beginSubscription(one, []string{"alert"}, nil, "", 2, false)
+	h.beginSubscription(one, []string{"alert"}, nil, "", 2, false, nil)
 	drain(one)
 	h.completeRecovery(one, map[string]int64{"signal": 0}, h.epoch, 1)
 	if len(one.Send) != 0 || one.Allows("signal") {
@@ -308,5 +308,78 @@ func TestHubMarketTimeBucketsAndTransitionsAreNotErased(t *testing.T) {
 	h.flushMarket()
 	if len(h.buf["market"]) != 4 {
 		t.Fatalf("lost bar bucket or transition: %d", len(h.buf["market"]))
+	}
+}
+
+func subscribeScoped(h *Hub, c *websocket.Client, topics []string, filters []marketFilter) {
+	resume := map[string]int64{}
+	for _, t := range topics {
+		resume[t] = h.seq[t]
+	}
+	h.beginSubscription(c, topics, resume, h.epoch, 1, false, filters)
+	drain(c)
+}
+
+// P0-3：声明 symbol+freq 兴趣的客户端只收到该证券该周期的帧；快照 meta 与未声明客户端不受影响。
+func TestHubMarketFilterNarrowsBySecurity(t *testing.T) {
+	h := NewHub(log.DefaultLogger)
+	all, scoped := testClient(16), testClient(16)
+	subscribeReady(h, all, []string{"market"})
+	subscribeScoped(h, scoped, []string{"market"}, []marketFilter{{Symbol: "600000", Freq: "1m"}})
+	h.Publish("market", "bar", map[string]any{"symbol": "600000", "freq": "1m", "time": "09:31", "close": 1})
+	h.Publish("market", "bar", map[string]any{"symbol": "600000", "freq": "1d", "time": "2026-10-16", "close": 2})
+	h.Publish("market", "bar", map[string]any{"symbol": "000001", "freq": "1m", "time": "09:31", "close": 3})
+	h.publish("market", "market", asRaw(map[string]any{"count": 3}), map[string]any{"subject": events.SubjectMarketSnapshot})
+	h.flushMarket()
+	scopedFrames := framesOf(drain(scoped))
+	if len(scopedFrames) != 2 {
+		t.Fatalf("filtered client frames %+v", scopedFrames)
+	}
+	if payload := scopedFrames[0].Payload.(map[string]any); payload["symbol"] != "600000" || payload["freq"] != "1m" {
+		t.Fatalf("unexpected frame passed filter %+v", payload)
+	}
+	if got := framesOf(drain(all)); len(got) != 4 {
+		t.Fatalf("unfiltered client lost frames: %d", len(got))
+	}
+}
+
+// P0-3：只给 symbol 的过滤器收该证券全部周期；freq 缺失的帧按证券级放行（宁多勿丢）。
+func TestHubMarketFilterWildcardFreqAndUnknownFreq(t *testing.T) {
+	h := NewHub(log.DefaultLogger)
+	scoped := testClient(16)
+	subscribeScoped(h, scoped, []string{"market"}, []marketFilter{{Symbol: "600000"}})
+	h.Publish("market", "tick", map[string]any{"symbol": "600000", "last": 1})
+	h.Publish("market", "bar", map[string]any{"symbol": "600000", "freq": "1m", "time": "09:31"})
+	h.Publish("market", "bar", map[string]any{"symbol": "600000", "freq": "1d", "time": "2026-10-16"})
+	h.Publish("market", "tick", map[string]any{"symbol": "000001", "last": 2})
+	h.flushMarket()
+	if got := framesOf(drain(scoped)); len(got) != 3 {
+		t.Fatalf("wildcard filter frames %d", len(got))
+	}
+}
+
+// P0-3：断线重连的回放同样按兴趣过滤，不会把别的证券补推给收窄客户端。
+func TestHubMarketFilterAppliesToReplay(t *testing.T) {
+	h := NewHub(log.DefaultLogger)
+	h.Publish("market", "bar", map[string]any{"symbol": "600000", "freq": "1m", "time": "09:31"})
+	h.Publish("market", "bar", map[string]any{"symbol": "000001", "freq": "1m", "time": "09:31"})
+	h.flushMarket()
+	c := testClient(16)
+	h.beginSubscription(c, []string{"market"}, map[string]int64{"market": 0}, h.epoch, 1, false, []marketFilter{{Symbol: "600000", Freq: "1m"}})
+	got := framesOf(drain(c))
+	if len(got) != 1 || got[0].Payload.(map[string]any)["symbol"] != "600000" {
+		t.Fatalf("replay not filtered %+v", got)
+	}
+}
+
+// P0-3：过滤器条目全缺 symbol 时视为无效声明，回退全量而不是饿死连接。
+func TestHubMarketFilterEmptyEntriesFallBackToAll(t *testing.T) {
+	h := NewHub(log.DefaultLogger)
+	scoped := testClient(16)
+	subscribeScoped(h, scoped, []string{"market"}, []marketFilter{{Symbol: ""}, {Freq: "1m"}})
+	h.Publish("market", "tick", map[string]any{"symbol": "000001", "last": 1})
+	h.flushMarket()
+	if got := framesOf(drain(scoped)); len(got) != 1 {
+		t.Fatalf("invalid filter starved client: %d", len(got))
 	}
 }
