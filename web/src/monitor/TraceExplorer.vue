@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
-import { getTrace, type TraceSnapshot } from '@/api/traces'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import {
+  DISPOSITION_ACTIONS,
+  dispositionLabel,
+  getTrace,
+  listDispositions,
+  writeDisposition,
+  type Disposition,
+  type TraceSnapshot,
+} from '@/api/traces'
+import { useAuthStore } from '@/stores/auth'
 import { clock, messageOf } from '@/utils/format'
 import { useOverlay } from '@/ui/useOverlay'
 const overlay = useOverlay(() => close())
+const auth = useAuthStore()
+const isOwner = computed(() => auth.user?.role === 'owner')
 const query = ref(''),
   snapshot = ref<TraceSnapshot | null>(null),
   busy = ref(false),
-  error = ref('')
+  error = ref(''),
+  dispositions = ref<Disposition[]>([]),
+  dispositionError = ref('')
 let generation = 0,
   controller: AbortController | undefined
 async function load() {
@@ -17,9 +30,24 @@ async function load() {
   busy.value = true
   error.value = ''
   snapshot.value = null
+  dispositions.value = []
+  dispositionError.value = ''
   try {
     const out = await getTrace(query.value.trim(), controller.signal)
-    if (run === generation) snapshot.value = out
+    if (run !== generation) return
+    snapshot.value = out
+    if (out.events.length && !out.events.some((e) => e.eventId === draft.value.eventId)) {
+      draft.value.eventId = out.events[0].eventId
+    }
+    const trace = query.value.trim()
+    if (trace && out.events.length) {
+      try {
+        const rows = await listDispositions({ traceId: trace }, controller.signal)
+        if (run === generation) dispositions.value = rows
+      } catch (e) {
+        if (run === generation) dispositionError.value = messageOf(e)
+      }
+    }
   } catch (e) {
     if (run === generation) error.value = messageOf(e)
   } finally {
@@ -46,6 +74,33 @@ const states: Record<string, string> = {
   leased: '正在投递',
   retry_wait: '退避等待',
   dead_letter: '死信待处置',
+}
+
+/* 处置留痕（N2-02 处置回执）：只标注，不改投递状态、不回放事件。仅 Owner 可写。 */
+const draft = ref({ eventId: '', action: 'acknowledged' as string, note: '' }),
+  draftBusy = ref(false),
+  draftError = ref('')
+async function send() {
+  if (!draft.value.eventId || draftBusy.value) return
+  draftBusy.value = true
+  draftError.value = ''
+  try {
+    await writeDisposition({
+      eventId: draft.value.eventId,
+      traceId: query.value.trim(),
+      action: draft.value.action,
+      note: draft.value.note.trim(),
+    })
+    draft.value.note = ''
+    dispositions.value = await listDispositions({ traceId: query.value.trim() })
+  } catch (e) {
+    draftError.value = messageOf(e)
+  } finally {
+    draftBusy.value = false
+  }
+}
+function shortEvent(id: string): string {
+  return id.length > 20 ? `${id.slice(0, 20)}…` : id
 }
 </script>
 <template>
@@ -103,6 +158,35 @@ const states: Record<string, string> = {
             本次未观测到 {{ snapshot.missingParents.length }} 个直接父事件，关联链条不完整。
           </p>
           <p v-if="query && !snapshot.events.length">该范围没有持久事件记录；不能据此推断业务从未发生。</p>
+          <section v-if="query && snapshot.events.length" class="receipts" aria-label="处置留痕">
+            <h3>处置留痕</h3>
+            <p class="note">留痕只标注，不改投递状态、不回放事件；死信重放与处置审批另需实现。</p>
+            <p v-if="dispositionError" class="nt-err">留痕读取失败：{{ dispositionError }}</p>
+            <p v-if="!dispositions.length && !dispositionError" class="note">本链路暂无处置留痕。</p>
+            <ul>
+              <li v-for="d in dispositions" :key="d.id">
+                {{ dispositionLabel(d.action) }} · {{ d.actor }} · {{ clock(d.createdAt) || '时间未知' }}<template
+                  v-if="d.note"
+                >
+                  — {{ d.note }}</template
+                >
+              </li>
+            </ul>
+            <form v-if="isOwner" class="receipt-form" @submit.prevent="send">
+              <select v-model="draft.eventId" aria-label="留痕目标事件">
+                <option v-for="e in snapshot.events" :key="e.eventId" :value="e.eventId">
+                  {{ e.subject }} · {{ shortEvent(e.eventId) }}
+                </option>
+              </select>
+              <select v-model="draft.action" aria-label="处置动作">
+                <option v-for="[v, l] in DISPOSITION_ACTIONS" :key="v" :value="v">{{ l }}</option>
+              </select>
+              <input v-model="draft.note" maxlength="280" placeholder="备注（≤280字，可空）" aria-label="处置备注" />
+              <button type="submit" :disabled="draftBusy">{{ draftBusy ? '提交中' : '留痕' }}</button>
+            </form>
+            <p v-else class="note">新增留痕需要 Owner 角色。</p>
+            <p v-if="draftError" class="nt-err">{{ draftError }}</p>
+          </section>
           <ol>
             <li v-for="e in snapshot.events" :key="e.eventId" :class="{ failed: e.state === 'dead_letter' }">
               <div>
@@ -189,5 +273,44 @@ code {
 }
 .failed {
   border-color: var(--nt-warn);
+}
+.receipts {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--nt-bg-1);
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
+}
+.receipts h3 {
+  margin: 0 8px 6px 0;
+  font-size: 12px;
+  color: var(--nt-text-1);
+}
+.receipts ul {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+.receipts ul li {
+  margin: 6px 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--nt-text-1);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--nt-border-1);
+  border-radius: 0;
+}
+.receipt-form {
+  align-items: center;
+  margin: 10px 0 0;
+}
+.receipt-form select {
+  padding: 8px;
+  max-width: 200px;
+  color: var(--nt-text-1);
+  background: var(--nt-bg-1);
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
 }
 </style>

@@ -62,3 +62,60 @@ export async function getTrace(traceId = '', signal?: AbortSignal): Promise<Trac
     })),
   }
 }
+
+export interface Disposition {
+  id: number
+  eventId: string
+  traceId: string
+  action: string
+  note: string
+  actor: string
+  createdAt: string
+}
+
+/** 处置留痕动作封闭集合（后端同款）：只标注，不含回放/重启等后果性动词 */
+export const DISPOSITION_ACTIONS: ReadonlyArray<readonly [string, string]> = [
+  ['acknowledged', '已知晓'],
+  ['investigating', '核查中'],
+  ['resolved', '已处置'],
+  ['ignored', '忽略（注明原因）'],
+  ['escalated', '升级'],
+]
+
+const allowedActions = new Set(DISPOSITION_ACTIONS.map(([v]) => v))
+
+export function dispositionLabel(action: string): string {
+  return DISPOSITION_ACTIONS.find(([v]) => v === action)?.[1] || `未知动作(${action || '空'})`
+}
+
+export async function listDispositions(
+  q: { eventId?: string; traceId?: string },
+  signal?: AbortSignal,
+): Promise<Disposition[]> {
+  const raw = await request('/api/ops/dispositions', {
+    query: { event_id: q.eventId || undefined, trace_id: q.traceId || undefined, limit: 100 },
+    signal,
+  })
+  return asList(raw, 'items').map((v) => ({
+    id: count(pick(v, 'id')) ?? 0,
+    eventId: pick<string>(v, 'eventId', 'event_id') || '',
+    traceId: pick<string>(v, 'traceId', 'trace_id') || '',
+    action: pick<string>(v, 'action') || '',
+    note: pick<string>(v, 'note') || '',
+    actor: pick<string>(v, 'actor') || '',
+    createdAt: pick<string>(v, 'createdAt', 'created_at') || '',
+  }))
+}
+
+export async function writeDisposition(payload: {
+  eventId: string
+  traceId?: string
+  action: string
+  note?: string
+}): Promise<void> {
+  if (!allowedActions.has(payload.action)) throw new Error('处置动作不在允许集合')
+  await request('/api/ops/dispositions', {
+    method: 'POST',
+    json: { event_id: payload.eventId, trace_id: payload.traceId || '', action: payload.action, note: payload.note || '' },
+  })
+}
