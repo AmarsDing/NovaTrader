@@ -72,6 +72,38 @@ func (s *RiskService) CheckOrder(ctx context.Context, req *v1.CheckOrderRequest)
 	return out, nil
 }
 
+// PreviewOrder 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
+func (s *RiskService) PreviewOrder(ctx context.Context, req *v1.CheckOrderRequest) (*v1.PreviewOrderReply, error) {
+	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
+	defer cancel()
+	var expected *int
+	if req.ExpectedConfigRevision != nil {
+		n := int(*req.ExpectedConfigRevision)
+		expected = &n
+	}
+	pv := s.e.Preview(ctx, risk.Order{
+		ExpectedConfigRevision: expected,
+		ClientID:               strings.TrimSpace(req.GetClientOrderId()),
+		Account:                risk.AccountType(strings.ToUpper(strings.TrimSpace(req.GetAccountType()))),
+		Symbol:                 strings.TrimSpace(req.GetSymbol()),
+		Side:                   risk.Side(strings.ToLower(strings.TrimSpace(req.GetSide()))),
+		Price:                  req.GetPrice(),
+		Volume:                 int(req.GetVolume()),
+		Source:                 risk.Source(strings.ToLower(strings.TrimSpace(req.GetSource()))),
+		Operator:               strings.TrimSpace(req.GetOperator()),
+		Sector:                 strings.TrimSpace(req.GetSector()),
+	})
+	out := &v1.PreviewOrderReply{
+		Approved: pv.Approved, BlockRule: pv.BlockRule, Reason: pv.Reason,
+		Volume: int32(pv.Volume), Adjusted: pv.Adjusted,
+		Amount: pv.Amount, Fee: pv.Fee, CashDelta: pv.CashDelta,
+	}
+	for _, r := range pv.Results {
+		out.Results = append(out.Results, &v1.RuleResult{Rule: r.Rule, Name: r.Name, Pass: r.Pass, Note: r.Note, Volume: int32(r.Volume)})
+	}
+	return out, nil
+}
+
 func (s *RiskService) GetState(context.Context, *v1.GetStateRequest) (*v1.StateReply, error) {
 	return toState(s.e.State()), nil
 }

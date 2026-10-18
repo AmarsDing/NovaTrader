@@ -313,6 +313,117 @@ func (x *CheckOrderReply) GetLatencyUs() int64 {
 	return 0
 }
 
+// PreviewOrderReply 是干跑试算结果：风控逐条结论 + 预计成交金额/费用/现金影响。
+type PreviewOrderReply struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Approved  bool                   `protobuf:"varint,1,opt,name=approved,proto3" json:"approved,omitempty"`
+	BlockRule string                 `protobuf:"bytes,2,opt,name=block_rule,json=blockRule,proto3" json:"block_rule,omitempty"`
+	Reason    string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// 风控缩量后的股数
+	Volume   int32   `protobuf:"varint,4,opt,name=volume,proto3" json:"volume,omitempty"`
+	Adjusted bool    `protobuf:"varint,5,opt,name=adjusted,proto3" json:"adjusted,omitempty"`
+	Amount   float64 `protobuf:"fixed64,6,opt,name=amount,proto3" json:"amount,omitempty"`
+	Fee      float64 `protobuf:"fixed64,7,opt,name=fee,proto3" json:"fee,omitempty"`
+	// 买入为 -(amount+fee)，卖出为 +(amount-fee)
+	CashDelta     float64       `protobuf:"fixed64,8,opt,name=cash_delta,json=cashDelta,proto3" json:"cash_delta,omitempty"`
+	Results       []*RuleResult `protobuf:"bytes,9,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreviewOrderReply) Reset() {
+	*x = PreviewOrderReply{}
+	mi := &file_api_risk_v1_risk_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreviewOrderReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreviewOrderReply) ProtoMessage() {}
+
+func (x *PreviewOrderReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_risk_v1_risk_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreviewOrderReply.ProtoReflect.Descriptor instead.
+func (*PreviewOrderReply) Descriptor() ([]byte, []int) {
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PreviewOrderReply) GetApproved() bool {
+	if x != nil {
+		return x.Approved
+	}
+	return false
+}
+
+func (x *PreviewOrderReply) GetBlockRule() string {
+	if x != nil {
+		return x.BlockRule
+	}
+	return ""
+}
+
+func (x *PreviewOrderReply) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *PreviewOrderReply) GetVolume() int32 {
+	if x != nil {
+		return x.Volume
+	}
+	return 0
+}
+
+func (x *PreviewOrderReply) GetAdjusted() bool {
+	if x != nil {
+		return x.Adjusted
+	}
+	return false
+}
+
+func (x *PreviewOrderReply) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
+func (x *PreviewOrderReply) GetFee() float64 {
+	if x != nil {
+		return x.Fee
+	}
+	return 0
+}
+
+func (x *PreviewOrderReply) GetCashDelta() float64 {
+	if x != nil {
+		return x.CashDelta
+	}
+	return 0
+}
+
+func (x *PreviewOrderReply) GetResults() []*RuleResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 type GetStateRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -321,7 +432,7 @@ type GetStateRequest struct {
 
 func (x *GetStateRequest) Reset() {
 	*x = GetStateRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[3]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -333,7 +444,7 @@ func (x *GetStateRequest) String() string {
 func (*GetStateRequest) ProtoMessage() {}
 
 func (x *GetStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[3]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -346,7 +457,7 @@ func (x *GetStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetStateRequest.ProtoReflect.Descriptor instead.
 func (*GetStateRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{3}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{4}
 }
 
 type KillSwitch struct {
@@ -363,7 +474,7 @@ type KillSwitch struct {
 
 func (x *KillSwitch) Reset() {
 	*x = KillSwitch{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[4]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -375,7 +486,7 @@ func (x *KillSwitch) String() string {
 func (*KillSwitch) ProtoMessage() {}
 
 func (x *KillSwitch) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[4]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -388,7 +499,7 @@ func (x *KillSwitch) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KillSwitch.ProtoReflect.Descriptor instead.
 func (*KillSwitch) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{4}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *KillSwitch) GetActive() bool {
@@ -448,7 +559,7 @@ type StateReply struct {
 
 func (x *StateReply) Reset() {
 	*x = StateReply{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[5]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -460,7 +571,7 @@ func (x *StateReply) String() string {
 func (*StateReply) ProtoMessage() {}
 
 func (x *StateReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[5]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -473,7 +584,7 @@ func (x *StateReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StateReply.ProtoReflect.Descriptor instead.
 func (*StateReply) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{5}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *StateReply) GetMode() string {
@@ -565,7 +676,7 @@ type SetModeRequest struct {
 
 func (x *SetModeRequest) Reset() {
 	*x = SetModeRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[6]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -577,7 +688,7 @@ func (x *SetModeRequest) String() string {
 func (*SetModeRequest) ProtoMessage() {}
 
 func (x *SetModeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[6]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -590,7 +701,7 @@ func (x *SetModeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetModeRequest.ProtoReflect.Descriptor instead.
 func (*SetModeRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{6}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SetModeRequest) GetMode() string {
@@ -626,7 +737,7 @@ type TriggerKillSwitchRequest struct {
 
 func (x *TriggerKillSwitchRequest) Reset() {
 	*x = TriggerKillSwitchRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[7]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +749,7 @@ func (x *TriggerKillSwitchRequest) String() string {
 func (*TriggerKillSwitchRequest) ProtoMessage() {}
 
 func (x *TriggerKillSwitchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[7]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +762,7 @@ func (x *TriggerKillSwitchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TriggerKillSwitchRequest.ProtoReflect.Descriptor instead.
 func (*TriggerKillSwitchRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{7}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *TriggerKillSwitchRequest) GetSource() string {
@@ -686,7 +797,7 @@ type ResetKillSwitchRequest struct {
 
 func (x *ResetKillSwitchRequest) Reset() {
 	*x = ResetKillSwitchRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[8]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -698,7 +809,7 @@ func (x *ResetKillSwitchRequest) String() string {
 func (*ResetKillSwitchRequest) ProtoMessage() {}
 
 func (x *ResetKillSwitchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[8]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -711,7 +822,7 @@ func (x *ResetKillSwitchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetKillSwitchRequest.ProtoReflect.Descriptor instead.
 func (*ResetKillSwitchRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{8}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ResetKillSwitchRequest) GetOperator() string {
@@ -748,7 +859,7 @@ type UpdateParamRequest struct {
 
 func (x *UpdateParamRequest) Reset() {
 	*x = UpdateParamRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[9]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -760,7 +871,7 @@ func (x *UpdateParamRequest) String() string {
 func (*UpdateParamRequest) ProtoMessage() {}
 
 func (x *UpdateParamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[9]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -773,7 +884,7 @@ func (x *UpdateParamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateParamRequest.ProtoReflect.Descriptor instead.
 func (*UpdateParamRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{9}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpdateParamRequest) GetKey() string {
@@ -814,7 +925,7 @@ type DailyReportRequest struct {
 
 func (x *DailyReportRequest) Reset() {
 	*x = DailyReportRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[10]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -826,7 +937,7 @@ func (x *DailyReportRequest) String() string {
 func (*DailyReportRequest) ProtoMessage() {}
 
 func (x *DailyReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[10]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -839,7 +950,7 @@ func (x *DailyReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DailyReportRequest.ProtoReflect.Descriptor instead.
 func (*DailyReportRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{10}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DailyReportRequest) GetDate() string {
@@ -860,7 +971,7 @@ type RuleCount struct {
 
 func (x *RuleCount) Reset() {
 	*x = RuleCount{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[11]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -872,7 +983,7 @@ func (x *RuleCount) String() string {
 func (*RuleCount) ProtoMessage() {}
 
 func (x *RuleCount) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[11]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -885,7 +996,7 @@ func (x *RuleCount) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RuleCount.ProtoReflect.Descriptor instead.
 func (*RuleCount) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{11}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RuleCount) GetRule() string {
@@ -924,7 +1035,7 @@ type RiskEventItem struct {
 
 func (x *RiskEventItem) Reset() {
 	*x = RiskEventItem{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[12]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -936,7 +1047,7 @@ func (x *RiskEventItem) String() string {
 func (*RiskEventItem) ProtoMessage() {}
 
 func (x *RiskEventItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[12]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -949,7 +1060,7 @@ func (x *RiskEventItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RiskEventItem.ProtoReflect.Descriptor instead.
 func (*RiskEventItem) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{12}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RiskEventItem) GetKind() string {
@@ -1017,7 +1128,7 @@ type DailyReportReply struct {
 
 func (x *DailyReportReply) Reset() {
 	*x = DailyReportReply{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[13]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1029,7 +1140,7 @@ func (x *DailyReportReply) String() string {
 func (*DailyReportReply) ProtoMessage() {}
 
 func (x *DailyReportReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[13]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1042,7 +1153,7 @@ func (x *DailyReportReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DailyReportReply.ProtoReflect.Descriptor instead.
 func (*DailyReportReply) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{13}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DailyReportReply) GetDate() string {
@@ -1111,7 +1222,7 @@ type LimitsRequest struct {
 
 func (x *LimitsRequest) Reset() {
 	*x = LimitsRequest{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[14]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1123,7 +1234,7 @@ func (x *LimitsRequest) String() string {
 func (*LimitsRequest) ProtoMessage() {}
 
 func (x *LimitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[14]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1136,7 +1247,7 @@ func (x *LimitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LimitsRequest.ProtoReflect.Descriptor instead.
 func (*LimitsRequest) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{14}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *LimitsRequest) GetAccountType() string {
@@ -1162,7 +1273,7 @@ type LimitItem struct {
 
 func (x *LimitItem) Reset() {
 	*x = LimitItem{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[15]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1174,7 +1285,7 @@ func (x *LimitItem) String() string {
 func (*LimitItem) ProtoMessage() {}
 
 func (x *LimitItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[15]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1298,7 @@ func (x *LimitItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LimitItem.ProtoReflect.Descriptor instead.
 func (*LimitItem) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{15}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *LimitItem) GetKey() string {
@@ -1249,7 +1360,7 @@ type LimitsReply struct {
 
 func (x *LimitsReply) Reset() {
 	*x = LimitsReply{}
-	mi := &file_api_risk_v1_risk_proto_msgTypes[16]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1261,7 +1372,7 @@ func (x *LimitsReply) String() string {
 func (*LimitsReply) ProtoMessage() {}
 
 func (x *LimitsReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_risk_v1_risk_proto_msgTypes[16]
+	mi := &file_api_risk_v1_risk_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1274,7 +1385,7 @@ func (x *LimitsReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LimitsReply.ProtoReflect.Descriptor instead.
 func (*LimitsReply) Descriptor() ([]byte, []int) {
-	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{16}
+	return file_api_risk_v1_risk_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *LimitsReply) GetAccountType() string {
@@ -1324,7 +1435,19 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x06reason\x18\x05 \x01(\tR\x06reason\x121\n" +
 	"\aresults\x18\x06 \x03(\v2\x17.api.risk.v1.RuleResultR\aresults\x12\x1d\n" +
 	"\n" +
-	"latency_us\x18\a \x01(\x03R\tlatencyUs\"\x11\n" +
+	"latency_us\x18\a \x01(\x03R\tlatencyUs\"\x96\x02\n" +
+	"\x11PreviewOrderReply\x12\x1a\n" +
+	"\bapproved\x18\x01 \x01(\bR\bapproved\x12\x1d\n" +
+	"\n" +
+	"block_rule\x18\x02 \x01(\tR\tblockRule\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x16\n" +
+	"\x06volume\x18\x04 \x01(\x05R\x06volume\x12\x1a\n" +
+	"\badjusted\x18\x05 \x01(\bR\badjusted\x12\x16\n" +
+	"\x06amount\x18\x06 \x01(\x01R\x06amount\x12\x10\n" +
+	"\x03fee\x18\a \x01(\x01R\x03fee\x12\x1d\n" +
+	"\n" +
+	"cash_delta\x18\b \x01(\x01R\tcashDelta\x121\n" +
+	"\aresults\x18\t \x03(\v2\x17.api.risk.v1.RuleResultR\aresults\"\x11\n" +
 	"\x0fGetStateRequest\"\x80\x01\n" +
 	"\n" +
 	"KillSwitch\x12\x16\n" +
@@ -1413,10 +1536,11 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x04note\x18\a \x01(\tR\x04note\"^\n" +
 	"\vLimitsReply\x12!\n" +
 	"\faccount_type\x18\x01 \x01(\tR\vaccountType\x12,\n" +
-	"\x05items\x18\x02 \x03(\v2\x16.api.risk.v1.LimitItemR\x05items2\xb5\x06\n" +
+	"\x05items\x18\x02 \x03(\v2\x16.api.risk.v1.LimitItemR\x05items2\xa2\a\n" +
 	"\x04Risk\x12e\n" +
 	"\n" +
-	"CheckOrder\x12\x1e.api.risk.v1.CheckOrderRequest\x1a\x1c.api.risk.v1.CheckOrderReply\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/risk/v1/check\x12Y\n" +
+	"CheckOrder\x12\x1e.api.risk.v1.CheckOrderRequest\x1a\x1c.api.risk.v1.CheckOrderReply\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/risk/v1/check\x12k\n" +
+	"\fPreviewOrder\x12\x1e.api.risk.v1.CheckOrderRequest\x1a\x1e.api.risk.v1.PreviewOrderReply\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/risk/v1/preview\x12Y\n" +
 	"\bGetState\x12\x1c.api.risk.v1.GetStateRequest\x1a\x17.api.risk.v1.StateReply\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/risk/v1/state\x12Y\n" +
 	"\aSetMode\x12\x1b.api.risk.v1.SetModeRequest\x1a\x17.api.risk.v1.StateReply\"\x18\x82\xd3\xe4\x93\x02\x12:\x01*\"\r/risk/v1/mode\x12s\n" +
 	"\x11TriggerKillSwitch\x12%.api.risk.v1.TriggerKillSwitchRequest\x1a\x17.api.risk.v1.StateReply\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/risk/v1/killswitch\x12u\n" +
@@ -1437,59 +1561,63 @@ func file_api_risk_v1_risk_proto_rawDescGZIP() []byte {
 	return file_api_risk_v1_risk_proto_rawDescData
 }
 
-var file_api_risk_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_api_risk_v1_risk_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_risk_v1_risk_proto_goTypes = []any{
 	(*CheckOrderRequest)(nil),        // 0: api.risk.v1.CheckOrderRequest
 	(*RuleResult)(nil),               // 1: api.risk.v1.RuleResult
 	(*CheckOrderReply)(nil),          // 2: api.risk.v1.CheckOrderReply
-	(*GetStateRequest)(nil),          // 3: api.risk.v1.GetStateRequest
-	(*KillSwitch)(nil),               // 4: api.risk.v1.KillSwitch
-	(*StateReply)(nil),               // 5: api.risk.v1.StateReply
-	(*SetModeRequest)(nil),           // 6: api.risk.v1.SetModeRequest
-	(*TriggerKillSwitchRequest)(nil), // 7: api.risk.v1.TriggerKillSwitchRequest
-	(*ResetKillSwitchRequest)(nil),   // 8: api.risk.v1.ResetKillSwitchRequest
-	(*UpdateParamRequest)(nil),       // 9: api.risk.v1.UpdateParamRequest
-	(*DailyReportRequest)(nil),       // 10: api.risk.v1.DailyReportRequest
-	(*RuleCount)(nil),                // 11: api.risk.v1.RuleCount
-	(*RiskEventItem)(nil),            // 12: api.risk.v1.RiskEventItem
-	(*DailyReportReply)(nil),         // 13: api.risk.v1.DailyReportReply
-	(*LimitsRequest)(nil),            // 14: api.risk.v1.LimitsRequest
-	(*LimitItem)(nil),                // 15: api.risk.v1.LimitItem
-	(*LimitsReply)(nil),              // 16: api.risk.v1.LimitsReply
-	nil,                              // 17: api.risk.v1.StateReply.BreakersEntry
-	nil,                              // 18: api.risk.v1.StateReply.ParamsEntry
-	nil,                              // 19: api.risk.v1.StateReply.AccountAsOfEntry
+	(*PreviewOrderReply)(nil),        // 3: api.risk.v1.PreviewOrderReply
+	(*GetStateRequest)(nil),          // 4: api.risk.v1.GetStateRequest
+	(*KillSwitch)(nil),               // 5: api.risk.v1.KillSwitch
+	(*StateReply)(nil),               // 6: api.risk.v1.StateReply
+	(*SetModeRequest)(nil),           // 7: api.risk.v1.SetModeRequest
+	(*TriggerKillSwitchRequest)(nil), // 8: api.risk.v1.TriggerKillSwitchRequest
+	(*ResetKillSwitchRequest)(nil),   // 9: api.risk.v1.ResetKillSwitchRequest
+	(*UpdateParamRequest)(nil),       // 10: api.risk.v1.UpdateParamRequest
+	(*DailyReportRequest)(nil),       // 11: api.risk.v1.DailyReportRequest
+	(*RuleCount)(nil),                // 12: api.risk.v1.RuleCount
+	(*RiskEventItem)(nil),            // 13: api.risk.v1.RiskEventItem
+	(*DailyReportReply)(nil),         // 14: api.risk.v1.DailyReportReply
+	(*LimitsRequest)(nil),            // 15: api.risk.v1.LimitsRequest
+	(*LimitItem)(nil),                // 16: api.risk.v1.LimitItem
+	(*LimitsReply)(nil),              // 17: api.risk.v1.LimitsReply
+	nil,                              // 18: api.risk.v1.StateReply.BreakersEntry
+	nil,                              // 19: api.risk.v1.StateReply.ParamsEntry
+	nil,                              // 20: api.risk.v1.StateReply.AccountAsOfEntry
 }
 var file_api_risk_v1_risk_proto_depIdxs = []int32{
 	1,  // 0: api.risk.v1.CheckOrderReply.results:type_name -> api.risk.v1.RuleResult
-	4,  // 1: api.risk.v1.StateReply.kill_switch:type_name -> api.risk.v1.KillSwitch
-	17, // 2: api.risk.v1.StateReply.breakers:type_name -> api.risk.v1.StateReply.BreakersEntry
-	18, // 3: api.risk.v1.StateReply.params:type_name -> api.risk.v1.StateReply.ParamsEntry
-	19, // 4: api.risk.v1.StateReply.account_as_of:type_name -> api.risk.v1.StateReply.AccountAsOfEntry
-	11, // 5: api.risk.v1.DailyReportReply.rejects:type_name -> api.risk.v1.RuleCount
-	12, // 6: api.risk.v1.DailyReportReply.events:type_name -> api.risk.v1.RiskEventItem
-	15, // 7: api.risk.v1.LimitsReply.items:type_name -> api.risk.v1.LimitItem
-	0,  // 8: api.risk.v1.Risk.CheckOrder:input_type -> api.risk.v1.CheckOrderRequest
-	3,  // 9: api.risk.v1.Risk.GetState:input_type -> api.risk.v1.GetStateRequest
-	6,  // 10: api.risk.v1.Risk.SetMode:input_type -> api.risk.v1.SetModeRequest
-	7,  // 11: api.risk.v1.Risk.TriggerKillSwitch:input_type -> api.risk.v1.TriggerKillSwitchRequest
-	8,  // 12: api.risk.v1.Risk.ResetKillSwitch:input_type -> api.risk.v1.ResetKillSwitchRequest
-	9,  // 13: api.risk.v1.Risk.UpdateParam:input_type -> api.risk.v1.UpdateParamRequest
-	10, // 14: api.risk.v1.Risk.DailyReport:input_type -> api.risk.v1.DailyReportRequest
-	14, // 15: api.risk.v1.Risk.Limits:input_type -> api.risk.v1.LimitsRequest
-	2,  // 16: api.risk.v1.Risk.CheckOrder:output_type -> api.risk.v1.CheckOrderReply
-	5,  // 17: api.risk.v1.Risk.GetState:output_type -> api.risk.v1.StateReply
-	5,  // 18: api.risk.v1.Risk.SetMode:output_type -> api.risk.v1.StateReply
-	5,  // 19: api.risk.v1.Risk.TriggerKillSwitch:output_type -> api.risk.v1.StateReply
-	5,  // 20: api.risk.v1.Risk.ResetKillSwitch:output_type -> api.risk.v1.StateReply
-	5,  // 21: api.risk.v1.Risk.UpdateParam:output_type -> api.risk.v1.StateReply
-	13, // 22: api.risk.v1.Risk.DailyReport:output_type -> api.risk.v1.DailyReportReply
-	16, // 23: api.risk.v1.Risk.Limits:output_type -> api.risk.v1.LimitsReply
-	16, // [16:24] is the sub-list for method output_type
-	8,  // [8:16] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	1,  // 1: api.risk.v1.PreviewOrderReply.results:type_name -> api.risk.v1.RuleResult
+	5,  // 2: api.risk.v1.StateReply.kill_switch:type_name -> api.risk.v1.KillSwitch
+	18, // 3: api.risk.v1.StateReply.breakers:type_name -> api.risk.v1.StateReply.BreakersEntry
+	19, // 4: api.risk.v1.StateReply.params:type_name -> api.risk.v1.StateReply.ParamsEntry
+	20, // 5: api.risk.v1.StateReply.account_as_of:type_name -> api.risk.v1.StateReply.AccountAsOfEntry
+	12, // 6: api.risk.v1.DailyReportReply.rejects:type_name -> api.risk.v1.RuleCount
+	13, // 7: api.risk.v1.DailyReportReply.events:type_name -> api.risk.v1.RiskEventItem
+	16, // 8: api.risk.v1.LimitsReply.items:type_name -> api.risk.v1.LimitItem
+	0,  // 9: api.risk.v1.Risk.CheckOrder:input_type -> api.risk.v1.CheckOrderRequest
+	0,  // 10: api.risk.v1.Risk.PreviewOrder:input_type -> api.risk.v1.CheckOrderRequest
+	4,  // 11: api.risk.v1.Risk.GetState:input_type -> api.risk.v1.GetStateRequest
+	7,  // 12: api.risk.v1.Risk.SetMode:input_type -> api.risk.v1.SetModeRequest
+	8,  // 13: api.risk.v1.Risk.TriggerKillSwitch:input_type -> api.risk.v1.TriggerKillSwitchRequest
+	9,  // 14: api.risk.v1.Risk.ResetKillSwitch:input_type -> api.risk.v1.ResetKillSwitchRequest
+	10, // 15: api.risk.v1.Risk.UpdateParam:input_type -> api.risk.v1.UpdateParamRequest
+	11, // 16: api.risk.v1.Risk.DailyReport:input_type -> api.risk.v1.DailyReportRequest
+	15, // 17: api.risk.v1.Risk.Limits:input_type -> api.risk.v1.LimitsRequest
+	2,  // 18: api.risk.v1.Risk.CheckOrder:output_type -> api.risk.v1.CheckOrderReply
+	3,  // 19: api.risk.v1.Risk.PreviewOrder:output_type -> api.risk.v1.PreviewOrderReply
+	6,  // 20: api.risk.v1.Risk.GetState:output_type -> api.risk.v1.StateReply
+	6,  // 21: api.risk.v1.Risk.SetMode:output_type -> api.risk.v1.StateReply
+	6,  // 22: api.risk.v1.Risk.TriggerKillSwitch:output_type -> api.risk.v1.StateReply
+	6,  // 23: api.risk.v1.Risk.ResetKillSwitch:output_type -> api.risk.v1.StateReply
+	6,  // 24: api.risk.v1.Risk.UpdateParam:output_type -> api.risk.v1.StateReply
+	14, // 25: api.risk.v1.Risk.DailyReport:output_type -> api.risk.v1.DailyReportReply
+	17, // 26: api.risk.v1.Risk.Limits:output_type -> api.risk.v1.LimitsReply
+	18, // [18:27] is the sub-list for method output_type
+	9,  // [9:18] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_api_risk_v1_risk_proto_init() }
@@ -1498,15 +1626,15 @@ func file_api_risk_v1_risk_proto_init() {
 		return
 	}
 	file_api_risk_v1_risk_proto_msgTypes[0].OneofWrappers = []any{}
-	file_api_risk_v1_risk_proto_msgTypes[5].OneofWrappers = []any{}
-	file_api_risk_v1_risk_proto_msgTypes[9].OneofWrappers = []any{}
+	file_api_risk_v1_risk_proto_msgTypes[6].OneofWrappers = []any{}
+	file_api_risk_v1_risk_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_risk_v1_risk_proto_rawDesc), len(file_api_risk_v1_risk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

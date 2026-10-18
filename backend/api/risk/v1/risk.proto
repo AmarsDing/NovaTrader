@@ -15,6 +15,13 @@ service Risk {
       body: "*"
     };
   }
+  // 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
+  rpc PreviewOrder(CheckOrderRequest) returns (PreviewOrderReply) {
+    option (google.api.http) = {
+      post: "/risk/v1/preview"
+      body: "*"
+    };
+  }
   rpc GetState(GetStateRequest) returns (StateReply) {
     option (google.api.http) = {
       get: "/risk/v1/state"
@@ -94,6 +101,21 @@ message CheckOrderReply {
   string reason = 5;
   repeated RuleResult results = 6;
   int64 latency_us = 7;
+}
+
+// PreviewOrderReply 是干跑试算结果：风控逐条结论 + 预计成交金额/费用/现金影响。
+message PreviewOrderReply {
+  bool approved = 1;
+  string block_rule = 2;
+  string reason = 3;
+  // 风控缩量后的股数
+  int32 volume = 4;
+  bool adjusted = 5;
+  double amount = 6;
+  double fee = 7;
+  // 买入为 -(amount+fee)，卖出为 +(amount-fee)
+  double cash_delta = 8;
+  repeated RuleResult results = 9;
 }
 
 message GetStateRequest {}

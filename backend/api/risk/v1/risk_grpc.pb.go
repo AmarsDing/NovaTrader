@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Risk_CheckOrder_FullMethodName        = "/api.risk.v1.Risk/CheckOrder"
+	Risk_PreviewOrder_FullMethodName      = "/api.risk.v1.Risk/PreviewOrder"
 	Risk_GetState_FullMethodName          = "/api.risk.v1.Risk/GetState"
 	Risk_SetMode_FullMethodName           = "/api.risk.v1.Risk/SetMode"
 	Risk_TriggerKillSwitch_FullMethodName = "/api.risk.v1.Risk/TriggerKillSwitch"
@@ -37,6 +38,8 @@ const (
 type RiskClient interface {
 	// 事前校验。调用方超时（建议 200ms）视为拒绝。
 	CheckOrder(ctx context.Context, in *CheckOrderRequest, opts ...grpc.CallOption) (*CheckOrderReply, error)
+	// 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
+	PreviewOrder(ctx context.Context, in *CheckOrderRequest, opts ...grpc.CallOption) (*PreviewOrderReply, error)
 	GetState(ctx context.Context, in *GetStateRequest, opts ...grpc.CallOption) (*StateReply, error)
 	SetMode(ctx context.Context, in *SetModeRequest, opts ...grpc.CallOption) (*StateReply, error)
 	TriggerKillSwitch(ctx context.Context, in *TriggerKillSwitchRequest, opts ...grpc.CallOption) (*StateReply, error)
@@ -60,6 +63,16 @@ func (c *riskClient) CheckOrder(ctx context.Context, in *CheckOrderRequest, opts
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CheckOrderReply)
 	err := c.cc.Invoke(ctx, Risk_CheckOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *riskClient) PreviewOrder(ctx context.Context, in *CheckOrderRequest, opts ...grpc.CallOption) (*PreviewOrderReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PreviewOrderReply)
+	err := c.cc.Invoke(ctx, Risk_PreviewOrder_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +157,8 @@ func (c *riskClient) Limits(ctx context.Context, in *LimitsRequest, opts ...grpc
 type RiskServer interface {
 	// 事前校验。调用方超时（建议 200ms）视为拒绝。
 	CheckOrder(context.Context, *CheckOrderRequest) (*CheckOrderReply, error)
+	// 干跑试算（G7）：与 CheckOrder 同一装配与守卫，但不落单、不占预约、不进审计。
+	PreviewOrder(context.Context, *CheckOrderRequest) (*PreviewOrderReply, error)
 	GetState(context.Context, *GetStateRequest) (*StateReply, error)
 	SetMode(context.Context, *SetModeRequest) (*StateReply, error)
 	TriggerKillSwitch(context.Context, *TriggerKillSwitchRequest) (*StateReply, error)
@@ -165,6 +180,9 @@ type UnimplementedRiskServer struct{}
 
 func (UnimplementedRiskServer) CheckOrder(context.Context, *CheckOrderRequest) (*CheckOrderReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method CheckOrder not implemented")
+}
+func (UnimplementedRiskServer) PreviewOrder(context.Context, *CheckOrderRequest) (*PreviewOrderReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method PreviewOrder not implemented")
 }
 func (UnimplementedRiskServer) GetState(context.Context, *GetStateRequest) (*StateReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetState not implemented")
@@ -222,6 +240,24 @@ func _Risk_CheckOrder_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RiskServer).CheckOrder(ctx, req.(*CheckOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Risk_PreviewOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RiskServer).PreviewOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Risk_PreviewOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RiskServer).PreviewOrder(ctx, req.(*CheckOrderRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -362,6 +398,10 @@ var Risk_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckOrder",
 			Handler:    _Risk_CheckOrder_Handler,
+		},
+		{
+			MethodName: "PreviewOrder",
+			Handler:    _Risk_PreviewOrder_Handler,
 		},
 		{
 			MethodName: "GetState",
