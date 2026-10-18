@@ -131,6 +131,8 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.serveObservability(w, r)
 	case r.URL.Path == "/api/ops/dispositions":
 		g.dispositions(w, r)
+	case r.URL.Path == "/api/ops/dead-letter-replay":
+		g.replayDeadLetter(w, r)
 	case r.URL.Path == "/api/ops/environment":
 		g.serveEnvironment(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/ops/backup":
@@ -354,7 +356,7 @@ func sensitive(action string) bool {
 	switch action {
 	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params", "config.save",
 		"trade.order", "trade.cancel", "trade.confirm", "strategy.approve", "strategy.reject", "strategy.rollback",
-		"ops.backup", "ops.disposition":
+		"ops.backup", "ops.disposition", "ops.dead_letter_replay":
 		return true
 	default:
 		return false
