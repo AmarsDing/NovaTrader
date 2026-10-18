@@ -172,8 +172,8 @@
 ## 5. UI 走查（对照 `doc/开发文档/1.视觉需求.md` 与本次静态审读）
 
 - ✔ 红涨绿跌、主题×密度、玻璃霓虹材质已实现并有 token 层（`theme/tokens`），NtKline 颜色全部走 palette，不留硬编码色。保持。
-- ⚠ K线十字线处于 Normal 漂移态，信号点"贴价对位"的视觉精度不足——开 MagnetOHLC 后，十字线吸附+价格轴标签才符合"专业盯盘"预期（对应视觉需求第七节"数据精确感"）。
-- ⚠ K线图无法式水印，安防屏截取/多屏弹窗下归属感弱——`plugins/text-watermark` 半透明代码水印，与毛玻璃材质叠加无碍。
+- ✔ ~~K线十字线处于 Normal 漂移态~~（2026-10-19 P1-5 已开 MagnetOHLC，十字线吸附 OHLC + 价格轴精确对价）。
+- ✔ ~~K线图无法式水印~~（2026-10-19 P1-5 已接 `createTextWatermark` 证券代码水印，主题联动，与毛玻璃材质叠加无碍）。
 - ⚠ 副图指标与主图两个渲染体系（ECharts vs lightweight-charts）风格断裂（legend/网格/字体密度不一）——统一 v5 pane 后，密度/间距/字阶用同一组 token。
 - ⚠ 监控画布数字闪动与文字宽测量无缓存（G10），节能模式应同时降帧+减 measure；对齐视觉需求的"节能/减少动态"档。
 
@@ -208,7 +208,7 @@
   - 兜底对账定时器：页面可见 + hub 在线 + 已选代码时每 60s 全量 `load()` 一次（对齐指标/消息/成交与长尾数据）；数组超 800 根或本地为空时自动回落全量重载。
   - 手动读取/切代码/周期/面板参数/路由深链统一走 `reloadWithRefit()`：全量重载后显式 `refit()`；resync 与可见性恢复保持 `load()` 不复位视口。
 - 验收：`web/src/viz/__tests__/theme-chart.test.ts` 新增增量用例（同根替换 MA5=13.2、新根追加、旧帧拒绝、refit 才二次 fitContent）；全套 58 文件 508 用例通过，`vue-tsc` 与 eslint 对改动文件零告警。
-- P0-2 已由数据帧调度器落地（见下条）；P0-3 按当前证券收窄订阅待做。
+- P0-2 已由数据帧调度器落地（见下条）；P0-3 订阅收窄已于 2026-10-19 落地（见 P0-3 条）。
 
 ### P0-2 WS→图表脏标记合并层（2026-10-18 落地，复用 gloomberb 数据帧调度器）
 
@@ -220,3 +220,39 @@
   - 快照 meta 帧不进调度器，仍即时刷新快照行。
 - 验收：改动文件 eslint / `vue-tsc` 零告警；全套 62 文件 561 用例通过（含并行会话的 `data-frame`/`quote-flash` 单测与 G4 色觉门禁）。
 - 说明：调度器与闪烁钟的基础设施源自并行会话的 gloomberb 对标移植（本仓库另有 gloomberb 提升方案文档）；本条只登记 TradingView 对标视角下"推送→渲染合批"这一同一收敛点，两处工作在此会师。
+
+### P0-3 订阅收窄到当前证券（2026-10-19 落地，跨端）
+
+- 协议（向后兼容）：sub/resync 帧新增可选 `market_filters: [{symbol, freq?}]`；**字段整体缺席 = 全量**——旧客户端连新服务端、新客户端连旧服务端行为都不变。
+- 后端 `backend/app/admin/internal/gateway/hub.go`：
+  - `frame` 增加 `Symbol/Freq`（发布时解析一次，复用 marketKey 的 symbol/freq 提取：嵌套 bar、平铺、`stock_code|code` 别名）。
+  - `clientSubscription` 增加行情域（`marketAll/marketKeys/marketSymbols`）：`filters` 为空或条目全缺 symbol → `marketAll`（宁可全量不饿死连接）；freq 省略 = 该证券全周期。
+  - `allowsMarket` 匹配顺序：非 market 主题/全量 → 放；无 symbol 的帧（快照 meta、事件）→ 放；freq 不可判定 → 证券级放行（宁多勿丢）；否则精确 symbol+freq。
+  - 三条路径同一把尺：`addFrame` 实时分发、`beginSubscription` 与 `completeRecovery` 的回放收集都过 `allowsMarket`——重连不会把别人证券的 500 根回放补进来。
+- 前端 `web/src/ws/hub.ts`：
+  - `subscribe(topic, interest?)`：`market` 订阅可带 `{symbol, freq?}`；每个订阅者一个兴趣 handle，**期望并集 = 全部 handle 的去重合集**；任何一个 handle 未声明（或 symbol 空白）即一票全量、字段不下发。
+  - `syncTopics` 统一计算并随帧下发 `market_filters`；`subscribe`/退订只在并集 JSON 变化时才重发 sub（同代码重复订阅、换账户等不动线）。
+  - 单连接多面板共享：这是"订阅者兴趣的并集"而不是"全局过滤"，监控画布/涨停梯队等全量消费者在场时自动回退全量。
+- `web/src/view/MarketView.vue`：`resubMarket()` 挂到 onMounted 与 `[symbol,freq,account]` watch（symbol/freq 变化才重订阅；account 不动线）；无代码时保持全量（快照行可用）。
+- 验收：后端 `go build/vet/test ./app/admin/internal/gateway` 全绿（新增收窄/通配 freq/freq 缺失放行/回放过滤/无效条目回退 5 用例）；前端 hub 26/26（新增 filters 下发/一票全量/并集去重/切换重发/空白回退 5 用例）；eslint 与 `vue-tsc` 零告警；全套 65 文件 596 用例通过。
+- 参照：`streaming.js:271-291`（订阅引用归零即退流）；单机 localhost 部署下带宽收益有限，但对齐后有源节流才有意义（后端推送侧 key 合并已于早先具备，见 §3.1）。
+
+### P1-4 lightweight-charts v5 迁移（2026-10-19 落地）
+
+- 依赖：`web/package.json` ^4.2.2 → **^5.2.1**（已安装并 lock）。lwc 独立 chunk 177.07 kB（gzip 57.36 kB），`npm run build` 全绿。
+- API 迁移（消费面只在 `web/src/viz/NtKline.vue` 与其测试 mock，属意料之外的小）：
+  - `addCandlestickSeries`/`addHistogramSeries`/`addLineSeries` → 统一 `chart.addSeries(CandlestickSeries|HistogramSeries|LineSeries, options)`；
+  - `series.setMarkers` → `createSeriesMarkers(candle, [])` 插件 API（模块级 `markersApi`，卸载置空；全量 `apply()` 里 `setMarkers` 替换语义不变）；
+  - 其余触点（`setData/update/applyOptions/subscribeCrosshairMove/priceScale('vol')/fitContent/ColorType/CrosshairMode`）v5 保持兼容，未动。
+- 测试 mock 对齐 v5 形态：`addSeries` 按 series 定义派发（line 系列用独立游标，不依赖调用序号——多次挂载也不错位），标记断言改到 `markers.setMarkers`；6/6 通过。
+- 验收：`vue-tsc` 与 eslint 零告警；全套 65 文件 596 用例通过；`npm run build`（typecheck+lint+打包）通过。
+- 解锁的后续能力（未随本条启用，避免一次改动过大）：v5 `addPane` 多窗格（G6）、`chart.options().crosshair` 磁吸/TrackingMode（P1-5）、`addCustomSeries`+`CustomConflationReducer` 数据合流（G5）、`pane-primitive` 特色图层（P1-7/P1-8）。vendored master 已到 v6 时代命名（`HorzScaleItem`、markers 变 primitives），后续升 v6 时注意二次迁移。
+
+### P1-5 专业化交互开关（2026-10-19 落地，首批三项）
+
+- **磁吸十字线**：`NtKline` crosshair `Normal` → `MagnetOHLC`——十字线贴最近 K 线的开/高/低/收，价格轴标签精确对价（对应 §5 走查"数据精确感"项；`magnet.ts:30-86` 的候选收集→坐标最近→反解回价由此开关启用）。
+- **证券代码法式水印**：`NtKline` 新增 `watermark` prop（viz 层保持纯组件，文本由父级给）；v5 `createTextWatermark(panes()[0], …)`，颜色 `text3` 28% 透明度随主题联动，`MarketView` 传当前代码_trim 后文本，空串不画。多屏弹窗/安防截屏场景归属感（§5 走查第二项）。
+- **价格参考线（priceLine）**：`NtKline` 新增 `levels` prop：`{price, color?, title?, lineStyle?}`，重复价去重、非法（非有限/≤0）跳过，`apply()`/主题切换整体重建（量小，重建优于逐条 diff 无残留）。`MarketView` 接**摊薄成本线**＝（Σ买成交额−Σ卖成交额）/净持仓，填充数据推导、琥珀虚线带轴标"摊薄成本"，净额 ≤0 或数据不足不画；legend 在成本线存在时补"琥珀虚线为摊薄成本"，与同为琥珀的 MA20（曲线）区分。
+- 价格轴拖拽缩放、双击复位在 v5 为默认内置（`handleScale`/`handleScroll`/double-click reset），零代码获得；TrackingMode 开关做成何 UI 形态未定，本轮不硬做。
+- 验收：mock 补 `createTextWatermark`/`LineStyle`/`createPriceLine` 与 `chart.panes()`；新增用例覆盖磁吸 mode=3、水印主题联动（暗→亮 rgba(97,98,99,0.28)）、参考线去重/非法跳过/样式映射/主题重建；7/7 viz 用例、`vue-tsc`/eslint 零告警、全套 67 文件 614 用例通过。
+- 止损止盈/入场价三线等信号级 priceLine：数据在信号面板（trade_signals），等 M05/M06 链路把信号带到行情页时直接用 `levels` 传入即可，无需再改 viz。
