@@ -11,6 +11,7 @@ import { getConfigSnapshot, saveConfig, previewConfig, type ConfigSnapshot, type
 import ConfigRevisionPanel from '@/view/ConfigRevisionPanel.vue'
 import { ApiError } from '@/api/http'
 import { useOverlay } from '@/ui/useOverlay'
+import { useToast } from '@/ui/useToast'
 import { configCategories, type ConfigField } from '@/view/config-catalog'
 import { isLive, onResync } from '@/ws/hub'
 import { useAccountStore } from '@/stores/account'
@@ -47,6 +48,7 @@ import type { Pulse } from './types'
 import './monitor.css'
 
 const router = useRouter()
+const toast = useToast()
 const stage = ref<InstanceType<typeof CanvasStage> | null>(null)
 const input = ref(emptyMonitorInput())
 const selectedId = ref('')
@@ -605,8 +607,13 @@ function select(id: string) {
     selectedId.value = ''
     return
   }
-  /* S5 深化牌（账户/风控/扫描/模型/数据源）弹层内容来自 buildDetail，不走 buildChildren 的门槛 */
-  if (!buildDetail(input.value, id, nowMs.value) && buildChildren(input.value, id).length === 0) return
+  /* S5 深化牌（账户/风控/扫描/模型/数据源）弹层内容来自 buildDetail，不走 buildChildren 的门槛。
+   * 两边都空时给一句反馈——静默无响应会让人以为点歪了（§7 诚实口径，不猜有什么） */
+  if (!buildDetail(input.value, id, nowMs.value) && buildChildren(input.value, id).length === 0) {
+    const title = graph.value.nodes.find((node) => node.id === id)?.title || id
+    toast.info('这格还没有详情', `${title}：明细接口未接入，子牌也是空的`)
+    return
+  }
   selectedId.value = id
   if (!id.startsWith('symbol:')) return
   const symbol = id.slice('symbol:'.length)
@@ -723,6 +730,7 @@ function closeDetail() {
       :rows="tapeRows"
       :first-pane="spec.firstPane"
       :band-key="bandKey"
+      :equity-points="sparks.day.points()"
       @select="select"
       @flash="onTapeFlash"
     />

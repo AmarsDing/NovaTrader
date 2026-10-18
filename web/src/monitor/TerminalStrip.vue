@@ -9,7 +9,7 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { amount, compactAmount, intText, missLabel, pctText, ratioPct, signed, toneOf } from '@/utils/format'
-import { attributionLabel } from './detail'
+import { attributionLabel, equityStats } from './detail'
 import { dutyOf, isLoud, statusDot } from './duty'
 import { gpuMemory } from './hud'
 import { TAPE_DOMAIN_LABEL, TAPE_MAX_ROWS } from './tape'
@@ -26,6 +26,8 @@ const props = defineProps<{
   firstPane?: FirstPane
   /** 时段键：只为区分盘前「昨日复盘」与盘后「复盘」的标题 */
   bandKey?: BandKey
+  /** 日内权益采样（前端环形缓冲，仅本次会话）——账本格的回撤口径与 §5.1 详情窗一致 */
+  equityPoints?: (number | null)[]
 }>()
 const emit = defineEmits<{ select: [id: string]; flash: [id: string] }>()
 
@@ -310,6 +312,7 @@ const reviewLines = computed<PaneLine[]>(() => {
       label: `MA${b.window} 上方占比`,
       // 广度占比不染色：它是结构统计量，红涨绿跌只给行情/金额/盈亏
       value: `${ratioPct(b.ratio, 1)} · ${b.above}/${b.total} 只${b.live ? '（实时算）' : ''}`,
+      tone: 'flat',
     })
   } else {
     lines.push({
@@ -410,6 +413,12 @@ function shortTime(value: string): string {
 
 const tasks = computed(() => (props.input.tasks?.ok ? props.input.tasks.items.slice(0, offday.value ? 8 : 4) : []))
 const admission = computed(() => props.input.admission ?? null)
+/** 日内最大回撤：前端采样缓冲（仅本次会话）；还没有采样点就写「还没有采样点」，不冒充 0 */
+const drawdownPct = computed(() => {
+  const points = props.equityPoints ?? []
+  if (!points.some((point) => point != null)) return null
+  return equityStats(points).drawdownPct
+})
 const admitPct = computed(() => {
   const admit = admission.value
   if (!admit?.ok || admit.tradingDays == null || !admit.requiredDays) return null
@@ -501,11 +510,11 @@ const brokerLine = computed(() => {
           <ul v-if="shown.length" class="nt-tape">
             <li v-for="row in shown" :key="row.id" :class="{ 'is-enter': entering.has(row.id) }">
               <button
-                v-if="row.selectId"
                 type="button"
                 class="nt-tape__row"
                 :class="[`is-${row.domain}`, `tone-${row.tone}`]"
-                :title="`选中 ${row.selectId}`"
+                :title="row.selectId ? `选中 ${row.selectId}` : ''"
+                :disabled="!row.selectId"
                 @click="pickRow(row)"
               >
                 <em>{{ row.time }}</em>
@@ -513,12 +522,6 @@ const brokerLine = computed(() => {
                 <span>{{ row.text }}</span>
                 <b v-if="row.ident">{{ row.ident }}</b>
               </button>
-              <div v-else class="nt-tape__row" :class="[`is-${row.domain}`, `tone-${row.tone}`]">
-                <em>{{ row.time }}</em>
-                <i>{{ TAPE_DOMAIN_LABEL[row.domain] }}</i>
-                <span>{{ row.text }}</span>
-                <b v-if="row.ident">{{ row.ident }}</b>
-              </div>
             </li>
           </ul>
           <p v-else class="nt-term__empty">{{ tapeEmpty }}</p>
@@ -631,6 +634,10 @@ const brokerLine = computed(() => {
           <li>
             <span>权益 {{ amount(account.equity) }} · 现金 {{ amount(account.cash) }}</span>
             <em>持仓 {{ account.positions.length }}<template v-if="openOrders != null"> · 委托 {{ openOrders }}</template></em>
+          </li>
+          <li>
+            <span>日内回撤 {{ drawdownPct == null ? '还没有采样点' : ratioPct(drawdownPct) }}</span>
+            <em>前端采样 · 仅本次会话</em>
           </li>
           <li v-if="risk?.ok">
             <span :title="runAuthorizationText(risk.mode)">运行授权 {{ runAuthorizationText(risk.mode) }}</span>

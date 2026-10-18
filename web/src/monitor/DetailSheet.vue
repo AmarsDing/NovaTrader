@@ -246,12 +246,27 @@ function rowTone(row: DetailRow): string {
   font-family: inherit;
 }
 
+/* 宽表横滚时第一列（代码/名称）钉在左缘，后列从下面滑过 */
+.nt-deep__table th:first-child,
+.nt-deep__table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--nt-bg-1);
+  box-shadow: inset -1px 0 0 var(--nt-border-1);
+}
+
+.nt-deep__table th:first-child {
+  z-index: 2;
+  background: var(--nt-bg-2);
+}
+
 .nt-deep__table tr[data-flag='warn'] td:first-child {
-  box-shadow: inset 3px 0 0 var(--nt-warn);
+  box-shadow: inset 3px 0 0 var(--nt-warn), inset -1px 0 0 var(--nt-border-1);
 }
 
 .nt-deep__table tr[data-flag='danger'] td:first-child {
-  box-shadow: inset 3px 0 0 var(--nt-danger);
+  box-shadow: inset 3px 0 0 var(--nt-danger), inset -1px 0 0 var(--nt-border-1);
 }
 
 .nt-deep__empty {

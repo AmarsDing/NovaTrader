@@ -360,6 +360,21 @@
   text-align: center;
 }
 
+/* 视觉隐藏但保留键盘可达——画布等价节点清单用（P1 无障碍：读屏/键盘进不了位图） */
+.nt-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+  list-style: none;
+}
+
 /* ---- 底部终端带 ---- */
 
 .nt-terms {
@@ -585,6 +600,14 @@ button.nt-tape__row {
 
 button.nt-tape__row:hover {
   background: var(--nt-bg-2);
+}
+
+/* 无 selectId 的行（告警文本等）不可点但不是「禁用」：读感与普通行一致，只去掉可点暗示 */
+button.nt-tape__row:disabled,
+button.nt-tape__row:disabled:hover {
+  opacity: 1;
+  cursor: default;
+  background: transparent;
 }
 
 .nt-tape__row em {

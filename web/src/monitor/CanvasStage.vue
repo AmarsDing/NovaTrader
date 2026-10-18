@@ -61,6 +61,13 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ select: [id: string]; edge: [id: string] }>()
 
+/** 读屏口径：一句话说清画布上有什么；交互走模板里的等价节点清单，不描述坐标 */
+const stageLabel = computed(() => {
+  const base = `监控链路画布：${props.graph.nodes.length} 个节点、${props.graph.edges.length} 条连线`
+  const selected = props.selectedId ? props.graph.nodes.find((item) => item.id === props.selectedId)?.title || '' : ''
+  return selected ? `${base}；当前选中 ${selected}` : `${base}；未选中节点`
+})
+
 const host = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const hoverId = ref('')
@@ -156,6 +163,7 @@ const renderLoop = createVisualFrameLoop({
 function syncVisualMode() {
   theme = readStageThemeSafe()
   material = readMaterial()
+  measureCache.clear()
   eco = document.documentElement.dataset.visualQuality === 'eco'
   reducedMotion = document.documentElement.dataset.motion === 'reduced' || eco ||
     window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
@@ -346,7 +354,8 @@ function fitView() {
 }
 
 function onDblClick() {
-  fitView()
+  /* 双击复位 = 视角 + 本时段的拖动偏移一起清（docstring 承诺的「复位」；只 fitView 找不回拖丢的牌） */
+  resetLayout()
 }
 
 function localPoint(event: PointerEvent | WheelEvent): StagePoint {
@@ -869,7 +878,7 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   context.fillStyle = dragging ? theme.titleBand : eco ? theme.card : material.glass
   context.fill()
   context.restore()
-  context.lineWidth = on ? 1.8 : 1
+  context.lineWidth = on ? 1.8 : hot || hover ? 1.5 : 1
   context.strokeStyle = on
     ? theme.fiberActive
     : hot || hover
@@ -929,7 +938,7 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   if (item.role) {
     context.font = `9px ${theme.fontSans}`
     context.fillStyle = theme.text2
-    const roleWidth = context.measureText(item.role).width
+    const roleWidth = measureWidth(context, item.role)
     context.fillText(item.role, rect.x + rect.w - roleWidth - 8, rect.y + bandH / 2 + 0.5)
   }
 
@@ -940,7 +949,7 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   let badgeWidth = 0
   if (node.fresh?.text) {
     context.font = `9px ${theme.fontMono}`
-    badgeWidth = context.measureText(node.fresh.text).width + 10
+    badgeWidth = measureWidth(context, node.fresh.text) + 10
   }
   context.font = `${focus ? 700 : 600} ${faceSize}px ${theme.fontMono}`
   context.fillStyle = faceColor(item)
@@ -1031,13 +1040,31 @@ function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, w:
   context.closePath()
 }
 
+/** measureText 对同一只字体同一串字是纯查询，但每张牌每帧都会问——缓存近 256 条。
+ * 主题/画质切换时 syncVisualMode 清空（字体可能随之变）。 */
+const measureCache = new Map<string, number>()
+
+function measureWidth(context: CanvasRenderingContext2D, text: string): number {
+  const key = `${context.font}${text}`
+  const hit = measureCache.get(key)
+  if (hit !== undefined) return hit
+  const width = context.measureText(text).width
+  if (measureCache.size >= 256) measureCache.clear()
+  measureCache.set(key, width)
+  return width
+}
+
 function clipText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (context.measureText(text).width <= maxWidth) return text
-  let clipped = text
-  while (clipped.length > 1 && context.measureText(`${clipped}…`).width > maxWidth) {
-    clipped = clipped.slice(0, -1)
+  if (measureWidth(context, text) <= maxWidth) return text
+  /* 二分取代逐字回退：8 次测量封顶，原来与字数成正比 */
+  let lo = 0
+  let hi = text.length
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1
+    if (measureWidth(context, `${text.slice(0, mid)}…`) <= maxWidth) lo = mid
+    else hi = mid
   }
-  return `${clipped}…`
+  return `${text.slice(0, lo)}…`
 }
 
 /** 暴露给页面：清空当前时段的拖动并复位视角 */
@@ -1057,8 +1084,16 @@ defineExpose({ resetLayout })
     <canvas
       v-show="!failed"
       ref="canvas"
+      role="img"
+      :aria-label="stageLabel"
       :style="{ cursor: dragState ? 'grabbing' : hoverId || funnelHover || hoverEdgeId ? 'pointer' : 'grab' }"
     ></canvas>
+    <!-- 画布是无焦点 2D 位图，键盘与读屏进不去：给一份等价的节点按钮清单，选中行为与点击画布一致 -->
+    <ul class="nt-sr-only" aria-label="画布节点清单">
+      <li v-for="item in graph.nodes" :key="item.id">
+        <button type="button" @click="emit('select', item.id)">{{ item.title }}<template v-if="item.face">：{{ item.face }}</template></button>
+      </li>
+    </ul>
     <div v-if="failed" class="nt-stage__failed">画布不可用，监控链路改读侧栏与终端带</div>
   </div>
 </template>
