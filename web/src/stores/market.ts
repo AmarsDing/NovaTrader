@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getSentiment, listSectors, type SectorRow } from '@/api/market'
 import { quiet } from '@/utils/async'
+import { createRefreshQueue } from '@/utils/refresh-queue'
 
 export const useMarketStore = defineStore('market', () => {
   const phase = ref('')
@@ -13,8 +14,10 @@ export const useMarketStore = defineStore('market', () => {
   const down = ref<number | null>(null)
   const brokenRate = ref<number | null>(null)
   const sectors = ref<SectorRow[]>([])
+  const ready = ref(false)
+  const checkedAt = ref(0)
 
-  async function refresh() {
+  const refresh = createRefreshQueue(async () => {
     const [sentiment, sectorRows] = await Promise.all([quiet(() => getSentiment()), quiet(() => listSectors(8))])
     if (sentiment) {
       phase.value = sentiment.phase
@@ -26,7 +29,11 @@ export const useMarketStore = defineStore('market', () => {
       brokenRate.value = sentiment.brokenRate
     }
     if (sectorRows) sectors.value = sectorRows
-  }
+    ready.value = !!sentiment && !!sentiment.asOf && sectorRows != null
+    if (!sentiment) sentimentStale.value = true
+    checkedAt.value = Date.now()
+    return ready.value
+  })
 
   return {
     phase,
@@ -37,6 +44,8 @@ export const useMarketStore = defineStore('market', () => {
     down,
     brokenRate,
     sectors,
+    ready,
+    checkedAt,
     refresh,
   }
 })

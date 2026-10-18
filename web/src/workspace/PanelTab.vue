@@ -13,9 +13,10 @@ const props = defineProps<{
   api: DockviewPanelApi
 }>()
 
-const status = computed<'live' | 'stale' | 'down'>(() => {
-  if (isLive()) return 'live'
-  return link.lastAt ? 'stale' : 'down'
+const status = computed<'ok' | 'stale' | 'down' | 'off'>(() => {
+  if (isLive()) return 'ok'
+  if (link.ws === 'open' || link.ws === 'connecting' || link.lastAt) return 'stale'
+  return link.health === 'down' ? 'down' : 'off'
 })
 
 const poppable = computed(() => canPopout(props.name))
@@ -54,6 +55,6 @@ function close() {
 .nt-tab__pop:hover,
 .nt-tab__close:hover {
   color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.08);
+  background: var(--nt-accent-soft);
 }
 </style>

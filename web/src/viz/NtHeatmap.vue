@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import NtEChart from './NtEChart.vue'
-import { PALETTE } from '@/theme/tokens'
+import { useChartPalette } from '@/theme/tokens'
 import type { EChartsCoreOption } from 'echarts/core'
 
 export interface HeatCell {
@@ -20,6 +20,8 @@ const props = withDefaults(
   { cells: () => [], xLabels: () => [], yLabels: () => [], height: '240px' },
 )
 
+const palette = useChartPalette()
+
 const option = computed<EChartsCoreOption | null>(() => {
   if (!props.cells.length || !props.xLabels.length || !props.yLabels.length) return null
   const xs = props.xLabels
@@ -34,14 +36,14 @@ const option = computed<EChartsCoreOption | null>(() => {
     xAxis: {
       type: 'category',
       data: xs,
-      axisLabel: { color: PALETTE.text3, fontSize: 10 },
+      axisLabel: { color: palette.value.text3, fontSize: 10 },
       axisLine: { show: false },
       axisTick: { show: false },
     },
     yAxis: {
       type: 'category',
       data: ys,
-      axisLabel: { color: PALETTE.text3, fontSize: 10 },
+      axisLabel: { color: palette.value.text3, fontSize: 10 },
       axisLine: { show: false },
       axisTick: { show: false },
     },
@@ -49,14 +51,14 @@ const option = computed<EChartsCoreOption | null>(() => {
       show: false,
       min: -vmax,
       max: vmax,
-      inRange: { color: [PALETTE.down, PALETTE.bg1, PALETTE.up] },
+      inRange: { color: [palette.value.down, palette.value.bg1, palette.value.up] },
     },
     series: [
       {
         type: 'heatmap',
         data,
         label: { show: false },
-        itemStyle: { borderColor: PALETTE.bg0, borderWidth: 1 },
+        itemStyle: { borderColor: palette.value.bg0, borderWidth: 1 },
       },
     ],
   }

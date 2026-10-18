@@ -101,7 +101,7 @@ export interface OpsBrokerFiles {
   lastOk: string
 }
 
-/** 东财 CSV 文件单目录状态。broker-gw 边车当前不存在，available=false 时全是 null。 */
+/** 生产东财文件通道状态。隔离网关已实现；available=false 时目录指标保持 null。 */
 export async function getOpsBrokerFiles(): Promise<OpsBrokerFiles> {
   const data = await request('/api/ops/broker-files')
   const raw = (data ?? {}) as RawRecord

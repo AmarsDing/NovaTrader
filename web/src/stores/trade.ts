@@ -4,24 +4,38 @@ import { ref } from 'vue'
 import { cancelOrder, confirmOrder, listFills, listOrders, placeOrder } from '@/api/trade'
 import type { Fill, Order, OrderDraft } from '@/api/trade'
 import { quiet } from '@/utils/async'
+import { createRefreshQueue } from '@/utils/refresh-queue'
 
 export const useTradeStore = defineStore('trade', () => {
   const orders = ref<Order[]>([])
   const fills = ref<Fill[]>([])
   const loading = ref(false)
+  const ready = ref(false)
+  const book = ref('')
+  let sequence = 0
 
-  async function refresh(account: string) {
+  const queuedRefresh = createRefreshQueue(async (account) => {
+    if (book.value !== account) return false
+    const requestSequence = ++sequence
     loading.value = true
     try {
       const [orderList, fillList] = await Promise.all([
         quiet(() => listOrders(account)),
         quiet(() => listFills(account)),
       ])
+      if (requestSequence !== sequence || book.value !== account) return false
+      ready.value = orderList != null && fillList != null
       if (orderList) orders.value = orderList
       if (fillList) fills.value = fillList
+      return ready.value
     } finally {
-      loading.value = false
+      if (requestSequence === sequence) loading.value = false
     }
+  })
+  function refresh(account: string) {
+    if (book.value !== account) { ready.value = false; orders.value = []; fills.value = [] }
+    book.value = account
+    return queuedRefresh(account)
   }
 
   async function place(draft: OrderDraft) {
@@ -39,5 +53,5 @@ export const useTradeStore = defineStore('trade', () => {
     await refresh(account)
   }
 
-  return { orders, fills, loading, refresh, place, cancel, confirm }
+  return { orders, fills, loading, ready, book, refresh, place, cancel, confirm }
 })

@@ -1,5 +1,6 @@
 import type { BreadthSummary, KlineGapsSummary, PremiumSummary } from '@/api/market'
 import type { OpsDb, OpsNats } from '@/api/ops'
+import type { ObservabilitySnapshot } from '@/api/observability'
 
 export type Ring = 'source' | 'service' | 'post' | 'book'
 
@@ -55,6 +56,12 @@ export interface Pulse {
   to: string
   identifier: Identifier
   at: number
+  /** 来自真实事件外壳；缺失保持未知，页面接收时间 at 与源时间分别解释。 */
+  eventId?: string
+  traceId?: string
+  subject?: string
+  sourceTime?: string
+  receivedAt?: string
 }
 
 export interface NewsRow {
@@ -157,7 +164,14 @@ export interface MonitorSignal {
 }
 
 export interface MonitorInput {
+  /** 实测网关收入口径，不能冒充所有服务的业务消费确认。 */
+  observability?: ObservabilitySnapshot | null
+  /** 最近一次 REST 聚合完成时间；兼容旧调用方，不能由 WS 推送刷新。 */
   now: number
+  /** REST 采样时钟。0 表示尚未完成首次采样，与数据自身时间分别展示。 */
+  sampledAt?: number
+  /** 最近收到的监控 WS 脉冲时间，仅描述推送活动。 */
+  lastPush?: number
   focusSymbol: string
   account: MonitorAccount | null
   risk: {

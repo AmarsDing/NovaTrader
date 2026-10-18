@@ -20,6 +20,8 @@
   font-size: 15px;
   font-weight: 600;
   color: var(--nt-text-1);
+  border-left: 3px solid var(--nt-accent);
+  padding-left: 9px;
 }
 
 .nt-note,
@@ -78,9 +80,10 @@
 
 .nt-panel {
   padding: var(--nt-pad-panel);
-  background: var(--nt-bg-1);
-  border: 1px solid var(--nt-border-1);
+  background: var(--nt-glass-sheen), var(--nt-data-bg);
+  border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-m);
+  box-shadow: var(--nt-edge-light);
 }
 
 .nt-panel__title {
@@ -88,6 +91,50 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--nt-text-1);
+}
+
+/* 工作台的一张票保留原结构，壳/票头/阅读区分层，不给每张卡重复加 blur。 */
+.nt-panel.desk {
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  box-shadow: var(--nt-edge-light), var(--nt-glow-soft);
+}
+
+.desk .desk__body {
+  background: var(--nt-data-bg);
+  border-color: var(--nt-glass-border);
+  box-shadow: var(--nt-edge-light);
+}
+
+.desk .ticket__head {
+  padding: 9px 10px;
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-glass-sheen), var(--nt-glass-raised);
+  border: 1px solid var(--nt-glass-border);
+  box-shadow: inset 2px 0 var(--nt-accent), var(--nt-edge-light);
+}
+
+.desk .lane h3 {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--nt-glass-border);
+  background: var(--nt-glass-raised);
+  box-shadow: var(--nt-edge-light);
+}
+
+.desk .lane li.on {
+  box-shadow: inset 2px 0 var(--nt-accent), var(--nt-glow-soft);
+}
+
+.desk .ticket__block {
+  padding: 10px;
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-data-bg);
+}
+
+.nt-panel.desk .action-plan {
+  background: var(--nt-data-raised);
+  border-color: var(--nt-glass-border);
+  box-shadow: inset 3px 0 var(--nt-accent-2), var(--nt-edge-light);
 }
 
 @media (max-width: 960px) {

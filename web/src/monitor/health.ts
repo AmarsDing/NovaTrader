@@ -1,5 +1,5 @@
 /**
- * 顶栏健康总分（监控业务监控方案 §4.2/§6.3）：五项等权，扣分必须可解释。
+ * 顶栏健康总分（监控业务监控方案 §4.2/§6.3）：五项扣分必须可解释。
  * 纯函数：给定 MonitorInput 与当前时刻，算出总分与五项扣分明细。
  * 测不到的项记 measured=false 并说明缺哪个接口，不编扣分、不装健康。
  */
@@ -18,8 +18,11 @@ export interface HealthPart {
 }
 
 export interface HealthScore {
-  score: number
+  /** 五项均有观测才给总分；未知项不能按满分计算。 */
+  score: number | null
   tone: HealthTone
+  measuredCount: number
+  totalCount: number
   parts: HealthPart[]
 }
 
@@ -27,7 +30,18 @@ export interface HealthScore {
 const CAPS: Record<HealthPart['key'], number> = { fresh: 20, services: 20, model: 20, risk: 15, channel: 25 }
 
 const HEALTHY = new Set(['ok', 'up', 'running', 'healthy', 'ready', 'live'])
-const MARKET_SOURCE = /通达信|tdx|akshare|行情/i
+
+/** 运行授权与账本身份分别解释；保留的 L3 不表示全自动实盘已开放。 */
+export function runAuthorizationText(mode: string): string {
+  const key = mode.trim().toUpperCase()
+  const names: Record<string, string> = {
+    L0: 'L0 观察',
+    L1: 'L1 模拟',
+    L2: 'L2 实盘人工确认',
+    L3: 'L3 未开放（按 L2 人工确认）',
+  }
+  return names[key] ?? (key ? `${key}（未知运行授权）` : '未返回')
+}
 
 export function healthTone(score: number): HealthTone {
   if (score >= 90) return 'accent'
@@ -38,40 +52,34 @@ export function healthTone(score: number): HealthTone {
 
 export function computeHealth(input: MonitorInput, now: number): HealthScore {
   const parts = [freshPart(input, now), servicesPart(input), modelPart(input), riskPart(input), channelPart(input)]
+  const measuredCount = parts.filter((part) => part.measured).length
   const total = parts.reduce((sum, part) => sum + part.deduction, 0)
-  const score = Math.max(0, Math.min(100, Math.round(100 - total)))
-  return { score, tone: healthTone(score), parts }
+  const score = measuredCount === parts.length ? Math.max(0, Math.min(100, Math.round(100 - total))) : null
+  const knownFailure = parts.some((part) => part.measured && part.deduction >= CAPS[part.key])
+  return { score, tone: score == null ? (knownFailure ? 'danger' : 'warn') : healthTone(score), measuredCount, totalCount: parts.length, parts }
 }
 
-/** 数据新鲜度：行情时钟距今 <10s 满分，每超 10s 扣 4，扣完 20 为止 */
+/** 这里只观测情绪结果生成时效；源 lastAt 是采集调用成功时间，不能代替报价的源时钟。 */
 function freshPart(input: MonitorInput, now: number): HealthPart {
-  const stamps: number[] = []
-  for (const item of input.sources?.ok ? input.sources.items : []) {
-    if (!MARKET_SOURCE.test(item.name)) continue
-    const at = Date.parse(item.lastAt)
-    if (Number.isFinite(at)) stamps.push(at)
+  const part = { key: 'fresh' as const, label: '市场结果时效' }
+  const result = input.sentiment?.ok ? input.sentiment : null
+  const generatedAt = result ? Date.parse(result.asOf) : NaN
+  if (!Number.isFinite(generatedAt)) {
+    return { ...part, deduction: 0, measured: false, note: '未判定：情绪结果 asOf 未返回；源数据时钟未接入，采集成功 lastAt 不能代替报价时间' }
   }
-  if (input.sentiment?.ok) {
-    const at = Date.parse(input.sentiment.asOf)
-    if (Number.isFinite(at)) stamps.push(at)
-  }
-  if (stamps.length === 0) {
-    return { key: 'fresh', label: '数据新鲜度', deduction: 0, measured: false, note: '未判定：行情时钟未返回（数据源 lastAt 与情绪 asOf 都缺）' }
-  }
-  const ageSec = Math.max(0, Math.round((now - Math.max(...stamps)) / 1000))
-  const deduction = Math.min(CAPS.fresh, ageSec < 10 ? 0 : Math.floor(ageSec / 10) * 4)
+  const ageSec = Math.max(0, Math.round((now - generatedAt) / 1000))
+  const deduction = result?.stale ? CAPS.fresh : Math.min(CAPS.fresh, ageSec < 10 ? 0 : Math.floor(ageSec / 10) * 4)
   return {
-    key: 'fresh',
-    label: '数据新鲜度',
+    ...part,
     deduction,
     measured: true,
-    note: deduction === 0 ? `行情距今 ${ageSec}s` : `行情距今 ${ageSec}s，超 10s 起每 10s 扣 4`,
+    note: `${result?.stale ? '情绪结果已标记陈旧，扣 20；' : ''}结果生成距今 ${ageSec}s${!result?.stale && deduction > 0 ? '，超 10s 起每 10s 扣 4' : ''}；不代表逐证券报价时效`,
   }
 }
 
 /** 服务存活：每个非健康服务扣 6，扣完 20 为止 */
 function servicesPart(input: MonitorInput): HealthPart {
-  if (!input.ops?.ok) {
+  if (!input.ops?.ok || input.ops.services.length === 0) {
     return { key: 'services', label: '服务存活', deduction: 0, measured: false, note: '未判定：运维状态未返回（GET /api/ops/status）' }
   }
   const broken = input.ops.services.filter((item) => !HEALTHY.has(item.status.trim().toLowerCase())).map((item) => item.name)
@@ -82,11 +90,16 @@ function servicesPart(input: MonitorInput): HealthPart {
 
 /** 模型可用：熔断每层扣 12，P95 每超 1s 扣 2，合计扣完 20 为止 */
 function modelPart(input: MonitorInput): HealthPart {
-  if (!input.brainStats?.ok) {
+  if (!input.brainStats?.ok || input.brainStats.tiers.length === 0) {
     return { key: 'model', label: '模型可用', deduction: 0, measured: false, note: '未判定：模型统计未返回（GET /v1/brain/stats）' }
   }
   const reasons: string[] = []
   let deduction = 0
+  const unconfigured = input.brainStats.tiers.filter((tier) => !tier.configured)
+  if (unconfigured.length > 0) {
+    deduction += Math.min(CAPS.model, unconfigured.length * 12)
+    reasons.push(`${unconfigured.map((tier) => tier.tier || '某层').join('、')} 未配置`)
+  }
   const open = input.brainStats.tiers.filter((tier) => tier.circuitOpen)
   for (const tier of open) {
     deduction += 12
@@ -99,36 +112,37 @@ function modelPart(input: MonitorInput): HealthPart {
     reasons.push(`P95 ${Math.round(p95 / 1000)}s 超 5s，-${over}`)
   }
   deduction = Math.min(CAPS.model, deduction)
-  if (deduction === 0) return { key: 'model', label: '模型可用', deduction: 0, measured: true, note: '无熔断，P95 在 5s 内' }
+  if (deduction === 0) {
+    const hasLatency = input.brainStats.tiers.some((tier) => tier.calls != null && tier.calls > 0 && tier.p95Ms != null)
+    return { key: 'model', label: '模型可用', deduction: 0, measured: true, note: hasLatency ? '已配置，无熔断，P95 在 5s 内' : '已配置，无熔断；延迟样本未返回' }
+  }
   return { key: 'model', label: '模型可用', deduction, measured: true, note: reasons.join('；') }
 }
 
-/** 风控在线：读不到状态扣 15 */
+/** 风控是否在线以状态观测为据；请求失败不能当成已测得的业务状态。 */
 function riskPart(input: MonitorInput): HealthPart {
   if (!input.risk?.ok) {
-    return { key: 'risk', label: '风控在线', deduction: CAPS.risk, measured: true, note: '风控状态读不到（GET /v1/risk/state），扣 15' }
+    return { key: 'risk', label: '风控在线', deduction: 0, measured: false, note: '未判定：风控状态未返回（GET /api/risk/state）' }
   }
   if (input.risk.killActive) {
     return { key: 'risk', label: '风控在线', deduction: 0, measured: true, note: `急停中：${input.risk.killReason || '原因未写明'}` }
   }
-  return { key: 'risk', label: '风控在线', deduction: 0, measured: true, note: `在线，模式 ${input.risk.mode || '未返回'}` }
+  return { key: 'risk', label: '风控在线', deduction: 0, measured: true, note: `在线，运行授权 ${runAuthorizationText(input.risk.mode)}` }
 }
 
-/** 交易通道：模拟盘固定扣 5；实盘文件单探针未接入按不可达扣 25 */
-function channelPart(input: MonitorInput): HealthPart {
-  const mode = input.risk?.ok ? input.risk.mode.trim().toUpperCase() : ''
-  const live = mode.includes('LIVE') || mode.includes('REAL')
-  if (live) {
-    return {
-      key: 'channel',
-      label: '交易通道',
-      deduction: CAPS.channel,
-      measured: true,
-      note: '实盘模式：文件单探针未接入（GET /v1/ops/broker-files），按不可达扣 25',
-    }
+/** 账本身份决定通道；L0–L3 是运行授权，不能拿它猜 SIM/LIVE。 */
+export function channelPart(input: MonitorInput): HealthPart {
+  const part = { key: 'channel' as const, label: '交易通道' }
+  const book = input.account?.ok ? input.account.book.trim().toUpperCase() : ''
+  if (book === 'SIM') return { ...part, deduction: 5, measured: true, note: 'SIM 模拟盘：不下实盘文件单，扣 5' }
+  if (book !== 'LIVE') return { ...part, deduction: 0, measured: false, note: '未判定：账户账本未返回或无法识别，不能判断 SIM/LIVE' }
+
+  const trade = input.ops?.ok ? input.ops.services.find((item) => item.name.trim().toLowerCase() === 'trade') : undefined
+  if (trade && ['down', 'error', 'unavailable', 'failed', 'closed'].includes(trade.status.trim().toLowerCase())) {
+    return { ...part, deduction: CAPS.channel, measured: true, note: `LIVE 实盘：交易服务失联（${trade.status}），扣 25` }
   }
-  if (!mode) {
-    return { key: 'channel', label: '交易通道', deduction: 5, measured: false, note: '交易模式未返回，按模拟盘扣 5；实盘通道探针需要 GET /v1/ops/broker-files' }
-  }
-  return { key: 'channel', label: '交易通道', deduction: 5, measured: true, note: '模拟盘：无实盘文件单通道，扣 5' }
+  const broker = input.opsP1?.ok ? input.opsP1.brokerFiles : null
+  if (!broker) return { ...part, deduction: 0, measured: false, note: '未判定：文件单探针未返回（GET /api/ops/broker-files）' }
+  if (!broker.available) return { ...part, deduction: CAPS.channel, measured: true, note: `LIVE 实盘：文件单未接入，扣 25；${broker.note || '探针报告不可用'}` }
+  return { ...part, deduction: 0, measured: true, note: 'LIVE 实盘：文件单探针可达；成交与对账仍以真实回报为准' }
 }

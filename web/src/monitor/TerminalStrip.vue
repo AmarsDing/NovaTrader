@@ -8,7 +8,7 @@
  * 只读：整条终端带没有写操作，点行只是选中画布节点。缺口写「未接入：需要 GET …」，不编数。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { amount, compactAmount, intText, missLabel, pctText, ratioPct, signed } from '@/utils/format'
+import { amount, compactAmount, intText, missLabel, pctText, ratioPct, signed, toneOf } from '@/utils/format'
 import { attributionLabel } from './detail'
 import { dutyOf, isLoud, statusDot } from './duty'
 import { gpuMemory } from './hud'
@@ -16,6 +16,7 @@ import { TAPE_DOMAIN_LABEL, TAPE_MAX_ROWS } from './tape'
 import type { TapeRow } from './tape'
 import type { BandKey, FirstPane } from './timeband'
 import type { MonitorInput } from './types'
+import { channelPart, runAuthorizationText } from './health'
 
 const props = defineProps<{
   input: MonitorInput
@@ -188,11 +189,7 @@ interface PaneLine {
 
 const account = computed(() => props.input.account)
 const risk = computed(() => props.input.risk)
-const pnlTone = computed<'up' | 'down' | 'flat'>(() => {
-  const pnl = account.value?.dayPnl
-  if (pnl == null || pnl === 0) return 'flat'
-  return pnl > 0 ? 'up' : 'down'
-})
+const pnlTone = computed<'up' | 'down' | 'flat'>(() => toneOf(account.value?.dayPnl))
 
 /** 午休半场小结：三个数都读现有接口，口径写在 note 里，不当作半场增量 */
 const middayLines = computed<PaneLine[]>(() => {
@@ -259,7 +256,7 @@ const positionLines = computed<PositionLine[]>(() => {
       key: item.symbol,
       symbol: item.symbol,
       money: float == null ? '浮盈未返回' : signed(float),
-      tone: float == null || float === 0 ? 'flat' : float > 0 ? 'up' : 'down',
+      tone: toneOf(float),
       tail,
       flag,
     }
@@ -295,7 +292,7 @@ const reviewLines = computed<PaneLine[]>(() => {
       key: 'premium',
       label: s.hasClose ? '打板收盘溢价' : '打板开盘溢价',
       value: `${ratioPct(value)} · 再板 ${s.limitAgain}/${s.sample} 只`,
-      tone: value > 0 ? 'up' : value < 0 ? 'down' : 'flat',
+      tone: toneOf(value),
     })
   } else {
     lines.push({
@@ -311,8 +308,8 @@ const reviewLines = computed<PaneLine[]>(() => {
     lines.push({
       key: 'breadth',
       label: `MA${b.window} 上方占比`,
+      // 广度占比不染色：它是结构统计量，红涨绿跌只给行情/金额/盈亏
       value: `${ratioPct(b.ratio, 1)} · ${b.above}/${b.total} 只${b.live ? '（实时算）' : ''}`,
-      tone: b.ratio >= 0.5 ? 'up' : 'down',
     })
   } else {
     lines.push({
@@ -425,8 +422,18 @@ const shadows = computed(() => (props.input.shadow?.ok ? props.input.shadow.item
 const tiers = computed(() => (props.input.brainStats?.ok ? props.input.brainStats.tiers : []))
 const brainMissing = computed(() => !props.input.brainStats?.ok)
 const memory = computed(() => gpuMemory(props.input))
-const queued = computed(() => tiers.value.reduce((sum, tier) => sum + (tier.queued ?? 0), 0))
-const inFlight = computed(() => tiers.value.reduce((sum, tier) => sum + (tier.inFlight ?? 0), 0))
+function totalModelCount(key: 'queued' | 'inFlight'): number | null {
+  if (brainMissing.value || !tiers.value.length) return null
+  let total = 0
+  for (const tier of tiers.value) {
+    const value = tier[key]
+    if (value == null || !Number.isFinite(value) || value < 0) return null
+    total += value
+  }
+  return total
+}
+const queued = computed(() => totalModelCount('queued'))
+const inFlight = computed(() => totalModelCount('inFlight'))
 /* S7：/api/ops/gpu 通了就出真利用率/温度，没通才写缺口 */
 const gpuLine = computed(() => {
   const gpu = props.input.opsP1?.ok ? props.input.opsP1.gpu : null
@@ -449,15 +456,14 @@ const openOrders = computed(() => {
 })
 /** 文件单状态（§4.6）：只有实盘才谈得上文件单。S7 接口就位——broker-gw 未落地前如实转述 available=false 的缺口 */
 const brokerLine = computed(() => {
-  const mode = risk.value?.ok ? risk.value.mode : ''
-  if (!mode) return '模式未返回，文件单状态无从判定'
-  if (mode.toUpperCase() !== 'LIVE') return '模拟盘，不下文件单'
+  const channel = channelPart(props.input)
+  const book = account.value?.ok ? account.value.book.trim().toUpperCase() : ''
+  if (book !== 'LIVE' || channel.deduction > 0 || !channel.measured) return channel.note
   const broker = props.input.opsP1?.ok ? props.input.opsP1.brokerFiles : null
-  if (!broker) return '未接入：需要 GET /v1/ops/broker-files'
-  if (!broker.available) return `不可用：${broker.note}`
+  if (!broker) return channel.note
   const bits = [`待写 ${intText(broker.pending)}`, `已写 ${intText(broker.written)}`, `已消费 ${intText(broker.consumed)}`]
   if (broker.leftover != null && broker.leftover > 0) bits.push(`遗留 ${broker.leftover}`)
-  return bits.join(' · ')
+  return `探针可达 · ${bits.join(' · ')}`
 })
 </script>
 
@@ -563,7 +569,8 @@ const brokerLine = computed(() => {
             <span>{{ row.text }}</span>
           </li>
         </ul>
-        <p v-else class="nt-term__empty">通知与审计都没有记录</p>
+        <p v-else-if="input.notices?.ok && input.audit?.ok" class="nt-term__empty">本次查询没有通知或审计记录</p>
+        <p v-if="!input.notices?.ok || !input.audit?.ok" class="nt-term__note">{{ !input.notices?.ok ? '通知未返回' : '' }}{{ !input.notices?.ok && !input.audit?.ok ? ' · ' : '' }}{{ !input.audit?.ok ? '审计未返回' : '' }}，运行记录尚不完整</p>
       </section>
 
       <section class="nt-term nt-term--dispatch">
@@ -597,7 +604,7 @@ const brokerLine = computed(() => {
         </header>
         <ul v-if="tiers.length">
           <li v-for="tier in tiers" :key="tier.tier || tier.model">
-            <i :class="tier.circuitOpen ? 'is-down' : 'is-up'">{{ tier.circuitOpen ? '熔断' : '在跑' }}</i>
+            <i :class="tier.circuitOpen ? 'is-danger' : (tier.inFlight ?? 0) > 0 ? 'is-live' : 'is-flat'">{{ tier.circuitOpen ? '熔断' : tier.inFlight == null ? '状态未知' : tier.inFlight > 0 ? '在跑' : '空闲' }}</i>
             <span>{{ tier.tier }} · {{ tier.model || '未命名' }}</span>
             <em>
               调用 {{ intText(tier.calls ?? null) }} 失败 {{ intText(tier.failures) }} P95 {{ tier.p95Ms == null ? '—' : `${Math.round(tier.p95Ms)}ms` }}
@@ -611,13 +618,13 @@ const brokerLine = computed(() => {
           <div class="nt-meter"><i :style="{ width: `${memory.pct}%` }"></i></div>
           <b>{{ memory.pct }}% · {{ memory.text }}</b>
         </div>
-        <p class="nt-term__note">队列 {{ queued }} 在跑 {{ inFlight }} · {{ gpuLine }} · 令牌是计数不是金额</p>
+        <p class="nt-term__note">队列 {{ intText(queued) }} 在跑 {{ intText(inFlight) }} · {{ gpuLine }} · 令牌是计数不是金额</p>
       </section>
 
       <section class="nt-term nt-term--ledger">
         <header>
           <b>账本</b>
-          <span>LEDGER</span>
+          <span>{{ account?.ok ? account.book || '身份未返回' : 'LEDGER' }}</span>
         </header>
         <p class="nt-term__pnl" :class="pnlTone">{{ account?.ok ? signed(account.dayPnl) : '账户未返回' }}</p>
         <ul v-if="account?.ok">
@@ -626,8 +633,8 @@ const brokerLine = computed(() => {
             <em>持仓 {{ account.positions.length }}<template v-if="openOrders != null"> · 委托 {{ openOrders }}</template></em>
           </li>
           <li v-if="risk?.ok">
-            <span>模式 {{ risk.mode || '—' }}</span>
-            <em :class="risk.killActive ? 'is-down' : ''">{{ risk.killActive ? `急停 ${risk.killReason || '已触发'}` : '风控守着' }}</em>
+            <span :title="runAuthorizationText(risk.mode)">运行授权 {{ runAuthorizationText(risk.mode) }}</span>
+            <em :class="risk.killActive ? 'is-danger' : ''">{{ risk.killActive ? `急停 ${risk.killReason || '已触发'}` : '风控守着' }}</em>
           </li>
           <li>
             <span>文件单</span>

@@ -254,6 +254,17 @@ describe('pushPulse', () => {
 })
 
 describe('牌面', () => {
+  it('风控详情和终端的授权与账户分开，L3 不冒充自动实盘', () => {
+    const input = emptyInput()
+    input.account = { ok: true, book: 'LIVE', equity: 100, cash: 100, dayPnl: 0, positions: [] }
+    input.risk = { ok: true, mode: 'L3', killActive: false, killReason: '', buysToday: 0, marketBreaker: '' }
+    const cards = buildChildren(input, 'post:risk')
+    expect(cards.find((card) => card.id === 'risk:mode')).toMatchObject({ title: '运行授权', face: expect.stringContaining('未开放') })
+    expect(cards.find((card) => card.id === 'risk:book')).toMatchObject({ title: '账户账本', face: 'LIVE' })
+    const scene = buildScene(input, input.now)
+    expect(scene.nodes.find((node) => node.id === 'post:risk')?.detail).toContain('运行授权 L3 未开放')
+    expect(scene.terminals.find((term) => term.id === 'term:risk')?.rows.find((row) => row.label === '账户账本')?.value).toBe('LIVE')
+  })
   it('单个宕掉的服务只把名字升到醒目牌', () => {
     const graph = buildScene(
       {

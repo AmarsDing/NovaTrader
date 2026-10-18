@@ -2,6 +2,9 @@ import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
 
 export interface RiskStateView {
+  configRevision?: number | null
+  configReady?: boolean
+  engineReady?: boolean
   mode: string
   killActive: boolean
   killSource: string
@@ -44,6 +47,9 @@ export async function getRiskState(): Promise<RiskStateView> {
   const record = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
   const kill = (record.killSwitch || record.kill_switch || {}) as RawRecord
   return {
+    configRevision: num(pick(record, 'configRevision', 'config_revision')),
+    configReady: typeof (record.configReady ?? record.config_ready) === 'boolean' ? (record.configReady ?? record.config_ready) as boolean : undefined,
+    engineReady: typeof record.ready === 'boolean' ? record.ready : undefined,
     mode: pick<string>(record, 'mode') || '',
     killActive: !!kill.active,
     killSource: pick<string>(kill, 'source') || '',

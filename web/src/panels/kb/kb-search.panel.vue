@@ -193,12 +193,12 @@ onMounted(() => {
   font-size: 11.5px;
   color: var(--nt-accent);
   background: transparent;
-  border: 1px solid rgba(0, 229, 255, 0.3);
+  border: 1px solid var(--nt-accent-border);
   border-radius: 999px;
   cursor: pointer;
 }
 
 .similar__btn:hover {
-  background: rgba(0, 229, 255, 0.08);
+  background: var(--nt-accent-soft);
 }
 </style>

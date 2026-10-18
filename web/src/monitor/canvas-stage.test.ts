@@ -6,6 +6,7 @@ import {
   fitTransform,
   hash01,
   hitNode,
+  hitEdge,
   isTrunkEdge,
   reCurve,
   screenToWorld,
@@ -13,6 +14,7 @@ import {
   worldToScreen,
   zoomAt,
   type ViewTransform,
+  type CubicCurve,
 } from './canvas-stage'
 import { buildScene, type MonitorInput } from './scene-model'
 import type { Pulse, SceneGraph } from './types'
@@ -52,8 +54,32 @@ function demoGraph(): SceneGraph {
       brainStats: {
         ok: true,
         tiers: [
-          { tier: 'large', model: 'qwen', configured: true, circuitOpen: false, calls: 8, failures: 0, p50Ms: 12, p95Ms: 30, inFlight: 1, queued: 0, kvCacheUsage: null },
-          { tier: 'small', model: 'mini', configured: true, circuitOpen: false, calls: 3, failures: 0, p50Ms: 4, p95Ms: 9, inFlight: 0, queued: 0, kvCacheUsage: null },
+          {
+            tier: 'large',
+            model: 'qwen',
+            configured: true,
+            circuitOpen: false,
+            calls: 8,
+            failures: 0,
+            p50Ms: 12,
+            p95Ms: 30,
+            inFlight: 1,
+            queued: 0,
+            kvCacheUsage: null,
+          },
+          {
+            tier: 'small',
+            model: 'mini',
+            configured: true,
+            circuitOpen: false,
+            calls: 3,
+            failures: 0,
+            p50Ms: 4,
+            p95Ms: 9,
+            inFlight: 0,
+            queued: 0,
+            kvCacheUsage: null,
+          },
         ],
       },
       account: { ok: true, book: 'SIM', equity: 100, cash: 40, dayPnl: 2, positions: [] },
@@ -64,6 +90,24 @@ function demoGraph(): SceneGraph {
 }
 
 describe('buildStage', () => {
+  it.each([
+    ['有数据的场景', demoGraph()],
+    ['离线骨架', buildScene(emptyInput(), 1_000_000)],
+  ])('%s的默认卡体互不相交，避免模型和计数牌互相遮挡', (_name, graph) => {
+    const { nodes } = buildStage(graph)
+    const collisions: string[] = []
+    for (let left = 0; left < nodes.length; left += 1) {
+      for (let right = left + 1; right < nodes.length; right += 1) {
+        const a = nodes[left].rect
+        const b = nodes[right].rect
+        if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y) {
+          collisions.push(`${nodes[left].id} / ${nodes[right].id}`)
+        }
+      }
+    }
+    expect(collisions).toEqual([])
+  })
+
   it('列从左到右：数据源 < 扫描 < 四维 < 综合 < 裁决', () => {
     const stage = buildStage(demoGraph())
     const x = (id: string) => stage.nodes.find((item) => item.id === id)?.rect.x ?? -1
@@ -119,12 +163,31 @@ describe('buildStage', () => {
   it('空场景也可布局：骨干节点都在，骨架边保留但没有数据源来线', () => {
     const stage = buildStage(buildScene(emptyInput(), 1_000_000))
     const ids = stage.nodes.map((item) => item.id)
-    for (const id of ['post:scan', 'dim:tech', 'dim:news', 'dim:capital', 'dim:overseas', 'dim:synth', 'post:desk', 'post:risk', 'book:center', 'model:large', 'model:small']) {
+    for (const id of [
+      'post:scan',
+      'dim:tech',
+      'dim:news',
+      'dim:capital',
+      'dim:overseas',
+      'dim:synth',
+      'post:desk',
+      'post:risk',
+      'book:center',
+      'model:large',
+      'model:small',
+    ]) {
       expect(ids).toContain(id)
     }
     const pairs = stage.edges.map((edge) => `${edge.from}>${edge.to}`)
     expect(pairs.some((pair) => pair.startsWith('source:'))).toBe(false)
-    for (const pair of ['post:scan>dim:tech', 'dim:tech>dim:synth', 'dim:synth>post:desk', 'post:desk>post:risk', 'post:risk>book:center', 'model:large>dim:synth']) {
+    for (const pair of [
+      'post:scan>dim:tech',
+      'dim:tech>dim:synth',
+      'dim:synth>post:desk',
+      'post:desk>post:risk',
+      'post:risk>book:center',
+      'model:large>dim:synth',
+    ]) {
       expect(pairs).toContain(pair)
     }
     expect(stage.bounds.w).toBeGreaterThan(0)
@@ -211,6 +274,54 @@ describe('视口变换', () => {
 })
 
 describe('命中与脉冲', () => {
+  it('hitEdge 返回最近曲线，容差之外和空白不命中', () => {
+    const first: CubicCurve = [0, 0, 30, 0, 70, 0, 100, 0]
+    const second: CubicCurve = [0, 8, 30, 8, 70, 8, 100, 8]
+    const curves = new Map([
+      ['first', [first]],
+      ['second', [second]],
+    ])
+    expect(hitEdge(curves, { x: 50, y: 2 })).toBe('first')
+    expect(hitEdge(curves, { x: 50, y: 7 })).toBe('second')
+    expect(hitEdge(curves, { x: 50, y: 15 })).toBe('')
+    expect(hitEdge(curves, { x: -20, y: 0 })).toBe('')
+    expect(hitEdge(new Map(), { x: 50, y: 0 })).toBe('')
+  })
+
+  it('真正命中贝塞尔弯曲段，端点弦线不会误命中', () => {
+    const curve: CubicCurve = [0, 0, 0, 100, 100, 100, 100, 0]
+    const curves = new Map([['bend', [curve]]])
+    expect(hitEdge(curves, cubicPoint(curve, 0.43), 2)).toBe('bend')
+    expect(hitEdge(curves, { x: 50, y: 0 })).toBe('')
+  })
+
+  it('6px屏幕容差随缩放保持一致，视口平移不改变命中', () => {
+    const curve: CubicCurve = [0, 0, 30, 0, 70, 0, 100, 0]
+    const curves = new Map([['line', [curve]]])
+    for (const scale of [0.35, 1, 1.8]) {
+      const view = { x: 230, y: 75, scale }
+      const point = worldToScreen(view, { x: 50, y: 0 })
+      expect(hitEdge(curves, screenToWorld(view, { x: point.x, y: point.y + 5 }), 6 / scale)).toBe('line')
+      expect(hitEdge(curves, screenToWorld(view, { x: point.x, y: point.y + 7 }), 6 / scale)).toBe('')
+    }
+  })
+
+  it('拖动节点后使用重算曲线命中，保持逻辑边ID', () => {
+    const stage = buildStage(demoGraph())
+    const edge = stage.edges.find((row) => row.from === 'source:tdx')!
+    const moved = applyOffsets(
+      stage.nodes,
+      new Map([
+        [edge.from, { x: 0, y: 120 }],
+        [edge.to, { x: 0, y: 120 }],
+      ]),
+    )
+    const curves = reCurve(edge, new Map(moved.map((row) => [row.id, row.rect])))
+    const current = new Map([[edge.id, curves]])
+    expect(hitEdge(current, cubicPoint(curves[0], 0.5))).toBe(edge.id)
+    expect(hitEdge(current, cubicPoint(edge.curves[0], 0.5))).toBe('')
+  })
+
   it('hitNode 命中牌面，空白处返回空串', () => {
     const stage = buildStage(demoGraph())
     const scan = stage.nodes.find((item) => item.id === 'post:scan')
@@ -221,15 +332,45 @@ describe('命中与脉冲', () => {
   })
 
   it('脉冲端点映射：服务不上台，brain 归大模型，market 到扫描', () => {
-    const brain: Pulse = { id: 'p1', from: 'service:brain', to: 'post:model', identifier: { kind: 'trace', value: 't' }, at: 0 }
+    const brain: Pulse = {
+      id: 'p1',
+      from: 'service:brain',
+      to: 'post:model',
+      identifier: { kind: 'trace', value: 't' },
+      at: 0,
+    }
     expect(stagePulse(brain)).toEqual({ from: 'model:large', to: 'dim:synth' })
-    const market: Pulse = { id: 'p2', from: 'service:market', to: 'post:scan', identifier: { kind: 'symbol', value: '600000' }, at: 0 }
+    const market: Pulse = {
+      id: 'p2',
+      from: 'service:market',
+      to: 'post:scan',
+      identifier: { kind: 'symbol', value: '600000' },
+      at: 0,
+    }
     expect(stagePulse(market)).toEqual({ from: '', to: 'post:scan' })
-    const signal: Pulse = { id: 'p3', from: 'post:model', to: 'post:desk', identifier: { kind: 'signal', value: '88' }, at: 0 }
+    const signal: Pulse = {
+      id: 'p3',
+      from: 'post:model',
+      to: 'post:desk',
+      identifier: { kind: 'signal', value: '88' },
+      at: 0,
+    }
     expect(stagePulse(signal)).toEqual({ from: 'dim:synth', to: 'post:desk' })
-    const alert: Pulse = { id: 'p4', from: 'post:risk', to: 'book:center', identifier: { kind: 'rule', value: 'R01' }, at: 0 }
+    const alert: Pulse = {
+      id: 'p4',
+      from: 'post:risk',
+      to: 'book:center',
+      identifier: { kind: 'rule', value: 'R01' },
+      at: 0,
+    }
     expect(stagePulse(alert)).toEqual({ from: 'post:risk', to: 'book:center' })
-    const unknown: Pulse = { id: 'p5', from: 'service:nats', to: 'service:redis', identifier: { kind: 'trace', value: 'x' }, at: 0 }
+    const unknown: Pulse = {
+      id: 'p5',
+      from: 'service:nats',
+      to: 'service:redis',
+      identifier: { kind: 'trace', value: 'x' },
+      at: 0,
+    }
     expect(stagePulse(unknown)).toBeNull()
   })
 
@@ -257,13 +398,52 @@ function funnelGraph(): SceneGraph {
       candidates: {
         ok: true,
         items: [
-          { symbol: '600001', name: '甲', strategy: 's', stage: 'selected', missReason: '', ruleScore: 82, aiScore: 91, finalScore: 88 },
-          { symbol: '600002', name: '乙', strategy: 's', stage: 'ai_scored', missReason: 'below_threshold', ruleScore: 70, aiScore: 74, finalScore: 72 },
-          { symbol: '600003', name: '丙', strategy: 's', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
-          { symbol: '600004', name: '丁', strategy: 's', stage: 'ranked', missReason: 'no_quote', ruleScore: null, aiScore: null, finalScore: null },
+          {
+            symbol: '600001',
+            name: '甲',
+            strategy: 's',
+            stage: 'selected',
+            missReason: '',
+            ruleScore: 82,
+            aiScore: 91,
+            finalScore: 88,
+          },
+          {
+            symbol: '600002',
+            name: '乙',
+            strategy: 's',
+            stage: 'ai_scored',
+            missReason: 'below_threshold',
+            ruleScore: 70,
+            aiScore: 74,
+            finalScore: 72,
+          },
+          {
+            symbol: '600003',
+            name: '丙',
+            strategy: 's',
+            stage: 'ranked',
+            missReason: 'no_quote',
+            ruleScore: null,
+            aiScore: null,
+            finalScore: null,
+          },
+          {
+            symbol: '600004',
+            name: '丁',
+            strategy: 's',
+            stage: 'ranked',
+            missReason: 'no_quote',
+            ruleScore: null,
+            aiScore: null,
+            finalScore: null,
+          },
         ],
       },
-      orders: { ok: true, items: [{ id: 'o1', symbol: '600001', side: 'buy', status: 'FILLED', price: 10, volume: 100, reason: '' }] },
+      orders: {
+        ok: true,
+        items: [{ id: 'o1', symbol: '600001', side: 'buy', status: 'FILLED', price: 10, volume: 100, reason: '' }],
+      },
       fills: { ok: true, items: [{ id: 'f1', symbol: '600001', side: 'buy', price: 10, qty: 100, time: '' }] },
     },
     1_000_000,
@@ -276,7 +456,14 @@ describe('S3 漏斗光带布局', () => {
     const funnel = stage.funnel
     expect(funnel).not.toBeNull()
     if (!funnel) return
-    expect(funnel.segments.map((segment) => segment.key)).toEqual(['universe', 'screened', 'ai', 'risk', 'ordered', 'filled'])
+    expect(funnel.segments.map((segment) => segment.key)).toEqual([
+      'universe',
+      'screened',
+      'ai',
+      'risk',
+      'ordered',
+      'filled',
+    ])
     for (let index = 1; index < funnel.segments.length; index += 1) {
       expect(funnel.segments[index].rect.x).toBeGreaterThan(funnel.segments[index - 1].rect.x)
     }

@@ -6,6 +6,7 @@
  * 视口变换：screen = world * scale + offset。
  */
 import { funnelRate, funnelWidths, FUNNEL_MIN_W, type FunnelModel } from './funnel'
+import { PALETTE } from '../theme/tokens'
 import type { NodeStatus, Pulse, SceneGraph, SceneNode } from './types'
 
 export interface StagePoint {
@@ -149,6 +150,7 @@ const EXPERT_H = 54
 const DIM_GAP = 14
 const MODEL_W = 152
 const MODEL_H = 46
+const MODEL_GAP = 14
 const VERDICT_W = 190
 const VERDICT_H = 62
 const ACCOUNT_W = 216
@@ -253,8 +255,9 @@ export function buildStage(graph: SceneGraph, options?: StageOptions): StageLayo
 
   /* 模型条：四维块上方，小模型在左（管技术资金），大模型在右（管消息外围综合） */
   place('model:small', { x: COL_DIM_X, y: MODEL_ROW_Y, w: MODEL_W, h: MODEL_H })
-  place('model:large', { x: COL_DIM_X + MODEL_W + 14, y: MODEL_ROW_Y, w: MODEL_W, h: MODEL_H })
-  place('model:token', { x: COL_SYNTH_X, y: MODEL_ROW_Y, w: 132, h: MODEL_H })
+  place('model:large', { x: COL_DIM_X + MODEL_W + MODEL_GAP, y: MODEL_ROW_Y, w: MODEL_W, h: MODEL_H })
+  /* 计数牌接在模型组右侧，不能沿用综合列 x（会压住大模型牌）。 */
+  place('model:token', { x: COL_DIM_X + (MODEL_W + MODEL_GAP) * 2, y: MODEL_ROW_Y, w: 132, h: MODEL_H })
 
   /* 四维块与扫描、综合 */
   const dimBlockH = DIMS.length * EXPERT_H + (DIMS.length - 1) * DIM_GAP
@@ -299,7 +302,9 @@ export function buildStage(graph: SceneGraph, options?: StageOptions): StageLayo
   }
 
   /* S3：漏斗光带在台上时，扫描→四维→综合→信号的旧束线降为兜底（§4.4.3 束线只在光带缺失时兜底） */
-  const funnel = graph.funnel ? buildFunnelLayout(graph.funnel, rectOf, DIM_BLOCK_Y + dimBlockH + FUNNEL_BAND_OFFSET) : null
+  const funnel = graph.funnel
+    ? buildFunnelLayout(graph.funnel, rectOf, DIM_BLOCK_Y + dimBlockH + FUNNEL_BAND_OFFSET)
+    : null
 
   /* 同一出口的线扇出：按 from / to 分组编号，端口沿边错开 */
   const outGroups = new Map<string, string[]>()
@@ -347,7 +352,11 @@ export function isTrunkEdge(from: string, to: string): boolean {
  * 垂直居中对齐，形成向右收窄的阶梯剪影。缺失层画 FUNNEL_MISSING_H 厚的虚线段，不 0 填充不跳过。
  * 侧漏从交界处下折，经主干右端外侧的通道绕行汇入「漏选」牌右缘（不穿裁决列的牌）。
  */
-export function buildFunnelLayout(funnel: FunnelModel, rectOf: ReadonlyMap<string, StageRect>, bandTop: number): StageFunnelLayout {
+export function buildFunnelLayout(
+  funnel: FunnelModel,
+  rectOf: ReadonlyMap<string, StageRect>,
+  bandTop: number,
+): StageFunnelLayout {
   const counts = funnel.layers.map((layer) => layer.count)
   const widths = funnelWidths(counts)
   const maxH = Math.max(FUNNEL_MIN_W, ...widths.map((width) => width ?? 0))
@@ -379,7 +388,15 @@ export function buildFunnelLayout(funnel: FunnelModel, rectOf: ReadonlyMap<strin
     const leakY = leakBaseY + leaks.length * 8
     const x = next.rect.x
     const startY = next.missing ? centerY : next.rect.y + next.rect.h
-    leaks.push({ stub: [{ x, y: startY }, { x, y: leakY }, { x: collectorX, y: leakY }], label: leak.label, count: leak.count })
+    leaks.push({
+      stub: [
+        { x, y: startY },
+        { x, y: leakY },
+        { x: collectorX, y: leakY },
+      ],
+      label: leak.label,
+      count: leak.count,
+    })
   }
 
   /* 收集线：竖线沿裁决列左侧通道上行，从「漏选」牌左缘入牌；牌不在台上或没有侧漏时为 null。
@@ -404,7 +421,12 @@ export function buildFunnelLayout(funnel: FunnelModel, rectOf: ReadonlyMap<strin
     collector,
     band,
     note: funnel.note,
-    hit: { x: band.x - 8, y: band.y - 12, w: band.w + FUNNEL_COLLECTOR_DX + 24, h: Math.max(band.h + 12, leakBottom - band.y + 16) },
+    hit: {
+      x: band.x - 8,
+      y: band.y - 12,
+      w: band.w + FUNNEL_COLLECTOR_DX + 24,
+      h: Math.max(band.h + 12, leakBottom - band.y + 16),
+    },
     selectId: 'post:scan',
   }
 }
@@ -545,6 +567,39 @@ export function hitNode(nodes: StageNodeLayout[], world: StagePoint): string {
   return ''
 }
 
+/** 当前（含拖后重算）束线的最近命中；调用方传 6 / scale 保持约 6px 屏幕容差。 */
+export function hitEdge(curves: ReadonlyMap<string, readonly CubicCurve[]>, world: StagePoint, tolerance = 6): string {
+  if (!(tolerance > 0) || !Number.isFinite(tolerance)) return ''
+  let nearest = tolerance * tolerance
+  let hit = ''
+  for (const [id, strands] of curves) {
+    for (const curve of strands) {
+      const length =
+        Math.hypot(curve[2] - curve[0], curve[3] - curve[1]) +
+        Math.hypot(curve[4] - curve[2], curve[5] - curve[3]) +
+        Math.hypot(curve[6] - curve[4], curve[7] - curve[5])
+      const samples = Math.min(256, Math.max(24, Math.ceil(length / 8)))
+      let previous = cubicPoint(curve, 0)
+      for (let index = 1; index <= samples; index += 1) {
+        const next = cubicPoint(curve, index / samples)
+        const dx = next.x - previous.x
+        const dy = next.y - previous.y
+        const squaredLength = dx * dx + dy * dy
+        const t = squaredLength
+          ? clamp(((world.x - previous.x) * dx + (world.y - previous.y) * dy) / squaredLength, 0, 1)
+          : 0
+        const distance = (world.x - previous.x - t * dx) ** 2 + (world.y - previous.y - t * dy) ** 2
+        if (distance <= nearest) {
+          nearest = distance
+          hit = id
+        }
+        previous = next
+      }
+    }
+  }
+  return hit
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
@@ -595,45 +650,46 @@ export interface StageTheme {
 }
 
 /** 从 CSS 变量读色板。主题切换时重读。 */
-export function readStageTheme(root: HTMLElement = document.documentElement): StageTheme {
-  const style = getComputedStyle(root)
-  const v = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
-  const accent = v('--nt-accent', '#00e5ff')
-  const accent2 = v('--nt-accent-2', '#7b61ff')
+export function readStageTheme(root?: HTMLElement): StageTheme {
+  const element = root ?? (typeof document === 'undefined' ? undefined : document.documentElement)
+  const style = element ? getComputedStyle(element) : null
+  const v = (name: string, fallback: string) => style?.getPropertyValue(name).trim() || fallback
+  const accent = v('--nt-accent', PALETTE.accent)
+  const accent2 = v('--nt-accent-2', PALETTE.accent2)
   return {
-    bg: v('--nt-bg-0', '#0a0e17'),
-    card: v('--nt-bg-2', '#131828'),
-    cardBorder: v('--nt-border-2', 'rgba(255,255,255,0.14)'),
-    titleBand: v('--nt-bg-3', '#1a2136'),
-    text1: v('--nt-text-1', 'rgba(255,255,255,0.92)'),
-    text2: v('--nt-text-2', 'rgba(255,255,255,0.58)'),
-    text3: v('--nt-text-3', 'rgba(255,255,255,0.38)'),
-    up: v('--nt-up', '#ff4d4d'),
-    down: v('--nt-down', '#00d084'),
-    grid: v('--nt-border-1', 'rgba(255,255,255,0.07)'),
-    fiber: v('--nt-info', '#4c9aff'),
+    bg: v('--nt-bg-0', PALETTE.bg0),
+    card: v('--nt-bg-1', PALETTE.bg1),
+    cardBorder: v('--nt-border-2', PALETTE.border2),
+    titleBand: v('--nt-bg-2', PALETTE.bg2),
+    text1: v('--nt-text-1', PALETTE.text1),
+    text2: v('--nt-text-2', PALETTE.text2),
+    text3: v('--nt-text-3', PALETTE.text3),
+    up: v('--nt-up', PALETTE.up),
+    down: v('--nt-down', PALETTE.down),
+    grid: v('--nt-border-1', PALETTE.border1),
+    fiber: v('--nt-info', PALETTE.info),
     fiberActive: accent,
     status: {
       live: accent,
-      idle: v('--nt-text-3', 'rgba(255,255,255,0.38)'),
-      gap: v('--nt-warn', '#ff6b00'),
-      down: v('--nt-danger', '#ff3a3a'),
+      idle: v('--nt-text-3', PALETTE.text3),
+      gap: v('--nt-warn', PALETTE.warn),
+      down: v('--nt-danger', PALETTE.danger),
       attention: accent2,
     },
     domain: {
-      source: v('--nt-info', '#4c9aff'),
+      source: v('--nt-info', PALETTE.info),
       scan: accent,
       tech: accent,
       news: accent2,
-      capital: v('--nt-warn', '#ff6b00'),
-      overseas: v('--nt-success', '#00d084'),
+      capital: v('--nt-warn', PALETTE.warn),
+      overseas: v('--nt-success', PALETTE.success),
       synth: accent,
       model: accent2,
-      signal: v('--nt-success', '#00d084'),
-      miss: v('--nt-warn', '#ff6b00'),
-      risk: v('--nt-danger', '#ff3a3a'),
-      account: v('--nt-text-2', 'rgba(255,255,255,0.58)'),
-      runtime: v('--nt-text-3', 'rgba(255,255,255,0.38)'),
+      signal: accent,
+      miss: v('--nt-warn', PALETTE.warn),
+      risk: v('--nt-danger', PALETTE.danger),
+      account: v('--nt-text-2', PALETTE.text2),
+      runtime: v('--nt-text-3', PALETTE.text3),
     },
     fontSans: v('--nt-font-sans', "'Segoe UI', system-ui, sans-serif"),
     fontMono: v('--nt-font-mono', 'Consolas, monospace'),

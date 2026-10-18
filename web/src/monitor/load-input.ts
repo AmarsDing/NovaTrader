@@ -5,11 +5,12 @@ import { getQuality, listSources } from '@/api/datahub'
 import { hotWords, timeline as fetchTimeline } from '@/api/intel'
 import { getAuction, getBreadth, getFactors, getKlineGaps, getLadder, getLimitPremium, getSentimentDetail, listLimits, listSectors } from '@/api/market'
 import { listMessages } from '@/api/notify'
+import { getObservability } from '@/api/observability'
 import { getOpsBrokerFiles, getOpsDb, getOpsGpu, getOpsNats, opsStatus } from '@/api/ops'
-import { getRiskLimits, getRiskReport, getRiskState } from '@/api/risk'
+import { getRiskLimits, getRiskReport } from '@/api/risk'
 import { listCandidates, getScoreVsPnl, getStrategyPerformance } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
-import { getAccount, listFills, listOrders, listPositions } from '@/api/trade'
+import { listFills, listOrders } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'
 import { useRiskStore } from '@/stores/risk'
 import { quiet } from '@/utils/async'
@@ -20,14 +21,21 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
   const accountStore = useAccountStore()
   const book = accountStore.book || 'SIM'
   const focus = focusSymbol.trim()
+  const observations = quiet(() => getObservability({ limit: 80 }))
+  const accountRead = accountStore.refresh().then(() => ({
+    account: accountStore.book === book && accountStore.accountOk ? accountStore.snapshot : null,
+    positions: accountStore.book === book && accountStore.positionsOk ? [...accountStore.positions] : null,
+  }))
+  const riskStore = useRiskStore()
+  const riskRead = riskStore.refresh().then(() => riskStore.ready ? riskStore.snapshot : null)
 
   const [account, positions, orders, fills, risk, report, limits, ops, sources, quality, sentiment, sectors, limitsBoard, signals, candidates, briefing, words, stats, usage, latency, tasks, admission, shadow, notices, audit, tape, factors, perf, scatter, auction, ladder, gpu, brokerFiles, premium, breadth, klineGaps, db, nats] =
     await Promise.all([
-      quiet(() => getAccount(book)),
-      quiet(() => listPositions(book)),
+      accountRead.then((value) => value.account),
+      accountRead.then((value) => value.positions),
       quiet(() => listOrders(book)),
       quiet(() => listFills(book)),
-      quiet(() => getRiskState()),
+      riskRead,
       quiet(() => getRiskReport()),
       quiet(() => getRiskLimits()),
       quiet(() => opsStatus()),
@@ -64,17 +72,18 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       quiet(() => getOpsNats()),
     ])
 
-  void accountStore.refresh()
-  void useRiskStore().refresh()
-
+  const observation = await observations
+  const sampledAt = Date.now()
   return {
-    now: Date.now(),
+    observability: observation,
+    now: sampledAt,
+    sampledAt,
     focusSymbol: focus,
     pulses,
     account: account
       ? {
-          ok: true,
-          book,
+          ok: account.account.toUpperCase() === book.toUpperCase() && account.equity != null && account.cash != null,
+          book: account.account.trim().toUpperCase(),
           equity: account.equity,
           cash: account.cash,
           dayPnl: account.dayPnl,
@@ -89,7 +98,7 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
       : null,
     risk: risk
       ? {
-          ok: true,
+          ok: ['L0', 'L1', 'L2', 'L3'].includes(risk.mode),
           mode: risk.mode,
           killActive: risk.killActive,
           killReason: risk.killReason,
@@ -453,7 +462,8 @@ async function equityCurve(tasks: { id: string }[] | null): Promise<MonitorInput
 
 export function emptyMonitorInput(): MonitorInput {
   return {
-    now: Date.now(),
+    now: 0,
+    sampledAt: 0,
     focusSymbol: '',
     account: null,
     risk: null,

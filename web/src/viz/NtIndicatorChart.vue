@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import NtEChart from './NtEChart.vue'
-import { PALETTE } from '@/theme/tokens'
+import { useChartPalette } from '@/theme/tokens'
 import type { EChartsCoreOption } from 'echarts/core'
 
 export interface IndicatorPoint {
@@ -18,18 +18,20 @@ const props = withDefaults(
   { points: () => [], height: '220px' },
 )
 
+const palette = useChartPalette()
+
 const option = computed<EChartsCoreOption | null>(() => {
   if (!props.points.length) return null
   const axis = (extra: Record<string, unknown> = {}) => ({
-    axisLabel: { color: PALETTE.text3, fontSize: 10 },
-    axisLine: { lineStyle: { color: PALETTE.border2 } },
-    splitLine: { lineStyle: { color: PALETTE.border1 } },
+    axisLabel: { color: palette.value.text3, fontSize: 10 },
+    axisLine: { lineStyle: { color: palette.value.border2 } },
+    splitLine: { lineStyle: { color: palette.value.border1 } },
     ...extra,
   })
   return {
     animation: false,
     tooltip: { trigger: 'axis' },
-    legend: { data: ['MACD', 'RSI6'], textStyle: { color: PALETTE.text2, fontSize: 11 } },
+    legend: { data: ['MACD', 'RSI6'], textStyle: { color: palette.value.text2, fontSize: 11 } },
     grid: [
       { left: 48, right: 16, top: 28, height: '38%' },
       { left: 48, right: 16, top: '62%', height: '24%' },
@@ -51,7 +53,7 @@ const option = computed<EChartsCoreOption | null>(() => {
         data: props.points.map((point) => ({
           value: point.macd,
           // 红涨绿跌：MACD 正红负绿
-          itemStyle: { color: (point.macd ?? 0) >= 0 ? PALETTE.up : PALETTE.down },
+          itemStyle: { color: (point.macd ?? 0) >= 0 ? palette.value.up : palette.value.down },
         })),
       },
       {
@@ -61,10 +63,11 @@ const option = computed<EChartsCoreOption | null>(() => {
         yAxisIndex: 1,
         showSymbol: false,
         data: props.points.map((point) => point.rsi6),
-        lineStyle: { color: PALETTE.warn },
+        lineStyle: { color: palette.value.warn },
+        itemStyle: { color: palette.value.warn },
       },
     ],
-    textStyle: { color: PALETTE.text2 },
+    textStyle: { color: palette.value.text2 },
   }
 })
 </script>

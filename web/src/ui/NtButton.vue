@@ -49,9 +49,9 @@ const attrs = useAttrs()
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
-  color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.06);
-  border: 1px solid rgba(0, 229, 255, 0.32);
+  color: color-mix(in srgb, var(--nt-accent) 75%, var(--nt-text-1));
+  background: var(--nt-accent-soft);
+  border: 1px solid var(--nt-accent-border);
   border-radius: var(--nt-radius-s);
   cursor: pointer;
   transition:
@@ -61,8 +61,8 @@ const attrs = useAttrs()
 }
 
 .nt-btn:hover:not(:disabled) {
-  background: rgba(0, 229, 255, 0.13);
-  border-color: rgba(0, 229, 255, 0.55);
+  background: var(--nt-accent-hover);
+  border-color: var(--nt-accent);
 }
 
 .nt-btn:active:not(:disabled) {
@@ -71,7 +71,7 @@ const attrs = useAttrs()
 
 .nt-btn:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.22);
+  box-shadow: 0 0 0 3px var(--nt-focus-ring);
 }
 
 .nt-btn:disabled {
@@ -90,18 +90,18 @@ const attrs = useAttrs()
 }
 
 .nt-btn--primary {
-  color: var(--nt-bg-0);
+  color: var(--nt-on-accent);
   background: var(--nt-accent);
   border-color: transparent;
 }
 
 .nt-btn--primary:hover:not(:disabled) {
   background: var(--nt-accent);
-  filter: brightness(1.12);
+  filter: brightness(0.94);
 }
 
 .nt-btn--danger {
-  color: #fff;
+  color: var(--nt-on-danger);
   background: var(--nt-danger);
   border-color: transparent;
 }
@@ -112,7 +112,7 @@ const attrs = useAttrs()
 }
 
 .nt-btn--success {
-  color: var(--nt-bg-0);
+  color: var(--nt-on-success);
   background: var(--nt-success);
   border-color: transparent;
 }

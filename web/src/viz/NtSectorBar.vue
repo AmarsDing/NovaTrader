@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import NtEChart from './NtEChart.vue'
-import { PALETTE } from '@/theme/tokens'
+import { useChartPalette } from '@/theme/tokens'
 import type { EChartsCoreOption } from 'echarts/core'
 
 export interface SectorRow {
@@ -17,6 +17,8 @@ const props = withDefaults(
   { rows: () => [], height: '280px' },
 )
 
+const palette = useChartPalette()
+
 const option = computed<EChartsCoreOption | null>(() => {
   if (!props.rows.length) return null
   return {
@@ -25,16 +27,16 @@ const option = computed<EChartsCoreOption | null>(() => {
     grid: { left: 72, right: 16, top: 16, bottom: 24 },
     xAxis: {
       type: 'value',
-      axisLabel: { color: PALETTE.text3, fontSize: 10 },
-      axisLine: { lineStyle: { color: PALETTE.border2 } },
-      splitLine: { lineStyle: { color: PALETTE.border1 } },
+      axisLabel: { color: palette.value.text3, fontSize: 10 },
+      axisLine: { lineStyle: { color: palette.value.border2 } },
+      splitLine: { lineStyle: { color: palette.value.border1 } },
     },
     yAxis: {
       type: 'category',
       data: props.rows.map((row) => row.name),
-      axisLabel: { color: PALETTE.text2, fontSize: 11 },
-      axisLine: { lineStyle: { color: PALETTE.border2 } },
-      splitLine: { lineStyle: { color: PALETTE.border1 } },
+      axisLabel: { color: palette.value.text2, fontSize: 11 },
+      axisLine: { lineStyle: { color: palette.value.border2 } },
+      splitLine: { lineStyle: { color: palette.value.border1 } },
     },
     series: [
       {
@@ -42,11 +44,11 @@ const option = computed<EChartsCoreOption | null>(() => {
         data: props.rows.map((row) => ({
           value: row.avgPct,
           // 红涨绿跌：涨红、跌绿
-          itemStyle: { color: (row.avgPct ?? 0) >= 0 ? PALETTE.up : PALETTE.down },
+          itemStyle: { color: (row.avgPct ?? 0) >= 0 ? palette.value.up : palette.value.down },
         })),
       },
     ],
-    textStyle: { color: PALETTE.text2 },
+    textStyle: { color: palette.value.text2 },
   }
 })
 </script>

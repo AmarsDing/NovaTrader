@@ -5,8 +5,13 @@ import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { getAccount } from '@/api/trade'
+import { getRiskState, type RiskStateView } from '@/api/risk'
+import { getSignal } from '@/api/signals'
+import { onPush, onResync } from '@/ws/hub'
+import { createPageRefresh } from './page-refresh'
 import {
   cancelOrder,
+  getOrder,
   listFills,
   listOrders,
   listPositions,
@@ -14,6 +19,8 @@ import {
   type Fill,
   type Order,
   type Position,
+  type AccountSnapshot,
+  type OrderDraft,
 } from '@/api/trade'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
@@ -34,6 +41,8 @@ import { router } from '@/router'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
 import { PAPER_DAYS_REQUIRED } from './decision-desk'
+import PaperAdmission from './PaperAdmission.vue'
+import { draftPrice, normalizeBook, pendingTradeKey, readPendingTrade, signalContextOf, signalDraftBlock, type SignalDraftContext } from './trade-draft'
 
 const auth = useAuthStore()
 const accountStore = useAccountStore()
@@ -46,14 +55,52 @@ const fills = ref<Fill[]>([])
 const error = ref('')
 const hint = ref('')
 const loading = ref(false)
+const submitting = ref(false)
+const accountSnapshot = ref<AccountSnapshot | null>(null)
+const riskSnapshot = ref<RiskStateView | null>(null)
+const positionsOk = ref(false)
+const ordersOk = ref(false)
+const fillsOk = ref(false)
+const readAt = ref(0)
+const clockMs = ref(Date.now())
+const signalContext = ref<SignalDraftContext | null>(null)
+/** 已核实的本会话信号委托；列表短暂延迟不能使同一计划再次提交。 */
+const acknowledgedSignals = reactive(new Set<string>())
+/** 请求结果不明时先用原ID查回报，不能点第二次生成另一张单。 */
+const uncertainDraft = ref<OrderDraft | null>(null)
+const journalError = ref('')
+const journalKey = pendingTradeKey(auth.operatorName)
+try {
+  uncertainDraft.value = readPendingTrade(localStorage, journalKey)
+} catch {
+  journalError.value = '待核对委托记录无法读取，暂不能提交新委托'
+}
+let readSequence = 0
+let disposed = false
+let contextVersion = 0
+const refreshKey = () => `${account.value}:${contextVersion}`
+const refreshes = createPageRefresh({ key: refreshKey, read: readPage, pushIntervalMs: 0 })
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let clockTimer: ReturnType<typeof setInterval> | null = null
+
+/** 只清除自己已核实的记录，另一面板写入的待核对委托继续保留。 */
+function settleJournal(clientOrderId: string) {
+  const pending = readPendingTrade(localStorage, journalKey)
+  if (pending?.clientOrderId === clientOrderId) localStorage.removeItem(journalKey)
+  uncertainDraft.value = readPendingTrade(localStorage, journalKey)
+}
+
+function rememberSignalOrder(draft: OrderDraft, order: Order) {
+  if (draft.signalId && ((order.filled ?? 0) > 0 || !['rejected', 'cancelled', 'canceled', 'expired'].includes(order.status.toLowerCase()))) {
+    acknowledgedSignals.add(`${normalizeBook(draft.account)}:${draft.signalId}`)
+  }
+}
 const orderFilter = ref<'open' | 'all'>('open')
 const touched = ref(false)
 const cancelAllBusy = ref(false)
 /** 一键全撤第一步：再点一次才执行（8 秒内有效）。 */
 const cancelAllArmed = ref(false)
 let cancelAllTimer: ReturnType<typeof setTimeout> | null = null
-/** SIM 账本的模拟交易日数（LIVE 准入判断用；paperDays 是 SIM 口径，与当前账本无关）。 */
-const simPaperDays = ref<number | null>(null)
 const form = reactive<{ symbol: string; side: 'buy' | 'sell'; price: string; volume: string }>({
   symbol: '',
   side: 'buy',
@@ -61,12 +108,13 @@ const form = reactive<{ symbol: string; side: 'buy' | 'sell'; price: string; vol
   volume: '',
 })
 
-const liveAllowed = computed(() => simPaperDays.value != null && simPaperDays.value >= PAPER_DAYS_REQUIRED)
+// 连续运行报告只提供证据，不授予权限；当前真实文件通道尚未验收。
+const liveAllowed = computed(() => false)
 const accountOptions = computed(() => [
-  { value: 'SIM', label: `SIM 模拟（${simPaperDays.value ?? '—'}/${PAPER_DAYS_REQUIRED} 交易日）` },
+  { value: 'SIM', label: 'SIM 模拟' },
   {
     value: 'LIVE',
-    label: liveAllowed.value ? 'LIVE 实盘' : `LIVE 实盘（模拟满 ${PAPER_DAYS_REQUIRED} 交易日才可选）`,
+    label: `LIVE 实盘（连续 ${PAPER_DAYS_REQUIRED} 日证据及通道另行验收）`,
     disabled: !liveAllowed.value,
   },
 ])
@@ -168,12 +216,39 @@ const fillSummary = computed(() => {
 const priceNum = computed(() => Number(form.price))
 const volumeNum = computed(() => Number(form.volume))
 const symbolOk = computed(() => /^\d{6}\.(SZ|SH|BJ)$/i.test(form.symbol.trim()))
-const priceOk = computed(() => priceNum.value > 0)
+const priceOk = computed(() => Number.isFinite(priceNum.value) && priceNum.value > 0)
 const volumeOk = computed(() => Number.isInteger(volumeNum.value) && volumeNum.value >= 100 && volumeNum.value % 100 === 0)
-const canSubmit = computed(() => !auth.isViewer() && symbolOk.value && priceOk.value && volumeOk.value)
+const signalBlock = computed(() => signalDraftBlock(signalContext.value, { account: account.value, symbol: form.symbol, side: form.side }, clockMs.value))
+const signalOrderBlock = computed(() => {
+  const context = signalContext.value
+  if (!context) return ''
+  const key = `${context.book}:${context.signalId}`
+  if (acknowledgedSignals.has(key)) return '此信号已有已核实委托，请查看原委托与持仓，不能重复执行'
+  const existing = orders.value.find((order) => order.signalId === context.signalId &&
+    (!normalizeBook(order.account) || normalizeBook(order.account) === context.book) &&
+    ((order.filled ?? 0) > 0 || !['rejected', 'cancelled', 'canceled', 'expired'].includes(order.status.toLowerCase())))
+  return existing ? `此信号已有关联委托 ${existing.id}（${orderStatusLabel(existing.status)}），请先核对原委托` : ''
+})
+const submissionBlock = computed(() => {
+  if (auth.isViewer()) return '当前是查看角色，不能下单'
+  if (journalError.value) return journalError.value
+  if (signalBlock.value) return signalBlock.value
+  if (uncertainDraft.value) return '上一笔委托结果待核对，暂不重复提交'
+  if (signalOrderBlock.value) return signalOrderBlock.value
+  if (!accountSnapshot.value || accountSnapshot.value.cash == null || accountSnapshot.value.equity == null || !positionsOk.value || !ordersOk.value || !riskSnapshot.value || !readAt.value || clockMs.value - readAt.value > 30_000) return '账户、持仓、委托或风控状态未读到最新结果，暂不能提交'
+  if (!['L0', 'L1', 'L2', 'L3'].includes(riskSnapshot.value.mode)) return '运行授权未知，暂不能提交'
+  if (riskSnapshot.value.engineReady === false || riskSnapshot.value.configReady === false) return '风控引擎或配置尚未就绪，暂不能提交'
+  if (normalizeBook(accountSnapshot.value.account) !== normalizeBook(account.value)) return '账户响应与当前账本不一致，暂不能提交'
+  if (form.side === 'buy' && accountSnapshot.value.openHalted) return accountSnapshot.value.haltReason || '账户已停止新开仓'
+  if (form.side === 'buy' && (riskSnapshot.value.killActive || riskSnapshot.value.mode === 'L0')) return '当前只允许处理持仓，不能新买入'
+  if (account.value === 'LIVE' && !liveAllowed.value) return '实盘准入状态未通过'
+  if (account.value === 'LIVE') return '实盘文件单通道尚未验收，本轮仅支持模拟委托'
+  return ''
+})
+const canSubmit = computed(() => !submissionBlock.value && !submitting.value && !loading.value && symbolOk.value && priceOk.value && volumeOk.value)
 const estimate = computed(() => (priceOk.value && volumeNum.value > 0 ? priceNum.value * volumeNum.value : null))
 const buyable = computed(() => {
-  const cash = accountStore.cash
+  const cash = accountSnapshot.value?.cash
   if (!priceOk.value || cash == null) return null
   return Math.floor(cash / priceNum.value / 100) * 100
 })
@@ -187,63 +262,88 @@ const positionRef = computed(() => {
 watch(
   account,
   (value) => {
+    contextVersion += 1
     // 实盘未达准入时不允许账本停在 LIVE：下拉 option 的 disabled 挡不住 v-model 赋值，
     // 持久化的 book='LIVE' 会在挂载时写回来，这里统一纠回 SIM。
-    if (value === 'LIVE' && simPaperDays.value != null && !liveAllowed.value) {
-      hint.value = `模拟盘未满 ${PAPER_DAYS_REQUIRED} 个交易日，已切回 SIM`
+    if (value === 'LIVE' && !liveAllowed.value) {
+      hint.value = '实盘执行权限尚未开放，已切回 SIM；连续运行证据见下方核验'
       account.value = 'SIM'
       return
     }
     accountStore.book = value
+    accountSnapshot.value = null
+    riskSnapshot.value = null
+    readAt.value = 0
+    positions.value = []
+    orders.value = []
+    fills.value = []
+    positionsOk.value = ordersOk.value = fillsOk.value = false
     void accountStore.refresh()
     void load()
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
 
-async function load() {
+function load() { return refreshes.refresh() }
+
+async function readPage(key: string): Promise<boolean> {
+  const book = account.value
+  const sequence = ++readSequence
   loading.value = true
   error.value = ''
-  const [pos, ord, fill, sim, riskRes] = await Promise.allSettled([
-    listPositions(account.value),
-    listOrders(account.value),
-    listFills(account.value),
-    getAccount('SIM'),
-    riskStore.refresh(),
+  const currentAccount = getAccount(book)
+  const [pos, ord, fill, acc, riskRes] = await Promise.allSettled([
+    listPositions(book),
+    listOrders(book),
+    listFills(book),
+    currentAccount,
+    getRiskState(),
   ])
+  if (disposed || key !== refreshKey() || sequence !== readSequence || account.value !== book) return false
+  positionsOk.value = pos.status === 'fulfilled'
+  ordersOk.value = ord.status === 'fulfilled'
+  fillsOk.value = fill.status === 'fulfilled'
   positions.value = pos.status === 'fulfilled' ? pos.value : []
   orders.value = ord.status === 'fulfilled' ? ord.value : []
   fills.value = fill.status === 'fulfilled' ? fill.value : []
-  if (sim.status === 'fulfilled') simPaperDays.value = sim.value.paperDays
-  void riskRes
-  // SIM 天数在挂载后才到：若此前账本被持久化的 LIVE 占住，此时纠回。
-  if (account.value === 'LIVE' && simPaperDays.value != null && !liveAllowed.value) {
-    account.value = 'SIM'
-    hint.value = `模拟盘未满 ${PAPER_DAYS_REQUIRED} 个交易日，已切回 SIM`
+  accountSnapshot.value = acc.status === 'fulfilled' && normalizeBook(acc.value.account) === normalizeBook(book) &&
+    acc.value.equity != null && acc.value.cash != null ? acc.value : null
+  riskSnapshot.value = riskRes.status === 'fulfilled' && ['L0', 'L1', 'L2', 'L3'].includes(riskRes.value.mode) ? riskRes.value : null
+  readAt.value = Date.now()
+  clockMs.value = Date.now()
+  if (uncertainDraft.value && orders.value.some((order) => order.id === uncertainDraft.value?.clientOrderId)) {
+    try {
+      const foundId = uncertainDraft.value.clientOrderId
+      rememberSignalOrder(uncertainDraft.value, orders.value.find((order) => order.id === foundId)!)
+      settleJournal(foundId)
+      hint.value = `已查到委托 ${foundId}，请查看实际状态`
+    } catch {
+      journalError.value = '已查到委托，但本地核对记录未能清除'
+    }
   }
-  const failed = [pos, ord, fill].find((item) => item.status === 'rejected')
+  const failed = [pos, ord, fill, acc, riskRes].find((item) => item.status === 'rejected')
   if (failed) error.value = messageOf((failed as PromiseRejectedResult).reason)
+  const ready = positionsOk.value && ordersOk.value && fillsOk.value && accountSnapshot.value != null && riskSnapshot.value != null
+  if (!ready && !failed) error.value = '账户或风控核心字段未完成核对'
   loading.value = false
+  return ready
 }
 
 async function submit() {
+  if (submitting.value || uncertainDraft.value) return
   hint.value = ''
   error.value = ''
   if (auth.isViewer()) {
     error.value = '当前是查看角色，不能下单'
     return
   }
-  if (account.value === 'LIVE' && !liveAllowed.value) {
-    error.value = `模拟盘未满 ${PAPER_DAYS_REQUIRED} 个交易日（当前 ${simPaperDays.value ?? '—'}），实盘通道未开`
-    return
-  }
   touched.value = true
-  if (!canSubmit.value) {
+  if (!symbolOk.value || !priceOk.value || !volumeOk.value) {
     error.value = '请填写 6 位代码（如 600519.SH）、正限价，以及 100 股整数倍'
     return
   }
-  const draft = {
-    clientOrderId: `manual-${Date.now()}`,
+  const draft: OrderDraft = {
+    clientOrderId: `manual-${crypto.randomUUID()}`,
     account: account.value,
     symbol: form.symbol.trim(),
     side: form.side,
@@ -251,21 +351,88 @@ async function submit() {
     volume: volumeNum.value,
     source: 'manual',
     operator: auth.operatorName,
+    signalId: signalContext.value?.signalId,
+    strategyVersion: signalContext.value?.strategyVersionId,
   }
-  if (account.value === 'LIVE') {
-    const result = await askConfirm(draft, true)
-    if (result !== 'ok') {
-      hint.value = '实盘确认已作废，委托未提交'
-      return
-    }
-  }
+  const originalContext = signalContext.value
+  let postStarted = false
+  submitting.value = true
   try {
-    await placeOrder(draft)
-    hint.value = '委托已提交'
+    await load()
+    if (disposed) return
+    if (submissionBlock.value) throw new Error(submissionBlock.value)
+    if (draft.account === 'LIVE') {
+      const result = await askConfirm(draft, true)
+      if (result !== 'ok') {
+        hint.value = '实盘确认已作废，委托未提交'
+        return
+      }
+      await load()
+      if (disposed) return
+    }
+    if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) {
+      throw new Error('确认期间表单或信号已变化，请重新核对')
+    }
+    clockMs.value = Date.now()
+    if (submissionBlock.value) throw new Error(submissionBlock.value)
+    if (originalContext) {
+      const signal = await getSignal(originalContext.signalId)
+      if (disposed) return
+      if (signal.status.toLowerCase() !== 'approved') throw new Error('信号不再处于可确认状态，请查看最新计划')
+      if (normalizeBook(signal.book) !== originalContext.book || signal.symbol.toUpperCase() !== originalContext.symbol || signal.side !== originalContext.side || signal.strategyVersionId !== originalContext.strategyVersionId) throw new Error('信号身份或策略版本已变化，请重新选择')
+      const blocked = signalDraftBlock({ ...originalContext, validUntil: signal.validUntil }, draft, Date.now())
+      if (blocked) throw new Error(blocked)
+      if (signal.side === 'buy' && (signal.entryLow == null || signal.entryHigh == null || draft.price < signal.entryLow || draft.price > signal.entryHigh)) throw new Error('限价不在当前信号的入场区间，请重新核对计划')
+    }
+    if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) throw new Error('检查期间表单已变化，请重新核对')
+    if (disposed) return
+    clockMs.value = Date.now()
+    if (submissionBlock.value) throw new Error(submissionBlock.value)
+    const pending = readPendingTrade(localStorage, journalKey)
+    if (pending) {
+      uncertainDraft.value = pending
+      throw new Error('已有委托结果待核对，未创建新委托')
+    }
+    localStorage.setItem(journalKey, JSON.stringify(draft))
+    uncertainDraft.value = draft
+    postStarted = true
+    const placed = await placeOrder(draft)
+    if (placed.id !== draft.clientOrderId || !placed.status) throw new Error('委托响应缺少对应编号或状态')
+    rememberSignalOrder(draft, placed)
+    settleJournal(draft.clientOrderId)
+    hint.value = `委托：${orderStatusLabel(placed.status)}${placed.reason ? ` · ${placed.reason}` : ''}`
     await load()
     await accountStore.refresh()
   } catch (err) {
-    error.value = messageOf(err)
+    const status = (err as { status?: number } | null)?.status
+    if (postStarted && status != null && [400, 401, 403, 404, 422].includes(status)) {
+      try {
+        settleJournal(draft.clientOrderId)
+      } catch {
+        journalError.value = '本地核对记录未能清除，请先核对原委托'
+      }
+    }
+    error.value = uncertainDraft.value ? `${messageOf(err)} · 委托结果待核对，请先查原编号` : messageOf(err)
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function reconcileSubmission() {
+  const draft = uncertainDraft.value
+  if (!draft || submitting.value) return
+  submitting.value = true
+  try {
+    const order = await getOrder(draft.clientOrderId)
+    if (order.id !== draft.clientOrderId || !order.status) throw new Error('返回的委托编号或状态无法核实')
+    rememberSignalOrder(draft, order)
+    settleJournal(draft.clientOrderId)
+    hint.value = `已查到原委托：${orderStatusLabel(order.status)}`
+    await load()
+  } catch (err) {
+    error.value = `${messageOf(err)} · 原委托结果仍未核实，未生成新委托`
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -320,10 +487,30 @@ function applyOrderParams(params: Record<string, unknown>) {
   const symbol = params.symbol
   const side = params.side
   const px = params.price
-  if (typeof symbol === 'string' && symbol) form.symbol = symbol
+  const nextContext = signalContextOf(params)
+  if (typeof symbol === 'string' && symbol) {
+    const changed = form.symbol.toUpperCase() !== symbol.trim().toUpperCase()
+    form.symbol = symbol.trim().toUpperCase()
+    if (changed || nextContext) {
+      form.price = ''
+      form.volume = ''
+    }
+    signalContext.value = nextContext
+    if (nextContext?.book && nextContext.book !== account.value) account.value = nextContext.book
+  }
   if (side === 'buy' || side === 'sell') form.side = side
-  if (typeof px === 'string' && px) form.price = px
+  if (Object.prototype.hasOwnProperty.call(params, 'price')) form.price = draftPrice(px)
 }
+
+watch([() => form.symbol, () => form.side], () => {
+  const context = signalContext.value
+  if (context && (context.symbol !== form.symbol.trim().toUpperCase() || context.side !== form.side)) {
+    signalContext.value = null
+    form.price = ''
+    form.volume = ''
+    hint.value = '证券或方向已修改，已解除原信号关联并清空旧价格；当前为手动委托'
+  }
+})
 
 const offPanelParams = onPanelParams('trade', applyOrderParams)
 
@@ -332,15 +519,46 @@ onMounted(() => {
   const panelParams = consumePanelParams('trade') ?? {}
   const q = router.currentRoute.value.query
   applyOrderParams({
+    ...panelParams,
     symbol: panelParams.symbol ?? q.symbol,
     side: panelParams.side ?? q.side,
     price: panelParams.price ?? q.price,
   })
-  if ((accountStore.book || 'SIM') !== account.value) account.value = accountStore.book
+  if (!signalContext.value?.book && (accountStore.book || 'SIM') !== account.value) account.value = accountStore.book
+  pollTimer = setInterval(() => {
+    if (!document.hidden) void load()
+  }, 10_000)
+  clockTimer = setInterval(() => { clockMs.value = Date.now() }, 1000)
+  document.addEventListener('visibilitychange', onVisible)
+})
+
+function onVisible() {
+  if (!document.hidden) { clockMs.value = Date.now(); void load() }
+}
+
+const offPush = onPush(async (message) => {
+  if (!['position', 'alert', 'resume'].includes(message.topic)) return
+  const key = refreshKey()
+  const ready = await load()
+  if (!disposed && key === refreshKey() && !ready) throw new Error('交易面板账户或风控状态尚未恢复')
+})
+const offResync = onResync(['position', 'alert'], async () => {
+  const key = refreshKey()
+  const ready = await load()
+  if (!disposed && key === refreshKey() && !ready) throw new Error('交易面板账户或风控状态尚未恢复')
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  contextVersion += 1
+  refreshes.dispose()
+  readSequence += 1
   offPanelParams()
+  offPush()
+  offResync()
+  document.removeEventListener('visibilitychange', onVisible)
+  if (pollTimer) clearInterval(pollTimer)
+  if (clockTimer) clearInterval(clockTimer)
   if (cancelAllTimer) clearTimeout(cancelAllTimer)
 })
 </script>
@@ -372,10 +590,13 @@ onBeforeUnmount(() => {
         <span>股数</span>
         <NtInput v-model="form.volume" type="number" mono :invalid="touched && !volumeOk" />
       </label>
-      <NtButton type="submit" variant="success" :disabled="!canSubmit">提交委托</NtButton>
+      <NtButton type="submit" variant="success" :disabled="!canSubmit" :loading="submitting">提交委托</NtButton>
     </form>
+    <p v-if="signalContext" class="nt-note">信号 {{ signalContext.signalId || '编号未返回' }} · 策略版本 {{ signalContext.strategyVersionId || '未返回' }} · {{ signalContext.book || '账户未返回' }} · 有效至 {{ signalContext.validUntil || '未返回' }}。提交前重新核验，仍须正式风控。</p>
+    <p v-if="submissionBlock" class="nt-note">{{ submissionBlock }}</p>
+    <NtButton v-if="uncertainDraft" size="sm" :loading="submitting" @click="reconcileSubmission">核对原委托结果</NtButton>
     <p class="quote">
-      可用 {{ amount(accountStore.cash) }}
+      可用 {{ amount(accountSnapshot?.cash) }}
       · 预估 {{ estimate == null ? '—' : amount(estimate) }}
       · 可买 {{ buyable == null ? '—' : `${buyable} 股` }}
       <template v-if="positionRef">
@@ -384,10 +605,11 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <p v-if="hint" class="nt-note">{{ hint }}</p>
+    <PaperAdmission />
 
     <section>
       <h2 class="nt-panel__title">持仓</h2>
-      <NtTable :columns="posColumns" :rows="posRows" row-key="symbol" empty="暂无持仓">
+      <NtTable :columns="posColumns" :rows="posRows" row-key="symbol" :empty="loading ? '读取中…' : positionsOk ? '暂无持仓' : '持仓未返回，不能当作空仓'">
         <template #cell-symbol="{ value }">
           <button type="button" class="sym" @click="openMarket(String(value))">{{ value }}</button>
         </template>
@@ -424,7 +646,7 @@ onBeforeUnmount(() => {
         :columns="orderColumns"
         :rows="orderRows"
         row-key="id"
-        :empty="loading ? '读取中…' : orderFilter === 'open' ? '没有可撤委托' : '暂无委托'"
+        :empty="loading ? '读取中…' : !ordersOk ? '委托未返回，不能当作无委托' : orderFilter === 'open' ? '没有可撤委托' : '暂无委托'"
       >
         <template #cell-side="{ value }">
           <span :class="value === 'buy' ? 'up' : 'down'">{{ sideLabel(value) }}</span>
@@ -444,7 +666,7 @@ onBeforeUnmount(() => {
         {{ amount(fillSummary.sell) }} · 净额
         <span :class="pnlClass(fillSummary.net)">{{ pnlSign(fillSummary.net) }}{{ amount(fillSummary.net) }}</span>
       </p>
-      <NtTable :columns="fillColumns" :rows="fillRows" empty="暂无成交明细">
+      <NtTable :columns="fillColumns" :rows="fillRows" :empty="loading ? '读取中…' : fillsOk ? '暂无成交明细' : '成交明细未返回'">
         <template #cell-side="{ value }">
           <span :class="value === 'buy' ? 'up' : 'down'">{{ sideLabel(value) }}</span>
         </template>

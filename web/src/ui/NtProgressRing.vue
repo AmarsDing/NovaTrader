@@ -69,12 +69,12 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 /* 高价值（>=85）发光：发光预算允许的三处之一。 */
 .nt-ring--hot .nt-ring__bar {
   stroke: var(--nt-accent);
-  filter: drop-shadow(0 0 5px rgba(0, 229, 255, 0.8));
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--nt-accent) 80%, transparent));
 }
 
 .nt-ring--hot .nt-ring__value {
   color: var(--nt-accent);
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--nt-accent) 60%, transparent);
 }
 
 /* 用量色阶（§5.3 限额环形）：>80% 橙、=100% 红，不发光 */

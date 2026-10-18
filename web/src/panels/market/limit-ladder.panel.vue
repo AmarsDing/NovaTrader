@@ -18,6 +18,8 @@ const REFRESH_THROTTLE_MS = 15000
 const detail = ref<Sentiment | null>(null)
 const upBoards = ref<LimitBoard[]>([])
 const downBoards = ref<LimitBoard[]>([])
+const upReady = ref(false)
+const downReady = ref(false)
 const error = ref('')
 const loading = ref(false)
 
@@ -57,22 +59,24 @@ const tiers = computed<LadderTier[]>(() => {
     }))
 })
 
-const sealedCount = computed(() => (sealed.value.length ? sealed.value.length : (detail.value?.upCount ?? 0)))
-const tapeFlat = computed(() => (detail.value?.advance ?? 0) === 0 && (detail.value?.decline ?? 0) === 0)
-const noTape = computed(() => !upBoards.value.length && !downBoards.value.length && tapeFlat.value)
+const sealedCount = computed(() => upReady.value ? sealed.value.length : (detail.value?.upCount ?? null))
+const downCount = computed(() => downReady.value ? downBoards.value.filter((row) => row.status === 'SEALED').length : (detail.value?.downCount ?? null))
+const brokenCount = computed(() => upReady.value ? broken.value.length : (detail.value?.brokenCount ?? null))
+const tapeFlat = computed(() => !detail.value || detail.value.advance == null || detail.value.decline == null || (detail.value.advance === 0 && detail.value.decline === 0))
+const noTape = computed(() => !detail.value?.asOf || tapeFlat.value)
 const brokenRate = computed(() => {
   const listed = upBoards.value.length
-  if (listed > 0) return broken.value.length / listed
-  return detail.value?.brokenRate ?? 0
+  if (upReady.value && listed > 0) return broken.value.length / listed
+  return detail.value?.brokenRate ?? null
 })
 const maxHeight = computed(() => {
-  const fromTiers = tiers.value.reduce((max, tier) => Math.max(max, tier.height), 0)
-  return Math.max(fromTiers, detail.value?.maxHeight ?? 0)
+  if (upReady.value) return tiers.value.reduce((max, tier) => Math.max(max, tier.height), 0)
+  return detail.value?.maxHeight ?? null
 })
 /** 全市场封单总额（已封板股票 sealAmount 之和）——情绪指标口径。 */
 const totalSealAmount = computed(() => {
-  if (!sealed.value.length) return null
-  return sealed.value.reduce((acc, row) => acc + (row.sealAmount ?? 0), 0)
+  if (!upReady.value || sealed.value.some((row) => row.sealAmount == null)) return null
+  return sealed.value.reduce((acc, row) => acc + row.sealAmount!, 0)
 })
 /** 最高连板标（梯队里第一梯队的带队股）。 */
 const topLeader = computed(() => tiers.value[0]?.stocks[0] ?? null)
@@ -89,8 +93,11 @@ const brokenRows = computed(() => broken.value as unknown as (LimitBoard & Recor
 let offPush: (() => void) | undefined
 let unsubscribe: (() => void) | undefined
 let lastAt = 0
+let loadSequence = 0
+let disposed = false
 
 async function load() {
+  const sequence = ++loadSequence
   loading.value = true
   error.value = ''
   const [sentimentRes, upRes, downRes] = await Promise.allSettled([
@@ -98,10 +105,14 @@ async function load() {
     listLimits('UP'),
     listLimits('DOWN'),
   ])
-  if (sentimentRes.status === 'fulfilled') detail.value = sentimentRes.value
-  if (upRes.status === 'fulfilled') upBoards.value = upRes.value
-  else error.value = messageOf(upRes.reason)
-  if (downRes.status === 'fulfilled') downBoards.value = downRes.value
+  if (disposed || sequence !== loadSequence) return
+  detail.value = sentimentRes.status === 'fulfilled' ? sentimentRes.value : null
+  upReady.value = upRes.status === 'fulfilled'
+  upBoards.value = upRes.status === 'fulfilled' ? upRes.value : []
+  downReady.value = downRes.status === 'fulfilled'
+  downBoards.value = downRes.status === 'fulfilled' ? downRes.value : []
+  const failed = [sentimentRes, upRes, downRes].find((result) => result.status === 'rejected')
+  if (failed?.status === 'rejected') error.value = messageOf(failed.reason)
   loading.value = false
 }
 
@@ -122,6 +133,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  loadSequence++
   offPush?.()
   unsubscribe?.()
 })
@@ -150,13 +163,13 @@ onBeforeUnmount(() => {
 
     <div class="nt-cards">
       <NtStatCard label="涨停" :value="intText(sealedCount)" tone="up" />
-      <NtStatCard label="跌停" :value="intText(detail?.downCount)" tone="down" />
-      <NtStatCard label="炸板率" :value="ratioPct(brokenRate)" :sub="`${broken.length} 只炸板`" tone="warn" />
-      <NtStatCard label="连板高度" :value="`${maxHeight} 板`" tone="accent" />
+      <NtStatCard label="跌停" :value="intText(downCount)" tone="down" />
+      <NtStatCard label="炸板率" :value="ratioPct(brokenRate)" :sub="brokenCount == null ? '炸板数量未返回' : `${brokenCount} 只炸板`" tone="warn" />
+      <NtStatCard label="连板高度" :value="maxHeight == null ? '—' : `${maxHeight} 板`" tone="accent" />
       <NtStatCard
         label="赚钱效应"
         :value="pctText(detail?.profitEffect)"
-        :tone="(detail?.profitEffect ?? 0) >= 0 ? 'up' : 'down'"
+        :tone="detail?.profitEffect == null ? 'neutral' : detail.profitEffect >= 0 ? 'up' : 'down'"
       />
       <NtStatCard
         label="封单总额"
@@ -164,7 +177,7 @@ onBeforeUnmount(() => {
         :sub="
           topLeader
             ? `最高标 ${topLeader.symbol} · ${tiers[0].height} 板 · 封 ${compactAmount(topLeader.sealAmount)}`
-            : '无封板'
+            : upReady ? '无封板' : '封板名单未返回'
         "
       />
     </div>
@@ -173,17 +186,19 @@ onBeforeUnmount(() => {
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">涨停梯队 · 按连板高度</h2>
-      <NtLadderTiers :tiers="tiers" />
+      <NtLadderTiers :tiers="tiers" :empty="upReady ? '今日无涨停梯队' : '涨停名单未返回，梯队未知'" />
     </section>
 
     <section class="nt-panel">
-      <h2 class="nt-panel__title">炸板 · {{ broken.length }} 只</h2>
-      <NtTable :columns="brokenColumns" :rows="brokenRows" row-key="symbol" dense empty="今日没有炸板" />
+      <h2 class="nt-panel__title">炸板 · {{ upReady ? broken.length : '—' }} 只</h2>
+      <NtTable :columns="brokenColumns" :rows="brokenRows" row-key="symbol" dense :empty="upReady ? '今日没有炸板' : '涨停名单未返回，炸板明细未知'" />
     </section>
 
-    <section v-if="downBoards.length" class="nt-panel">
-      <h2 class="nt-panel__title">跌停 · {{ downBoards.length }} 只</h2>
-      <p class="nt-note break">{{ downBoards.map((row) => row.symbol).join(' · ') }}</p>
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">跌停 · {{ downReady ? downBoards.length : '—' }} 只</h2>
+      <p v-if="!downReady" class="nt-empty">跌停名单未返回。</p>
+      <p v-else-if="!downBoards.length" class="nt-empty">今日没有跌停。</p>
+      <p v-else class="nt-note break">{{ downBoards.map((row) => row.symbol).join(' · ') }}</p>
     </section>
   </div>
 </template>

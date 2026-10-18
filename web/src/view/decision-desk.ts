@@ -5,6 +5,8 @@
  */
 
 import type { Candidate, SignalItem } from '@/api/types/strategy'
+import { formatDateTime, parseTime } from '@/utils/time'
+import { price } from '@/utils/format'
 
 export { strategyLabel, missLabel } from '@/utils/format'
 
@@ -41,6 +43,11 @@ export function sourceBlocked(status: string): boolean {
 
 export function countBlockedSources(rows: { enabled: boolean; status: string }[]): number {
   return rows.filter((row) => row.enabled && sourceBlocked(row.status)).length
+}
+
+/** 半开、探测中或未知状态不是已确认可用；数据域是否足够还要看本轮市场快照。 */
+export function hasAvailableSource(rows: { enabled: boolean; status: string }[]): boolean {
+  return rows.some((row) => row.enabled && ['closed', 'healthy', 'ok'].includes(row.status.toLowerCase()))
 }
 
 /**
@@ -122,7 +129,7 @@ export function buildGaps(input: DeskInput): DeskGap[] {
     gaps.push({
       id: 'paper',
       level: 'warn',
-      text: `模拟盘 ${input.paperDays}/${PAPER_DAYS_REQUIRED} 个交易日，未满不准实盘`,
+      text: `模拟账本累计 ${input.paperDays}/${PAPER_DAYS_REQUIRED} 日；连续合格运行证据需另核验，累计天数不代表实盘许可`,
       panel: 'trade',
     })
   }
@@ -159,6 +166,11 @@ export interface TicketRisk {
 
 export interface DeskTicket {
   id: string
+  executedPrice?: number | null
+  executedVolume?: number | null
+  book: string
+  strategyVersionId: string
+  traceId: string
   lane: TicketLane
   symbol: string
   name: string
@@ -180,11 +192,14 @@ export interface DeskTicket {
   stop: number | null
   take: number | null
   validUntil: string
+  holdDaysMax: number | null
   votes: DimVote[]
   /** 异议先行：反对维与降级说明，一票只留一轮 */
   objections: string[]
   /** 1–5 条理由，拆自信号 reason；空就是空，界面写「未调用」/「规则分」 */
   reasons: string[]
+  /** 原始规则/研判理由，行动层沿用，不重新生成。 */
+  reason: string
   evidence: string[]
   risk: TicketRisk
   /** 已执行票的一句话了结（平仓方式 + 后验盈亏）；待执行为空串 */
@@ -281,7 +296,10 @@ export function ruleOf(ticket: { evidence: string[]; reason?: string }): string 
  * 风控块。允许仓位只按已读到的风控参数估算，读不到就如实写空；
  * 无论哪种都带「以风控实检为准」——真正的夹紧发生在下单时（trade 引擎按风控裁决改写）。
  */
-export function ticketRisk(signal: Pick<SignalItem, 'positionPct' | 'evidence' | 'reason'>, maxSinglePct: number | null): TicketRisk {
+export function ticketRisk(
+  signal: Pick<SignalItem, 'positionPct' | 'evidence' | 'reason'>,
+  maxSinglePct: number | null,
+): TicketRisk {
   const requestedPct = signal.positionPct
   const rule = ruleOf({ evidence: signal.evidence, reason: signal.reason })
   let allowedPct: number | null = null
@@ -296,11 +314,11 @@ export function ticketRisk(signal: Pick<SignalItem, 'positionPct' | 'evidence' |
 
 function closedNote(signal: SignalItem): string {
   if (signal.status === 'closed' && signal.exitKind) {
-    const pnl = signal.hasPnl && signal.pnlPct != null ? `，后验 ${(signal.pnlPct * 100).toFixed(1)}%` : ''
+    const pnl = signal.hasPnl && signal.pnlPct != null ? `，后验 ${signal.pnlPct.toFixed(1)}%` : ''
     return `已了结（${signal.exitKind}${pnl}）`
   }
   if (signal.status === 'executing') return '下单中'
-  if (signal.status === 'done') return '已执行'
+  if (signal.status === 'done') return signal.executedVolume != null ? `已有成交 ${signal.executedVolume} 股` : '已有成交，数量待核验'
   return ''
 }
 
@@ -308,6 +326,11 @@ function toTicket(signal: SignalItem, lane: TicketLane, maxSinglePct: number | n
   const votes = dimVotes(signal.dims)
   return {
     id: signal.id,
+    executedPrice: signal.executedPrice,
+    executedVolume: signal.executedVolume,
+    book: signal.book,
+    strategyVersionId: signal.strategyVersionId,
+    traceId: signal.traceId,
     lane,
     symbol: signal.symbol,
     name: signal.name,
@@ -327,9 +350,11 @@ function toTicket(signal: SignalItem, lane: TicketLane, maxSinglePct: number | n
     stop: signal.stop,
     take: signal.take,
     validUntil: signal.validUntil,
+    holdDaysMax: signal.holdDaysMax,
     votes,
     objections: objectionsOf(votes, signal.degraded),
     reasons: splitReasons(signal.reason),
+    reason: signal.reason,
     evidence: signal.evidence,
     risk: ticketRisk(signal, maxSinglePct),
     closedNote: lane === 'executed' ? closedNote(signal) : '',
@@ -340,7 +365,10 @@ function toTicket(signal: SignalItem, lane: TicketLane, maxSinglePct: number | n
  * 待执行 = approved / risk_checking（被 Rxx 拒绝的不进这里）；已执行 = executing / done / closed。
  * 其余状态（rejected / expired / cancelled）不进左栏。
  */
-export function buildTickets(signals: SignalItem[], maxSinglePct: number | null = null): { pending: DeskTicket[]; executed: DeskTicket[] } {
+export function buildTickets(
+  signals: SignalItem[],
+  maxSinglePct: number | null = null,
+): { pending: DeskTicket[]; executed: DeskTicket[] } {
   const pending: DeskTicket[] = []
   const executed: DeskTicket[] = []
   for (const signal of signals) {
@@ -348,7 +376,8 @@ export function buildTickets(signals: SignalItem[], maxSinglePct: number | null 
     if (PENDING_STATUS.has(status)) pending.push(toTicket(signal, 'pending', maxSinglePct))
     else if (EXECUTED_STATUS.has(status)) executed.push(toTicket(signal, 'executed', maxSinglePct))
   }
-  pending.sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  // 保护性退出优先，买入队列内部仍按原有策略分排序。
+  pending.sort((a, b) => Number(b.side === 'sell') - Number(a.side === 'sell') || (b.score ?? 0) - (a.score ?? 0))
   executed.sort((a, b) => (b.time || '').localeCompare(a.time || ''))
   return { pending, executed }
 }
@@ -368,4 +397,197 @@ export function buildMissed(candidates: Candidate[], limit = 8): MissTicket[] {
       ruleScore: row.ruleScore,
       finalScore: row.finalScore,
     }))
+}
+
+/** 本轮只读检查的上下文；接口失败时必须置为 false，不能沿用 store 的上次成功值。 */
+export interface DecisionContext {
+  checkedAt: number
+  accountBook: string
+  accountReady: boolean
+  positionsReady: boolean
+  signalsReady: boolean
+  riskReady: boolean
+  riskMode: string
+  killActive: boolean
+  openHalted: boolean
+  haltReason: string
+  marketReady: boolean
+  marketAsOf: string
+  marketStale: boolean
+  sourcesReady: boolean
+  live: boolean
+  positions: { symbol: string; quantity: number | null; available: number | null }[]
+}
+
+export interface DecisionAction {
+  state: 'review' | 'wait' | 'blocked' | 'executing' | 'held' | 'closed'
+  title: string
+  timing: string
+  invalidation: string
+  blocker: string
+  caution: string
+  canOpenTrade: boolean
+}
+
+type ActionPlan = Pick<
+  DeskTicket,
+  | 'id'
+  | 'book'
+  | 'strategyVersionId'
+  | 'symbol'
+  | 'side'
+  | 'status'
+  | 'entry'
+  | 'entryLow'
+  | 'entryHigh'
+  | 'stop'
+  | 'take'
+  | 'validUntil'
+  | 'holdDaysMax'
+  | 'degraded'
+  | 'reason'
+>
+
+/** 账本身份只能显式映射，未知值不默认使用 SIM。 */
+export function signalBook(book: string): 'SIM' | 'LIVE' | '' {
+  if (book.toLowerCase() === 'paper' || book.toUpperCase() === 'SIM') return 'SIM'
+  if (book.toLowerCase() === 'live') return 'LIVE'
+  return ''
+}
+
+function symbolKey(symbol: string): string {
+  return symbol.toUpperCase().split('.')[0] || ''
+}
+
+/**
+ * 白话行动层只翻译已有计划和检查结果。没有个股实时条件/实检结果时，永远不写「现在可以买」。
+ * 允许打开的是确认准备页；最终价格、股数与风控仍由交易服务重新校验。
+ */
+export function buildDecisionAction(
+  plan: ActionPlan & { dims?: Record<string, unknown>; votes?: DimVote[] },
+  context: DecisionContext | null,
+  now = Date.now(),
+): DecisionAction {
+  const status = plan.status.toLowerCase()
+  const sell = plan.side === 'sell'
+  const votes = plan.votes ?? dimVotes(plan.dims ?? {})
+  const caution =
+    objectionsOf(votes, plan.degraded)[0] ||
+    (votes.some((vote) => vote.score == null)
+      ? '四维证据未完整返回，不把缺失当成赞成'
+      : '评分不是胜率，执行前仍需核对最新条件')
+  const deadline = parseTime(plan.validUntil)?.getTime()
+  const until = formatDateTime(plan.validUntil)
+  const invalidation = sell
+    ? `信号过期、可卖数量变化或已有在途卖单时，重新核对退出计划${until ? `；有效至 ${until}` : ''}`
+    : `价格超出入场区间、信号过期或风控拒绝时停止本次计划${until ? `；有效至 ${until}` : ''}`
+  const action: DecisionAction = {
+    state: 'review',
+    title: sell ? '退出计划待执行校验' : '买入计划待执行校验',
+    timing: sell
+      ? `${plan.reason || '已有卖出信号'}；确认可卖数量、最新限价和在途委托后再行动`
+      : `最新价格仍在 ${price(plan.entryLow)}–${price(plan.entryHigh)} 时，核对条件后进入确认；超出区间先等待`,
+    invalidation,
+    blocker: '',
+    caution,
+    canOpenTrade: false,
+  }
+
+  if (status === 'closed')
+    return {
+      ...action,
+      state: 'closed',
+      title: '该笔交易已平仓',
+      timing: '查看实际成交与后验记录，不重复执行这张计划',
+      invalidation: '历史计划仅用于复盘',
+    }
+  if (status === 'done')
+    return {
+      ...action,
+      state: sell ? 'closed' : 'held',
+      title: sell ? '卖出已有成交' : '已开仓，查看持仓退出计划',
+      timing: sell
+        ? '核对实际成交和剩余持仓；有成交不等于全部卖完'
+        : `继续跟踪止损 ${price(plan.stop)}、目标 ${price(plan.take)}${plan.holdDaysMax != null ? `及最长持有 ${plan.holdDaysMax} 个交易日` : ''}；这张买入票不重复下单`,
+      invalidation: '以实际持仓、可卖数量和新的退出信号为准',
+    }
+  if (status === 'executing')
+    return {
+      ...action,
+      state: 'executing',
+      title: '订单执行中，先核对成交',
+      timing: '在交易面板查看部分成交、撤单与剩余委托，不重复提交',
+      invalidation: '订单状态以交易服务及对账结果为准',
+    }
+
+  const blockers: string[] = []
+  if (status === 'rejected') blockers.push(plan.reason || '该信号已被拒绝')
+  else if (status === 'cancelled') blockers.push('该信号已取消')
+  else if (status === 'expired' || (deadline != null && now >= deadline))
+    blockers.push('该信号已过期，等待重新形成计划')
+  else if (status === 'risk_checking') blockers.push('风险检查尚未完成')
+  else if (status === 'pending') blockers.push('信号仍待处理，尚未得到批准')
+  else if (status !== 'approved') blockers.push('信号状态未知，无法准备执行')
+  if (deadline == null) blockers.push('信号有效期缺失或无法解析')
+  if (plan.side !== 'buy' && !sell) blockers.push('买卖方向不明确')
+  if (!plan.id || plan.id === '0') blockers.push('信号身份缺失')
+  if (!plan.strategyVersionId || plan.strategyVersionId === '0') blockers.push('策略版本未返回或尚未归档，不能准备执行')
+  const book = signalBook(plan.book)
+  if (!book) blockers.push('信号账本不明确')
+  if (!(plan.entry != null && plan.entry > 0)) blockers.push('计划限价缺失')
+  if (
+    !sell &&
+    !(
+      plan.stop != null &&
+      plan.entryLow != null &&
+      plan.entry != null &&
+      plan.entryHigh != null &&
+      plan.take != null &&
+      plan.stop > 0 &&
+      plan.stop < plan.entryLow &&
+      plan.entryLow <= plan.entry &&
+      plan.entry <= plan.entryHigh &&
+      plan.entryHigh < plan.take
+    )
+  ) {
+    blockers.push('入场、止损和目标价格不完整或顺序不合法')
+  }
+  if (!context || now - context.checkedAt > 45_000 || now < context.checkedAt)
+    blockers.push('账户、行情和风控状态尚未完成本轮检查')
+  else {
+    if (book && book !== signalBook(context.accountBook)) blockers.push('信号账本与当前账户不一致，请先切换账户')
+    if (!context.accountReady || !context.positionsReady)
+      blockers.push('账户或持仓读取失败，不能确认可用资金与可卖数量')
+    if (!context.signalsReady) blockers.push('信号状态未能重新读取，请刷新后核对')
+    if (!context.riskReady) blockers.push('风控状态未返回')
+    if (!context.live) blockers.push('实时推送未连接，当前信息可能已变化')
+    const marketTime = parseTime(context.marketAsOf)?.getTime()
+    if (
+      !context.marketReady ||
+      context.marketStale ||
+      marketTime == null ||
+      now - marketTime > 90_000 ||
+      marketTime > now + 5_000
+    )
+      blockers.push('市场快照缺失或已过期，等待最新数据')
+    if (!context.sourcesReady) blockers.push('数据源状态未确认或没有可用数据源')
+    if (!sell && context.killActive) blockers.unshift('急停已触发，暂停买入')
+    if (!sell && context.openHalted)
+      blockers.unshift(`开仓已停止${context.haltReason ? `：${context.haltReason}` : ''}`)
+    if (!sell && context.riskMode === 'L0') blockers.push('当前处于只看模式，不能买入')
+    if (!['L0', 'L1', 'L2', 'L3'].includes(context.riskMode)) blockers.push('运行模式未知')
+    if (book === 'LIVE') blockers.push('实盘执行通道尚未验收，本轮仅支持模拟盘计划')
+    const holding = context.positions.find((row) => symbolKey(row.symbol) === symbolKey(plan.symbol))
+    if (sell && !(holding?.available != null && holding.available > 0))
+      blockers.push('当前没有已确认的可卖数量；当日买入可能仍受 T+1 约束')
+    if (!sell && holding?.quantity != null && holding.quantity > 0)
+      blockers.push('当前已持有该股票，先查看持仓计划，避免重复开仓')
+  }
+  action.blocker = blockers[0] || ''
+  action.canOpenTrade = blockers.length === 0
+  if (!action.canOpenTrade) {
+    action.state = status === 'pending' || status === 'risk_checking' ? 'wait' : 'blocked'
+    action.title = sell ? '退出计划暂不能执行' : '买入计划暂不能执行'
+  }
+  return action
 }

@@ -7,11 +7,14 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getConfigValues, saveConfigValues } from '@/api/config'
+import { getConfigSnapshot, saveConfig, previewConfig, type ConfigSnapshot, type ConfigPreview } from '@/api/config'
+import ConfigRevisionPanel from '@/view/ConfigRevisionPanel.vue'
 import { ApiError } from '@/api/http'
 import { useOverlay } from '@/ui/useOverlay'
 import { configCategories, type ConfigField } from '@/view/config-catalog'
-import { isLive } from '@/ws/hub'
+import { isLive, onResync } from '@/ws/hub'
+import { useAccountStore } from '@/stores/account'
+import { createRefreshQueue } from '@/utils/refresh-queue'
 import AlertCenter from '@/workspace/AlertCenter.vue'
 import { brainReasoning } from '@/api/brain'
 import { getIntelItem } from '@/api/intel'
@@ -22,17 +25,22 @@ import { ActivityLog } from './activity'
 import { stagePulse } from './canvas-stage'
 import { buildDetail, intelIdsOf, type DetailExtra } from './detail'
 import { dutyOf } from './duty'
+import { buildEdgeDetail, edgeOf, retainEdgePulses } from './edge-detail'
 import { CounterFlow, KILL_EDGE_ID, MODEL_EDGE_KEYS, PulseFlow, tierFor, type EdgeFlow } from './flow'
 import { cardFreshness, cardSilence, channelSilence, decorate, observeGraph, sourceKind, sourceNodeId } from './freshness'
 import { computeHealth } from './health'
 import { resolveHud } from './hud'
 import { emptyMonitorInput, loadMonitorInput } from './load-input'
 import { bindPulses } from './pulses'
+import { assertMonitorRecovery } from './recovery'
+import { observationSections, topicsForNode } from './observability'
 import { RingSeries } from './sampler'
 import { buildChildren, buildScene, pushPulse } from './scene-model'
 import Sparkline from './Sparkline.vue'
 import { TapeSession } from './tape'
 import TerminalStrip from './TerminalStrip.vue'
+import TraceExplorer from './TraceExplorer.vue'
+import EnvironmentExplorer from './EnvironmentExplorer.vue'
 import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells } from './timeband'
 import type { TapeRow } from './tape'
 import type { Pulse } from './types'
@@ -42,6 +50,8 @@ const router = useRouter()
 const stage = ref<InstanceType<typeof CanvasStage> | null>(null)
 const input = ref(emptyMonitorInput())
 const selectedId = ref('')
+const selectedEdgeId = ref('')
+const edgePulseHistory = ref<Pulse[]>([])
 const paused = ref(typeof document !== 'undefined' && document.hidden)
 
 /* ---- 时段带：焦点随交易时段切换，拓扑永不变（timeband.ts） ---- */
@@ -71,6 +81,7 @@ const graph = computed(() => {
 })
 const cards = computed(() => buildChildren(input.value, selectedId.value))
 const picked = computed(() => graph.value.nodes.find((node) => node.id === selectedId.value) ?? null)
+const pickedEdge = computed(() => edgeOf(graph.value, selectedEdgeId.value))
 
 /* ---- S6 束线流量（§3.2/§4.4.3/§7）：计数器差分 + WS 脉冲计数，估不出固定宽度不猜 ----
  * 环形缓冲全在前端内存（§9）：不落库、不上传，页面刷新即失。 */
@@ -147,6 +158,7 @@ const AGENT = new Set(['post:scan', 'dim:tech', 'dim:news', 'dim:capital', 'dim:
 
 /** 选中一张卡时，与它相连的卡也保持亮，其余压暗。 */
 const hotIds = computed(() => {
+  if (pickedEdge.value) return [pickedEdge.value.from, pickedEdge.value.to]
   const id = selectedId.value
   if (!id) return []
   const ids = new Set<string>()
@@ -166,7 +178,7 @@ const detailWhere = computed(() => {
   return id ? 'verdict' : ''
 })
 
-/* ---- 健康总分：五项等权、扣分可解释（health.ts） ---- */
+/* ---- 健康总分：五项观测覆盖、扣分可解释（health.ts） ---- */
 
 const health = computed(() => computeHealth(input.value, nowMs.value))
 const healthOpen = ref(false)
@@ -252,7 +264,7 @@ function sampleSparks() {
 }
 
 const sampled = computed(() => {
-  const at = input.value.now
+  const at = input.value.sampledAt ?? input.value.now
   if (!at) return ''
   const date = new Date(at)
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -265,6 +277,11 @@ const STATUS_WORD: Record<string, string> = { live: '在线', idle: '空闲', ga
 
 const draft = ref<Record<string, string>>({})
 const configMsg = ref('')
+const configSnapshot = ref<ConfigSnapshot | null>(null)
+const configImpact = ref<ConfigPreview | null>(null)
+const configBaseline = ref<Record<string, string>>({})
+let configGeneration = 0
+watch(draft, () => { configGeneration++; configImpact.value = null }, { deep: true, flush: 'sync' })
 const saving = ref(false)
 const configFields = computed(() => fieldsFor(selectedId.value, picked.value?.title || ''))
 const serviceLogs = computed(() => {
@@ -287,10 +304,17 @@ const detailExtra = computed<DetailExtra>(() => ({
   intel: intelTitles.value,
   reasoning: signalReasoning.value,
 }))
-const detailPanel = computed(() => (selectedId.value ? buildDetail(input.value, selectedId.value, nowMs.value, detailExtra.value) : null))
+const detailPanel = computed(() => {
+  if (!selectedId.value) return null
+  const panel = buildDetail(input.value, selectedId.value, nowMs.value, detailExtra.value)
+  const observation = observationSections(input.value.observability, topicsForNode(selectedId.value))
+  if (!panel) return observation.length ? { kind: 'ops' as const, sections: observation } : null
+  return { ...panel, sections: [...panel.sections, ...observation] }
+})
+const edgeDetail = computed(() => buildEdgeDetail(graph.value, input.value, selectedEdgeId.value, edgeFlow.value[selectedEdgeId.value], edgePulseHistory.value, nowMs.value))
 
 function onDetailExit(to: string) {
-  selectedId.value = ''
+  closeDetail()
   void router.push(to)
 }
 
@@ -392,35 +416,40 @@ function keysFor(id: string, title: string): string[] {
 }
 
 async function loadDraft(fields: ConfigField[]) {
+  const generation = ++configGeneration
+  configSnapshot.value = null; configImpact.value = null
   try {
-    const values = await getConfigValues()
+    const snapshot = await getConfigSnapshot()
+    if (generation !== configGeneration) return
     const next: Record<string, string> = {}
-    for (const field of fields) next[field.key] = values[field.key] ?? field.fallback
-    draft.value = next
-  } catch (error) {
-    configMsg.value = error instanceof ApiError ? error.message : '配置没有读到'
-  }
+    for (const field of fields) next[field.key] = field.kind === 'secret' ? '' : snapshot.values[field.key] ?? field.fallback
+    draft.value = next; configBaseline.value = { ...next }; configSnapshot.value = snapshot
+  } catch (error) { if (generation === configGeneration) configMsg.value = error instanceof ApiError ? error.message : '配置没有读到' }
 }
-
+async function refreshConfigReceipts() {
+  try { const next = await getConfigSnapshot(); if (next.revision !== configSnapshot.value?.revision) { configMsg.value = '保存版本已变化，请重新读取配置后修改'; return }; configSnapshot.value = next } catch { configMsg.value = '回执读取失败' }
+}
 async function saveDraft() {
+  if (saving.value || !configSnapshot.value) return
   const values: Record<string, string> = {}
-  for (const [key, value] of Object.entries(draft.value)) {
-    if (value.trim()) values[key] = value.trim()
-  }
-  if (Object.keys(values).length === 0) {
-    configMsg.value = '没有要保存的内容'
-    return
-  }
+  for (const [key, value] of Object.entries(draft.value)) { if (value !== configBaseline.value[key] && value.trim()) values[key] = value.trim() }
+  if (!Object.keys(values).length) { configMsg.value = '没有要保存的改动'; return }
   saving.value = true
+  const generation = configGeneration
   try {
-    await saveConfigValues(values)
-    configMsg.value = '已保存，几秒内生效'
+    if (!configImpact.value) {
+      const preview = await previewConfig(values, configSnapshot.value.revision)
+      if (generation === configGeneration) configImpact.value = preview
+      return
+    }
+    const saved = await saveConfig(values, configImpact.value.baseRevision)
+    if (generation !== configGeneration) return
+    configSnapshot.value = saved; configBaseline.value = { ...draft.value }; configImpact.value = null
+    for (const field of configFields.value) if (field.kind === 'secret') { draft.value[field.key] = ''; configBaseline.value[field.key] = '' }
+    configMsg.value = `已保存版本 #${saved.revision}，等待目标服务加载回执`
     void pull()
-  } catch (error) {
-    configMsg.value = error instanceof ApiError ? error.message : '保存失败'
-  } finally {
-    saving.value = false
-  }
+  } catch (error) { if (generation === configGeneration) configMsg.value = error instanceof ApiError ? error.message : error instanceof Error ? error.message : '保存失败' }
+  finally { saving.value = false }
 }
 
 function resetView() {
@@ -451,16 +480,16 @@ function tick() {
 }
 
 const overlay = useOverlay(() => {
-  if (selectedId.value) selectedId.value = ''
+  if (selectedId.value || selectedEdgeId.value) closeDetail()
   else void router.push('/')
 })
 
 let poll = 0
 let flush = 0
-let pulling = false
-let again = false
 let pending: Pulse[] = []
 let unbind = () => {}
+let offRecovery = () => {}
+let mounted = true
 
 onMounted(() => {
   overlay.open()
@@ -468,13 +497,22 @@ onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDown)
   startPoll()
   ticker = window.setInterval(tick, 1000)
+  offRecovery = onResync(['position', 'signal', 'alert', 'market', 'brain'], async ({ topics, signal }) => {
+    const applied = await pull()
+    assertMonitorRecovery(input.value, topics, applied, mounted, signal)
+  })
   unbind = bindPulses(
     (pulse) => enqueue(pulse),
-    () => void pull(),
+    async (topic) => {
+      // Hidden canvas pauses decoration and polling, never acknowledges an unread critical update.
+      const applied = await pull()
+      assertMonitorRecovery(input.value, [topic], applied, mounted)
+    },
   )
 })
 
 onBeforeUnmount(() => {
+  mounted = false
   overlay.close()
   healthOverlay.close()
   document.removeEventListener('visibilitychange', onVisibility)
@@ -483,10 +521,12 @@ onBeforeUnmount(() => {
   if (ticker) window.clearInterval(ticker)
   if (flush) window.clearTimeout(flush)
   unbind()
+  offRecovery()
 })
 
 function startPoll() {
   stopPoll()
+  if (paused.value) return
   void pull()
   poll = window.setInterval(() => void pull(), 10_000)
 }
@@ -509,23 +549,15 @@ function onVisibility() {
   }
 }
 
-async function pull() {
-  if (paused.value) return
-  if (pulling) {
-    again = true
-    return
-  }
-  pulling = true
-  try {
-    do {
-      again = false
+const queuedPull = createRefreshQueue(async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
       const requested = input.value.focusSymbol
+      const requestedBook = useAccountStore().book
       const next = await loadMonitorInput(requested, input.value.pulses)
-      if (input.value.focusSymbol !== requested) {
-        again = true
-        continue
-      }
+      if (!mounted) return false
+      if (input.value.focusSymbol !== requested || useAccountStore().book !== requestedBook) continue
       next.pulses = input.value.pulses
+      next.lastPush = input.value.lastPush
       input.value = next
       sampleSparks()
       /* S6：这一轮的 successCount / calls 喂给流量差分（束线宽度与流向点速度） */
@@ -534,11 +566,11 @@ async function pull() {
       observeGraph(activity, buildScene(next, Date.now()), next, Date.now())
       /* S4：通知/审计/成交这三路是轮询来的，每轮拉完重新入流（id 稳定，不会重复） */
       absorbTape()
-    } while (again)
-  } finally {
-    pulling = false
-  }
-}
+      return true
+    }
+    return false
+})
+function pull() { return queuedPull() }
 
 function enqueue(pulse: Pulse) {
   pending.push(pulse)
@@ -546,6 +578,7 @@ function enqueue(pulse: Pulse) {
   flush = window.setTimeout(() => {
     let list = input.value.pulses
     const now = Date.now()
+    edgePulseHistory.value = retainEdgePulses(edgePulseHistory.value, pending, now)
     for (const item of pending) {
       list = pushPulse(list, item, now)
       /* S6：脉冲计数喂给流量口径——只有 observe 过的边（风控→账户）会被采用，其余记了也不读 */
@@ -554,7 +587,7 @@ function enqueue(pulse: Pulse) {
     }
     pending = []
     flush = 0
-    input.value = { ...input.value, pulses: list, now }
+    input.value = { ...input.value, pulses: list, lastPush: now }
     /* S4：脉冲入流的时机就是这里——再晚 2.4s 它们就从 input 过期了 */
     absorbTape(list)
   }, 300)
@@ -562,6 +595,7 @@ function enqueue(pulse: Pulse) {
 
 function select(id: string) {
   healthOpen.value = false
+  selectedEdgeId.value = ''
   if (id === 'action:trade') {
     void router.push('/panel/trade')
     return
@@ -580,6 +614,17 @@ function select(id: string) {
   input.value = { ...input.value, focusSymbol: symbol }
   void pull()
 }
+
+function selectEdge(id: string) {
+  healthOpen.value = false
+  selectedId.value = ''
+  selectedEdgeId.value = selectedEdgeId.value === id || !edgeOf(graph.value, id) ? '' : id
+}
+
+function closeDetail() {
+  selectedId.value = ''
+  selectedEdgeId.value = ''
+}
 </script>
 
 <template>
@@ -587,13 +632,15 @@ function select(id: string) {
     <header class="nt-monitor__bar">
       <button type="button" class="nt-link" @click="router.push('/')">交易台</button>
       <h1>监控驾驶舱</h1>
+      <TraceExplorer />
+      <EnvironmentExplorer />
       <button type="button" class="nt-link" @click="resetView">重置视图</button>
       <div class="nt-health">
         <button type="button" class="nt-health__badge" :data-tone="health.tone" @click="healthOpen = !healthOpen">
-          健康 {{ health.score }}<i class="dot" :class="`is-${health.tone}`"></i>
+          {{ health.score == null ? '健康待判定' : `健康 ${health.score}` }} · 观测 {{ health.measuredCount }}/{{ health.totalCount }}<i class="dot" :class="`is-${health.tone}`"></i>
         </button>
         <section v-if="healthOpen" class="nt-health__pop" role="dialog" aria-label="健康分明细">
-          <h3>健康分 {{ health.score }} · 五项各 20 分起扣</h3>
+          <h3>{{ health.score == null ? '健康待判定' : `健康分 ${health.score}` }} · 已观测 {{ health.measuredCount }}/{{ health.totalCount }}</h3>
           <ul>
             <li v-for="part in health.parts" :key="part.key" :data-measured="part.measured">
               <span>{{ part.label }}</span>
@@ -666,6 +713,7 @@ function select(id: string) {
         :kill-active="killActive"
         :signal-scores="signalScores"
         @select="select"
+        @edge="selectEdge"
       />
       <p v-if="offday" class="nt-monitor__offday">今日休市，链路自检中</p>
     </div>
@@ -679,7 +727,7 @@ function select(id: string) {
       @flash="onTapeFlash"
     />
 
-    <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true">
+    <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true" @click.self="closeDetail">
       <section class="nt-pop__sheet" :class="{ 'nt-pop__sheet--deep': detailPanel }">
         <header>
           <i class="dot" :class="`is-${picked.status}`"></i>
@@ -687,7 +735,7 @@ function select(id: string) {
             <h2>{{ detailWhere === 'runtime' ? dutyOf(picked.title).name : picked.title }}</h2>
             <p>{{ detailWhere === 'runtime' ? dutyOf(picked.title).role : picked.sub || picked.detail }}</p>
           </div>
-          <button type="button" @click="selectedId = ''">关闭</button>
+          <button type="button" @click="closeDetail">关闭</button>
         </header>
         <p class="nt-pop__face" :class="picked.tone">{{ picked.face || STATUS_WORD[picked.status] || '未返回' }}</p>
         <DetailSheet v-if="detailPanel" :panel="detailPanel" @exit="onDetailExit" />
@@ -718,7 +766,9 @@ function select(id: string) {
             </select>
             <input v-else v-model="draft[field.key]" :type="field.kind === 'secret' ? 'password' : 'text'" :placeholder="field.hint" />
           </label>
-          <button type="submit" :disabled="saving">{{ saving ? '保存中' : '保存配置' }}</button>
+          <ConfigRevisionPanel compact :snapshot="configSnapshot" :preview="configImpact" @refresh="refreshConfigReceipts" />
+          <button type="submit" :disabled="saving || !configSnapshot">{{ saving ? '处理中' : configImpact ? '确认保存新版本' : '预览配置变更' }}</button>
+          <button type="button" :disabled="saving" @click="loadDraft(configFields)">重新读取配置</button>
           <small>{{ configMsg || '留空的项不会覆盖原来的配置' }}</small>
         </form>
         <section v-if="detailWhere === 'runtime'" class="nt-pop__log">
@@ -730,6 +780,24 @@ function select(id: string) {
           </ul>
           <button type="button" @click="pull">重新检查</button>
         </section>
+      </section>
+    </div>
+
+    <div v-else-if="edgeDetail" class="nt-pop" role="dialog" aria-modal="true" aria-label="连线检视" @click.self="closeDetail">
+      <section class="nt-pop__sheet nt-pop__sheet--deep">
+        <header>
+          <i class="dot is-idle"></i>
+          <div>
+            <h2>{{ edgeDetail.title }}</h2>
+            <p>连线检视 · 结构关系与真实观测分别说明</p>
+          </div>
+          <button type="button" @click="closeDetail">关闭</button>
+        </header>
+        <nav aria-label="查看通道端点">
+          <button type="button" class="nt-link" @click="select(edgeDetail.edge.from)">查看上游节点</button>
+          <button type="button" class="nt-link" @click="select(edgeDetail.edge.to)">查看下游节点</button>
+        </nav>
+        <DetailSheet :panel="edgeDetail.panel" />
       </section>
     </div>
 

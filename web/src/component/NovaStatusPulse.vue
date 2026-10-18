@@ -29,14 +29,14 @@ defineProps({
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, #7dfff8, var(--nt-accent));
   animation: nt-breathe 2.4s ease-in-out infinite;
-  box-shadow: 0 0 10px rgba(0, 229, 255, 0.7);
+  box-shadow: var(--nt-glow-accent);
 }
 
 .ring {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 229, 255, 0.45);
+  border: 1px solid var(--nt-accent-border);
   animation: nt-pulse-ring 2.4s ease-out infinite;
 }
 

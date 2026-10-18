@@ -277,8 +277,9 @@ describe('resolveHud · P2 口径', () => {
     const cells = resolveHud(input, hudCells('offday'), Date.UTC(2026, 9, 12, 6, 47))
     expect(cells[2].face).toBe('1024 MiB')
     expect(cells[2].sub).toContain('池 5/25')
-    expect(cells[2].sub).toContain('连接 14/100')
+    /* 慢查询缺口占副行时连接总数让位（连接数在弹层里全量呈现） */
     expect(cells[2].sub).toContain('慢查询未接入')
+    expect(cells[2].sub).not.toContain('连接 14/100')
   })
 
   it('补数格并入 K 线缺口口径：有缺口报只数，无缺口说无缺口', () => {
@@ -291,7 +292,7 @@ describe('resolveHud · P2 口径', () => {
     }
     const cells = resolveHud(input, hudCells('offday'), Date.UTC(2026, 9, 12, 6, 47))
     expect(cells[1].face).toBe('15')
-    expect(cells[1].sub).toContain('K 线缺口 7 只')
+    expect(cells[1].sub).toContain('缺口 7 只')
 
     input.marketP2 = {
       ok: true,

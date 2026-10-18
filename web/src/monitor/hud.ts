@@ -2,7 +2,7 @@
  * HUD 十格的牌面解析：时段（timeband.ts）给格子定义，这里把 MonitorInput
  * 解析成人读的主词/副行。纯函数，缺口格写明缺哪个接口（监控业务监控方案 §7 纪律）。
  */
-import { amount, compactAmount, pctText, phaseName, ratioPct, signed } from '@/utils/format'
+import { amount, compactAmount, pctText, phaseName, ratioPct, signed, toneOf } from '@/utils/format'
 import { bandCountdown, type HudCellDef, type SparkKey } from './timeband'
 import type { MonitorInput } from './types'
 
@@ -135,7 +135,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       return {
         face: signed(pnl),
         sub: `权益 ${amount(account.equity)} · 持仓 ${account.positions.length}`,
-        tone: pnl == null || pnl === 0 ? 'flat' : pnl > 0 ? 'up' : 'down',
+        tone: toneOf(pnl),
       }
     }
     /* ---- 时段特化格 ---- */
@@ -143,7 +143,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
       if (!perf) return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
       if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
-      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率 · 盈亏比 ${perf.plRatio > 0 ? perf.plRatio.toFixed(1) : '不足'}`, tone: perf.winRate >= 0.5 ? 'up' : 'down' }
+      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率 · 盈亏比 ${perf.plRatio > 0 ? perf.plRatio.toFixed(1) : '不足'}`, tone: 'flat' }
     }
     case 'gap:misslimit': {
       /* 昨日涨停名单 × 候选漏选名单：漏掉的涨停只数（§5.6 盘后漏选复盘的同一口径）。
@@ -189,7 +189,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     }
     case 'midday:pnl': {
       const pnl = input.account?.ok ? input.account.dayPnl : null
-      return { face: pnl == null ? '账户未返回' : signed(pnl), sub: '半场盈亏', tone: pnl == null || pnl === 0 ? 'flat' : pnl > 0 ? 'up' : 'down' }
+      return { face: pnl == null ? '账户未返回' : signed(pnl), sub: '半场盈亏', tone: toneOf(pnl) }
     }
     case 'midday:limit': {
       const count = input.limits?.ok ? input.limits.rows.length : null
@@ -214,7 +214,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
         known = true
       }
       if (!known) return { face: '未返回', sub: '现价或成本缺失', tone: 'flat' }
-      return { face: signed(float), sub: '持仓浮动盈亏', tone: float === 0 ? 'flat' : float > 0 ? 'up' : 'down' }
+      return { face: signed(float), sub: '持仓浮动盈亏', tone: toneOf(float) }
     }
     case 'close:stop': {
       const positions = input.account?.ok ? input.account.positions : null
@@ -240,7 +240,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
       if (!perf) return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
       if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
-      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率`, tone: perf.winRate >= 0.5 ? 'up' : 'down' }
+      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率`, tone: 'flat' }
     }
     case 'gap:attribution': {
       const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
@@ -253,7 +253,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const scatter = input.strategyP1?.ok ? input.strategyP1.scatter : null
       if (!scatter) return { face: '未接入', sub: '需要 GET /v1/strategy/score-vs-pnl', tone: 'flat' }
       if (scatter.sample < 2) return { face: '样本不足', sub: '已后验笔数少于 2', tone: 'flat' }
-      return { face: scatter.pearson.toFixed(2), sub: `评分-收益相关（${scatter.sample} 笔）`, tone: Math.abs(scatter.pearson) >= 0.5 ? 'up' : 'flat' }
+      return { face: scatter.pearson.toFixed(2), sub: `评分-收益相关（${scatter.sample} 笔）`, tone: 'flat' }
     }
     case 'off:tasks': {
       const tasks = input.tasks?.ok ? input.tasks.items : null
@@ -265,23 +265,24 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const items = input.quality?.ok ? input.quality.items : null
       /* P2：K 线连续性（GET /api/market/kline-gaps）与补数格共用一行——缺口是补数要看的第一件事 */
       const gaps = input.marketP2?.ok ? input.marketP2.klineGaps : null
-      const gapText = gaps ? (gaps.found ? `K 线缺口 ${gaps.missingTotal} 只` : 'K 线无缺口') : ''
+      const gapText = gaps ? (gaps.found ? `缺口 ${gaps.missingTotal} 只` : 'K 线无缺口') : ''
       if (!items) return { face: '质量未返回', sub: gapText, tone: 'flat' }
       if (items.length === 0) return { face: '0', sub: gapText ? `没有质量问题记录 · ${gapText}` : '没有质量问题记录', tone: 'flat' }
       const hits = items.reduce((sum, item) => sum + (item.hits ?? 0), 0)
-      const bits = [`质量问题 ${items.length} 条命中`]
+      const bits = [`质量 ${items.length} 条`]
       if (gapText) bits.push(gapText)
       return { face: String(hits), sub: bits.join(' · '), tone: 'flat' }
     }
     case 'off:db': {
-      /* P2：GET /api/ops/db —— 库体积（pg_database_size）+ 连接池用量（database/sql.Stats） */
+      /* P2：GET /api/ops/db —— 库体积（pg_database_size）+ 连接池用量（database/sql.Stats）。
+       * 副行最宽留 20 字上下：慢查询缺口要占位时，连接总数让位（连接数在详情弹层里是全的）。 */
       const db = input.opsP2?.ok ? input.opsP2.db : null
       if (!db) return { face: '未接入', sub: '需要 GET /api/ops/db（PG 库体积/连接池）', tone: 'flat' }
       if (!db.sizePretty && !db.pool) return { face: '未返回', sub: db.note || 'PG 内省无应答', tone: 'flat' }
       const bits: string[] = []
       if (db.pool) bits.push(`池 ${db.pool.inUse}/${db.pool.maxOpen > 0 ? db.pool.maxOpen : db.pool.open}`)
-      if (db.connections) bits.push(`连接 ${db.connections.total}${db.maxConnections ? `/${db.maxConnections}` : ''}`)
       if (!db.slowAvailable && db.slowNote) bits.push('慢查询未接入')
+      else if (db.connections) bits.push(`连接 ${db.connections.total}${db.maxConnections ? `/${db.maxConnections}` : ''}`)
       return { face: db.sizePretty || '体积未返回', sub: bits.join(' · ') || '连接池未返回', tone: 'flat' }
     }
     default:

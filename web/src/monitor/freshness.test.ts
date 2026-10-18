@@ -105,11 +105,47 @@ describe('cardFreshness', () => {
   })
 
   it('没有时间戳的账户牌按本次采样年龄算，接口挂住时年龄自己涨', () => {
-    const input: MonitorInputLike = { now: MON - 5_000 }
+    const input: MonitorInputLike = { now: MON - 5_000, sampledAt: MON - 5_000, account: { ok: true } }
     const fresh = cardFreshness(input, MON, true)
-    expect(fresh.get('book:center')).toEqual({ text: '5s 前', tone: 'ok' })
-    const hung: MonitorInputLike = { now: MON - 200_000 }
+    expect(fresh.get('book:center')).toEqual({ text: '采样 5s 前', tone: 'ok' })
+    const hung: MonitorInputLike = { now: MON - 200_000, account: { ok: true } }
     expect(cardFreshness(hung, MON, true).get('book:center')?.tone).toBe('danger')
+  })
+
+  it('无关 WS 持续活跃也不能刷新 REST 账户、风控和模型统计的角标', () => {
+    const input: MonitorInputLike = {
+      now: MON,
+      sampledAt: MON - 240_000,
+      lastPush: MON,
+      account: { ok: true },
+      risk: { ok: true },
+      brainStats: { ok: true },
+    }
+    const badges = cardFreshness(input, MON, true)
+    expect(badges.get('book:center')).toEqual({ text: '采样 4m 前', tone: 'danger' })
+    expect(badges.get('post:risk')).toEqual({ text: '采样 4m 前', tone: 'danger' })
+    expect(badges.get('model:large')).toEqual({ text: '采样 4m 前', tone: 'warn' })
+  })
+
+  it('REST 成功时钟不能给失败或尚未读取的数据块贴上新鲜角标', () => {
+    const input: MonitorInputLike = {
+      now: MON,
+      sampledAt: MON,
+      account: { ok: false },
+      risk: null,
+      brainStats: { ok: false },
+      sentiment: { ok: false, asOf: ago(MON, 2), stale: false },
+    }
+    const badges = cardFreshness(input, MON, true)
+    for (const id of ['book:center', 'post:risk', 'model:large', 'post:scan']) expect(badges.has(id)).toBe(false)
+    expect(cardFreshness({ sampledAt: 0, now: MON, account: { ok: true } }, MON, true).has('book:center')).toBe(false)
+  })
+
+  it('数据自身时间优先于 REST 采样；缺少行情时间不冒充刚读到的新行情', () => {
+    const input: MonitorInputLike = { now: MON, sampledAt: MON, sentiment: { ok: true, asOf: ago(MON, 400), stale: false } }
+    expect(cardFreshness(input, MON, true).get('post:scan')).toEqual({ text: '6m 前', tone: 'danger' })
+    input.sentiment!.asOf = ''
+    expect(cardFreshness(input, MON, true).has('post:scan')).toBe(false)
   })
 
   it('非交易日一律按盘后阈值：周五的数据周六看是「上一交易日」', () => {

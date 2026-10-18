@@ -34,6 +34,8 @@ export interface Order {
   volume: number | null
   filled: number | null
   reason: string
+  signalId?: string
+  strategyVersion?: string
 }
 
 export interface Fill {
@@ -55,4 +57,6 @@ export interface OrderDraft {
   volume: number
   source: string
   operator: string
+  signalId?: string
+  strategyVersion?: string
 }

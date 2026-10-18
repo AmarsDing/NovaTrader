@@ -73,7 +73,7 @@ function pick(value: string | number) {
 }
 
 .nt-seg__item.on {
-  color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.1);
+  color: color-mix(in srgb, var(--nt-accent) 75%, var(--nt-text-1));
+  background: var(--nt-accent-soft);
 }
 </style>

@@ -14,7 +14,8 @@ import { clock, compactAmount, messageOf, pnlClass, price } from '@/utils/format
 import { router } from '@/router'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
-import { onPush, subscribe, type MarketSnapshotMeta, type WsPushMessage } from '@/ws/hub'
+import { onPush, onResync, subscribe, type MarketSnapshotMeta, type WsPushMessage } from '@/ws/hub'
+import { createPageRefresh } from './page-refresh'
 
 /** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转），路由 query 作兼容兜底。 */
 const panelParams = consumePanelParams('market')
@@ -25,6 +26,8 @@ const bars = ref<Bar[]>([])
 const indicators = ref<MarketIndicator[]>([])
 const news = ref<IntelItem[]>([])
 const fills = ref<Fill[]>([])
+const newsReady = ref(false)
+const fillsReady = ref(false)
 const error = ref('')
 const loading = ref(false)
 const loaded = ref(false)
@@ -38,13 +41,13 @@ const accountOptions = [
   { value: 'LIVE', label: 'LIVE' },
 ]
 
-/** 报价条：最新一根 bar + 前一根作参照；日线时展示开高低/振幅/量/额。 */
+/** 最近一根 K 线；前一根收盘只用于同周期比较，不冒充交易所昨收或实时快照。 */
 const quote = computed(() => {
   if (!bars.value.length) return null
   const last = bars.value[bars.value.length - 1]
   const prev = bars.value.length > 1 ? bars.value[bars.value.length - 2] : null
   const lastClose = last.close
-  const preClose = prev?.close ?? last.open
+  const preClose = prev?.close ?? null
   const change = lastClose != null && preClose ? lastClose - preClose : null
   const changePct = change != null && preClose ? (change / preClose) * 100 : null
   const amplitude = last.high != null && last.low != null && preClose ? ((last.high - last.low) / preClose) * 100 : null
@@ -95,12 +98,18 @@ const indicatorPoints = computed<IndicatorPoint[]>(() =>
 
 /** 请求代际：旧的 load 结果不得覆盖新的（freq 切换/推送/手动刷新可能并发）。 */
 let loadSeq = 0
+let disposed = false
+let contextVersion = 0
+const refreshKey = () => JSON.stringify([symbol.value.trim(), freq.value, account.value, contextVersion])
+const refreshes = createPageRefresh({ key: refreshKey, read: readPage, pushIntervalMs: 5000 })
 
-async function load() {
+function load() { return refreshes.refresh() }
+
+async function readPage(key: string): Promise<boolean> {
   const code = symbol.value.trim()
   if (!code) {
     error.value = '请输入证券代码，例如 600519.SH'
-    return
+    return false
   }
   const seq = ++loadSeq
   const freqAt = freq.value
@@ -114,14 +123,18 @@ async function load() {
     timeline(code),
     listFills(accountAt),
   ])
-  if (seq !== loadSeq) return
+  if (disposed || key !== refreshKey() || seq !== loadSeq || code !== symbol.value.trim() ||
+    freqAt !== freq.value || accountAt !== account.value) return false
   bars.value = barRes.status === 'fulfilled' ? barRes.value : []
   indicators.value = indRes.status === 'fulfilled' ? indRes.value : []
   news.value = newsRes.status === 'fulfilled' ? newsRes.value.items : []
   fills.value = fillRes.status === 'fulfilled' ? fillRes.value : []
+  newsReady.value = newsRes.status === 'fulfilled'
+  fillsReady.value = fillRes.status === 'fulfilled'
   if (barRes.status === 'rejected') error.value = messageOf(barRes.reason)
   else if (!bars.value.length) error.value = ''
   loading.value = false
+  return barRes.status === 'fulfilled' && indRes.status === 'fulfilled'
 }
 
 function openIntel(item: IntelItem) {
@@ -138,13 +151,22 @@ watch(
   },
 )
 
-watch(freq, () => {
-  if (symbol.value.trim()) void load()
-})
+watch([symbol, freq, account], (next, before) => {
+  contextVersion += 1
+  bars.value = []
+  indicators.value = []
+  news.value = []
+  fills.value = []
+  newsReady.value = false
+  fillsReady.value = false
+  loading.value = false
+  loaded.value = false
+  if (next[0] === before[0] && symbol.value.trim()) void load()
+}, { flush: 'sync' })
 
 let offPush: (() => void) | undefined
 let unsubscribe: (() => void) | undefined
-let lastPush = 0
+let offResync: (() => void) | undefined
 /** 已挂载时 openPanel('market', {symbol}) 直接推过来。 */
 const offPanelParams = onPanelParams('market', (params) => {
   const code = typeof params.symbol === 'string' ? params.symbol.trim() : ''
@@ -173,26 +195,39 @@ const snapshotLine = computed(() => {
   return parts.join(' · ')
 })
 
-function onPushMessage(msg: WsPushMessage) {
+async function onPushMessage(msg: WsPushMessage) {
   if (msg.topic !== 'market') return
   if (msg.data && typeof msg.data === 'object') snapshot.value = msg.data as MarketSnapshotMeta
   if (!symbol.value.trim()) return
-  const now = Date.now()
-  if (now - lastPush < 5000) return
-  lastPush = now
-  void load()
+  const key = refreshKey()
+  const ready = await refreshes.fromPush()
+  if (!disposed && key === refreshKey() && !ready) throw new Error('行情图表尚未恢复')
 }
 
+function onVisible() { if (!document.hidden && symbol.value.trim()) void load() }
+
 onMounted(() => {
-  if (symbol.value) load()
+  if (symbol.value) void load()
+  offResync = onResync(['market'], async () => {
+    if (!symbol.value.trim()) return
+    const key = refreshKey()
+    const ready = await load()
+    if (!disposed && key === refreshKey() && !ready) throw new Error('行情图表尚未恢复')
+  })
   unsubscribe = subscribe('market')
   offPush = onPush(onPushMessage)
+  document.addEventListener('visibilitychange', onVisible)
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  contextVersion += 1
+  refreshes.dispose()
   offPush?.()
   unsubscribe?.()
   offPanelParams()
+  offResync?.()
+  document.removeEventListener('visibilitychange', onVisible)
 })
 </script>
 
@@ -221,24 +256,26 @@ onBeforeUnmount(() => {
     </p>
 
     <div v-if="quote" class="quote-strip">
+      <span class="q-item">最近一根{{ freq === '1d' ? '日 K' : '1 分钟 K' }} · 收</span>
       <span class="q-last" :class="pnlClass(quote.change)">{{ price(quote.last) }}</span>
       <span class="q-chg" :class="pnlClass(quote.change)">
+        较前根
         {{ quote.change != null ? (quote.change >= 0 ? '+' : '') + quote.change.toFixed(2) : '—' }}
         {{ quote.changePct != null ? (quote.changePct >= 0 ? '+' : '') + quote.changePct.toFixed(2) + '%' : '' }}
       </span>
       <span class="q-item">开 {{ price(quote.open) }}</span>
       <span class="q-item">高 {{ price(quote.high) }}</span>
       <span class="q-item">低 {{ price(quote.low) }}</span>
-      <span class="q-item">振幅 {{ quote.amplitude != null ? quote.amplitude.toFixed(2) + '%' : '—' }}</span>
-      <span class="q-item">量 {{ compactAmount(quote.volume) }}</span>
-      <span class="q-item">额 {{ compactAmount(quote.amount) }}</span>
-      <span class="q-item q-time">{{ clock(quote.time) }}</span>
+      <span class="q-item">本根振幅 {{ quote.amplitude != null ? quote.amplitude.toFixed(2) + '%' : '—' }}</span>
+      <span class="q-item">量 {{ compactAmount(quote.volume) }} 股</span>
+      <span class="q-item">额 {{ compactAmount(quote.amount) }} 元</span>
+      <span class="q-item q-time">K 线时间 {{ clock(quote.time) }}</span>
     </div>
 
     <div class="nt-split">
       <aside class="nt-panel news">
         <h2 class="nt-panel__title">消息</h2>
-        <p v-if="!news.length" class="nt-empty">这条时间线上没有消息。</p>
+        <p v-if="!news.length" class="nt-empty">{{ newsReady ? '本次查询没有相关消息。' : loaded ? '消息未返回，不能判断有无相关消息。' : '读取证券后查看相关消息。' }}</p>
         <ul v-else>
           <li v-for="item in news" :key="item.id || item.time + item.title" @click="openIntel(item)">
             <div class="news__head">
@@ -254,7 +291,8 @@ onBeforeUnmount(() => {
         <div class="kline-frame">
           <NtKline :bars="bars" :indicators="indicators" :markers="markers" :freq="freq" height="100%" />
         </div>
-        <p class="legend">青 MA5 · 紫 MA10 · 橙 MA20 · 柱为成交量</p>
+        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量</p>
+        <p v-if="loaded && !loading && !fillsReady" class="nt-note">成交明细未返回，图上的买卖标记尚不完整。</p>
         <NtIndicatorChart v-if="indicatorPoints.length" :points="indicatorPoints" height="220px" />
         <p v-else class="nt-empty">指标未返回。</p>
       </section>

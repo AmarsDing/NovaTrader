@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 顶栏 chrome（不进 dock）：品牌 + 权益/盈亏 + Kill Switch + 命令面板入口 + 布局预设 + 用户。
- * 玻璃拟态允许出现的位置之一（另两处：弹层、AlertCenter）。
+ * 分层玻璃 chrome；数字保留等宽和稳定对比，不使用文字光晕。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -12,7 +12,7 @@ import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useSignalsStore } from '@/stores/signals'
-import { amount, pnlClass, signed } from '@/utils/format'
+import { amount, clock, pnlClass, signed } from '@/utils/format'
 import { isLive } from '@/ws/hub'
 import { isPendingStatus } from '@/view/decision-desk'
 import { getWorkbench } from './inject'
@@ -25,12 +25,15 @@ const account = useAccountStore()
 const layout = useLayoutStore()
 
 const displayName = computed(() => auth.user?.displayName || auth.user?.name || '交易员')
-const pnl = computed(() => (account.dayPnl != null ? account.dayPnl : account.unrealized))
+const pnl = computed(() => account.accountOk ? (account.dayPnl != null ? account.dayPnl : account.unrealized) : null)
 const pnlLabel = computed(() => (account.dayPnl != null ? '当日盈亏' : '浮动盈亏'))
+const accountReadLabel = computed(() => !account.accountOk ? '待核对' :
+  isLive() ? '已核对' : `读取于 ${account.checkedAt ? clock(new Date(account.checkedAt)) : '未知时间'} · 非实时`)
 
 /* P3：「待执行 N」与决策台左栏同一口径，30 秒一拍；点击聚焦决策台面板 */
 const signals = useSignalsStore()
-const pendingCount = computed(() => signals.items.filter((item) => isPendingStatus(item.status)).length)
+const pendingCount = computed(() => signals.ready && isLive() ?
+  signals.items.filter((item) => isPendingStatus(item.status)).length : null)
 let signalTimer: ReturnType<typeof setInterval> | null = null
 
 function focusDesk() {
@@ -189,16 +192,16 @@ function logout() {
 
     <div class="metrics">
       <div class="metric">
-        <span class="label">权益 · {{ account.book }}</span>
-        <span class="value nt-holo-num">{{ amount(account.equity) }}</span>
+        <span class="label">权益 · {{ account.book }} · {{ accountReadLabel }}</span>
+        <span class="value nt-holo-num">{{ amount(account.accountOk ? account.equity : null) }}</span>
       </div>
-      <div class="metric" :class="pnlClass(pnl)">
+      <div class="metric" :class="account.accountOk && isLive() ? pnlClass(pnl) : ''">
         <span class="label">{{ pnlLabel }}</span>
         <span class="value nt-holo-num">{{ signed(pnl) }}</span>
       </div>
-      <button type="button" class="metric pending" :class="{ hot: pendingCount > 0 }" title="待执行信号，点击聚焦决策台" @click="focusDesk">
-        <span class="label">待执行</span>
-        <span class="value nt-holo-num">{{ pendingCount }}</span>
+      <button type="button" class="metric pending" :class="{ hot: pendingCount != null && pendingCount > 0 }" title="已同步的待执行信号，点击聚焦决策台" @click="focusDesk">
+        <span class="label">待执行{{ pendingCount == null ? ' · 待同步' : '' }}</span>
+        <span class="value nt-holo-num">{{ pendingCount ?? '—' }}</span>
       </button>
     </div>
 
@@ -267,9 +270,22 @@ function logout() {
   gap: 12px 20px;
   padding: 8px 14px;
   flex-wrap: wrap;
-  background: var(--nt-bg-glass);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--nt-border-1);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  backdrop-filter: var(--nt-glass-filter);
+  border-top: 1px solid var(--nt-glass-highlight);
+  border-bottom: 1px solid var(--nt-glass-border);
+  box-shadow: var(--nt-edge-light), var(--nt-glow-soft);
+}
+
+.bar::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -1px;
+  height: 1px;
+  background: var(--nt-track-gradient);
+  pointer-events: none;
 }
 
 .brand,
@@ -282,6 +298,19 @@ function logout() {
 .logo {
   font-weight: 700;
   color: var(--nt-text-1);
+  letter-spacing: 0.035em;
+}
+
+.logo::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 9px;
+  border: 2px solid var(--nt-accent);
+  background: var(--nt-accent-soft);
+  transform: rotate(45deg);
+  box-shadow: var(--nt-glow-soft);
 }
 
 .sub {
@@ -367,10 +396,11 @@ button.metric {
   width: 280px;
   padding: 10px;
   z-index: 80;
-  background: var(--nt-bg-2);
-  border: 1px solid var(--nt-border-2);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  backdrop-filter: var(--nt-glass-filter);
+  border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-m);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth);
 }
 
 .preset-menu button {
@@ -431,7 +461,7 @@ button.metric {
 .preset-menu__name:hover,
 .preset-menu__foot button:hover {
   color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.08);
+  background: var(--nt-accent-soft);
 }
 
 .preset-menu__icon {

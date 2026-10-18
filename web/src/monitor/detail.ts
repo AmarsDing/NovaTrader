@@ -21,12 +21,14 @@ import {
   signalStatusLabel,
   signed,
   strategyLabel,
+  toneOf as formatToneOf,
   validRemainText,
   isValidExpired,
 } from '@/utils/format'
 import { ageText, parseStamp } from './freshness'
 import { buildFunnel, funnelCountText, funnelRate } from './funnel'
 import { gpuMemory } from './hud'
+import { runAuthorizationText } from './health'
 import { sourceNodeId } from './freshness'
 import type { MonitorInput, MonitorSignal } from './types'
 
@@ -69,7 +71,7 @@ export interface DetailSection {
 }
 
 export interface DetailPanel {
-  kind: 'account' | 'signal' | 'risk' | 'source' | 'model' | 'scan' | 'ops'
+  kind: 'account' | 'signal' | 'risk' | 'source' | 'model' | 'scan' | 'ops' | 'edge'
   sections: DetailSection[]
   /** §5.2 出口：只跳路由，本页没有任何确认/下单按钮 */
   exit?: { label: string; to: string }
@@ -116,7 +118,7 @@ export const GAP_DAY_PNL = '未返回：trade Account 没有当日盈亏字段�
 /* ---------- 入口 ---------- */
 
 /** 这张牌的深化类型；返回 null 表示该 id 没有六张深化牌，详情窗退回原有卡片网格 */
-export function detailKindFor(input: MonitorInput, id: string): DetailPanel['kind'] | null {
+export function detailKindFor(input: MonitorInput, id: string): Exclude<DetailPanel['kind'], 'edge'> | null {
   if (!id) return null
   if (id === 'book:center') return 'account'
   if (id === 'post:risk') return 'risk'
@@ -178,9 +180,9 @@ export function ringTone(pct: number): 'ok' | 'warn' | 'danger' {
   return 'ok'
 }
 
+/** 方向判定统一走 format.toneOf（§五.1 唯一出口）；'up'|'down'|'flat' ⊂ DetailTone */
 function toneOf(value: number | null): DetailTone {
-  if (value == null || value === 0) return 'flat'
-  return value > 0 ? 'up' : 'down'
+  return formatToneOf(value)
 }
 
 /** 证据链里的情报编号（N:123 → "123"），去重；懒加载标题用 */
@@ -636,7 +638,8 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
   }
 
   const state: DetailRow[] = [
-    { key: 'mode', label: '模式', value: risk.mode || '未返回', note: 'SIM 模拟盘 / LIVE 实盘（切换在交易台，本页只读）' },
+    { key: 'mode', label: '运行授权', value: runAuthorizationText(risk.mode), note: 'L0 观察 / L1 模拟 / L2 实盘人工确认；L3 未开放，按 L2 处理。授权不表示自动执行正在运行。' },
+    { key: 'book', label: '账户账本', value: input.account?.ok ? input.account.book || '未返回' : '未返回', note: 'SIM 模拟盘 / LIVE 实盘；账本身份与运行授权分别显示。' },
     {
       key: 'kill',
       label: '急停状态',
@@ -789,7 +792,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
     for (const item of admit.items) {
       admitRows.push({ key: `admit:${item.label}`, label: item.label, value: item.status || '—', note: item.detail })
     }
-    admitRows.push({ key: 'ready', label: '结论', value: admit.ready ? '通过，可以半自动实盘' : '未通过', tone: admit.ready ? 'up' : 'flat' })
+    admitRows.push({ key: 'ready', label: '结论', value: admit.ready ? '通过，可以半自动实盘' : '未通过', tone: 'flat' })
   }
 
   return [
@@ -1123,8 +1126,7 @@ function scatterRows(input: MonitorInput): DetailRow[] {
       key: 'scatter',
       label: '评分 vs 实际收益相关系数',
       value: scatter.pearson.toFixed(2),
-      note: `近 ${scatter.sample} 笔（Pearson；|r|>0.5 算有区分度）`,
-      tone: Math.abs(scatter.pearson) >= 0.5 ? 'up' : 'flat',
+      note: `近 ${scatter.sample} 笔（Pearson；|r|>0.5 算有区分度——相关性不是涨跌方向，不染色）`,
     })
     // 分桶均值：80+ 与 <70 两档的实际收益对比，比散点图本身更好读
     const high = scatter.points.filter((p) => p.score >= 80)
@@ -1309,7 +1311,8 @@ function scanSections(input: MonitorInput): DetailSection[] {
   const breadth = input.marketP2?.ok ? input.marketP2.breadth ?? null : null
   const breadthSection = breadthSectionOf(breadth)
 
-  return [auctionSection, ladderSection, ...premiumSections, breadthSection, layersSection, ...reasonSections, missSection, reviewSection]
+  /* §5.6 顺序：漏斗六层 → 各层原因 → 漏选清单 → 漏选复盘；溢价/广度是市场环境注脚，跟在复盘后面 */
+  return [auctionSection, ladderSection, layersSection, ...reasonSections, missSection, reviewSection, ...premiumSections, breadthSection]
 }
 
 /** 溢价段：当日汇总 + 明细前 8 + 近几日趋势。found=false 是「基准日没有涨停股」，不是接口坏。 */
@@ -1333,7 +1336,7 @@ function premiumSectionsOf(premium: PremiumSummary | null): DetailSection[] {
       label: '开盘均溢',
       value: ratioPct(summary.openAvg),
       note: `${summary.baseDate || '基准日'} 涨停 ${summary.sample} 只 → ${summary.tradeDate || '当日'} 开盘`,
-      tone: summary.openAvg > 0 ? 'up' : summary.openAvg < 0 ? 'down' : 'flat',
+      tone: toneOf(summary.openAvg),
     },
     summary.hasClose
       ? {
@@ -1341,7 +1344,7 @@ function premiumSectionsOf(premium: PremiumSummary | null): DetailSection[] {
           label: '收盘均溢 / 胜率',
           value: `${ratioPct(summary.closeAvg)} / ${ratioPct(summary.closeWin, 0)}`,
           note: '胜率 = 收盘溢价 >0 的只数占比',
-          tone: summary.closeAvg > 0 ? 'up' : summary.closeAvg < 0 ? 'down' : 'flat',
+          tone: toneOf(summary.closeAvg),
         }
       : { key: 'close', label: '收盘均溢', value: '尚未定稿', note: '收盘溢价 16:45 的 market.premium.close 任务补齐' },
     { key: 'high', label: '盘中最高均溢', value: ratioPct(summary.highAvg), note: '按最高价算，是打板次日的兑现上限口径' },
@@ -1413,8 +1416,8 @@ function breadthSectionOf(breadth: BreadthSummary | null): DetailSection {
         key: 'ratio',
         label: `MA${latest.window} 上方占比`,
         value: ratioPct(latest.ratio, 1),
+        // 广度是结构统计量不是涨跌方向——红绿只给行情/金额/盈亏，这里保持 flat 不误导
         note: `${latest.above} / ${latest.total} 只（下方 ${latest.below} · 持平 ${latest.flat}）`,
-        tone: latest.ratio >= 0.5 ? 'up' : 'down',
       },
     ],
     table:
@@ -1581,7 +1584,7 @@ function natsSections(input: MonitorInput): DetailSection[] {
         empty: '没有 durable 消费者（JetStream 流信息不可得）',
         flags: nats.consumers.map((item) => (item.missing ? 'danger' : (item.lag ?? 0) > 0 ? 'warn' : '')),
       },
-      foot: 'lag = 流末序号 − 该消费者已投递序号；消费者不存在说明 durable 还没建（首次订阅时才建）。',
+      foot: 'lag使用JetStream实际NumPending（待投递数），待确认另列NumAckPending；不使用流末序号差推算积压。消费者缺失表示当前durable尚未建立或不可得。',
     },
   ]
 }

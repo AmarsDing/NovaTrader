@@ -92,7 +92,7 @@ async function submit() {
 <style scoped>
 /* Kill Switch hot 态发光：发光预算允许的一处。 */
 .kill--hot {
-  box-shadow: 0 0 18px rgba(255, 58, 58, 0.45);
+  box-shadow: var(--nt-glow-danger);
 }
 
 .nt-note {

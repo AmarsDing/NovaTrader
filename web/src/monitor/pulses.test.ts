@@ -36,4 +36,18 @@ describe('pulseFromPush', () => {
     expect(pulseFromPush({ topic: 'position', data: { equity: 1 } }, 1)).toBeNull()
     expect(pulseFromPush({ topic: 'resume', data: {} }, 1)).toBeNull()
   })
+
+  it('真实SignalUpdated字段与信封身份能到达画布，重投保持同一事件ID', () => {
+    const msg = { topic: 'signal', data: { signal_id: 's-9', stock_code: '600519.SH', status: 'approved' }, metadata: { event_id: 'e-9', trace_id: 't-1', subject: 'strategy.signal.updated', source_time: '2026-10-15T01:30:00Z' } }
+    const first = pulseFromPush(msg, 100)
+    expect(first).toMatchObject({ id: 'event:e-9', identifier: { kind: 'signal', value: 's-9' }, traceId: 't-1', subject: 'strategy.signal.updated', sourceTime: '2026-10-15T01:30:00Z' })
+    expect(pulseFromPush(msg, 200)?.id).toBe(first?.id)
+  })
+
+  it('真实行情批次不编证券，不把没有身份的空对象当传输', () => {
+    const batch = pulseFromPush({ topic: 'market', data: { source: 'tdx', seq: 42, as_of: '2026-10-15T01:30:01Z', count: 5000 } }, 100)
+    expect(batch?.identifier).toEqual({ kind: 'source', value: 'tdx · 批次 42' })
+    expect(batch?.sourceTime).toBe('')
+    expect(pulseFromPush({ topic: 'market', data: { source: 'tdx', count: 0 } }, 100)).toBeNull()
+  })
 })

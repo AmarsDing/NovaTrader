@@ -80,11 +80,11 @@ function onInput(event: Event) {
 }
 
 .nt-input__box:focus-within {
-  border-color: rgba(0, 229, 255, 0.7);
+  border-color: var(--nt-accent);
 }
 
 .nt-input__box:has(input:focus-visible) {
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.28);
+  box-shadow: 0 0 0 2px var(--nt-focus-ring);
 }
 
 .nt-input__box--invalid {

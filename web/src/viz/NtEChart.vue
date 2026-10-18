@@ -10,8 +10,11 @@ import {
   ToolboxComponent,
   TooltipComponent,
   VisualMapComponent,
+  type TooltipComponentOption,
 } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
+import { useChartPalette } from '@/theme/tokens'
+import { useVisualRendering } from '@/theme/visual-quality'
 
 echarts.use([
   LineChart,
@@ -35,8 +38,23 @@ const props = defineProps({
 })
 
 const el = ref<HTMLDivElement | null>(null)
+const palette = useChartPalette()
+const visual = useVisualRendering(el)
 let chart: echarts.ECharts | null = null
 let observer: ResizeObserver | null = null
+
+type MotionSeries = { id?: string | number; animation?: boolean; [key: string]: unknown }
+
+function motionOption(includeData: boolean) {
+  const allowed = visual.value.visible && !visual.value.reducedMotion
+  const rootAnimation = typeof props.option?.animation === 'boolean' ? props.option.animation : true
+  const raw = props.option?.series as MotionSeries | MotionSeries[] | undefined
+  const series = raw == null ? undefined : (Array.isArray(raw) ? raw : [raw]).map((item) => ({
+    ...(includeData ? item : item.id == null ? {} : { id: item.id }),
+    animation: allowed && (item.animation ?? rootAnimation),
+  }))
+  return { animation: allowed && rootAnimation, ...(series ? { series } : {}) }
+}
 
 function render() {
   if (!chart) return
@@ -44,7 +62,18 @@ function render() {
     chart.clear()
     return
   }
-  chart.setOption(props.option, true)
+  const p = palette.value
+  const tooltipTheme = { backgroundColor: p.bg2, borderColor: p.border2, textStyle: { color: p.text1 } }
+  const tooltip = props.option.tooltip as TooltipComponentOption | TooltipComponentOption[] | undefined
+  chart.setOption({
+    color: [p.accent, p.accent2, p.warn, p.info, p.success, p.danger],
+    ...props.option,
+    ...motionOption(true),
+    textStyle: { color: p.text2, ...props.option.textStyle },
+    tooltip: Array.isArray(tooltip)
+      ? tooltip.map((item) => ({ ...tooltipTheme, ...item, textStyle: { color: p.text1, ...item.textStyle } }))
+      : { ...tooltipTheme, ...tooltip, textStyle: { color: p.text1, ...tooltip?.textStyle } },
+  }, true)
 }
 
 onMounted(() => {
@@ -56,6 +85,17 @@ onMounted(() => {
 })
 
 watch(() => props.option, render)
+watch(palette, render)
+watch(visual, () => {
+  if (!chart || !props.option) return
+  // Merge only motion flags; preserve dataZoom and all user navigation state.
+  chart.setOption(motionOption(false))
+  if (visual.value.reducedMotion || !visual.value.visible) {
+    const renderer = chart.getZr?.()
+    renderer?.storage.getDisplayList().forEach((item) => item.stopAnimation(undefined, true))
+    renderer?.refreshImmediately()
+  }
+})
 
 onBeforeUnmount(() => {
   observer?.disconnect()

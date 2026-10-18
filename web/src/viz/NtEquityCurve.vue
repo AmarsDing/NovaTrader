@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import NtEChart from './NtEChart.vue'
-import { PALETTE } from '@/theme/tokens'
+import { colorWithAlpha, useChartPalette } from '@/theme/tokens'
 import type { EquityPoint } from '@/api/backtest'
 import type { EChartsCoreOption } from 'echarts/core'
 
@@ -13,6 +13,8 @@ const props = withDefaults(
   { points: () => [], height: '300px' },
 )
 
+const palette = useChartPalette()
+
 const option = computed<EChartsCoreOption | null>(() => {
   if (!props.points.length) return null
   const days = props.points.map((p) => p.day)
@@ -23,18 +25,18 @@ const option = computed<EChartsCoreOption | null>(() => {
       trigger: 'axis',
       valueFormatter: (v: unknown) => (typeof v === 'number' ? v.toFixed(3) : '—'),
     },
-    legend: { top: 0, textStyle: { color: PALETTE.text3, fontSize: 11 }, itemWidth: 14 },
+    legend: { top: 0, textStyle: { color: palette.value.text3, fontSize: 11 }, itemWidth: 14 },
     xAxis: {
       type: 'category',
       data: days,
-      axisLine: { lineStyle: { color: PALETTE.border2 } },
-      axisLabel: { color: PALETTE.text3, fontSize: 10 },
+      axisLine: { lineStyle: { color: palette.value.border2 } },
+      axisLabel: { color: palette.value.text3, fontSize: 10 },
     },
     yAxis: {
       type: 'value',
       scale: true,
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-      axisLabel: { color: PALETTE.text3, fontSize: 10 },
+      splitLine: { lineStyle: { color: palette.value.border1 } },
+      axisLabel: { color: palette.value.text3, fontSize: 10 },
     },
     series: [
       {
@@ -42,15 +44,17 @@ const option = computed<EChartsCoreOption | null>(() => {
         type: 'line',
         showSymbol: false,
         data: props.points.map((p) => p.equity),
-        lineStyle: { width: 1.6, color: PALETTE.accent },
-        areaStyle: { color: 'rgba(0,229,255,0.08)' },
+        lineStyle: { width: 1.6, color: palette.value.accent },
+        itemStyle: { color: palette.value.accent },
+        areaStyle: { color: colorWithAlpha(palette.value.accent, 0.1) },
       },
       {
         name: '基准',
         type: 'line',
         showSymbol: false,
         data: props.points.map((p) => p.benchmark),
-        lineStyle: { width: 1.2, color: PALETTE.text3 },
+        lineStyle: { width: 1.2, color: palette.value.text3 },
+        itemStyle: { color: palette.value.text3 },
       },
     ],
   }

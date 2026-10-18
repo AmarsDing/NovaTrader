@@ -2,9 +2,10 @@
 /**
  * ComfyUI 式节点画布：卡片可拖动，空白拖动平移，滚轮缩放，双击复位。
  * 卡片与连线全部画在 2D canvas 上；配色从主题 token 实时读取，跟随明暗切换。
- * 动画分两档：常驻的纤维流向点（低亮度，表示管道方向）+ 真实 WS 脉冲（亮彗星带标识符）。
+ * 动画分两档：已观测流量的纤维流向点 + 真实 WS 脉冲；未知链路只画静态结构。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { createVisualFrameLoop } from '@/theme/visual-quality'
 import type { NodeStatus, Pulse, SceneGraph } from './types'
 import { ACTIVITY_OFF_ALPHA, ACTIVITY_ON_ALPHA } from './activity'
 import { ambientPeriod, flowWidth, HIGH_SCORE, KILL_EDGE_ID, type EdgeFlow } from './flow'
@@ -16,6 +17,7 @@ import {
   fitTransform,
   hash01,
   hitNode,
+  hitEdge,
   readStageTheme,
   reCurve,
   screenToWorld,
@@ -57,11 +59,12 @@ const props = defineProps<{
   /** S6：信号 id/symbol → 评分。≥85 的信号脉冲升级（更亮、三格尾迹、标签加粗） */
   signalScores?: Record<string, number>
 }>()
-const emit = defineEmits<{ select: [id: string] }>()
+const emit = defineEmits<{ select: [id: string]; edge: [id: string] }>()
 
 const host = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const hoverId = ref('')
+const hoverEdgeId = ref('')
 /** S3：指针悬停在漏斗光带上（点它 = 选中扫描牌，详情窗里有同一组六层数字） */
 const funnelHover = ref(false)
 const failed = ref(false)
@@ -77,17 +80,31 @@ let view: ViewTransform = { x: 0, y: 0, scale: 1 }
 let cssW = 0
 let cssH = 0
 let fitted = false
-let frame = 0
 let stopped = false
 let observer: ResizeObserver | null = null
 let themeObserver: MutationObserver | null = null
-let pointer: { x: number; y: number; worldX: number; worldY: number; mode: '' | 'pan' | 'node' | 'band'; id: string; startX: number; startY: number; baseX: number; baseY: number } = {
+let pointer: {
+  x: number
+  y: number
+  worldX: number
+  worldY: number
+  mode: '' | 'pan' | 'node' | 'band'
+  id: string
+  edgeId: string
+  moved: boolean
+  startX: number
+  startY: number
+  baseX: number
+  baseY: number
+} = {
   x: 0,
   y: 0,
   worldX: 0,
   worldY: 0,
   mode: '',
   id: '',
+  edgeId: '',
+  moved: false,
   startX: 0,
   startY: 0,
   baseX: 0,
@@ -105,6 +122,59 @@ const KILL_BREATH_MS = 1200
 let prevFaces: Map<string, string> | null = null
 const numFlash = new Map<string, number>()
 
+/* Canvas 壳层使用同源材质；数据背板不做像素模糊，避免文字与数字变软。 */
+function readMaterial() {
+  const style = getComputedStyle(document.documentElement)
+  const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
+  return {
+    glass: token('--nt-glass-bg', theme.card),
+    data: token('--nt-data-bg', theme.card),
+    highlight: token('--nt-glass-highlight', 'transparent'),
+    sheen: token('--nt-glass-sheen-color', 'transparent'),
+    spaceCyan: token('--nt-space-cyan', 'transparent'),
+    spaceBlue: token('--nt-space-blue', 'transparent'),
+    accentBlue: token('--nt-accent-2', theme.fiberActive),
+    gridOpacity: Number(token('--nt-grid-opacity', '0.22')),
+    titleTint: Number(token('--nt-canvas-tint-alpha', '0.035')),
+  }
+}
+
+let material = readMaterial()
+let eco = document.documentElement.dataset.visualQuality === 'eco'
+let reducedMotion = document.documentElement.dataset.motion === 'reduced' ||
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+
+const renderLoop = createVisualFrameLoop({
+  draw,
+  canRender: () => !stopped && !props.paused && document.visibilityState !== 'hidden' &&
+    document.documentElement.dataset.pageVisibility !== 'hidden',
+  animate: () => !reducedMotion && hasAnimatedContent(),
+  request: (callback) => requestAnimationFrame(callback),
+  cancel: (id) => cancelAnimationFrame(id),
+})
+
+function syncVisualMode() {
+  theme = readStageThemeSafe()
+  material = readMaterial()
+  eco = document.documentElement.dataset.visualQuality === 'eco'
+  reducedMotion = document.documentElement.dataset.motion === 'reduced' || eco ||
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  renderLoop.refresh()
+}
+
+function hasAnimatedContent(): boolean {
+  const now = Date.now()
+  if (props.killActive === true) return true
+  if (props.graph.pulses.some((pulse) => now >= pulse.at && now - pulse.at <= PULSE_TTL)) return true
+  if (props.flash && now >= props.flash.at && now - props.flash.at <= FLASH_MS) return true
+  if ([...numFlash.values()].some((at) => now >= at && now - at <= NUM_FLASH_MS)) return true
+  return !props.calm && layout.edges.some((edge) => {
+    const flow = props.flow?.[edge.id]
+    return !edge.fallback && edgeLit(edge) && flow?.rate != null && Number.isFinite(flow.rate) &&
+      flow.rate > 0 && flow.stalled !== true && flow.circuit !== true
+  })
+}
+
 const selectedSet = computed(() => {
   const lit = new Set<string>(props.hotIds ?? [])
   if (props.selectedId) lit.add(props.selectedId)
@@ -112,41 +182,6 @@ const selectedSet = computed(() => {
 })
 
 function readStageThemeSafe(): StageTheme {
-  if (typeof document === 'undefined') {
-    /* SSR/测试兜底：暗色板 */
-    return {
-      bg: '#0a0e17',
-      card: '#131828',
-      cardBorder: 'rgba(255,255,255,0.14)',
-      titleBand: '#1a2136',
-      text1: 'rgba(255,255,255,0.92)',
-      text2: 'rgba(255,255,255,0.58)',
-      text3: 'rgba(255,255,255,0.38)',
-      up: '#ff4d4d',
-      down: '#00d084',
-      grid: 'rgba(255,255,255,0.07)',
-      fiber: '#4c9aff',
-      fiberActive: '#00e5ff',
-      status: { live: '#00e5ff', idle: 'rgba(255,255,255,0.38)', gap: '#ff6b00', down: '#ff3a3a', attention: '#7b61ff' },
-      domain: {
-        source: '#4c9aff',
-        scan: '#00e5ff',
-        tech: '#00e5ff',
-        news: '#7b61ff',
-        capital: '#ff6b00',
-        overseas: '#00d084',
-        synth: '#00e5ff',
-        model: '#7b61ff',
-        signal: '#00d084',
-        miss: '#ff6b00',
-        risk: '#ff3a3a',
-        account: 'rgba(255,255,255,0.58)',
-        runtime: 'rgba(255,255,255,0.38)',
-      },
-      fontSans: "'Segoe UI', system-ui, sans-serif",
-      fontMono: 'Consolas, monospace',
-    }
-  }
   return readStageTheme()
 }
 
@@ -165,6 +200,7 @@ function rebuild() {
     }
   }
   prevFaces = faces
+  renderLoop.invalidate()
 }
 
 /* ---------------- 时段感知的拖动持久化 ----------------
@@ -237,31 +273,34 @@ onMounted(() => {
       fitView()
       fitted = true
     }
+    renderLoop.invalidate()
   }
   loadOffsets()
   rebuild()
   measure()
   observer = new ResizeObserver(measure)
   observer.observe(el)
-  themeObserver = new MutationObserver(() => {
-    theme = readStageThemeSafe()
+  themeObserver = new MutationObserver(syncVisualMode)
+  themeObserver.observe(document.documentElement, {
+    attributes: true, attributeFilter: ['data-theme', 'data-visual-quality', 'data-motion', 'data-page-visibility'],
   })
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+  document.addEventListener('visibilitychange', syncVisualMode)
   cv.addEventListener('pointerdown', onPointerDown)
   cv.addEventListener('pointermove', onPointerMove)
   cv.addEventListener('pointerup', onPointerUp)
   cv.addEventListener('pointercancel', onPointerUp)
   cv.addEventListener('wheel', onWheel, { passive: false })
   cv.addEventListener('dblclick', onDblClick)
-  tick()
+  renderLoop.refresh()
 })
 
 onBeforeUnmount(() => {
   stopped = true
-  if (frame) cancelAnimationFrame(frame)
+  renderLoop.dispose()
   persistOffsets()
   observer?.disconnect()
   themeObserver?.disconnect()
+  document.removeEventListener('visibilitychange', syncVisualMode)
 })
 
 watch(
@@ -291,19 +330,19 @@ watch(
 
 watch(
   () => props.paused,
-  (paused) => {
-    if (!paused && !stopped) tick()
-  },
+  () => renderLoop.refresh(),
 )
 
-function tick() {
-  if (stopped) return
-  if (!props.paused) draw()
-  frame = requestAnimationFrame(tick)
-}
+watch(
+  () => [props.selectedId, props.hotIds, props.flow, props.killActive, props.flash, props.signalScores,
+    props.calm, props.veil, props.graph.pulses],
+  () => renderLoop.invalidate(),
+  { deep: true },
+)
 
 function fitView() {
   view = fitTransform(layout.bounds, cssW, cssH)
+  renderLoop.invalidate()
 }
 
 function onDblClick() {
@@ -318,7 +357,7 @@ function localPoint(event: PointerEvent | WheelEvent): StagePoint {
 
 function onPointerDown(event: PointerEvent) {
   const cv = canvas.value
-  if (!cv) return
+  if (!cv || event.button !== 0) return
   cv.setPointerCapture(event.pointerId)
   const point = localPoint(event)
   const world = screenToWorld(view, point)
@@ -332,12 +371,15 @@ function onPointerDown(event: PointerEvent) {
     worldY: world.y,
     mode: id ? 'node' : onBand ? 'band' : 'pan',
     id,
+    edgeId: !id && !onBand ? hitEdge(edgeCurves, world, 6 / view.scale) : '',
+    moved: false,
     startX: point.x,
     startY: point.y,
     baseX: view.x,
     baseY: view.y,
   }
   if (id) dragState.value = { id, moved: false }
+  renderLoop.invalidate()
 }
 
 function inRect(point: StagePoint, rect: StageRect | null): boolean {
@@ -346,15 +388,18 @@ function inRect(point: StagePoint, rect: StageRect | null): boolean {
 }
 
 function onPointerMove(event: PointerEvent) {
+  renderLoop.invalidate()
   const point = localPoint(event)
   const world = screenToWorld(view, point)
   if (!pointer.mode) {
     hoverId.value = hitNode(nodes, world)
     funnelHover.value = !hoverId.value && inRect(world, layout.funnel?.hit ?? null)
+    hoverEdgeId.value = !hoverId.value && !funnelHover.value ? hitEdge(edgeCurves, world, 6 / view.scale) : ''
     return
   }
   const dx = point.x - pointer.startX
   const dy = point.y - pointer.startY
+  if (Math.abs(dx) + Math.abs(dy) > 4) pointer.moved = true
   if (pointer.mode === 'pan' || pointer.mode === 'band') {
     /* band 模式也允许拖出平移：按下后移动超过阈值就转成平移，松手不触发选中 */
     view = { ...view, x: pointer.baseX + dx, y: pointer.baseY + dy }
@@ -372,19 +417,29 @@ function onPointerMove(event: PointerEvent) {
 }
 
 function onPointerUp(event: PointerEvent) {
+  renderLoop.invalidate()
   const point = localPoint(event)
   const moved = Math.abs(point.x - pointer.startX) + Math.abs(point.y - pointer.startY)
   const id = pointer.id
-  const wasNodeClick = pointer.mode === 'node' && moved <= 4
-  const wasBandClick = pointer.mode === 'band' && moved <= 4
-  const wasEmptyClick = moved <= 4 && !id && pointer.mode === 'pan'
-  const draggedNode = pointer.mode === 'node' && moved > 4
+  const click = moved <= 4 && !pointer.moved && event.type !== 'pointercancel'
+  const edgeId = pointer.edgeId
+  const wasNodeClick = pointer.mode === 'node' && click
+  const wasBandClick = pointer.mode === 'band' && click
+  const wasEdgeClick =
+    pointer.mode === 'pan' &&
+    click &&
+    edgeId &&
+    hitEdge(edgeCurves, screenToWorld(view, point), 6 / view.scale) === edgeId
+  const wasEmptyClick = click && !id && !edgeId && pointer.mode === 'pan'
+  const draggedNode = pointer.mode === 'node' && (moved > 4 || pointer.moved)
   pointer.mode = ''
   pointer.id = ''
+  pointer.edgeId = ''
   dragState.value = null
   if (draggedNode) persistOffsets()
   if (wasNodeClick && id) emit('select', id)
   else if (wasBandClick && layout.funnel) emit('select', layout.funnel.selectId)
+  else if (wasEdgeClick) emit('edge', edgeId)
   else if (wasEmptyClick) emit('select', '')
 }
 
@@ -393,6 +448,7 @@ function onWheel(event: WheelEvent) {
   const point = localPoint(event)
   const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12
   view = zoomAt(view, point, view.scale * factor)
+  renderLoop.invalidate()
 }
 
 /* ---------------- 绘制 ---------------- */
@@ -403,6 +459,16 @@ function draw() {
   context.save()
   context.fillStyle = theme.bg
   context.fillRect(0, 0, cssW, cssH)
+  if (!eco) {
+    const radius = Math.max(cssW, cssH)
+    for (const [x, y, color] of [[0, 0, material.spaceCyan], [cssW, cssH, material.spaceBlue]] as const) {
+      const glow = context.createRadialGradient(x, y, 0, x, y, radius)
+      glow.addColorStop(0, color)
+      glow.addColorStop(1, 'transparent')
+      context.fillStyle = glow
+      context.fillRect(0, 0, cssW, cssH)
+    }
+  }
   context.translate(view.x, view.y)
   context.scale(view.scale, view.scale)
 
@@ -410,19 +476,23 @@ function draw() {
   drawColumns(context)
   drawEdges(context)
   drawFunnel(context)
-  drawAmbient(context)
-  drawPulses(context)
-  drawNodes(context)
-  drawFlash(context)
-  drawNumFlash(context)
-  context.restore()
-
-  /* 时段压暗：午休 0.75 / 盘后 0.5。在世界坐标之外盖一层，保证遮住所有缩放级别 */
+  if (!reducedMotion) {
+    drawAmbient(context)
+    drawPulses(context)
+  }
+  /* 时段只压背景与管线，节点正文和未知状态保持可读。 */
   const veil = props.veil ?? 1
   if (veil < 1) {
-    context.fillStyle = withAlpha(theme.bg, Math.min(0.85, 1 - veil))
-    context.fillRect(0, 0, cssW, cssH)
+    const area = visibleWorld()
+    context.fillStyle = withAlpha(theme.bg, Math.min(0.36, (1 - veil) * 0.6))
+    context.fillRect(area.x, area.y, area.w, area.h)
   }
+  drawNodes(context)
+  if (!reducedMotion) {
+    drawFlash(context)
+    drawNumFlash(context)
+  } else numFlash.clear()
+  context.restore()
 }
 
 function visibleWorld(): StageRect {
@@ -434,12 +504,24 @@ function visibleWorld(): StageRect {
 function drawGrid(context: CanvasRenderingContext2D) {
   const area = visibleWorld()
   const step = 44
-  context.fillStyle = theme.grid
   const startX = Math.floor(area.x / step) * step
   const startY = Math.floor(area.y / step) * step
+  context.strokeStyle = withAlpha(theme.grid, material.gridOpacity)
+  context.lineWidth = 0.65 / view.scale
+  context.beginPath()
+  for (let x = startX; x < area.x + area.w + step; x += step) {
+    context.moveTo(x, area.y)
+    context.lineTo(x, area.y + area.h)
+  }
+  for (let y = startY; y < area.y + area.h + step; y += step) {
+    context.moveTo(area.x, y)
+    context.lineTo(area.x + area.w, y)
+  }
+  context.stroke()
+  context.fillStyle = withAlpha(theme.text3, 0.34)
   for (let x = startX; x < area.x + area.w + step; x += step) {
     for (let y = startY; y < area.y + area.h + step; y += step) {
-      context.fillRect(x, y, 1.2, 1.2)
+      context.fillRect(x - 0.65, y - 0.65, 1.3, 1.3)
     }
   }
 }
@@ -447,12 +529,15 @@ function drawGrid(context: CanvasRenderingContext2D) {
 function drawColumns(context: CanvasRenderingContext2D) {
   context.font = `600 11px ${theme.fontMono}`
   context.textBaseline = 'alphabetic'
-  context.fillStyle = theme.text3
   for (const column of layout.columns) {
-    context.fillText(column.title, column.x, 28)
-    context.fillStyle = theme.grid
-    context.fillRect(column.x, 34, 150, 1)
-    context.fillStyle = theme.text3
+    context.fillStyle = theme.fiberActive
+    context.fillRect(column.x, 17, 3, 11)
+    context.fillStyle = theme.text2
+    context.fillText(column.title, column.x + 10, 28)
+    context.fillStyle = withAlpha(theme.text3, 0.3)
+    context.fillRect(column.x, 35, 150, 0.8)
+    context.fillStyle = withAlpha(theme.fiberActive, 0.55)
+    context.fillRect(column.x, 35, 24, 1.3)
   }
 }
 
@@ -485,19 +570,18 @@ function drawEdges(context: CanvasRenderingContext2D) {
       context.beginPath()
       context.moveTo(curve[0], curve[1])
       context.bezierCurveTo(curve[2], curve[3], curve[4], curve[5], curve[6], curve[7])
-      /* 双股透明度（§3.2）：常态 0.20/0.07，选中相邻 0.34/0.20，被选中压暗 0.07；
-       * 急停 0.6/0.35，熔断 0.4/0.22；时段带加粗 +0.28（封顶 0.85） */
+      /* 结构线保持可辨；选中提亮，光带兜底仍压暗。只改变透明度，不引入发光。 */
       const pair: [number, number] = edge.fallback
         ? [0.05, 0.05]
         : kill
           ? [0.6, 0.35]
           : circuit
-            ? [0.4, 0.22]
+            ? [0.55, 0.28]
             : dim
-              ? [0.07, 0.07]
+              ? [0.15, 0.08]
               : active
-                ? [0.34, 0.2]
-                : [0.2, 0.07]
+                ? [0.72, 0.34]
+                : [0.42, 0.17]
       context.strokeStyle = withAlpha(color, Math.min(0.85, pair[index === 0 ? 0 : 1] + (boost ? 0.28 : 0)))
       context.lineWidth = index === 0 ? main : Math.max(0.6, main * 0.69)
       context.stroke()
@@ -538,7 +622,7 @@ function drawFunnel(context: CanvasRenderingContext2D) {
       context.setLineDash([4, 3])
       context.fillStyle = withAlpha(theme.text3, 0.05)
       context.fillRect(rect.x, rect.y, rect.w, rect.h)
-      context.strokeStyle = withAlpha(theme.text3, 0.15)
+      context.strokeStyle = withAlpha(theme.text3, 0.5)
       context.lineWidth = 1
       context.strokeRect(rect.x, rect.y, rect.w, rect.h)
       context.restore()
@@ -632,6 +716,8 @@ function drawAmbient(context: CanvasRenderingContext2D) {
       context.fill()
       continue
     }
+    /* 未测到流量或测到零时不造出「正在流动」的印象。 */
+    if (flow?.rate == null || flow.rate <= 0 || !Number.isFinite(flow.rate)) continue
     /* S6 周期由速率映射 1200–8000ms；估不出保持固定周期（§11 行 6），不外推 */
     const period = ambientPeriod(flow?.rate ?? null)
     const t = (now / period + phase) % 1
@@ -667,7 +753,7 @@ function drawPulses(context: CanvasRenderingContext2D) {
       context.fill()
     }
     context.save()
-    if (hot) {
+    if (hot && !eco) {
       context.shadowColor = theme.fiberActive
       context.shadowBlur = 8
     }
@@ -773,12 +859,22 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   const radius = 8
 
   /* 牌体 */
+  context.save()
   context.beginPath()
   roundedRect(context, rect.x, rect.y, rect.w, rect.h, radius)
-  context.fillStyle = withAlpha(theme.card, dragging ? 0.98 : 0.92)
+  if (on && !eco) {
+    context.shadowColor = withAlpha(theme.fiberActive, 0.24)
+    context.shadowBlur = 14
+  }
+  context.fillStyle = dragging ? theme.titleBand : eco ? theme.card : material.glass
   context.fill()
+  context.restore()
   context.lineWidth = on ? 1.8 : 1
-  context.strokeStyle = on ? theme.fiberActive : hot || hover ? withAlpha(color, 0.85) : withAlpha(theme.cardBorder, focus ? 0.9 : 0.7)
+  context.strokeStyle = on
+    ? theme.fiberActive
+    : hot || hover
+      ? withAlpha(color, 0.85)
+      : theme.cardBorder
   context.stroke()
 
   /* 标题带 */
@@ -787,10 +883,37 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   context.beginPath()
   roundedRect(context, rect.x, rect.y, rect.w, rect.h, radius)
   context.clip()
-  context.fillStyle = withAlpha(color, 0.16)
+  /* 高不透明数据背板覆盖网格，透光只留在玻璃标题与外壳。 */
+  context.fillStyle = material.data
+  context.fillRect(rect.x + 1, rect.y + bandH, rect.w - 2, rect.h - bandH - 1)
+  context.fillStyle = theme.titleBand
   context.fillRect(rect.x, rect.y, rect.w, bandH)
+  context.fillStyle = withAlpha(color, material.titleTint)
+  context.fillRect(rect.x, rect.y, rect.w, bandH)
+  context.fillStyle = withAlpha(color, 0.9)
+  context.fillRect(rect.x, rect.y + 3, 2.5, bandH - 6)
+  if (!eco) {
+    const sheen = context.createLinearGradient(rect.x, rect.y, rect.x + rect.w, rect.y + bandH)
+    sheen.addColorStop(0, material.sheen)
+    sheen.addColorStop(0.72, 'transparent')
+    context.fillStyle = sheen
+    context.fillRect(rect.x, rect.y, rect.w, bandH)
+    context.strokeStyle = material.highlight
+    context.lineWidth = 0.75
+    context.beginPath()
+    context.moveTo(rect.x + radius, rect.y + 1)
+    context.lineTo(rect.x + rect.w - radius, rect.y + 1)
+    context.stroke()
+  }
+  if (on) {
+    const rail = context.createLinearGradient(rect.x, 0, rect.x + rect.w, 0)
+    rail.addColorStop(0, theme.fiberActive)
+    rail.addColorStop(1, material.accentBlue)
+    context.fillStyle = rail
+    context.fillRect(rect.x, rect.y + rect.h - 2, rect.w, 2)
+  }
   context.restore()
-  context.fillStyle = withAlpha(color, 0.55)
+  context.fillStyle = theme.cardBorder
   context.fillRect(rect.x, rect.y + bandH, rect.w, 0.75)
 
   /* 状态点 + 标题 + 职责 */
@@ -805,7 +928,7 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   context.fillText(node.title, rect.x + 18, rect.y + bandH / 2 + 0.5)
   if (item.role) {
     context.font = `9px ${theme.fontSans}`
-    context.fillStyle = theme.text3
+    context.fillStyle = theme.text2
     const roleWidth = context.measureText(item.role).width
     context.fillText(item.role, rect.x + rect.w - roleWidth - 8, rect.y + bandH / 2 + 0.5)
   }
@@ -824,12 +947,13 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   context.fillText(clipText(context, node.face || '—', rect.w - 20 - badgeWidth), rect.x + 10, faceY)
   if (node.fresh?.text) {
     context.font = `9px ${theme.fontMono}`
-    context.fillStyle = node.fresh.tone === 'danger' ? theme.status.down : node.fresh.tone === 'warn' ? theme.status.gap : theme.text3
+    context.fillStyle =
+      node.fresh.tone === 'danger' ? theme.status.down : node.fresh.tone === 'warn' ? theme.status.gap : theme.text2
     context.fillText(node.fresh.text, rect.x + rect.w - badgeWidth, faceY)
   }
   if (node.sub) {
     context.font = `9.5px ${theme.fontSans}`
-    context.fillStyle = theme.text3
+    context.fillStyle = theme.text2
     context.fillText(clipText(context, node.sub, rect.w - 20), rect.x + 10, faceY + (focus ? 16 : 13))
   }
 
@@ -848,7 +972,7 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
   }
 
   /* 端口 */
-  drawPort(context, rect.x, rect.y + rect.h / 2, withAlpha(theme.text3, 0.9))
+  drawPort(context, rect.x, rect.y + rect.h / 2, theme.text3)
   drawPort(context, rect.x + rect.w, rect.y + rect.h / 2, withAlpha(color, 0.9))
 
   /* attention / down 的外圈提示（glow 预算内的页面级例外：仅异常与待确认） */
@@ -864,7 +988,7 @@ function drawNode(context: CanvasRenderingContext2D, item: StageNodeLayout) {
    * 发光预算内的五个对象之一——用透明度呼吸表达，不叠 shadowBlur。 */
   if (props.killActive === true && domain === 'account') {
     const phase = (performance.now() % KILL_BREATH_MS) / KILL_BREATH_MS
-    const breath = 0.55 + 0.2 * Math.sin(phase * Math.PI * 2)
+    const breath = reducedMotion ? 0.7 : 0.55 + 0.2 * Math.sin(phase * Math.PI * 2)
     context.beginPath()
     roundedRect(context, rect.x - 3.5, rect.y - 3.5, rect.w + 7, rect.h + 7, radius + 3.5)
     context.strokeStyle = withAlpha(theme.status.down, breath)
@@ -885,7 +1009,14 @@ function faceColor(item: StageNodeLayout): string {
 
 function drawPort(context: CanvasRenderingContext2D, x: number, y: number, color: string) {
   context.beginPath()
-  context.arc(x, y, 3, 0, Math.PI * 2)
+  context.arc(x, y, 3.7, 0, Math.PI * 2)
+  context.fillStyle = theme.bg
+  context.fill()
+  context.strokeStyle = color
+  context.lineWidth = 1.3
+  context.stroke()
+  context.beginPath()
+  context.arc(x, y, 1.2, 0, Math.PI * 2)
   context.fillStyle = color
   context.fill()
 }
@@ -923,7 +1054,11 @@ defineExpose({ resetLayout })
 
 <template>
   <div ref="host" class="nt-stage" :class="{ 'is-dragging': dragState != null }">
-    <canvas v-show="!failed" ref="canvas" :style="{ cursor: dragState ? 'grabbing' : hoverId || funnelHover ? 'pointer' : 'grab' }"></canvas>
+    <canvas
+      v-show="!failed"
+      ref="canvas"
+      :style="{ cursor: dragState ? 'grabbing' : hoverId || funnelHover || hoverEdgeId ? 'pointer' : 'grab' }"
+    ></canvas>
     <div v-if="failed" class="nt-stage__failed">画布不可用，监控链路改读侧栏与终端带</div>
   </div>
 </template>

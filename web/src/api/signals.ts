@@ -9,11 +9,28 @@ export async function listSignals(): Promise<SignalItem[]> {
   return asList(data, 'items', 'signals').map(normalizeSignal)
 }
 
-function normalizeSignal(raw: RawRecord): SignalItem {
+export async function getSignal(id: string): Promise<SignalItem> {
+  const raw = await request(`/api/strategy/signals/${encodeURIComponent(id)}`)
+  return normalizeSignal((raw && typeof raw === 'object' ? raw : {}) as RawRecord)
+}
+
+export function normalizeSignal(raw: RawRecord): SignalItem {
   const finalScore = num(pick(raw, 'finalScore', 'final_score'))
   const pnlPct = num(pick(raw, 'pnlPct', 'pnl_pct'))
+  const pnlFlag = pick(raw, 'hasPnl', 'has_pnl')
+  const executedPrice = num(pick(raw, 'executedPrice', 'executed_price'))
+  const executedVolume = num(pick(raw, 'executedVolume', 'executed_volume'))
+  // proto 未设置的 double 可能序列化为 0；旧接口的真实零收益必须显式声明。
+  const hasPnl =
+    typeof pnlFlag === 'boolean'
+      ? pnlFlag
+      : String(raw.status || '').toLowerCase() === 'closed' && pnlPct !== null && pnlPct !== 0
   return {
-    id: pick<string>(raw, 'id') || '',
+    id: String(pick(raw, 'id') ?? ''),
+    executedPrice: executedPrice != null && executedPrice > 0 ? executedPrice : null,
+    executedVolume: executedVolume != null && Number.isSafeInteger(executedVolume) && executedVolume >= 0 ? executedVolume : null,
+    book: String(pick(raw, 'book') ?? ''),
+    strategyVersionId: String(pick(raw, 'strategyVersionId', 'strategy_version_id') ?? ''),
     symbol: pick<string>(raw, 'symbol') || '',
     name: pick<string>(raw, 'name') || '',
     side: pick<string>(raw, 'side') || '',
@@ -40,9 +57,8 @@ function normalizeSignal(raw: RawRecord): SignalItem {
     holdDaysMax: num(pick(raw, 'holdDaysMax', 'hold_days_max')),
     exitKind: pick<string>(raw, 'exitKind', 'exit_kind') || '',
     exitPrice: num(pick(raw, 'exitPrice', 'exit_price')),
-    pnlPct,
-    // 后端有 pnlPct 即置 hasPnl；显式标志缺失时按 pnlPct 兜底，避免真 0 被当作没有后验。
-    hasPnl: !!(raw.hasPnl || raw.has_pnl) || pnlPct !== null,
+    pnlPct: hasPnl ? pnlPct : null,
+    hasPnl: hasPnl && pnlPct !== null,
     holdingDays: num(pick(raw, 'holdingDays', 'holding_days')),
     traceId: pick<string>(raw, 'traceId', 'trace_id') || '',
     closedAt: pick<string>(raw, 'closedAt', 'closed_at') || '',

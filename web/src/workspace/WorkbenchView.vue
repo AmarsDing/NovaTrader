@@ -7,6 +7,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ConfirmSheet from '@/widgets/ConfirmSheet.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useSettingsStore } from '@/stores/settings'
+import { VISUAL_DOCUMENT_EVENT } from '@/theme/visual-quality'
 import { clock } from '@/utils/format'
 import { isLive, link } from '@/ws/hub'
 import CommandBar from './CommandBar.vue'
@@ -22,6 +24,7 @@ import { startHotkeys } from './shortcuts'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const settings = useSettingsStore()
 
 const dock = ref<InstanceType<typeof DockHost> | null>(null)
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
@@ -30,14 +33,17 @@ const configOpen = ref(false)
 const banner = computed(() => {
   if (isLive()) return ''
   const local = auth.user?.local ? ' · 本地会话' : ''
-  if (link.ws === 'idle' || link.ws === 'connecting') return `正在连接实时通道${local}`
   if (link.health === 'down') return `admin 不可达 · 不是实时${local}`
+  if (link.ws === 'idle' || link.ws === 'connecting') return `正在连接实时通道${local}`
+  if (link.ws === 'open' && link.sync === 'syncing') return `推送已连接 · 正在核对权威状态 · 不是实时${local}`
+  if (link.ws === 'open' && link.sync === 'required') return `待恢复 · ${link.error || '权威状态尚未核对'} · 不是实时${local}`
   if (link.lastAt) return `截至 ${clock(link.lastAt)} · 不是实时${local}`
   return `实时通道中断 · 正在重连${local}`
 })
 
 let stopWatchdog: (() => void) | undefined
 let stopHotkeys: (() => void) | undefined
+let stopPopoutAppearance: (() => void) | undefined
 
 function openConfig() {
   configOpen.value = true
@@ -75,6 +81,31 @@ function consumeDeepLink() {
 }
 
 onMounted(() => {
+  const api = dock.value?.getApi()
+  if (api) {
+    const attached = new Map<string, () => void>()
+    const attach = (item: { id: string; window: Window }) => {
+      attached.get(item.id)?.()
+      attached.set(item.id, settings.attachVisualDocument(item.window.document))
+      queueMicrotask(() => document.dispatchEvent(new Event(VISUAL_DOCUMENT_EVENT)))
+    }
+    const detach = (item: { id: string }) => {
+      attached.get(item.id)?.()
+      attached.delete(item.id)
+      queueMicrotask(() => document.dispatchEvent(new Event(VISUAL_DOCUMENT_EVENT)))
+    }
+    const added = api.onDidAddPopoutGroup(attach)
+    const removed = api.onDidRemovePopoutGroup(detach)
+    const closing = api.onWillClosePopoutWindow(detach)
+    api.getPopouts().forEach(attach)
+    stopPopoutAppearance = () => {
+      added.dispose()
+      removed.dispose()
+      closing.dispose()
+      for (const release of attached.values()) release()
+      attached.clear()
+    }
+  }
   stopWatchdog = startWatchdog()
   stopHotkeys = startHotkeys({
     dock: () => dock.value?.getApi() ?? null,
@@ -88,6 +119,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopWatchdog?.()
   stopHotkeys?.()
+  stopPopoutAppearance?.()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('nt:open-config', openConfig)
 })
@@ -116,7 +148,7 @@ watch(() => route.fullPath, consumeDeepLink)
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--nt-bg-0);
+  background: var(--nt-space-bg);
 }
 
 .config-mask {
@@ -127,16 +159,17 @@ watch(() => route.fullPath, consumeDeepLink)
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--nt-scrim);
 }
 
 .stale {
   margin: 8px 14px 0;
   padding: 6px 12px;
   border-radius: var(--nt-radius-s);
-  color: #ffd7b0;
-  background: rgba(255, 107, 0, 0.14);
-  border: 1px solid rgba(255, 107, 0, 0.45);
+  color: color-mix(in srgb, var(--nt-warn) 80%, var(--nt-text-1));
+  background: color-mix(in srgb, var(--nt-warn) 9%, var(--nt-bg-1));
+  border: 1px solid color-mix(in srgb, var(--nt-warn) 45%, var(--nt-border-1));
   font-size: 12.5px;
+  box-shadow: inset 3px 0 var(--nt-warn);
 }
 </style>

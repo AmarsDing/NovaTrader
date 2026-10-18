@@ -17,6 +17,7 @@ import NtSelect from '@/ui/NtSelect.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtEquityCurve from '@/viz/NtEquityCurve.vue'
+import ResearchJobs from './ResearchJobs.vue'
 import { messageOf, price, ratioPct, signed } from '@/utils/format'
 
 const strategies = ref<StrategyMeta[]>([])
@@ -182,6 +183,7 @@ onBeforeUnmount(() => {
     </form>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <p v-if="hint" class="nt-note">{{ hint }}</p>
+    <ResearchJobs />
 
     <NtTable :columns="taskColumns" :rows="tasks as TaskRow[]" row-key="id" :empty="loading ? '读取中…' : '暂无任务'">
       <template #cell-name="{ row }">{{ row.name || row.id }}</template>

@@ -1,5 +1,6 @@
-import { amount, compactAmount, intText, missLabel, phaseName, ratioPct, signed } from '@/utils/format'
+import { amount, compactAmount, intText, missLabel, phaseName, ratioPct, signed, toneOf } from '@/utils/format'
 import { buildFunnel, funnelCountText, funnelRate } from './funnel'
+import { runAuthorizationText } from './health'
 import type {
   ChildCard,
   Identifier,
@@ -38,6 +39,7 @@ const PULSE_CAP = 24
 
 export function pushPulse(current: Pulse[], next: Pulse, now: number): Pulse[] {
   const alive = current.filter((item) => now - item.at <= PULSE_TTL)
+  if (alive.some((item) => item.id === next.id)) return alive
   const merged = [...alive, next]
   return merged.length <= PULSE_CAP ? merged : merged.slice(merged.length - PULSE_CAP)
 }
@@ -174,7 +176,7 @@ function overseasPost(input: MonitorInput): Pick<SceneNode, 'status' | 'detail'>
 function riskPost(input: MonitorInput): Pick<SceneNode, 'status' | 'detail'> {
   const risk = input.risk
   if (!risk || !risk.ok) return { status: 'gap', detail: '风控状态无返回' }
-  const head = [risk.mode, risk.marketBreaker].filter(Boolean).join(' ')
+  const head = [`运行授权 ${runAuthorizationText(risk.mode)}`, input.account?.ok ? `账本 ${input.account.book || '未返回'}` : '账本未返回', risk.marketBreaker].filter(Boolean).join('；')
   if (risk.killActive) {
     const reason = risk.killReason || '急停已触发'
     return { status: 'down', detail: head ? `${head} ${reason}` : reason }
@@ -585,7 +587,8 @@ function riskChildren(input: MonitorInput): ChildCard[] {
   if (!input.risk?.ok) return [{ id: 'risk:missing', title: '风控', face: '风控未返回', sub: '', tone: 'flat' }]
   const risk = input.risk
   const cards: ChildCard[] = [
-    { id: 'risk:mode', title: '模式', face: risk.mode || '—', sub: '', tone: 'flat' },
+    { id: 'risk:mode', title: '运行授权', face: runAuthorizationText(risk.mode), sub: '授权不表示自动执行已启用', tone: 'flat' },
+    { id: 'risk:book', title: '账户账本', face: input.account?.ok ? input.account.book || '未返回' : '未返回', sub: 'SIM 模拟 / LIVE 实盘', tone: 'flat' },
     { id: 'risk:kill', title: '急停', face: risk.killActive ? '急停' : '守着', sub: risk.killReason, tone: 'flat' },
     { id: 'risk:buys', title: '买单', face: intText(risk.buysToday), sub: '', tone: 'flat' },
     { id: 'risk:break', title: '熔断', face: risk.marketBreaker || '无', sub: '', tone: 'flat' },
@@ -1204,7 +1207,8 @@ function riskTerminal(input: MonitorInput): TerminalModel {
     ...term,
     empty: '',
     rows: [
-      { label: '模式', value: risk.mode || '—', tone: 'flat' },
+      { label: '运行授权', value: runAuthorizationText(risk.mode), tone: 'flat' },
+      { label: '账户账本', value: input.account?.ok ? input.account.book || '未返回' : '未返回', tone: 'flat' },
       { label: '急停', value: risk.killActive ? risk.killReason || '已触发' : '未触发', tone: 'flat' },
       { label: '当日买单', value: intText(risk.buysToday), tone: 'flat' },
       { label: '熔断', value: risk.marketBreaker || '—', tone: 'flat' },
@@ -1303,9 +1307,9 @@ function blankTerm(id: TerminalModel['id'], title: string): TerminalModel {
   return { id, title, rows: [], empty: '', caption: '' }
 }
 
+/** 方向判定统一走 format.toneOf（§五.1 唯一出口）；调用点只给行情/金额/盈亏类数值 */
 function numberTone(value: number | null): TerminalRow['tone'] {
-  if (value == null || value === 0) return 'flat'
-  return value > 0 ? 'up' : 'down'
+  return toneOf(value)
 }
 
 function priceTone(last: number | null, cost: number | null): TerminalRow['tone'] {

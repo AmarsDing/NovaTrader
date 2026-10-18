@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { createPinia } from 'pinia'
+import { flushPromises, shallowMount } from '@vue/test-utils'
+import SignalView from '../SignalView.vue'
+import { request } from '@/api/http'
 import { buildGaps, countBlockedSources, missLabel, sourceBlocked, strategyLabel } from '../decision-desk'
 
 const clear: Parameters<typeof buildGaps>[0] = {
@@ -71,18 +75,27 @@ describe('决策台文案', () => {
 
 import {
   buildMissed,
+  buildDecisionAction,
   buildTickets,
   dimVotes,
   isPendingStatus,
   objectionsOf,
   splitReasons,
   ticketRisk,
+  signalBook,
+  hasAvailableSource,
+  type DecisionContext,
 } from '../decision-desk'
 import type { Candidate, SignalItem } from '@/api/types/strategy'
+
+vi.mock('@/api/http', () => ({ request: vi.fn() }))
+vi.mock('@/ws/hub', () => ({ isLive: () => true, onPush: () => () => {}, onResync: () => () => {} }))
 
 function signal(patch: Partial<SignalItem>): SignalItem {
   return {
     id: 's1',
+    book: 'paper',
+    strategyVersionId: '2',
     symbol: '600519',
     name: '贵州茅台',
     side: 'buy',
@@ -125,7 +138,7 @@ describe('一张票：状态分栏', () => {
       signal({ id: 'b', status: 'risk_checking' }),
       signal({ id: 'c', status: 'pending' }),
       signal({ id: 'd', status: 'done' }),
-      signal({ id: 'e', status: 'closed', exitKind: 'take', hasPnl: true, pnlPct: 0.032 }),
+      signal({ id: 'e', status: 'closed', exitKind: 'take', hasPnl: true, pnlPct: 3.2 }),
       signal({ id: 'f', status: 'rejected' }),
       signal({ id: 'g', status: 'expired' }),
     ]
@@ -138,6 +151,15 @@ describe('一张票：状态分栏', () => {
   it('待执行按综合分倒序', () => {
     const { pending } = buildTickets([signal({ id: 'low', score: 76 }), signal({ id: 'high', score: 92 })])
     expect(pending.map((item) => item.id)).toEqual(['high', 'low'])
+  })
+
+  it('保护性卖出排在高分买入之前，保留票的账本和版本', () => {
+    const { pending } = buildTickets([
+      signal({ id: 'buy', score: 99 }),
+      signal({ id: 'sell', side: 'sell', score: 60 }),
+    ])
+    expect(pending.map((row) => row.id)).toEqual(['sell', 'buy'])
+    expect(pending[0]).toMatchObject({ book: 'paper', strategyVersionId: '2', traceId: 't1' })
   })
 
   it('isPendingStatus 与分栏同口径', () => {
@@ -234,5 +256,189 @@ describe('一张票：漏选列', () => {
     ])
     expect(rows.map((row) => row.symbol)).toEqual(['000003', '000002'])
     expect(rows[0]?.reason).toBe('below_threshold')
+  })
+})
+
+describe('白话行动计划与执行准备', () => {
+  const now = Date.parse('2026-10-12T10:00:00+08:00')
+  const ready: DecisionContext = {
+    checkedAt: now,
+    accountBook: 'SIM',
+    accountReady: true,
+    positionsReady: true,
+    signalsReady: true,
+    riskReady: true,
+    riskMode: 'L1',
+    killActive: false,
+    openHalted: false,
+    haltReason: '',
+    marketReady: true,
+    marketAsOf: '2026-10-12T10:00:00+08:00',
+    marketStale: false,
+    sourcesReady: true,
+    live: true,
+    positions: [],
+  }
+
+  it('高分只表示计划，尚无实时触发实检时不宣称可以买', () => {
+    const action = buildDecisionAction(signal({ score: 99 }), ready, now)
+    expect(action.canOpenTrade).toBe(true)
+    expect(action.title).toBe('买入计划待执行校验')
+    expect(action.timing).toContain('最新价格仍在')
+    expect(action.invalidation).toContain('超出入场区间')
+    expect(action.caution).toContain('证据未完整')
+  })
+
+  it('探测中与未知源不算已确认可用', () => {
+    expect(
+      hasAvailableSource([
+        { enabled: true, status: 'half_open' },
+        { enabled: true, status: 'unknown' },
+      ]),
+    ).toBe(false)
+    expect(hasAvailableSource([{ enabled: false, status: 'closed' }])).toBe(false)
+    expect(hasAvailableSource([{ enabled: true, status: 'closed' }])).toBe(true)
+  })
+
+  it.each(['pending', 'risk_checking', 'rejected', 'expired', 'cancelled', 'unknown'])(
+    '%s 状态不能进入交易准备',
+    (status) => {
+      const action = buildDecisionAction(signal({ status }), ready, now)
+      expect(action.canOpenTrade).toBe(false)
+      expect(action.blocker).not.toBe('')
+    },
+  )
+
+  it('有效期到点立即禁用；无法解析的有效期也禁用', () => {
+    expect(buildDecisionAction(signal({ validUntil: '2026-10-12T10:00:00+08:00' }), ready, now).blocker).toContain(
+      '已过期',
+    )
+    expect(buildDecisionAction(signal({ validUntil: 'bad-date' }), ready, now).blocker).toContain('有效期缺失')
+  })
+
+  it('账本缺失或与账户不一致不能默认执行，版本缺失留给正式检查', () => {
+    expect(signalBook('paper')).toBe('SIM')
+    expect(signalBook('LIVE')).toBe('LIVE')
+    expect(signalBook('')).toBe('')
+    expect(buildDecisionAction(signal({ book: '' }), ready, now).blocker).toContain('账本不明确')
+    expect(buildDecisionAction(signal({ book: 'live' }), ready, now).blocker).toContain('不一致')
+    expect(buildDecisionAction(signal({ strategyVersionId: '' }), ready, now).blocker).toContain('策略版本')
+    expect(buildDecisionAction(signal({ strategyVersionId: '0' }), ready, now).canOpenTrade).toBe(false)
+  })
+
+  it('接口失败、旧快照、断线、没有可用源与过期检查都不沿用可执行状态', () => {
+    for (const patch of [
+      { accountReady: false },
+      { positionsReady: false },
+      { riskReady: false },
+      { signalsReady: false },
+      { marketStale: true },
+      { marketAsOf: '2026-10-12T09:50:00+08:00' },
+      { live: false },
+      { sourcesReady: false },
+      { checkedAt: now - 46_000 },
+    ]) {
+      expect(buildDecisionAction(signal({}), { ...ready, ...patch }, now).canOpenTrade).toBe(false)
+    }
+  })
+
+  it('急停与对账停买阻断买入；人工保护性退出仍能准备', () => {
+    expect(buildDecisionAction(signal({}), { ...ready, killActive: true }, now).blocker).toContain('急停')
+    expect(
+      buildDecisionAction(signal({}), { ...ready, openHalted: true, haltReason: '数量不一致' }, now).blocker,
+    ).toContain('数量不一致')
+    const context = {
+      ...ready,
+      killActive: true,
+      riskMode: 'L0',
+      positions: [{ symbol: '600519.SH', quantity: 100, available: 100 }],
+    }
+    const action = buildDecisionAction(signal({ side: 'sell', reason: '触及止损' }), context, now)
+    expect(action.title).toBe('退出计划待执行校验')
+    expect(action.timing).toContain('触及止损')
+    expect(action.canOpenTrade).toBe(true)
+  })
+
+  it('卖出票缺可卖数量时明确 T+1 约束，买出票已有持仓时阻断重复开仓', () => {
+    const context = { ...ready, positions: [{ symbol: '600519.SH', quantity: 100, available: 0 }] }
+    expect(buildDecisionAction(signal({ side: 'sell' }), context, now).blocker).toContain('T+1')
+    expect(buildDecisionAction(signal({}), context, now).blocker).toContain('已持有')
+  })
+
+  it('已开仓与已经平仓使用不同结论，执行中不重复提交', () => {
+    expect(buildDecisionAction(signal({ status: 'done' }), null, now).title).toContain('已开仓')
+    expect(buildDecisionAction(signal({ status: 'closed' }), null, now).title).toContain('已平仓')
+    expect(buildDecisionAction(signal({ status: 'executing' }), ready, now).canOpenTrade).toBe(false)
+  })
+
+  it('主要反证直接显示，不被高综合分覆盖', () => {
+    const action = buildDecisionAction(
+      signal({ score: 99, dims: { technical: 95, news: 30, capital: 90, external: 80 } }),
+      ready,
+      now,
+    )
+    expect(action.caution).toBe('消息面 30 分，反对')
+  })
+
+  it('价格计划不合法时阻断，实盘计划本轮不能准备执行', () => {
+    expect(buildDecisionAction(signal({ stop: 1700 }), ready, now).blocker).toContain('价格不完整')
+    expect(
+      buildDecisionAction(signal({ book: 'live' }), { ...ready, accountBook: 'LIVE', riskMode: 'L3' }, now).blocker,
+    ).toContain('实盘执行通道尚未验收')
+  })
+})
+
+describe('信号页行动入口', () => {
+  function mockReadOnlyRequests(patch: Record<string, unknown>, riskFailed = false) {
+    const now = Date.now()
+    vi.mocked(request).mockImplementation(async <T>(path: string): Promise<T> => {
+      let result: unknown = {}
+      if (path === '/api/strategy/signals')
+        result = {
+          items: [
+            {
+              ...signal({}),
+              validUntil: new Date(now + 60_000).toISOString(),
+              finalScore: 99,
+              stopLoss: 1650,
+              takeProfit: 1736,
+              ...patch,
+            },
+          ],
+        }
+      if (path === '/api/trade/account') result = { account: 'SIM', equity: 100000, cash: 100000 }
+      if (path === '/api/trade/positions') result = { items: [] }
+      if (path === '/api/risk/state') {
+        if (riskFailed) throw new Error('风控未连接')
+        result = { mode: 'L1', killSwitch: { active: false } }
+      }
+      if (path === '/api/market/sentiment') result = { upCount: 100, downCount: 50, asOf: new Date(now).toISOString() }
+      if (path === '/api/datahub/sources') result = { items: [{ source: 'test', state: 'closed', enabled: true }] }
+      return result as T
+    })
+  }
+
+  it('被拒绝的高分票仍展示原因，原生交易按钮明确禁用', async () => {
+    mockReadOnlyRequests({ status: 'rejected', reason: 'R07 仓位超限' })
+    const wrapper = shallowMount(SignalView, { global: { plugins: [createPinia()] } })
+    try {
+      await flushPromises()
+      expect(wrapper.text()).toContain('主要阻断R07 仓位超限')
+      expect(wrapper.get('button.go').attributes()).toHaveProperty('disabled')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('风控读取失败不会让 approved 票显示成可执行', async () => {
+    mockReadOnlyRequests({ status: 'approved' }, true)
+    const wrapper = shallowMount(SignalView, { global: { plugins: [createPinia()] } })
+    try {
+      await flushPromises()
+      expect(wrapper.text()).toContain('风控状态未返回')
+      expect(wrapper.get('button.go').attributes()).toHaveProperty('disabled')
+    } finally {
+      wrapper.unmount()
+    }
   })
 })

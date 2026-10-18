@@ -120,8 +120,8 @@ const scale = computed(() => props.positionScale ?? stage.value?.scale ?? null)
 }
 
 .stage.on {
-  border-color: rgba(0, 229, 255, 0.45);
-  background: rgba(0, 229, 255, 0.08);
+  border-color: var(--nt-accent-border);
+  background: var(--nt-accent-soft);
 }
 
 .stage.on .stage__label {

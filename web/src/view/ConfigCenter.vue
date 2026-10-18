@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getConfigValues, saveConfigValues } from '@/api/config'
+import { getConfigSnapshot, saveConfig, previewConfig, rollbackConfig, type ConfigSnapshot, type ConfigPreview } from '@/api/config'
+import ConfigRevisionPanel from './ConfigRevisionPanel.vue'
 import { opsStatus, type OpsNode } from '@/api/ops'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { useSettingsStore, type DensityName, type ThemeName } from '@/stores/settings'
+import type { VisualQuality } from '@/theme/visual-quality'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
@@ -40,6 +42,11 @@ const densityOptions: { value: DensityName; label: string }[] = [
   { value: 'normal', label: '标准' },
   { value: 'compact', label: '紧凑' },
 ]
+const qualityOptions: { value: VisualQuality; label: string }[] = [
+  { value: 'full', label: '完整' },
+  { value: 'eco', label: '节能' },
+  { value: 'reduced', label: '减少动态' },
+]
 const modes = ['L0', 'L1', 'L2', 'L3']
 const modeHint: Record<string, string> = {
   L0: '只看',
@@ -69,12 +76,18 @@ const hint = ref('')
 const saving = ref(false)
 const ready = ref(false)
 const configLoaded = ref(false)
+const configSnapshot = ref<ConfigSnapshot | null>(null)
+const impact = ref<ConfigPreview | null>(null)
+const prepared = ref<Record<string, string>>({})
+const rollbackTarget = ref<number | null>(null)
+const clearSecrets = ref<string[]>([])
+let configGeneration = 0
 
 const current = computed(() => configCategories.find((item) => item.id === currentId.value))
 const dirty = computed(() => {
   const category = current.value
   if (!category) return false
-  return category.fields.some((field) => draft.value[fieldId(category.blobKey, field)] !== baseline.value[fieldId(category.blobKey, field)])
+  return category.fields.some((field) => clearSecrets.value.includes(field.key) || draft.value[fieldId(category.blobKey, field)] !== baseline.value[fieldId(category.blobKey, field)])
 })
 
 function showSection(category: ConfigCategory, index: number): boolean {
@@ -106,15 +119,9 @@ function bodyFields(fields: ConfigField[]): ConfigField[] {
   return fields.filter((field) => field !== head)
 }
 
-function pickRisk(field: ConfigField): string {
-  const raw = risk.params[field.key]
-  if (typeof raw === 'string') return raw
-  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
-  return field.fallback
-}
-
 function pickField(category: ConfigCategory, field: ConfigField): string {
-  if (field.store === 'risk') return pickRisk(field)
+  if (field.kind === 'secret') return ''
+  if (field.store === 'risk') return stored.value[field.key] ?? field.fallback
   if (category.blobKey && field.jsonKey) {
     return readBlobField(stored.value[category.blobKey] || '', field.jsonKey, field.fallback)
   }
@@ -139,12 +146,20 @@ function fill(category?: ConfigCategory) {
 }
 
 async function load() {
+  const generation = ++configGeneration
   error.value = ''
-  await risk.refresh()
+  void risk.refresh()
   try {
-    stored.value = await getConfigValues()
+    const next = await getConfigSnapshot()
+    if (generation !== configGeneration) return
+    configSnapshot.value = next
+    stored.value = configSnapshot.value.values
+    impact.value = null
+    rollbackTarget.value = null
+    clearSecrets.value = []
     configLoaded.value = true
   } catch (err) {
+    if (generation !== configGeneration) return
     stored.value = {}
     configLoaded.value = false
     error.value = messageOf(err)
@@ -154,12 +169,20 @@ async function load() {
 }
 
 function select(id: string) {
+  configGeneration++
+  impact.value = null
+  rollbackTarget.value = null
   currentId.value = id
+  if (!configLoaded.value && !ready.value) void load()
   error.value = ''
   hint.value = ''
 }
 
 function setDraft(id: string, value: string) {
+  configGeneration++
+  impact.value = null
+  rollbackTarget.value = null
+  clearSecrets.value = clearSecrets.value.filter(key => key !== id)
   draft.value = { ...draft.value, [id]: value }
 }
 
@@ -227,70 +250,57 @@ function payloadOf(field: ConfigField, raw: string): string {
   return text
 }
 
-async function saveCurrent() {
+async function refreshReceipts() {
+  try { const next = await getConfigSnapshot(); if (configSnapshot.value?.revision !== next.revision) { hint.value = '保存版本已改变，请重新读取并核对草稿'; return }; configSnapshot.value = next } catch (err) { error.value = messageOf(err) }
+}
+function clearSecret(key: string) { configGeneration++; impact.value = null; rollbackTarget.value = null; clearSecrets.value = [...new Set([...clearSecrets.value, key])]; draft.value[key] = '' }
+function currentValues(): Record<string, string> {
   const category = current.value
-  if (!category || saving.value) return
-  error.value = ''
-  hint.value = ''
-  if (auth.isViewer()) {
-    error.value = '当前是查看角色，不能改配置'
-    return
+  if (!category) return {}
+  const values: Record<string, string> = {}
+  const patch: Record<string, string | number> = {}
+  for (const field of category.fields) {
+    const id = fieldId(category.blobKey, field)
+    if (clearSecrets.value.includes(field.key)) { values[field.key] = ''; continue }
+    if (draft.value[id] === baseline.value[id]) continue
+    if (category.blobKey) patch[field.jsonKey || field.key] = coerceField(field.kind, draft.value[id] || '')
+    else values[field.key] = payloadOf(field, draft.value[id] || '')
   }
-  const riskReady = Object.keys(risk.params).length > 0
-  if (category.fields[0]?.store === 'risk' && !riskReady) {
-    error.value = '还没读到风控参数，先别保存'
-    return
-  }
-  if (category.fields[0]?.store === 'config' && !configLoaded.value) {
-    error.value = '还没读到参数表，先别保存'
-    return
-  }
-  saving.value = true
+  if (category.blobKey && Object.keys(patch).length) values[category.blobKey] = mergeBlob(stored.value[category.blobKey] || '', patch)
+  return values
+}
+async function previewRollback(target: number) {
+  if (!configSnapshot.value || auth.isViewer()) return
+  const generation = ++configGeneration
+  try { error.value = ''; const next = await previewConfig({}, configSnapshot.value.revision, target); if (generation !== configGeneration) return; impact.value = next; rollbackTarget.value = target; prepared.value = {} } catch (err) { error.value = messageOf(err) }
+}
+async function saveCurrent() {
+  if (!current.value || saving.value || auth.isViewer()) return
+  if (!configLoaded.value || !configSnapshot.value) { error.value = '还没读到版本化配置，无法保存'; return }
+  error.value = ''; hint.value = ''; saving.value = true
+  const generation = configGeneration
   try {
-    if (category.blobKey) {
-      const patch: Record<string, string | number> = {}
-      for (const field of category.fields) {
-        const id = fieldId(category.blobKey, field)
-        if (draft.value[id] === baseline.value[id]) continue
-        patch[field.jsonKey || field.key] = coerceField(field.kind, draft.value[id] || '')
-      }
-      if (!Object.keys(patch).length) {
-        hint.value = '这一类没有改动'
-        return
-      }
-      stored.value = await saveConfigValues({ [category.blobKey]: mergeBlob(stored.value[category.blobKey] || '', patch) })
-    } else if (category.fields[0]?.store === 'risk') {
-      for (const field of category.fields) {
-        const id = fieldId(category.blobKey, field)
-        if (draft.value[id] === baseline.value[id]) continue
-        const value = payloadOf(field, draft.value[id] || '')
-        await risk.saveParam({ key: field.key, value, operator: auth.operatorName })
-      }
-    } else {
-      const values: Record<string, string> = {}
-      for (const field of category.fields) {
-        const id = fieldId(category.blobKey, field)
-        if (draft.value[id] === baseline.value[id]) continue
-        values[field.key] = payloadOf(field, draft.value[id] || '')
-      }
-      if (!Object.keys(values).length) {
-        hint.value = '这一类没有改动'
-        return
-      }
-      stored.value = await saveConfigValues(values)
+    if (!impact.value) {
+      prepared.value = currentValues()
+      if (!Object.keys(prepared.value).length) { hint.value = '这一类没有改动'; return }
+      const next = await previewConfig(prepared.value, configSnapshot.value.revision)
+      if (generation === configGeneration) impact.value = next
+      return
     }
-    fill(category)
-    hint.value = category.fields[0]?.store === 'risk' ? '已生效' : '已写入参数表'
+    const saved = rollbackTarget.value == null ? await saveConfig(prepared.value, impact.value.baseRevision) : await rollbackConfig(impact.value.baseRevision, rollbackTarget.value)
+    if (generation !== configGeneration) { hint.value = `版本 #${saved.revision} 已保存，当前新草稿已保留，请重新读取核对`; return }
+    configSnapshot.value = saved; stored.value = saved.values; impact.value = null; rollbackTarget.value = null; clearSecrets.value = []
+    fill()
+    hint.value = `已保存版本 #${saved.revision}，请查看目标服务加载回执`
     window.dispatchEvent(new CustomEvent('nt:config-saved', { detail: instanceId }))
-  } catch (err) {
-    error.value = err instanceof SyntaxError ? 'JSON 格式不对' : messageOf(err)
-  } finally {
-    saving.value = false
-  }
+    void risk.refresh()
+  } catch (err) { error.value = err instanceof SyntaxError ? 'JSON 格式不对' : messageOf(err) }
+  finally { saving.value = false }
 }
 
 function onSaved(event: Event) {
   if ((event as CustomEvent<string>).detail === instanceId) return
+  if (dirty.value) { hint.value = '另一窗口修改了配置；草稿已保留，保存时会校验版本'; return }
   void load()
 }
 
@@ -323,7 +333,7 @@ onBeforeUnmount(() => {
     <header class="cfg__head">
       <div>
         <h1 class="nt-title">配置</h1>
-        <p class="nt-note">按分类修改。数据接口、模型、智能体、通知、选股和风控写入参数表，几秒内盖过配置文件。外观和连接保存在这台电脑。</p>
+        <p class="nt-note">按分类修改运行参数。保存成功表示配置已存储，各服务是否加载仍需核验。外观和连接保存在这台电脑。</p>
       </div>
       <NtButton v-if="props.overlay" size="sm" @click="emit('close')">关闭</NtButton>
     </header>
@@ -361,6 +371,23 @@ onBeforeUnmount(() => {
             />
           </div>
           <div class="pref">
+            <span>显示质量</span>
+            <NtSegmented
+              :model-value="settings.visualQuality"
+              :options="qualityOptions"
+              @update:model-value="settings.setVisualQuality($event as VisualQuality)"
+            />
+          </div>
+          <p class="nt-note quality-note">
+            {{ settings.visualQuality === 'eco' ? '节能：使用实体背板，关闭玻璃模糊、光晕与装饰运动。' : settings.visualQuality === 'reduced' ? '减少动态：保留玻璃和静态光轨，停止装饰运动。' : '完整：分层玻璃、局部霓虹与真实事件反馈。' }}
+            <template v-if="settings.systemReducedMotion">系统已要求减少动态，动态效果已关闭。</template>
+            数据更新、告警与交易规则保持运行；选择会自动保存。
+          </p>
+          <div class="material-preview" aria-hidden="true">
+            <span class="material-preview__rail"></span>
+            <div><b>深海霓虹玻璃</b><small>壳层透光 · 数据清晰 · 状态可辨</small></div>
+          </div>
+          <div class="pref">
             <span>预警声</span>
             <NtSwitch
               :model-value="settings.sound"
@@ -396,6 +423,7 @@ onBeforeUnmount(() => {
             >
               {{ mode }} {{ modeHint[mode] }}
             </NtButton>
+            <NtButton :disabled="saving" @click="load">重新读取配置</NtButton>
           </div>
         </section>
 
@@ -448,6 +476,7 @@ onBeforeUnmount(() => {
                     @update:model-value="setDraft(fieldId(current.blobKey, field), $event)"
                   />
                   <p v-if="field.hint" class="field__hint">{{ field.hint }}</p>
+                  <p v-if="field.kind === 'secret'" class="field__hint">{{ clearSecrets.includes(field.key) ? '将清除覆盖值' : configSnapshot?.secretSet[field.key] ? '已设置；留空保留，输入替换' : '未设置' }} <button v-if="configSnapshot?.secretSet[field.key]" type="button" :disabled="auth.isViewer()" @click="clearSecret(field.key)">清除覆盖值</button></p>
                 </div>
               </div>
             </article>
@@ -490,14 +519,17 @@ onBeforeUnmount(() => {
                   @update:model-value="setDraft(fieldId(current.blobKey, field), $event)"
                 />
                 <p v-if="field.hint" class="field__hint">{{ field.hint }}</p>
+                  <p v-if="field.kind === 'secret'" class="field__hint">{{ clearSecrets.includes(field.key) ? '将清除覆盖值' : configSnapshot?.secretSet[field.key] ? '已设置；留空保留，输入替换' : '未设置' }} <button v-if="configSnapshot?.secretSet[field.key]" type="button" :disabled="auth.isViewer()" @click="clearSecret(field.key)">清除覆盖值</button></p>
               </div>
             </template>
           </div>
           <p v-else class="nt-empty">正在读取当前值。</p>
+          <ConfigRevisionPanel :snapshot="configSnapshot" :preview="impact" @refresh="refreshReceipts" @rollback="previewRollback" />
           <div class="savebar">
-            <NtButton variant="primary" :disabled="auth.isViewer() || saving || !dirty" @click="saveCurrent">
-              保存本类
+            <NtButton variant="primary" :disabled="auth.isViewer() || saving || (!dirty && !impact)" @click="saveCurrent">
+              {{ impact ? (rollbackTarget == null ? '确认保存新版本' : '确认回滚为新版本') : '预览本类变更' }}
             </NtButton>
+            <NtButton :disabled="saving" @click="load">重新读取配置</NtButton>
           </div>
         </section>
 
@@ -533,10 +565,11 @@ onBeforeUnmount(() => {
   width: min(1080px, 100%);
   height: min(860px, calc(100vh - 48px));
   padding: 16px 18px;
-  background: var(--nt-bg-1);
-  border: 1px solid var(--nt-border-2);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  backdrop-filter: var(--nt-glass-filter);
+  border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-m);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth), var(--nt-glow-soft);
 }
 
 .cfg__head {
@@ -577,7 +610,11 @@ onBeforeUnmount(() => {
 .cfg__nav button.on,
 .cfg__nav button:hover {
   color: var(--nt-text-1);
-  background: rgba(0, 229, 255, 0.08);
+  background: var(--nt-accent-soft);
+}
+
+.cfg__nav button.on {
+  box-shadow: inset 2px 0 var(--nt-accent), var(--nt-glow-soft);
 }
 
 .cfg__main {
@@ -596,12 +633,49 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .pref > span {
   width: 60px;
   color: var(--nt-text-2);
   font-size: 12.5px;
+}
+
+.quality-note {
+  max-width: 620px;
+}
+
+.material-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 620px;
+  padding: 16px;
+  border: 1px solid var(--nt-glass-border);
+  border-radius: var(--nt-radius-m);
+  background: var(--nt-glass-sheen), var(--nt-glass-raised);
+  box-shadow: var(--nt-edge-light), var(--nt-glow-soft);
+}
+
+.material-preview__rail {
+  width: 3px;
+  height: 32px;
+  background: var(--nt-accent);
+  box-shadow: var(--nt-glow-accent);
+}
+
+.material-preview b,
+.material-preview small {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.material-preview small {
+  margin-top: 5px;
+  color: var(--nt-text-2);
+  font-weight: 400;
 }
 
 .modes {

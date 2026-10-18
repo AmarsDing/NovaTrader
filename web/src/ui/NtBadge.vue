@@ -28,33 +28,33 @@ withDefaults(defineProps<{ tone?: BadgeTone; dot?: boolean }>(), { tone: 'neutra
 }
 
 .nt-badge--accent {
-  color: var(--nt-accent);
-  border-color: rgba(0, 229, 255, 0.4);
-  background: rgba(0, 229, 255, 0.08);
+  color: color-mix(in srgb, var(--nt-accent) 75%, var(--nt-text-1));
+  border-color: var(--nt-accent-border);
+  background: var(--nt-accent-soft);
 }
 
 .nt-badge--success {
-  color: var(--nt-success);
-  border-color: rgba(0, 208, 132, 0.4);
-  background: rgba(0, 208, 132, 0.08);
+  color: color-mix(in srgb, var(--nt-success) 75%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-success) 40%, transparent);
+  background: color-mix(in srgb, var(--nt-success) 8%, transparent);
 }
 
 .nt-badge--warn {
-  color: var(--nt-warn);
-  border-color: rgba(255, 107, 0, 0.4);
-  background: rgba(255, 107, 0, 0.08);
+  color: color-mix(in srgb, var(--nt-warn) 75%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--nt-warn) 8%, transparent);
 }
 
 .nt-badge--danger {
-  color: var(--nt-danger);
-  border-color: rgba(255, 58, 58, 0.4);
-  background: rgba(255, 58, 58, 0.08);
+  color: color-mix(in srgb, var(--nt-danger) 75%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-danger) 40%, transparent);
+  background: color-mix(in srgb, var(--nt-danger) 8%, transparent);
 }
 
 .nt-badge--info {
-  color: var(--nt-info);
-  border-color: rgba(76, 154, 255, 0.4);
-  background: rgba(76, 154, 255, 0.08);
+  color: color-mix(in srgb, var(--nt-info) 75%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-info) 40%, transparent);
+  background: color-mix(in srgb, var(--nt-info) 8%, transparent);
 }
 
 .nt-badge__dot {

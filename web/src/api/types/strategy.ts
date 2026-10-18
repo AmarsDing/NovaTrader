@@ -68,6 +68,12 @@ export interface Candidate {
 /** listSignals 归一化后的展示态信号。 */
 export interface SignalItem {
   id: string
+  /** 真实账本成交归并，缺失时保持未知；done可包含部分成交。 */
+  executedPrice?: number | null
+  executedVolume?: number | null
+  /** 信号所属账本，后端为 paper/live；缺失时不能默认推入当前账户。 */
+  book: string
+  strategyVersionId: string
   symbol: string
   name: string
   side: string
@@ -99,7 +105,7 @@ export interface SignalItem {
   /** 平仓方式（stop/take/timeout…），未平仓为空。 */
   exitKind: string
   exitPrice: number | null
-  /** 后验盈亏比率（0–1），hasPnl 为真才有效。 */
+  /** 后验盈亏百分点，3.2 表示 +3.2%；hasPnl 为真才有效。 */
   pnlPct: number | null
   hasPnl: boolean
   holdingDays: number | null

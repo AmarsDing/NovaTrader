@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue'
 import { ColorType, createChart, CrosshairMode, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts'
-import { PALETTE } from '@/theme/tokens'
+import { colorWithAlpha, useChartPalette } from '@/theme/tokens'
 import { chartTime } from '@/utils/format'
 import type { Bar, MarketIndicator } from '@/api/market'
 
@@ -26,6 +26,7 @@ const emit = defineEmits<{
 }>()
 
 const el = ref<HTMLDivElement | null>(null)
+const palette = useChartPalette()
 let chart: IChartApi | null = null
 let candle: ISeriesApi<'Candlestick'> | null = null
 let volume: ISeriesApi<'Histogram'> | null = null
@@ -50,7 +51,7 @@ function seriesRows(): (Bar & { time: string | number })[] {
   return unique
 }
 
-function apply() {
+function apply(fitViewport = true) {
   if (!candle || !volume || !ma5 || !ma10 || !ma20) return
   const data = seriesRows()
   candle.setData(data.map(({ time, open, high, low, close }) => ({ time: time as Time, open, high, low, close })))
@@ -58,7 +59,7 @@ function apply() {
     data.map((row) => ({
       time: row.time as Time,
       value: row.volume || 0,
-      color: (row.close ?? 0) >= (row.open ?? 0) ? `${PALETTE.up}66` : `${PALETTE.down}66`,
+      color: colorWithAlpha((row.close ?? 0) >= (row.open ?? 0) ? palette.value.up : palette.value.down, 0.4),
     })),
   )
   const byTime = new Map<string | number, MarketIndicator>()
@@ -86,7 +87,7 @@ function apply() {
       return {
         time: time as Time,
         position: mark.position || 'aboveBar',
-        color: mark.color || PALETTE.accent,
+        color: mark.color || palette.value.accent,
         shape: mark.shape || 'circle',
         text: mark.text || '',
       }
@@ -94,7 +95,29 @@ function apply() {
     .filter((mark): mark is NonNullable<typeof mark> => mark !== null)
     .sort((a, b) => (a.time > b.time ? 1 : -1))
   candle.setMarkers(marks)
-  if (data.length) chart?.timeScale().fitContent()
+  if (fitViewport && data.length) chart?.timeScale().fitContent()
+}
+
+function applyTheme() {
+  const p = palette.value
+  chart?.applyOptions({
+    layout: { textColor: p.text2 },
+    grid: { vertLines: { color: p.border1 }, horzLines: { color: p.border1 } },
+    crosshair: { vertLine: { color: p.accent2 }, horzLine: { color: p.accent2 } },
+    rightPriceScale: { borderColor: p.border2 },
+    timeScale: { borderColor: p.border2 },
+  })
+  candle?.applyOptions({
+    upColor: p.up,
+    downColor: p.down,
+    borderUpColor: p.up,
+    borderDownColor: p.down,
+    wickUpColor: p.up,
+    wickDownColor: p.down,
+  })
+  ma5?.applyOptions({ color: p.accent })
+  ma10?.applyOptions({ color: p.accent2 })
+  ma20?.applyOptions({ color: p.warn })
 }
 
 onMounted(() => {
@@ -103,25 +126,25 @@ onMounted(() => {
     autoSize: true,
     layout: {
       background: { type: ColorType.Solid, color: 'transparent' },
-      textColor: PALETTE.text2,
+      textColor: palette.value.text2,
       fontFamily: 'Segoe UI, PingFang SC, Microsoft YaHei, sans-serif',
       fontSize: 10,
     },
     grid: {
-      vertLines: { color: 'rgba(255,255,255,0.05)' },
-      horzLines: { color: 'rgba(255,255,255,0.05)' },
+      vertLines: { color: palette.value.border1 },
+      horzLines: { color: palette.value.border1 },
     },
     crosshair: { mode: CrosshairMode.Normal },
-    rightPriceScale: { borderColor: 'rgba(255,255,255,0.12)' },
-    timeScale: { borderColor: 'rgba(255,255,255,0.12)' },
+    rightPriceScale: { borderColor: palette.value.border2 },
+    timeScale: { borderColor: palette.value.border2 },
   })
   candle = chart.addCandlestickSeries({
-    upColor: PALETTE.up,
-    downColor: PALETTE.down,
-    borderUpColor: PALETTE.up,
-    borderDownColor: PALETTE.down,
-    wickUpColor: PALETTE.up,
-    wickDownColor: PALETTE.down,
+    upColor: palette.value.up,
+    downColor: palette.value.down,
+    borderUpColor: palette.value.up,
+    borderDownColor: palette.value.down,
+    wickUpColor: palette.value.up,
+    wickDownColor: palette.value.down,
   })
   volume = chart.addHistogramSeries({
     priceFormat: { type: 'volume' },
@@ -129,13 +152,14 @@ onMounted(() => {
   })
   chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } })
   const lineOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false } as const
-  ma5 = chart.addLineSeries({ ...lineOpts, color: PALETTE.accent })
-  ma10 = chart.addLineSeries({ ...lineOpts, color: PALETTE.accent2 })
-  ma20 = chart.addLineSeries({ ...lineOpts, color: PALETTE.warn })
+  ma5 = chart.addLineSeries({ ...lineOpts, color: palette.value.accent })
+  ma10 = chart.addLineSeries({ ...lineOpts, color: palette.value.accent2 })
+  ma20 = chart.addLineSeries({ ...lineOpts, color: palette.value.warn })
   chart.subscribeCrosshairMove((param) => {
     const data = candle ? (param.seriesData.get(candle) as { close?: number } | undefined) : undefined
     emit('crosshair', (param.time as number) ?? null, data?.close ?? null)
   })
+  applyTheme()
   apply()
 })
 
@@ -144,6 +168,12 @@ watch(
   () => apply(),
   { deep: true },
 )
+
+watch(palette, () => {
+  applyTheme()
+  // A color switch must preserve the user's zoom and visible time window.
+  apply(false)
+})
 
 onBeforeUnmount(() => {
   chart?.remove()

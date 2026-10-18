@@ -259,9 +259,9 @@ export const configCategories: ConfigCategory[] = [
   {
     id: 'risk',
     title: '风控',
-    note: '保存后立即生效。比例用小数，0.05 表示 5%。',
+    note: '保存生成新版本，风控约3秒轮询加载；以服务加载回执为准。比例用小数，0.05 表示 5%。',
     fields: [
-      risk('live_admitted', '实盘准入', '关掉后，L2 及以上会降到 L1', 'false', 'bool', '准入'),
+      risk('live_admitted', '实盘准入', '此处只能关闭准入；开启须走准入流程。关闭后L2及以上会降到L1', 'false', 'bool', '准入'),
       risk('allow_st_buy', '允许买 ST', '默认关闭', 'false', 'bool', '准入'),
       risk('min_list_days', '上市天数', '风控侧的上市天数下限', '5', 'int', '准入'),
       risk('blacklist', '黑名单', '逗号分隔代码，如 600000.SH', '', 'text', '准入'),

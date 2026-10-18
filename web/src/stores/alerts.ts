@@ -6,6 +6,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { listMessages, type NotifyMessage } from '@/api/notify'
 import { quiet } from '@/utils/async'
+import { createRefreshQueue } from '@/utils/refresh-queue'
 
 export interface ToastItem {
   id: number
@@ -20,19 +21,22 @@ let toastSeq = 0
 export const useAlertsStore = defineStore('alerts', () => {
   const messages = ref<NotifyMessage[]>([])
   const loading = ref(false)
+  const ready = ref(false)
   const toasts = ref<ToastItem[]>([])
 
   const unreadCount = computed(() => messages.value.filter((m) => !m.read).length)
 
-  async function refresh() {
+  const refresh = createRefreshQueue(async () => {
     loading.value = true
     try {
       const list = await quiet(() => listMessages({ limit: 100 }))
       if (list) messages.value = list
+      ready.value = list != null
+      return ready.value
     } finally {
       loading.value = false
     }
-  }
+  })
 
   function pushToast(kind: ToastItem['kind'], title: string, body = ''): number {
     const id = ++toastSeq
@@ -44,5 +48,5 @@ export const useAlertsStore = defineStore('alerts', () => {
     toasts.value = toasts.value.filter((t) => t.id !== id)
   }
 
-  return { messages, loading, toasts, unreadCount, refresh, pushToast, dismissToast }
+  return { messages, loading, ready, toasts, unreadCount, refresh, pushToast, dismissToast }
 })

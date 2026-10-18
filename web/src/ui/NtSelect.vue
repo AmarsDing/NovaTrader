@@ -81,11 +81,11 @@ function onChange(event: Event) {
 }
 
 .nt-select select:focus {
-  border-color: rgba(0, 229, 255, 0.7);
+  border-color: var(--nt-accent);
   box-shadow: none;
 }
 
 .nt-select select:focus-visible {
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.28);
+  box-shadow: 0 0 0 2px var(--nt-focus-ring);
 }
 </style>

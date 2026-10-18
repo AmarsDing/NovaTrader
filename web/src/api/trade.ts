@@ -35,6 +35,10 @@ export async function listOrders(account: string): Promise<Order[]> {
   return asList(data, 'orders', 'items').map(normalizeOrder)
 }
 
+export async function getOrder(clientOrderId: string): Promise<Order> {
+  return normalizeOrder(await request(`/api/trade/orders/${encodeURIComponent(clientOrderId)}`))
+}
+
 export async function listFills(account: string): Promise<Fill[]> {
   const data = await request('/api/trade/fills', { query: { account } })
   return asList(data, 'fills', 'items').map((raw) => ({
@@ -48,8 +52,8 @@ export async function listFills(account: string): Promise<Fill[]> {
   }))
 }
 
-export function placeOrder(body: OrderDraft): Promise<unknown> {
-  return request('/api/trade/orders', { method: 'POST', json: body })
+export async function placeOrder(body: OrderDraft): Promise<Order> {
+  return normalizeOrder(await request('/api/trade/orders', { method: 'POST', json: body }))
 }
 
 export function cancelOrder(clientOrderId: string): Promise<unknown> {
@@ -71,5 +75,7 @@ function normalizeOrder(raw: RawRecord): Order {
     volume: num(pick(raw, 'volume')),
     filled: num(pick(raw, 'filled')),
     reason: pick<string>(raw, 'reason') || '',
+    signalId: String(pick(raw, 'signalId', 'signal_id') ?? ''),
+    strategyVersion: String(pick(raw, 'strategyVersion', 'strategy_version') ?? ''),
   }
 }

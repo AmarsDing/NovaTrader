@@ -180,10 +180,11 @@ interface FreshCtx {
  * 算出每张牌右上角的角标。没有时间戳的牌用采样年龄，宁可说「刚读到」也不编时间。
  */
 export function cardFreshness(input: MonitorInputLike, now: number, trading: boolean): Map<string, CardFresh> {
+  const sampledAt = input.sampledAt ?? input.now
   const ctx: FreshCtx = {
     now,
     trading,
-    sampleAge: input.now ? Math.max(0, (now - input.now) / 1000) : null,
+    sampleAge: sampledAt ? Math.max(0, (now - sampledAt) / 1000) : null,
   }
   const out = new Map<string, CardFresh>()
   const put = (id: string, kind: FreshKind, stamp: string | null | undefined, fallback = true) => {
@@ -191,28 +192,30 @@ export function cardFreshness(input: MonitorInputLike, now: number, trading: boo
     if (fresh) out.set(id, fresh)
   }
 
-  for (const item of input.sources?.items ?? []) {
+  for (const item of input.sources?.ok ? input.sources.items : []) {
     put(sourceNodeId(item.id, item.name), sourceKind(item.id, item.name), item.lastAt, false)
   }
-  if (input.sources?.ok) put('source:quality', 'post', oldestQualityDay(input), false)
+  if (input.quality?.ok) put('source:quality', 'post', oldestQualityDay(input), false)
 
-  put('post:scan', 'sentiment', input.sentiment?.asOf)
-  put('book:tape', 'sentiment', input.sentiment?.asOf)
-  put('post:desk', 'account', newestSignalTime(input))
-  put('post:miss', 'account', null)
-  put('post:risk', 'account', null)
-  put('book:center', 'account', null)
-  put('book:orders', 'account', newestFillTime(input))
-  put('book:fills', 'account', newestFillTime(input))
+  if (input.sentiment?.ok) {
+    put('post:scan', 'sentiment', input.sentiment.asOf, false)
+    put('book:tape', 'sentiment', input.sentiment.asOf, false)
+  }
+  if (input.signals?.ok) {
+    put('post:desk', 'account', newestSignalTime(input))
+    for (const id of ['dim:tech', 'dim:capital', 'dim:news', 'dim:overseas', 'dim:synth']) put(id, 'model', newestSignalTime(input))
+  }
+  if (input.candidates?.ok) put('post:miss', 'account', null)
+  if (input.risk?.ok) put('post:risk', 'account', null)
+  if (input.account?.ok) put('book:center', 'account', null)
+  if (input.orders?.ok) put('book:orders', 'account', null)
+  if (input.fills?.ok) put('book:fills', 'account', newestFillTime(input))
 
-  put('dim:tech', 'model', null)
-  put('dim:capital', 'model', null)
-  put('dim:news', 'model', null)
-  put('dim:overseas', 'model', null)
-  put('dim:synth', 'model', null)
-  put('model:large', 'model', null)
-  put('model:small', 'model', null)
-  put('model:token', 'model', null)
+  if (input.brainStats?.ok) {
+    put('model:large', 'model', null)
+    put('model:small', 'model', null)
+  }
+  if (input.brainP1?.ok && input.brainP1.usage) put('model:token', 'model', null)
 
   return out
 }
@@ -224,7 +227,7 @@ function badgeFor(ctx: FreshCtx, kind: FreshKind, stamp: string | null | undefin
   if (daily) {
     if (day == null) {
       if (!useSampleAge || ctx.sampleAge == null) return null
-      return { text: ageText(ctx.sampleAge), tone: secTone('post', ctx.sampleAge) }
+      return { text: `采样 ${ageText(ctx.sampleAge)}`, tone: secTone(kind, ctx.sampleAge) }
     }
     /* 交易日差：周末看周五的数据也是「上一交易日」，不是「今日」 */
     const today = dayStamp(ctx.now)
@@ -237,7 +240,7 @@ function badgeFor(ctx: FreshCtx, kind: FreshKind, stamp: string | null | undefin
     return { text: ageText(age), tone: secTone(kind, age) }
   }
   if (!useSampleAge || ctx.sampleAge == null) return null
-  return { text: ageText(ctx.sampleAge), tone: secTone(kind, ctx.sampleAge) }
+  return { text: `采样 ${ageText(ctx.sampleAge)}`, tone: secTone(kind, ctx.sampleAge) }
 }
 
 function oldestQualityDay(input: MonitorInputLike): string | null {
@@ -414,6 +417,13 @@ export function decorate(
 /** cardFreshness / cardSilence 只读这几个字段，用最小结构方便测试 */
 export interface MonitorInputLike {
   now?: number
+  sampledAt?: number
+  lastPush?: number
+  account?: { ok: boolean } | null
+  risk?: { ok: boolean } | null
+  brainStats?: { ok: boolean } | null
+  brainP1?: { ok: boolean; usage?: unknown } | null
+  candidates?: { ok: boolean } | null
   sources?: { ok: boolean; items: { id: string; name: string; status: string; detail: string; lastAt: string }[] } | null
   sentiment?: { ok: boolean; asOf: string; stale: boolean } | null
   signals?: { ok: boolean; items: { id: string; status: string; time: string }[] } | null

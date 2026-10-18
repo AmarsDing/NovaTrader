@@ -13,7 +13,7 @@
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0, 229, 255, 0.12), transparent), var(--nt-bg-0);
+  background: radial-gradient(ellipse 80% 60% at 50% -10%, var(--nt-accent-soft), transparent), var(--nt-bg-0);
 }
 
 .grid-bg {

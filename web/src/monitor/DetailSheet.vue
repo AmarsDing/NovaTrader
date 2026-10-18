@@ -200,7 +200,7 @@ function rowTone(row: DetailRow): string {
   display: block;
   height: 6px;
   border-radius: 3px;
-  background: var(--nt-accent-dim, rgba(0, 229, 255, 0.35));
+  background: var(--nt-accent-border);
 }
 
 .nt-deep__bar[data-warn] i {

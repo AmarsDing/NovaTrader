@@ -15,6 +15,7 @@ vi.mock('@/api/http', () => ({
 
 import { request } from '@/api/http'
 import { listAudit, normalizeRow } from '@/api/audit'
+import { getSignal, normalizeSignal } from '@/api/signals'
 
 describe('pick', () => {
   it('snake/camel 混用按顺序取第一个非空', () => {
@@ -106,5 +107,41 @@ describe('audit.listAudit', () => {
     expect(rows[0]).toMatchObject({ id: 1, actor: 'alice', ok: true, createdAt: 't0' })
     // 字符串 id 转数字、大写 OK=false 兜底
     expect(rows[1]).toMatchObject({ id: 2, actor: 'bob', ok: false, createdAt: 't1' })
+  })
+})
+
+describe('signals.normalizeSignal', () => {
+  it('真实部分成交保留数量与四位均价，缺失与非法值不显示为零', () => {
+    expect(normalizeSignal({ status: 'done', executed_volume: 100, executed_price: 10.1234 })).toMatchObject({ executedVolume: 100, executedPrice: 10.1234 })
+    expect(normalizeSignal({ status: 'done' })).toMatchObject({ executedVolume: null, executedPrice: null })
+    expect(normalizeSignal({ executed_volume: -1, executed_price: 0 })).toMatchObject({ executedVolume: null, executedPrice: null })
+  })
+  it('保留数值或字符串身份、账本和策略版本，收益采用后端百分点', () => {
+    expect(
+      normalizeSignal({ id: 7, book: 'paper', strategy_version_id: 12, has_pnl: true, pnl_pct: 3.2 }),
+    ).toMatchObject({ id: '7', book: 'paper', strategyVersionId: '12', hasPnl: true, pnlPct: 3.2 })
+    expect(normalizeSignal({ id: '8', strategyVersionId: '13' })).toMatchObject({ id: '8', strategyVersionId: '13' })
+  })
+
+  it('显式 false 胜过默认收益值，真实零收益由 true 声明', () => {
+    expect(normalizeSignal({ status: 'closed', hasPnl: false, pnlPct: 3.2 })).toMatchObject({
+      hasPnl: false,
+      pnlPct: null,
+    })
+    expect(normalizeSignal({ status: 'approved', pnl_pct: 0 })).toMatchObject({ hasPnl: false, pnlPct: null })
+    expect(normalizeSignal({ status: 'closed', pnl_pct: 0 })).toMatchObject({ hasPnl: false, pnlPct: null })
+    expect(normalizeSignal({ status: 'closed', has_pnl: true, pnl_pct: 0 })).toMatchObject({ hasPnl: true, pnlPct: 0 })
+  })
+
+  it('旧接口只对已平仓且有非零收益的记录兼容兜底，缺值仍未知', () => {
+    expect(normalizeSignal({ status: 'closed', pnl_pct: -2.1 })).toMatchObject({ hasPnl: true, pnlPct: -2.1 })
+    expect(normalizeSignal({ has_pnl: true })).toMatchObject({ hasPnl: false, pnlPct: null })
+    expect(normalizeSignal({ status: 'approved', pnl_pct: 3.2 })).toMatchObject({ hasPnl: false, pnlPct: null })
+  })
+
+  it('单票读取供提交前再次核验身份和状态', async () => {
+    vi.mocked(request).mockResolvedValueOnce({ id: 7, book: 'paper', status: 'approved', strategy_version_id: 12 })
+    expect(await getSignal('7')).toMatchObject({ id: '7', book: 'paper', status: 'approved', strategyVersionId: '12' })
+    expect(request).toHaveBeenLastCalledWith('/api/strategy/signals/7')
   })
 })

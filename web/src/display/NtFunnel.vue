@@ -60,7 +60,7 @@ function widthOf(stages: FunnelStage[], index: number): number {
 .nt-funnel__bar {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, rgba(0, 229, 255, 0.25), var(--nt-accent));
+  background: linear-gradient(90deg, var(--nt-accent-border), var(--nt-accent));
   border-radius: 4px;
   transition: width 0.4s ease;
 }

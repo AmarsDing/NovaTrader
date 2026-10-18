@@ -1,6 +1,6 @@
 /* 全局控件。页面不要再写按钮、表格、输入框、滚动条的私有皮肤。
    变体用 class：nt-btn-primary / nt-btn-ghost / nt-btn-danger / nt-btn-success。
-   收敛约定（1.视觉需求.md 第五节）：无常驻 glow、无扫描光，发光预算只留给 AI 高分/预警/Kill Switch。 */
+   材质约定见视觉规范第七节：局部边光表达选中，正文不发光。 */
 
 * {
   scrollbar-width: thin;
@@ -48,9 +48,9 @@ button,
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.06);
-  border: 1px solid rgba(0, 229, 255, 0.32);
+  color: color-mix(in srgb, var(--nt-accent) 75%, var(--nt-text-1));
+  background: var(--nt-accent-soft);
+  border: 1px solid var(--nt-accent-border);
   border-radius: var(--nt-radius-s);
   cursor: pointer;
   transition:
@@ -62,8 +62,8 @@ button,
 
 button:hover,
 .nt-btn:hover {
-  background: rgba(0, 229, 255, 0.13);
-  border-color: rgba(0, 229, 255, 0.55);
+  background: var(--nt-accent-hover);
+  border-color: var(--nt-accent);
 }
 
 button:active,
@@ -76,8 +76,9 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.28);
+  outline: 2px solid var(--nt-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--nt-focus-ring);
 }
 
 button:disabled,
@@ -138,7 +139,7 @@ button.nt-switch__track.on:hover {
 /* 主按钮：平填 + 1px 描边，无常驻发光、无扫描光。 */
 .nt-btn-primary,
 button.nt-btn-primary {
-  color: var(--nt-bg-0);
+  color: var(--nt-on-accent);
   background: var(--nt-accent);
   border: 1px solid transparent;
   box-shadow: none;
@@ -146,22 +147,22 @@ button.nt-btn-primary {
 
 .nt-btn-primary:hover,
 button.nt-btn-primary:hover {
-  color: var(--nt-bg-0);
+  color: var(--nt-on-accent);
   background: var(--nt-accent);
-  filter: brightness(1.12);
+  filter: brightness(0.94);
 }
 
 .nt-btn-ghost,
 button.nt-btn-ghost {
-  color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.05);
-  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: color-mix(in srgb, var(--nt-accent) 75%, var(--nt-text-1));
+  background: var(--nt-accent-soft);
+  border: 1px solid var(--nt-accent-border);
   box-shadow: none;
 }
 
 .nt-btn-danger,
 button.nt-btn-danger {
-  color: #fff;
+  color: var(--nt-on-danger);
   background: var(--nt-danger);
   border: 1px solid transparent;
   box-shadow: none;
@@ -169,14 +170,14 @@ button.nt-btn-danger {
 
 .nt-btn-danger:hover,
 button.nt-btn-danger:hover {
-  color: #fff;
+  color: var(--nt-on-danger);
   background: var(--nt-danger);
   filter: brightness(1.12);
 }
 
 .nt-btn-success,
 button.nt-btn-success {
-  color: var(--nt-bg-0);
+  color: var(--nt-on-success);
   background: var(--nt-success);
   border: 1px solid transparent;
   box-shadow: none;
@@ -184,7 +185,7 @@ button.nt-btn-success {
 
 .nt-btn-success:hover,
 button.nt-btn-success:hover {
-  color: var(--nt-bg-0);
+  color: var(--nt-on-success);
   background: var(--nt-success);
   filter: brightness(1.1);
 }
@@ -232,7 +233,7 @@ input:focus,
 select:focus,
 textarea:focus,
 input.nt-input:focus {
-  border-color: rgba(0, 229, 255, 0.7);
+  border-color: var(--nt-accent);
 }
 
 /* 复合控件的边框在外壳上。内层若再吃上面的描边和焦点环，就会变成双层框。 */
@@ -292,7 +293,7 @@ input[type='radio'] {
   overflow: auto;
   border-radius: var(--nt-radius-m);
   border: 1px solid var(--nt-border-1);
-  background: var(--nt-bg-1);
+  background: var(--nt-data-bg);
 }
 
 table {
@@ -326,7 +327,7 @@ tbody tr:last-child td {
 }
 
 tbody tr:hover td {
-  background: rgba(0, 229, 255, 0.05);
+  background: var(--nt-accent-soft);
 }
 
 td.num,

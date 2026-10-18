@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PALETTE } from '@/theme/tokens'
 
 const props = withDefaults(
   defineProps<{
@@ -10,7 +9,7 @@ const props = withDefaults(
     stroke?: string
     fill?: boolean
   }>(),
-  { width: 96, height: 28, stroke: PALETTE.accent, fill: false },
+  { width: 96, height: 28, stroke: 'var(--nt-accent)', fill: false },
 )
 
 const points = computed(() => {

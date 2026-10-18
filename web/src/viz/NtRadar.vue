@@ -72,15 +72,16 @@ const gaps = computed(() => {
 
 <template>
   <svg class="nt-radar" :viewBox="'0 0 100 100'" :width="size" :height="size" aria-hidden="true">
-    <polygon :points="frame" fill="none" stroke="rgba(0,229,255,0.25)" />
+    <polygon :points="frame" fill="none" stroke="var(--nt-accent)" stroke-opacity="0.25" />
     <polygon
       v-for="arc in arcs"
       :key="arc"
       :points="arc"
-      fill="rgba(0,229,255,0.16)"
-      stroke="#00E5FF"
+      fill="var(--nt-accent)"
+      fill-opacity="0.16"
+      stroke="var(--nt-accent)"
       stroke-width="1.2"
     />
-    <circle v-for="gap in gaps" :key="gap" :cx="gap.split(',')[0]" :cy="gap.split(',')[1]" r="2" fill="none" stroke="rgba(255,170,0,0.8)" stroke-dasharray="1.5 1.5" />
+    <circle v-for="gap in gaps" :key="gap" :cx="gap.split(',')[0]" :cy="gap.split(',')[1]" r="2" fill="none" stroke="var(--nt-warn)" stroke-opacity="0.8" stroke-dasharray="1.5 1.5" />
   </svg>
 </template>

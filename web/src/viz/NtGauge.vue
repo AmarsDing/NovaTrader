@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { PALETTE } from '@/theme/tokens'
 
 export type GaugeTone = 'accent' | 'warn' | 'danger' | 'up' | 'down'
 
@@ -18,11 +17,11 @@ const props = withDefaults(
 )
 
 const TONE_COLOR: Record<GaugeTone, string> = {
-  accent: PALETTE.accent,
-  warn: PALETTE.warn,
-  danger: PALETTE.danger,
-  up: PALETTE.up,
-  down: PALETTE.down,
+  accent: 'var(--nt-accent)',
+  warn: 'var(--nt-warn)',
+  danger: 'var(--nt-danger)',
+  up: 'var(--nt-up)',
+  down: 'var(--nt-down)',
 }
 
 // 半环（-220° 起扫 260°）

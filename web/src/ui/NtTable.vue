@@ -116,7 +116,7 @@ function onRow(row: T) {
 }
 
 .nt-table tbody tr:hover td {
-  background: rgba(0, 229, 255, 0.04);
+  background: var(--nt-accent-soft);
 }
 
 .nt-table__row--click {

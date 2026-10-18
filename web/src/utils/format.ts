@@ -121,6 +121,8 @@ const ORDER_STATUS: Record<string, string> = {
   new: '待报',
   pending: '待报',
   accepted: '已报',
+  submitted: '已报',
+  pending_confirm: '待人工确认',
   partial: '部成',
   filled: '已成',
   cancelled: '已撤',
@@ -145,7 +147,7 @@ export function orderStatusLabel(status: unknown): string {
 /** 只有未终态委托可以撤。 */
 export function canCancelOrder(status: unknown): boolean {
   const key = String(status || '').toLowerCase()
-  return key === 'new' || key === 'pending' || key === 'accepted' || key === 'partial'
+  return key === 'new' || key === 'pending' || key === 'accepted' || key === 'submitted' || key === 'pending_confirm' || key === 'partial'
 }
 
 const STRATEGY_LABEL: Record<string, string> = {
@@ -186,7 +188,7 @@ const SIGNAL_STATUS: Record<string, string> = {
   approved: '已通过',
   rejected: '已拦截',
   executing: '执行中',
-  done: '已执行',
+  done: '已有成交',
   closed: '已平仓',
   expired: '已过期',
   cancelled: '已取消',
@@ -244,8 +246,17 @@ export function chartTime(value: unknown, freq = '1d'): string | number | null {
 
 /** 涨跌着色用的类名。红涨绿跌（A 股约定）由 CSS 令牌控制，这里只分方向。 */
 export function pnlClass(value: unknown): 'up' | 'down' | '' {
+  const t = toneOf(value)
+  return t === 'flat' ? '' : t
+}
+
+/**
+ * 方向判定的唯一出口（§五.1）：只给行情/金额/盈亏类数值用——正涨红、负跌绿、0 与空值平。
+ * 比率、胜率、相关系数、质量分等非方向量禁止用它染色，直接写 'flat'。
+ */
+export function toneOf(value: unknown): 'up' | 'down' | 'flat' {
   const n = num(value)
-  if (n === null || n === 0) return ''
+  if (n === null || n === 0) return 'flat'
   return n > 0 ? 'up' : 'down'
 }
 

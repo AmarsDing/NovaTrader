@@ -268,6 +268,16 @@ describe('§5.2 信号牌', () => {
 })
 
 describe('§5.3 风控牌', () => {
+  it('LIVE 账本与 L2 授权独立展示，L3 不能解释成已开放自动实盘', () => {
+    const input = fixture()
+    input.account!.book = 'LIVE'
+    input.risk!.mode = 'L2'
+    const state = buildDetail(input, 'post:risk', NOW)?.sections.find((section) => section.key === 'state')?.rows
+    expect(state?.find((row) => row.key === 'book')).toMatchObject({ label: '账户账本', value: 'LIVE' })
+    expect(state?.find((row) => row.key === 'mode')).toMatchObject({ label: '运行授权', value: 'L2 实盘人工确认' })
+    input.risk!.mode = 'L3'
+    expect(buildDetail(input, 'post:risk', NOW)?.sections.find((section) => section.key === 'state')?.rows?.find((row) => row.key === 'mode')?.value).toContain('未开放')
+  })
   const panel = buildDetail(fixture(), 'post:risk', NOW)
   it('限额环形：8/10 = 80% 转橙；单日亏损缺口不编 k/K', () => {
     const limits = panel?.sections.find((s) => s.key === 'limits')
@@ -614,13 +624,14 @@ describe('P2 · 昨涨停今溢价 / 市场广度 / PG / NATS', () => {
     expect(premium?.rows?.[0].value).toContain('2026-10-13')
   })
 
-  it('扫描牌含广度段：占比红涨绿跌、多日出序列表', () => {
+  it('扫描牌含广度段：占比不染色（结构统计量）、多日出序列表', () => {
     const panel = buildDetail(p2Input(), 'post:scan', NOW)
     const breadth = panel?.sections.find((s) => s.key === 'breadth')
     const ratio = breadth?.rows?.find((r) => r.key === 'ratio')
     expect(ratio?.label).toBe('MA20 上方占比')
     expect(ratio?.value).toBe('62.0%')
-    expect(ratio?.tone).toBe('up')
+    /* 广度占比是结构统计量不是涨跌方向——红涨绿跌只给行情/金额/盈亏（§五.1） */
+    expect(ratio?.tone ?? 'flat').toBe('flat')
     expect(ratio?.note).toBe('3100 / 5000 只（下方 1800 · 持平 100）')
     expect(breadth?.table?.rows).toHaveLength(2)
   })

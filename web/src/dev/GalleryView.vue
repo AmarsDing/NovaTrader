@@ -658,14 +658,14 @@ const demoDeepScan = buildDetail(demoDeepInput, 'post:scan', demoNow)
 
 /* 健康分示例：扣分项自己加起来等于总分，避免出现「62 分但只扣了 22」这种对不上的示例 */
 const demoTapeParts: HealthPart[] = [
-  { key: 'fresh', label: '数据新鲜度', deduction: 16, note: '行情 tick 42s 前', measured: true },
+  { key: 'fresh', label: '市场结果时效', deduction: 16, note: '情绪结果生成 42s 前；不代表逐证券报价时效', measured: true },
   { key: 'services', label: '服务存活', deduction: 6, note: 'brain 非健康', measured: true },
   { key: 'model', label: '模型可用', deduction: 12, note: 'small 熔断', measured: true },
   { key: 'risk', label: '风控在线', deduction: 0, note: 'SIM 守着', measured: true },
   { key: 'channel', label: '交易通道', deduction: 5, note: '模拟盘按 5 分扣', measured: true },
 ]
 const demoTapeScore = 100 - demoTapeParts.reduce((sum, part) => sum + part.deduction, 0)
-const demoTapeHealth: HealthScore = { score: demoTapeScore, tone: healthTone(demoTapeScore), parts: demoTapeParts }
+const demoTapeHealth: HealthScore = { score: demoTapeScore, tone: healthTone(demoTapeScore), measuredCount: 5, totalCount: 5, parts: demoTapeParts }
 
 /* 走真实的 TapeSession 出行，不手写行——六域各至少一条，含 §6.3 健康行、§6.1 模型静默与 WS 断开 */
 const demoTapeSession = new TapeSession()
@@ -956,11 +956,11 @@ const demoTapeRows = demoTapeSession.absorb(
         </nav>
         <div class="g-monitor__bar">
           <button type="button" class="nt-health__badge" :data-tone="demoHealth.tone">
-            健康 {{ demoHealth.score }}<i class="dot" :class="`is-${demoHealth.tone}`"></i>
+            {{ demoHealth.score == null ? '健康待判定' : `健康 ${demoHealth.score}` }} · 观测 {{ demoHealth.measuredCount }}/{{ demoHealth.totalCount }}<i class="dot" :class="`is-${demoHealth.tone}`"></i>
           </button>
         </div>
         <section class="nt-health__pop g-monitor__pop" aria-label="健康分明细（示例）">
-          <h3>健康分 {{ demoHealth.score }} · 五项各 20 分起扣</h3>
+          <h3>{{ demoHealth.score == null ? '健康待判定' : `健康分 ${demoHealth.score}` }} · 已观测 {{ demoHealth.measuredCount }}/{{ demoHealth.totalCount }}</h3>
           <ul>
             <li v-for="part in demoHealth.parts" :key="part.key" :data-measured="part.measured">
               <span>{{ part.label }}</span>
@@ -1049,7 +1049,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
       <p class="g-activity__note">
         六域标签色：信号 --nt-accent、成交 --nt-up/--nt-down（按买卖方向，方向认不出来用中性色不默认红）、风控 --nt-danger、告警 --nt-warn、数据 --nt-info、模型 --nt-accent-2。
-        行是真实 TapeSession 出的，不是手写的：含 §6.3「健康 61：数据新鲜度 -16，服务存活 -6，模型可用 -12，交易通道 -5」（必须列扣分项，不写「系统异常」）、§6.1 模型静默与 WS 断开各一行。
+        行是真实 TapeSession 出的，不是手写的：含 §6.3「健康 61：市场结果时效 -16，服务存活 -6，模型可用 -12，交易通道 -5」（必须列扣分项，不写「系统异常」）、§6.1 模型静默与 WS 断开各一行。
         交互：暂停后新行只计数不滚动（按钮变「继续 · N 条新」）；点可定位的行 = 选中对应画布节点并闪一下，没有对应节点的行不可点；新行入场 300ms 背景淡出；上限 40 行。
       </p>
       <div class="g-monitor nt-monitor g-terms">

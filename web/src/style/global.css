@@ -33,25 +33,64 @@ a:hover {
   text-decoration: underline;
 }
 
-/* 数据面板：纯色 + 1px 描边，无玻璃无 glow（发光预算见 1.视觉需求.md 第五节）。
-   玻璃模糊只允许在 CommandBar / 弹层 / AlertCenter，见 ui/ 组件。
-   说明：.nt-glass 已移除——原页面面板样式由 .nt-panel 直接表达（见 page.css）。
-   大数字：等宽数字 + 微弱青光；只用于权益/盈亏 hero 与 AI 信号分。 */
+/* 毛玻璃只作用于空间壳；正文与数字仍在稳定背板上。 */
+.nt-glass-shell {
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  border: 1px solid var(--nt-glass-border);
+  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth);
+  backdrop-filter: var(--nt-glass-filter);
+}
+
+.nt-data-surface {
+  background: var(--nt-data-bg);
+}
+
 .nt-holo-num {
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+  text-shadow: none;
+}
+
+/* 存量组件中的独立 blur/filter 也遵守统一节能开关。保留描边焦点。 */
+:root[data-visual-quality='eco'] * {
+  backdrop-filter: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+.nt-ring__value {
+  text-shadow: none !important;
+}
+
+/* CSS 装饰不影响关键状态刷新。后台也停止弹层/徽标的装饰动画。 */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after,
+:root[data-page-visibility='hidden'] *,
+:root[data-page-visibility='hidden'] *::before,
+:root[data-page-visibility='hidden'] *::after {
+  animation: none !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes nt-breathe {
   0%,
   100% {
     opacity: 0.55;
-    filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.4));
+    filter: drop-shadow(0 0 6px var(--nt-accent-border));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 14px rgba(0, 229, 255, 0.85));
+    filter: drop-shadow(0 0 14px var(--nt-accent));
   }
 }
 

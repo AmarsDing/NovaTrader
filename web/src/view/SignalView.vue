@@ -4,9 +4,22 @@
  * 订阅 signal 主题 2 秒节流刷新；支持 方向/状态/模板 过滤与排序；
  * 有效期倒计时，过期置灰；85 分以上按发光预算高亮。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { listSignals, type SignalItem } from '@/api/signals'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { SignalItem } from '@/api/signals'
+import { listSources } from '@/api/datahub'
+import { useAccountStore } from '@/stores/account'
+import { useMarketStore } from '@/stores/market'
+import { useRiskStore } from '@/stores/risk'
+import { useSignalsStore } from '@/stores/signals'
+import { createPageRefresh } from './page-refresh'
+import {
+  buildDecisionAction,
+  hasAvailableSource,
+  isPendingStatus,
+  type DecisionContext,
+} from './decision-desk'
 import NtButton from '@/ui/NtButton.vue'
+import ConditionalPlans from './ConditionalPlans.vue'
 import NtProgressRing from '@/ui/NtProgressRing.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtRadar from '@/viz/NtRadar.vue'
@@ -16,27 +29,34 @@ import {
   isValidExpired,
   messageOf,
   price,
+  pctText,
   ratioPct,
   sideLabel,
   signalStatusLabel,
   strategyLabel,
   validRemainText,
 } from '@/utils/format'
-import { onPush, type WsPushMessage } from '@/ws/hub'
+import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
 
 type SideFilter = '' | 'buy' | 'sell'
-type StateFilter = '' | 'active' | 'expired' | 'closed'
+type StateFilter = '' | 'active' | 'executed' | 'expired' | 'closed'
 type SortKey = 'score' | 'time'
 
-const rows = ref<SignalItem[]>([])
+const signalStore = useSignalsStore()
+const rows = computed(() => signalStore.ready ? signalStore.items : [])
+const account = useAccountStore()
+const market = useMarketStore()
+const risk = useRiskStore()
+const decisionContext = ref<DecisionContext | null>(null)
 const error = ref('')
 const loading = ref(false)
 const sideFilter = ref<SideFilter>('')
 const stateFilter = ref<StateFilter>('')
 const strategyFilter = ref('')
 const sortKey = ref<SortKey>('score')
-/** 倒计时用的当前时刻，30 秒一跳。 */
+const planSignalId = ref('')
+/** 有效期与按钮状态同一时钟，避免过期后仍保留可执行入口。 */
 const nowTick = ref(Date.now())
 const labels = ['技术面', '消息面', '资金面', '外围']
 
@@ -48,6 +68,7 @@ const sideOptions = [
 const stateOptions = [
   { value: '', label: '全部状态' },
   { value: 'active', label: '有效' },
+  { value: 'executed', label: '已提交 / 已成交' },
   { value: 'expired', label: '已过期' },
   { value: 'closed', label: '已平仓' },
 ]
@@ -63,19 +84,23 @@ const strategyOptions = computed(() => [
 ])
 
 function isClosed(item: SignalItem): boolean {
-  const key = item.status.toLowerCase()
-  return key === 'closed' || key === 'done' || item.hasPnl
+  return item.status.toLowerCase() === 'closed'
+}
+
+function isHandled(item: SignalItem): boolean {
+  return ['executing', 'done', 'closed'].includes(item.status.toLowerCase())
 }
 
 function isExpired(item: SignalItem): boolean {
-  return !isClosed(item) && isValidExpired(item.validUntil, nowTick.value)
+  return !isHandled(item) && (item.status.toLowerCase() === 'expired' || isValidExpired(item.validUntil, nowTick.value))
 }
 
 const filtered = computed(() => {
   const list = rows.value.filter((item) => {
     if (sideFilter.value && item.side !== sideFilter.value) return false
     if (strategyFilter.value && item.strategy !== strategyFilter.value) return false
-    if (stateFilter.value === 'active' && (isClosed(item) || isExpired(item))) return false
+    if (stateFilter.value === 'active' && (!isPendingStatus(item.status) || isExpired(item))) return false
+    if (stateFilter.value === 'executed' && !['executing', 'done'].includes(item.status.toLowerCase())) return false
     if (stateFilter.value === 'expired' && !isExpired(item)) return false
     if (stateFilter.value === 'closed' && !isClosed(item)) return false
     return true
@@ -86,19 +111,61 @@ const filtered = computed(() => {
   })
 })
 
-const activeCount = computed(() => rows.value.filter((item) => !isClosed(item) && !isExpired(item)).length)
+const activeCount = computed(() => rows.value.filter((item) => isPendingStatus(item.status) && !isExpired(item)).length)
+let loadSequence = 0
+let contextVersion = 0
+let disposed = false
+let offResync: (() => void) | undefined
+const refreshKey = () => `${account.book}:${contextVersion}`
+const refreshes = createPageRefresh({ key: refreshKey, read: readPage, pushIntervalMs: 2000 })
 
-async function load() {
+function load() { return refreshes.refresh() }
+
+async function readPage(key: string): Promise<boolean> {
+  const sequence = ++loadSequence
+  const checkedBook = account.book
   loading.value = true
   error.value = ''
-  try {
-    rows.value = await listSignals()
-  } catch (err) {
-    rows.value = []
-    error.value = messageOf(err)
-  } finally {
-    loading.value = false
+  const [signalRes, accountRes, riskRes, marketRes, sourceRes] = await Promise.allSettled([
+    signalStore.refresh(),
+    account.refresh(),
+    risk.refresh(),
+    market.refresh(),
+    listSources(),
+  ])
+  if (disposed || key !== refreshKey() || sequence !== loadSequence || checkedBook !== account.book) return false
+  nowTick.value = Date.now()
+  const failed = [signalRes, accountRes, riskRes, marketRes].find((result) => result.status === 'rejected')
+  const ready = [signalRes, accountRes, riskRes, marketRes].every((result) => result.status === 'fulfilled' && result.value === true)
+  if (!ready) error.value = failed?.status === 'rejected' ? messageOf(failed.reason) : '核心状态未恢复，不能执行信号'
+  decisionContext.value = {
+    checkedAt: nowTick.value,
+    accountBook: checkedBook,
+    accountReady: accountRes.status === 'fulfilled' && accountRes.value && account.accountOk,
+    positionsReady: account.positionsOk,
+    signalsReady: signalRes.status === 'fulfilled' && signalRes.value && signalStore.ready,
+    riskReady: riskRes.status === 'fulfilled' && riskRes.value && risk.ready,
+    riskMode: risk.ready ? risk.mode : '',
+    killActive: risk.ready && risk.killActive,
+    openHalted: account.accountOk && account.openHalted,
+    haltReason: account.accountOk ? account.haltReason : '',
+    marketReady: marketRes.status === 'fulfilled' && marketRes.value && market.ready,
+    marketAsOf: market.sentimentAsOf,
+    marketStale: !market.ready || market.sentimentStale,
+    sourcesReady: sourceRes.status === 'fulfilled' && hasAvailableSource(sourceRes.value),
+    live: isLive(),
+    positions: account.positionsOk ? account.positions : [],
   }
+  loading.value = false
+  return ready
+}
+
+function actionOf(item: SignalItem) {
+  return buildDecisionAction(
+    item,
+    decisionContext.value && { ...decisionContext.value, accountBook: account.book, live: isLive() },
+    nowTick.value,
+  )
 }
 
 function openMarket(symbol: string) {
@@ -106,7 +173,25 @@ function openMarket(symbol: string) {
 }
 
 function openTrade(item: SignalItem) {
-  getWorkbench()?.openPanel('trade', { symbol: item.symbol, side: item.side, price: item.entry || '' })
+  if (
+    !buildDecisionAction(
+      item,
+      decisionContext.value && { ...decisionContext.value, accountBook: account.book, live: isLive() },
+      Date.now(),
+    ).canOpenTrade
+  )
+    return
+  getWorkbench()?.openPanel('trade', {
+    symbol: item.symbol,
+    side: item.side,
+    price: item.entry != null ? String(item.entry) : '',
+    signalId: item.id,
+    strategyVersionId: item.strategyVersionId,
+    book: item.book,
+    validUntil: item.validUntil,
+    traceId: item.traceId,
+    requestedPositionPct: item.positionPct,
+  })
 }
 
 function dimsOf(item: SignalItem) {
@@ -114,21 +199,25 @@ function dimsOf(item: SignalItem) {
 }
 
 function stateBadge(item: SignalItem): { text: string; cls: string } {
-  if (isClosed(item)) return { text: signalStatusLabel(item.status), cls: 'closed' }
+  if (isHandled(item) || ['rejected', 'cancelled'].includes(item.status.toLowerCase()))
+    return { text: signalStatusLabel(item.status), cls: 'closed' }
   if (isExpired(item)) return { text: '已过期', cls: 'expired' }
   return { text: validRemainText(item.validUntil, nowTick.value) || signalStatusLabel(item.status), cls: 'active' }
 }
 
 let offPush: (() => void) | undefined
 let tickTimer: ReturnType<typeof setInterval> | null = null
-let lastPush = 0
+let refreshTimer: ReturnType<typeof setInterval> | null = null
 
-function onPushMessage(msg: WsPushMessage) {
-  if (msg.topic !== 'signal') return
-  const now = Date.now()
-  if (now - lastPush < 2000) return
-  lastPush = now
-  void load()
+async function onPushMessage(msg: WsPushMessage) {
+  if (!['signal', 'position', 'alert'].includes(msg.topic)) return
+  const key = refreshKey()
+  const ready = await refreshes.fromPush()
+  if (!disposed && key === refreshKey() && !ready) throw new Error('信号面板核心状态尚未恢复')
+}
+
+function onVisible() {
+  if (!document.hidden) { nowTick.value = Date.now(); void load() }
 }
 
 onMounted(() => {
@@ -136,14 +225,38 @@ onMounted(() => {
   // signal 属常驻主题（BASE_TOPICS），只需 onPush，不必再 subscribe。
   offPush = onPush(onPushMessage)
   tickTimer = setInterval(() => {
-    nowTick.value = Date.now()
+    if (!document.hidden) nowTick.value = Date.now()
+  }, 1000)
+  refreshTimer = setInterval(() => {
+    if (!document.hidden) void load()
   }, 30_000)
+  offResync = onResync(['signal', 'position', 'alert'], async () => {
+    const key = refreshKey()
+    const ready = await load()
+    if (!disposed && key === refreshKey() && !ready) throw new Error('信号面板核心状态尚未恢复')
+  })
+  document.addEventListener('visibilitychange', onVisible)
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  contextVersion += 1
+  refreshes.dispose()
   offPush?.()
+  offResync?.()
+  document.removeEventListener('visibilitychange', onVisible)
   if (tickTimer) clearInterval(tickTimer)
+  if (refreshTimer) clearInterval(refreshTimer)
 })
+watch(
+  () => account.book,
+  () => {
+    contextVersion += 1
+    decisionContext.value = null
+    void load()
+  },
+  { flush: 'sync' },
+)
 </script>
 
 <template>
@@ -152,7 +265,7 @@ onBeforeUnmount(() => {
       <div>
         <h1 class="nt-title">信号中枢</h1>
         <p class="nt-note">
-          综合分、四维、入场止损止盈、建议仓位和证据。85 分以上高亮；过期信号置灰，不再可执行。
+          先读行动计划，再核对四维与证据。策略评分不是胜率，提交前重新校验价格、数量与风控。
           <span v-if="rows.length">有效 {{ activeCount }} / 共 {{ rows.length }}</span>
         </p>
       </div>
@@ -165,17 +278,21 @@ onBeforeUnmount(() => {
       <NtSelect v-model="strategyFilter" :options="strategyOptions" />
       <NtSelect v-model="sortKey" :options="sortOptions" />
     </div>
+    <ConditionalPlans :signal-id="planSignalId" />
 
     <p v-if="loading" class="nt-empty">读取中…</p>
-    <p v-else-if="error" class="nt-err">{{ error }}</p>
-    <p v-else-if="!rows.length" class="nt-empty">今日没有信号。</p>
-    <p v-else-if="!filtered.length" class="nt-empty">当前过滤条件下没有信号。</p>
-    <div v-else class="grid">
+    <p v-if="error" class="nt-err">{{ error }}</p>
+    <p v-if="!loading && !rows.length" class="nt-empty">{{ signalStore.ready ? '今日没有信号。' : '信号状态尚未恢复，不能判断是否有机会。' }}</p>
+    <p v-else-if="!loading && !filtered.length" class="nt-empty">当前过滤条件下没有信号。</p>
+    <div v-if="filtered.length" class="grid">
       <article
         v-for="item in filtered"
         :key="item.id || item.symbol + item.time"
         class="card"
-        :class="{ hot: item.highValue, stale: isClosed(item) || isExpired(item) }"
+        :class="{
+          hot: item.highValue,
+          stale: isHandled(item) || isExpired(item) || ['rejected', 'cancelled'].includes(item.status.toLowerCase()),
+        }"
       >
         <header>
           <button type="button" class="sym" @click="openMarket(item.symbol)">{{ item.symbol }}</button>
@@ -185,6 +302,15 @@ onBeforeUnmount(() => {
           <em :class="item.side === 'buy' ? 'up' : item.side === 'sell' ? 'down' : ''">{{ sideLabel(item.side) }}</em>
           <b class="badge" :class="stateBadge(item).cls">{{ stateBadge(item).text }}</b>
         </header>
+        <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
+          <h3>当前动作：{{ actionOf(item).title }}</h3>
+          <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
+          <p><strong>失效条件</strong>{{ actionOf(item).invalidation }}</p>
+          <p v-if="actionOf(item).blocker" class="action-plan__blocker">
+            <strong>主要阻断</strong>{{ actionOf(item).blocker }}
+          </p>
+          <p class="action-plan__caution"><strong>先看反证</strong>{{ actionOf(item).caution }}</p>
+        </section>
         <div class="body">
           <NtProgressRing :value="item.score" :hot="item.highValue" :size="56" />
           <template v-if="!item.degraded">
@@ -198,6 +324,7 @@ onBeforeUnmount(() => {
           </template>
           <p v-else class="degraded-note">模型降级：四维未复核，仅有规则分 {{ item.ruleScore ?? '—' }}</p>
         </div>
+        <p v-if="isHandled(item)" class="nt-note">账本已核成交 {{ item.executedVolume ?? '—' }} 股 · 均价 {{ price(item.executedPrice ?? null) }}。已有成交不代表整单完成，余量以原订单为准。</p>
         <dl>
           <div>
             <dt>入场</dt>
@@ -222,12 +349,14 @@ onBeforeUnmount(() => {
           <div v-if="item.hasPnl">
             <dt>后验盈亏</dt>
             <dd :class="(item.pnlPct ?? 0) >= 0 ? 'up' : 'down'">
-              {{ ratioPct(item.pnlPct) }}<template v-if="item.holdingDays != null"> · {{ item.holdingDays }} 日</template>
+              {{ pctText(item.pnlPct)
+              }}<template v-if="item.holdingDays != null"> · {{ item.holdingDays }} 日</template>
             </dd>
           </div>
         </dl>
         <p class="meta">
-          {{ strategyLabel(item.strategy) }} · 规则 {{ item.ruleScore ?? '—' }} · AI {{ item.aiScore ?? '—' }}
+          {{ strategyLabel(item.strategy) }} · 规则 {{ item.ruleScore ?? '—' }} · AI {{ item.aiScore ?? '—' }} · 账本
+          {{ item.book || '未返回' }} · 版本 {{ item.strategyVersionId || '未返回' }}
           <template v-if="item.holdDaysMax != null"> · 最长持有 {{ item.holdDaysMax }} 日</template>
           <template v-if="item.traceId"> · {{ item.traceId }}</template>
         </p>
@@ -236,12 +365,16 @@ onBeforeUnmount(() => {
           <li v-for="(line, index) in item.evidence" :key="index">{{ line }}</li>
         </ul>
         <button
-          v-if="!isClosed(item) && !isExpired(item)"
+          v-if="!isHandled(item) && !isExpired(item)" type="button" class="plan-open" @click="planSignalId = item.id"
+        >查看 / 冻结条件计划</button>
+        <button
+          v-if="!isHandled(item)"
           type="button"
           class="go"
+          :disabled="!actionOf(item).canOpenTrade"
           @click="openTrade(item)"
         >
-          去下单
+          准备模拟盘确认
         </button>
       </article>
     </div>
@@ -278,13 +411,14 @@ onBeforeUnmount(() => {
 
 /* AI 信号 ≥85：发光预算允许的高亮。 */
 .card.hot {
-  border-color: rgba(0, 229, 255, 0.45);
-  box-shadow: 0 0 24px rgba(0, 229, 255, 0.14);
+  border-color: var(--nt-accent-border);
+  box-shadow: var(--nt-glow-accent);
 }
 
 /* 已过期/已平仓：置灰，不再可执行。 */
 .card.stale {
-  opacity: 0.55;
+  background: var(--nt-bg-0);
+  border-style: dashed;
 }
 
 header {
@@ -332,12 +466,12 @@ em {
 
 .badge.active {
   color: var(--nt-accent);
-  border-color: rgba(0, 229, 255, 0.4);
+  border-color: var(--nt-accent-border);
 }
 
 .badge.expired {
   color: var(--nt-warn);
-  border-color: rgba(255, 107, 0, 0.4);
+  border-color: color-mix(in srgb, var(--nt-warn) 45%, var(--nt-border-1));
 }
 
 .badge.closed {
@@ -403,20 +537,55 @@ dd {
   gap: 3px;
 }
 
-.go {
+.go, .plan-open {
   align-self: flex-start;
   padding: 5px 12px;
   font-size: 12px;
   font-weight: 600;
   font-family: inherit;
   color: var(--nt-accent);
-  background: rgba(0, 229, 255, 0.06);
-  border: 1px solid rgba(0, 229, 255, 0.32);
+  background: var(--nt-accent-soft);
+  border: 1px solid var(--nt-accent-border);
   border-radius: var(--nt-radius-s);
   cursor: pointer;
 }
 
-.go:hover {
-  background: rgba(0, 229, 255, 0.12);
+.go:hover, .plan-open:hover {
+  background: var(--nt-accent-hover);
+}
+
+.go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.action-plan {
+  border-top: 1px solid var(--nt-border-1);
+  border-bottom: 1px solid var(--nt-border-1);
+  padding: 8px 0;
+}
+
+.action-plan h3 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  color: var(--nt-text-1);
+}
+
+.action-plan p {
+  margin: 4px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--nt-text-2);
+}
+
+.action-plan strong {
+  margin-right: 6px;
+  color: var(--nt-text-3);
+  font-weight: 500;
+}
+
+.action-plan .action-plan__blocker,
+.action-plan .action-plan__caution {
+  color: var(--nt-warn);
 }
 </style>

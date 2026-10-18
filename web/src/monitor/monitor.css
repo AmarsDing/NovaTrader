@@ -7,7 +7,7 @@
   height: 100vh;
   display: grid;
   grid-template-rows: 40px 26px auto minmax(0, 1fr) auto;
-  background: var(--nt-bg-0);
+  background: var(--nt-space-bg);
   color: var(--nt-text-1);
   font-family: var(--nt-font-sans);
   overflow: hidden;
@@ -20,8 +20,9 @@
   align-items: center;
   gap: 12px;
   padding: 0 14px;
-  border-bottom: 1px solid var(--nt-border-1);
-  background: var(--nt-bg-1);
+  border-bottom: 1px solid var(--nt-glass-border);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  box-shadow: var(--nt-edge-light), var(--nt-glow-soft);
 }
 
 .nt-monitor__bar h1 {
@@ -29,12 +30,14 @@
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.04em;
+  padding-left: 10px;
+  border-left: 3px solid var(--nt-accent);
 }
 
 .nt-monitor__bar .nt-link {
-  border: 1px solid var(--nt-border-2);
+  border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-s);
-  background: transparent;
+  background: var(--nt-bg-2);
   color: var(--nt-text-2);
   font: inherit;
   font-size: 12px;
@@ -50,7 +53,7 @@
 
 .nt-monitor__hint {
   margin-left: auto;
-  color: var(--nt-text-3);
+  color: var(--nt-text-2);
   font-family: var(--nt-font-mono);
   font-size: 12px;
 }
@@ -80,7 +83,7 @@
   gap: 6px;
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-s);
-  background: transparent;
+  background: var(--nt-bg-2);
   color: var(--nt-text-2);
   font: inherit;
   font-size: 12px;
@@ -110,16 +113,19 @@
 }
 
 .nt-health__pop {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  position: fixed;
+  top: 48px;
+  left: 16px;
   z-index: 30;
-  width: 340px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 65vh;
+  overflow: auto;
   padding: 12px 14px;
-  border: 1px solid var(--nt-border-2);
+  border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-m);
-  background: var(--nt-bg-glass);
-  backdrop-filter: var(--nt-blur-glass);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  backdrop-filter: var(--nt-glass-filter);
+  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth);
 }
 
 .nt-health__pop h3 {
@@ -163,8 +169,9 @@
 }
 
 .nt-health__pop li small {
-  color: var(--nt-text-3);
-  line-height: 1.4;
+  color: var(--nt-text-2);
+  font-size: 11.5px;
+  line-height: 1.5;
 }
 
 /* ---- 时段带 ---- */
@@ -175,7 +182,7 @@
   gap: 2px;
   padding: 0 14px;
   border-bottom: 1px solid var(--nt-border-1);
-  background: var(--nt-bg-1);
+  background: var(--nt-data-inset);
   font-size: 11px;
 }
 
@@ -188,12 +195,12 @@
 
 .nt-band__seg[data-state='past'] {
   color: var(--nt-text-3);
-  opacity: 0.55;
 }
 
 .nt-band__seg[data-state='now'] {
-  background: var(--nt-bg-3);
+  background: color-mix(in srgb, var(--nt-accent) 12%, var(--nt-bg-1));
   color: var(--nt-accent);
+  box-shadow: inset 0 -1px var(--nt-accent);
 }
 
 .nt-band__focus {
@@ -214,10 +221,13 @@
   display: flex;
   align-items: stretch;
   gap: 0;
-  height: 76px;
+  /* 3 行标准行高 - 2px = 标准 76px / 紧凑 64px；紧凑模式副行与 sparkline 隐藏（文末密度块） */
+  height: calc(var(--nt-row-h) * 3 - 2px);
   padding: 0 6px;
-  border-bottom: 1px solid var(--nt-border-1);
-  background: var(--nt-bg-1);
+  border-bottom: 1px solid var(--nt-glass-border);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  backdrop-filter: var(--nt-glass-filter);
+  box-shadow: var(--nt-edge-light), var(--nt-glow-soft);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -239,6 +249,7 @@
   cursor: pointer;
   font: inherit;
   transition: background var(--nt-transition);
+  box-shadow: inset 0 1px var(--nt-glass-highlight);
 }
 
 .nt-hud button:first-child {
@@ -246,7 +257,8 @@
 }
 
 .nt-hud button:hover {
-  background: var(--nt-bg-2);
+  background: var(--nt-accent-soft);
+  box-shadow: inset 0 -2px var(--nt-accent), var(--nt-edge-light);
 }
 
 .nt-hud button.is-hero {
@@ -258,7 +270,7 @@
 .nt-hud span {
   font-size: 10px;
   letter-spacing: 0.16em;
-  color: var(--nt-text-3);
+  color: var(--nt-text-2);
 }
 
 .nt-hud strong {
@@ -285,7 +297,7 @@
 }
 
 .nt-hud small {
-  color: var(--nt-text-3);
+  color: var(--nt-text-2);
   font-size: 11px;
   max-width: 168px;
   overflow: hidden;
@@ -314,8 +326,8 @@
   padding: 6px 16px;
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-m);
-  background: var(--nt-bg-glass);
-  backdrop-filter: var(--nt-blur-glass);
+  background: var(--nt-glass-bg);
+  box-shadow: var(--nt-edge-light);
   color: var(--nt-text-2);
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -328,6 +340,8 @@
   position: relative;
   min-width: 0;
   min-height: 0;
+  background: var(--nt-space-bg);
+  box-shadow: inset 0 1px var(--nt-glass-border), inset 0 -1px var(--nt-glass-border);
 }
 
 .nt-monitor__stage .nt-stage {
@@ -351,8 +365,8 @@
 .nt-terms {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--nt-border-1);
-  background: var(--nt-bg-1);
+  border-top: 1px solid var(--nt-glass-border);
+  background: var(--nt-data-bg);
 }
 
 .nt-terms__rail {
@@ -360,11 +374,13 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 4px;
-  height: 30px;
+  height: calc(var(--nt-row-h) + 4px); /* 标准 30px / 紧凑 26px */
   padding: 0 12px;
   border-bottom: 1px solid var(--nt-border-1);
   overflow-x: auto;
   scrollbar-width: thin;
+  background: var(--nt-glass-sheen), var(--nt-glass-raised);
+  box-shadow: var(--nt-edge-light);
 }
 
 .nt-terms__label {
@@ -372,7 +388,7 @@
   margin-right: 6px;
   font-size: 10px;
   letter-spacing: 0.16em;
-  color: var(--nt-text-3);
+  color: var(--nt-text-2);
 }
 
 .nt-terms__gap {
@@ -385,6 +401,8 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  /* 全局按钮皮肤 min-height:34px 会溢出 30px 的 rail，监控页微按钮一律归零（controls.css 裸 button 不动） */
+  min-height: 0;
   padding: 3px 8px;
   border: 0;
   border-radius: 999px;
@@ -413,7 +431,8 @@
    * 它的行最长（时分秒 + 域标签 + 内容 + 标识符），其余四格等分。 */
   grid-template-columns: minmax(0, 1.5fr) repeat(4, minmax(0, 1fr));
   gap: 1px;
-  height: 152px;
+  /* §4.1 版面图：30px 光点行 + 168px 终端带（紧凑密度在文末压到 120px） */
+  height: 168px;
   background: var(--nt-border-1);
 }
 
@@ -449,7 +468,7 @@
   display: flex;
   flex-direction: column;
   padding: 7px 10px;
-  background: var(--nt-bg-0);
+  background: var(--nt-bg-1);
   overflow: hidden auto;
   scrollbar-width: thin;
 }
@@ -460,13 +479,15 @@
   align-items: baseline;
   gap: 8px;
   margin-bottom: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--nt-border-1);
 }
 
 .nt-term header b {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  color: var(--nt-text-2);
+  color: var(--nt-text-1);
 }
 
 .nt-term header span {
@@ -480,6 +501,8 @@
 .nt-term__btn {
   flex: none;
   margin-left: auto;
+  /* 同上：裸 button 的 34px 最小高度会把格头行撑高，这里本地归零 */
+  min-height: 0;
   padding: 1px 7px;
   border: 1px solid var(--nt-border-2);
   border-radius: 999px;
@@ -553,6 +576,7 @@
 }
 
 button.nt-tape__row {
+  min-height: 0; /* 行高由内容定——34px 全局皮肤会让 168px 终端格只容 4 行 */
   font: inherit;
   font-family: var(--nt-font-mono);
   font-size: 11px;
@@ -678,7 +702,7 @@ button.nt-tape__row:hover {
   white-space: nowrap;
 }
 
-.nt-term li em.is-down {
+.nt-term li em.is-danger {
   color: var(--nt-danger);
 }
 
@@ -700,12 +724,13 @@ button.nt-tape__row:hover {
   white-space: nowrap;
 }
 
-.nt-term li i.is-up {
+/* 状态章命名与涨跌方向分离：is-live/is-danger/is-warn 只给状态章；span.is-up/.is-down 才是红涨绿跌的钱 */
+.nt-term li i.is-live {
   color: var(--nt-accent);
   border-color: var(--nt-accent);
 }
 
-.nt-term li i.is-down {
+.nt-term li i.is-danger {
   color: var(--nt-danger);
   border-color: var(--nt-danger);
 }
@@ -731,7 +756,7 @@ button.nt-tape__row:hover {
 .nt-term__empty,
 .nt-term__note {
   margin: 0;
-  color: var(--nt-text-3);
+  color: var(--nt-text-2);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -810,7 +835,6 @@ button.nt-tape__row:hover {
 
 .nt-monitor .dot.is-live {
   background: var(--nt-accent);
-  box-shadow: var(--nt-glow-accent);
 }
 
 .nt-monitor .dot.is-attention {
@@ -833,7 +857,6 @@ button.nt-tape__row:hover {
 /* 健康分档位的光点（accent/text/warn/danger 四档，text 档不发光） */
 .nt-monitor .dot.is-accent {
   background: var(--nt-accent);
-  box-shadow: var(--nt-glow-accent);
 }
 
 .nt-monitor .dot.is-text {
@@ -858,8 +881,7 @@ button.nt-tape__row:hover {
   display: grid;
   place-items: center;
   padding: 28px;
-  background: var(--nt-bg-glass);
-  backdrop-filter: blur(8px);
+  background: var(--nt-scrim);
 }
 
 .nt-pop__sheet {
@@ -867,10 +889,11 @@ button.nt-tape__row:hover {
   max-height: min(80vh, 780px);
   overflow: auto;
   padding: 18px;
-  border: 1px solid var(--nt-border-2);
+  border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-l);
-  background: var(--nt-bg-1);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  background: var(--nt-glass-sheen), var(--nt-glass-bg);
+  backdrop-filter: var(--nt-glass-filter);
+  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth), var(--nt-glow-soft);
   color: var(--nt-text-1);
   scrollbar-width: thin;
 }
@@ -970,7 +993,7 @@ button.nt-tape__row:hover {
   padding: 8px 10px;
   border: 1px solid var(--nt-border-1);
   border-radius: var(--nt-radius-m);
-  background: var(--nt-bg-2);
+  background: var(--nt-data-raised);
 }
 
 .nt-pop__grid span,
@@ -1043,4 +1066,15 @@ button.nt-tape__row:hover {
   .nt-terms__grid.is-offday .nt-term--dispatch {
     grid-column: auto;
   }
+}
+
+/* ---- 紧凑密度（§11：卡片去 sparkline 与副行，只留状态点 + 名称 + 主词；终端带 168→120px） ---- */
+
+html[data-density='compact'] .nt-hud small,
+html[data-density='compact'] .nt-hud__spark {
+  display: none;
+}
+
+html[data-density='compact'] .nt-terms__grid {
+  height: 120px;
 }

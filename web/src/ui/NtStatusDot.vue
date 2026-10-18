@@ -32,7 +32,7 @@ withDefaults(defineProps<{ status?: DotStatus; label?: string }>(), { status: 'o
 
 .nt-dot--live .nt-dot__core {
   background: var(--nt-success);
-  box-shadow: 0 0 6px rgba(0, 208, 132, 0.7);
+  box-shadow: none;
   animation: nt-dot-blink 2s ease-in-out infinite;
 }
 

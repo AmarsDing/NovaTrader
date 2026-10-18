@@ -10,28 +10,44 @@ import { getBriefing, type Briefing } from '@/api/brain'
 import { getConfigValues } from '@/api/config'
 import { listSources, type DataSource } from '@/api/datahub'
 import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
-import { listSignals, type SignalItem } from '@/api/signals'
 import { listCandidates } from '@/api/strategy'
 import type { Candidate } from '@/api/types/strategy'
 import NtSectorBar from '@/viz/NtSectorBar.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtButton from '@/ui/NtButton.vue'
+import ConditionalPlans from './ConditionalPlans.vue'
 import { useAccountStore } from '@/stores/account'
 import { useMarketStore } from '@/stores/market'
 import { useRiskStore } from '@/stores/risk'
-import { amount, clock, messageOf, phaseName, pnlClass, price, ratioPct, sideLabel, signed, validRemainText } from '@/utils/format'
-import { isLive, onPush, type WsPushMessage } from '@/ws/hub'
+import { useSignalsStore } from '@/stores/signals'
+import {
+  amount,
+  clock,
+  messageOf,
+  phaseName,
+  pnlClass,
+  price,
+  ratioPct,
+  sideLabel,
+  signed,
+  validRemainText,
+} from '@/utils/format'
+import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
+import { createPageRefresh } from './page-refresh'
 import { getWorkbench } from '@/workspace/inject'
 import type { Position } from '@/api/trade'
 import {
   buildGaps,
   buildMissed,
   buildTickets,
+  buildDecisionAction,
   countBlockedSources,
+  hasAvailableSource,
   missLabel,
   strategyLabel,
   type DeskGap,
   type DeskTicket,
+  type DecisionContext,
 } from './decision-desk'
 
 const REFRESH_MS = 30_000
@@ -39,9 +55,11 @@ const REFRESH_MS = 30_000
 const account = useAccountStore()
 const market = useMarketStore()
 const risk = useRiskStore()
+const signalStore = useSignalsStore()
 
-const signals = ref<SignalItem[]>([])
+const signals = computed(() => signalStore.ready ? signalStore.items : [])
 const candidates = ref<Candidate[]>([])
+const candidatesReady = ref(false)
 const words = ref<HotWord[]>([])
 const briefing = ref<Briefing | null>(null)
 const briefingMissing = ref(false)
@@ -60,20 +78,29 @@ const maxSinglePct = ref<number | null>(null)
 const selectedId = ref('')
 /** 异议点到的维，四维行高亮 */
 const focusDim = ref('')
+const decisionContext = ref<DecisionContext | null>(null)
+const nowTick = ref(Date.now())
 
 let timer: ReturnType<typeof setInterval> | null = null
+let actionTimer: ReturnType<typeof setInterval> | null = null
 let offPush: (() => void) | undefined
-let lastPush = 0
+let loadSequence = 0
+let focusSequence = 0
+let contextVersion = 0
+let disposed = false
+let offResync: (() => void) | undefined
+const refreshKey = () => `${account.book}:${contextVersion}`
+const refreshes = createPageRefresh({ key: refreshKey, read: readPage, pushIntervalMs: 2000 })
 
-const noTape = computed(() => market.up === 0 && market.down === 0)
+const noTape = computed(() => !market.ready || market.up == null || market.down == null || (market.up === 0 && market.down === 0))
 /** 顶栏之外，决策台卡片以当日盈亏领衔；缺 dayPnl 时用浮动盈亏兜底并在 sub 里写明。 */
-const dayPnlValue = computed(() => (account.dayPnl != null ? account.dayPnl : account.unrealized))
+const dayPnlValue = computed(() => account.accountOk ? (account.dayPnl != null ? account.dayPnl : account.unrealized) : null)
 const usedPct = computed(() => {
-  if (!account.equity || account.cash == null) return null
+  if (!account.accountOk || !account.equity || account.cash == null) return null
   return 1 - account.cash / account.equity
 })
 const chartRows = computed(() =>
-  market.sectors
+  (market.ready ? market.sectors : [])
     .filter((row) => row.avgPct != null)
     .map((row) => ({ name: row.name, avgPct: Number((row.avgPct as number).toFixed(2)) })),
 )
@@ -81,7 +108,19 @@ const tickets = computed(() => buildTickets(signals.value, maxSinglePct.value))
 const missed = computed(() => buildMissed(candidates.value))
 const selectedCount = computed(() => candidates.value.filter((row) => row.stage === 'selected').length)
 const selected = computed<DeskTicket | null>(
-  () => tickets.value.pending.find((item) => item.id === selectedId.value) ?? tickets.value.executed.find((item) => item.id === selectedId.value) ?? null,
+  () =>
+    tickets.value.pending.find((item) => item.id === selectedId.value) ??
+    tickets.value.executed.find((item) => item.id === selectedId.value) ??
+    null,
+)
+const selectedAction = computed(() =>
+  selected.value
+    ? buildDecisionAction(
+        selected.value,
+        decisionContext.value && { ...decisionContext.value, live: isLive() },
+        nowTick.value,
+      )
+    : null,
 )
 const gaps = computed<DeskGap[]>(() =>
   buildGaps({
@@ -92,8 +131,8 @@ const gaps = computed<DeskGap[]>(() =>
     briefingMissing: briefingMissing.value,
     briefingStale: !!briefing.value?.stale,
     anyDegraded: signals.value.some((row) => row.degraded),
-    paperDays: account.paperDays,
-    killActive: risk.killActive,
+    paperDays: account.accountOk ? account.paperDays : null,
+    killActive: risk.ready && risk.killActive,
     live: isLive(),
   }),
 )
@@ -115,7 +154,7 @@ function pointDim(key: string) {
 }
 
 function weight(position: Position): string {
-  if (!account.equity || !position.lastPrice || !position.quantity) return ''
+  if (!account.accountOk || !account.equity || !position.lastPrice || !position.quantity) return ''
   return `${(((position.lastPrice * position.quantity) / account.equity) * 100).toFixed(1)}%`
 }
 
@@ -144,40 +183,75 @@ function openMarket(symbol: string) {
 
 /** 下单仍进交易面板，带上这张票的代码、方向和入场价。交易面板在 P4 才拦截 */
 function openTrade(ticket: DeskTicket) {
-  openPanel('trade', { symbol: ticket.symbol, side: ticket.side, price: ticket.entry ?? '' })
+  if (
+    !buildDecisionAction(ticket, decisionContext.value && { ...decisionContext.value, live: isLive() }, Date.now())
+      .canOpenTrade
+  )
+    return
+  openPanel('trade', {
+    symbol: ticket.symbol,
+    side: ticket.side,
+    price: ticket.entry != null ? String(ticket.entry) : '',
+    signalId: ticket.id,
+    strategyVersionId: ticket.strategyVersionId,
+    book: ticket.book,
+    validUntil: ticket.validUntil,
+    traceId: ticket.traceId,
+    requestedPositionPct: ticket.risk.requestedPct,
+  })
 }
 
 async function loadFocus(symbol: string) {
+  const sequence = ++focusSequence
   focus.value = symbol
   try {
     const data = await timeline(symbol)
+    if (disposed || sequence !== focusSequence || focus.value !== symbol) return
     intelItems.value = data.items.slice(0, 6)
     intelSentiment.value = data.sentiment
   } catch (err) {
+    if (disposed || sequence !== focusSequence || focus.value !== symbol) return
     intelItems.value = []
     intelSentiment.value = null
     error.value = messageOf(err)
   }
 }
 
-async function load(manual = false) {
-  if (manual) loading.value = true
-  error.value = ''
-  const [accountRes, marketRes, riskRes, signalRes, candidateRes, wordRes, briefRes, sourceRes] =
-    await Promise.allSettled([
-      account.refresh(),
-      market.refresh(),
-      risk.refresh(),
-      listSignals(),
-      listCandidates({ limit: 40 }),
-      hotWords(),
-      getBriefing(''),
-      listSources(),
-    ])
+function load(manual = false) {
+  if (manual && !disposed) loading.value = true
+  return refreshes.refresh()
+}
 
-  if (signalRes.status === 'fulfilled') signals.value = signalRes.value
-  if (candidateRes.status === 'fulfilled') candidates.value = candidateRes.value
-  if (wordRes.status === 'fulfilled') words.value = wordRes.value.slice(0, 8)
+async function readPage(key: string): Promise<boolean> {
+  const sequence = ++loadSequence
+  loading.value = true
+  error.value = ''
+  const checkedBook = account.book
+  const [
+    accountRes,
+    marketRes,
+    riskRes,
+    signalRes,
+    candidateRes,
+    wordRes,
+    briefRes,
+    sourceRes,
+  ] = await Promise.allSettled([
+    account.refresh(),
+    market.refresh(),
+    risk.refresh(),
+    signalStore.refresh(),
+    listCandidates({ limit: 40 }),
+    hotWords(),
+    getBriefing(''),
+    listSources(),
+  ])
+
+  if (disposed || key !== refreshKey() || sequence !== loadSequence || account.book !== checkedBook) return false
+  nowTick.value = Date.now()
+  candidatesReady.value = candidateRes.status === 'fulfilled'
+  candidates.value = candidateRes.status === 'fulfilled' ? candidateRes.value : []
+  words.value = wordRes.status === 'fulfilled' ? wordRes.value.slice(0, 8) : []
   if (briefRes.status === 'fulfilled') {
     briefing.value = briefRes.value
     briefingMissing.value = !briefRes.value.summary && briefRes.value.items.length === 0
@@ -195,43 +269,95 @@ async function load(manual = false) {
     sourcesLoaded.value = false
   }
 
-  const failed = [accountRes, marketRes, riskRes, signalRes, candidateRes].find((item) => item.status === 'rejected')
+  decisionContext.value = {
+    checkedAt: nowTick.value,
+    accountBook: checkedBook,
+    accountReady: accountRes.status === 'fulfilled' && accountRes.value && account.accountOk,
+    positionsReady: account.positionsOk,
+    signalsReady: signalRes.status === 'fulfilled' && signalRes.value && signalStore.ready,
+    riskReady: riskRes.status === 'fulfilled' && riskRes.value && risk.ready,
+    riskMode: risk.ready ? risk.mode : '',
+    killActive: risk.ready && risk.killActive,
+    openHalted: account.accountOk && account.openHalted,
+    haltReason: account.accountOk ? account.haltReason : '',
+    marketReady: marketRes.status === 'fulfilled' && marketRes.value && market.ready,
+    marketAsOf: market.sentimentAsOf,
+    marketStale: !market.ready || market.sentimentStale,
+    sourcesReady: sourceRes.status === 'fulfilled' && hasAvailableSource(sourceRes.value),
+    live: isLive(),
+    positions: account.positionsOk ? account.positions : [],
+  }
+
+  const failed = [accountRes, marketRes, riskRes, signalRes, candidateRes].find(
+    (item) => item.status === 'rejected',
+  )
   if (failed && failed.status === 'rejected') error.value = messageOf(failed.reason)
   loading.value = false
+  return [accountRes, marketRes, riskRes, signalRes].every((item) => item.status === 'fulfilled' && item.value === true)
 }
 
 async function loadRiskParams() {
   try {
     const values = await getConfigValues()
+    if (disposed) return
     const parsed = Number(values['risk.max_single_pct'])
     maxSinglePct.value = Number.isFinite(parsed) && parsed > 0 ? parsed : null
   } catch {
+    if (disposed) return
     maxSinglePct.value = null
   }
 }
 
-function onPushMessage(msg: WsPushMessage) {
-  if (msg.topic !== 'signal' && msg.topic !== 'alert') return
+async function onPushMessage(msg: WsPushMessage) {
+  if (msg.topic !== 'signal' && msg.topic !== 'alert' && msg.topic !== 'position') return
   const data = msg.data && typeof msg.data === 'object' ? (msg.data as Record<string, unknown>) : {}
   const title = String(data.title || data.subject || data.symbol || data.kind || '')
   if (title) pulse.value = `${msg.topic === 'signal' ? '信号' : '告警'} ${title}`
-  const now = Date.now()
-  if (now - lastPush < 2000) return
-  lastPush = now
-  void load(false)
+  const key = refreshKey()
+  const ready = await refreshes.fromPush()
+  if (!disposed && key === refreshKey() && !ready) throw new Error('决策台核心状态尚未恢复')
+}
+
+function onVisible() {
+  if (!document.hidden) { nowTick.value = Date.now(); void load(false) }
 }
 
 onMounted(() => {
   void load(true)
   void loadRiskParams()
-  timer = setInterval(() => void load(false), REFRESH_MS)
+  timer = setInterval(() => { if (!document.hidden) void load(false) }, REFRESH_MS)
+  actionTimer = setInterval(() => {
+    if (!document.hidden) nowTick.value = Date.now()
+  }, 1000)
   offPush = onPush(onPushMessage)
+  offResync = onResync(['signal', 'position', 'alert'], async () => {
+    const key = refreshKey()
+    const ready = await load(false)
+    if (!disposed && key === refreshKey() && !ready) throw new Error('决策台核心状态尚未恢复')
+  })
+  document.addEventListener('visibilitychange', onVisible)
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  contextVersion += 1
+  focusSequence += 1
+  refreshes.dispose()
   if (timer) clearInterval(timer)
+  if (actionTimer) clearInterval(actionTimer)
   offPush?.()
+  offResync?.()
+  document.removeEventListener('visibilitychange', onVisible)
 })
+watch(
+  () => account.book,
+  () => {
+    contextVersion += 1
+    decisionContext.value = null
+    void load(false)
+  },
+  { flush: 'sync' },
+)
 </script>
 
 <template>
@@ -250,7 +376,9 @@ onBeforeUnmount(() => {
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">现在缺什么</h2>
-      <p v-if="!gaps.length" class="nt-empty">链路齐：快照、晨报、模型和行情通道都有数。仍只做两个模板，不是全市场机会。</p>
+      <p v-if="!gaps.length" class="nt-empty">
+        链路齐：快照、晨报、模型和行情通道都有数。仍只做两个模板，不是全市场机会。
+      </p>
       <ul v-else class="gaps">
         <li v-for="gap in gaps" :key="gap.id">
           <button type="button" :class="gap.level" @click="openPanel(gap.panel)">{{ gap.text }}</button>
@@ -262,14 +390,14 @@ onBeforeUnmount(() => {
       <NtStatCard
         label="当日盈亏"
         :value="signed(dayPnlValue)"
-        :sub="account.dayPnl != null ? `已实现 ${signed(account.realized)}` : '无当日盈亏口径，显示浮动盈亏'"
+        :sub="!account.accountOk ? '账户读取未核对' : account.dayPnl != null ? `已实现 ${signed(account.realized)}` : '无当日盈亏口径，显示浮动盈亏'"
         :tone="pnlClass(dayPnlValue) || 'neutral'"
         hero
       />
       <NtStatCard
         label="权益"
-        :value="amount(account.equity)"
-        :sub="`可用 ${amount(account.cash)}${usedPct != null ? ` · 已用 ${(usedPct * 100).toFixed(0)}%` : ''}`"
+        :value="amount(account.accountOk ? account.equity : null)"
+        :sub="account.accountOk ? `可用 ${amount(account.cash)}${usedPct != null ? ` · 已用 ${(usedPct * 100).toFixed(0)}%` : ''}` : '账户读取未核对'"
       />
       <NtStatCard
         label="情绪"
@@ -283,7 +411,7 @@ onBeforeUnmount(() => {
       <NtStatCard
         label="系统"
         :value="isLive() ? '实时' : '不是实时'"
-        :sub="`模式 ${risk.mode || '—'} · 炸板率 ${ratioPct(market.brokenRate)}`"
+        :sub="`模式 ${risk.ready ? risk.mode : '—'} · 炸板率 ${ratioPct(market.ready ? market.brokenRate : null)}`"
       />
     </section>
 
@@ -291,8 +419,11 @@ onBeforeUnmount(() => {
     <section class="nt-panel desk">
       <div class="desk__lanes">
         <div class="lane">
-          <h3>待执行 <b>{{ tickets.pending.length }}</b></h3>
-          <p v-if="!tickets.pending.length" class="nt-empty">没有待执行信号。</p>
+          <h3>
+            待执行 <b>{{ signalStore.ready ? tickets.pending.length : '—' }}</b>
+          </h3>
+          <p v-if="!signalStore.ready" class="nt-empty">信号未返回，待执行数量未知。</p>
+          <p v-else-if="!tickets.pending.length" class="nt-empty">没有待执行信号。</p>
           <ul v-else>
             <li
               v-for="ticket in tickets.pending"
@@ -304,13 +435,18 @@ onBeforeUnmount(() => {
               <span class="sym mono">{{ ticket.symbol }}</span>
               <span class="name">{{ ticket.name || strategyLabel(ticket.strategy) }}</span>
               <em v-if="ticket.degraded" class="tag">规则分</em>
-              <b :class="{ hot: ticket.highValue }">{{ ticket.degraded ? (ticket.ruleScore ?? '—') : (ticket.score ?? '—') }}</b>
+              <b :class="{ hot: ticket.highValue }">{{
+                ticket.degraded ? (ticket.ruleScore ?? '—') : (ticket.score ?? '—')
+              }}</b>
             </li>
           </ul>
         </div>
         <div class="lane">
-          <h3>已执行 <b>{{ tickets.executed.length }}</b></h3>
-          <p v-if="!tickets.executed.length" class="nt-empty">今天还没有执行的票。</p>
+          <h3>
+            已执行 <b>{{ signalStore.ready ? tickets.executed.length : '—' }}</b>
+          </h3>
+          <p v-if="!signalStore.ready" class="nt-empty">信号未返回，已执行数量未知。</p>
+          <p v-else-if="!tickets.executed.length" class="nt-empty">今天还没有执行的票。</p>
           <ul v-else>
             <li
               v-for="ticket in tickets.executed"
@@ -326,9 +462,12 @@ onBeforeUnmount(() => {
           </ul>
         </div>
         <div class="lane">
-          <h3>漏选 <b>{{ missed.length }}</b></h3>
-          <p class="nt-note">候选 {{ candidates.length }} · 入选 {{ selectedCount }}。</p>
-          <p v-if="!missed.length" class="nt-empty">没有漏选记录。</p>
+          <h3>
+            漏选 <b>{{ candidatesReady ? missed.length : '—' }}</b>
+          </h3>
+          <p class="nt-note">候选 {{ candidatesReady ? candidates.length : '—' }} · 入选 {{ candidatesReady ? selectedCount : '—' }}。</p>
+          <p v-if="!candidatesReady" class="nt-empty">候选未返回，漏选数量未知。</p>
+          <p v-else-if="!missed.length" class="nt-empty">没有漏选记录。</p>
           <ul v-else>
             <li v-for="row in missed" :key="row.symbol + row.strategy">
               <button type="button" class="sym mono link" @click="openMarket(row.symbol)">{{ row.symbol }}</button>
@@ -343,24 +482,49 @@ onBeforeUnmount(() => {
       <div class="desk__body">
         <template v-if="selected">
           <header class="ticket__head">
-            <button type="button" class="sym mono link big" @click="openMarket(selected.symbol)">{{ selected.symbol }}</button>
+            <button type="button" class="sym mono link big" @click="openMarket(selected.symbol)">
+              {{ selected.symbol }}
+            </button>
             <strong>{{ selected.name || strategyLabel(selected.strategy) }}</strong>
-            <em :class="selected.side === 'buy' ? 'up' : selected.side === 'sell' ? 'down' : ''">{{ sideLabel(selected.side) }}</em>
+            <em :class="selected.side === 'buy' ? 'up' : selected.side === 'sell' ? 'down' : ''">{{
+              sideLabel(selected.side)
+            }}</em>
             <span class="date">形成日 {{ selected.tradeDate || '—' }}</span>
+            <span class="date"
+              >账本 {{ selected.book || '未返回' }} · 版本 {{ selected.strategyVersionId || '未返回' }}</span
+            >
             <span v-if="selected.degraded" class="tag">规则分 {{ selected.ruleScore ?? '—' }}</span>
             <b v-else class="score" :class="{ hot: selected.highValue }">{{ selected.score ?? '—' }}</b>
             <span v-if="selected.lane === 'executed'" class="done">{{ selected.closedNote || '已执行' }}</span>
           </header>
 
+          <p v-if="selected.lane === 'executed'" class="nt-note">账本已核成交 {{ selected.executedVolume ?? '—' }} 股 · 成交均价 {{ price(selected.executedPrice ?? null) }}。部分成交可能仍有余量，请核对原订单。</p>
+          <section v-if="selectedAction" class="action-plan" :class="selectedAction.state" aria-label="当前行动计划">
+            <h4>当前动作：{{ selectedAction.title }}</h4>
+            <p><strong>什么时候行动</strong>{{ selectedAction.timing }}</p>
+            <p><strong>失效条件</strong>{{ selectedAction.invalidation }}</p>
+            <p v-if="selectedAction.blocker" class="action-plan__blocker">
+              <strong>主要阻断</strong>{{ selectedAction.blocker }}
+            </p>
+            <p class="action-plan__caution"><strong>先看反证</strong>{{ selectedAction.caution }}</p>
+            <p v-if="selectedAction.canOpenTrade" class="nt-note">
+              当前仅可准备模拟盘确认，尚未校验最新个股价格、数量与下单风控。
+            </p>
+          </section>
+
+          <ConditionalPlans :signal-id="selected.id" />
           <div class="ticket__grid">
             <div class="ticket__block">
               <h4>价格</h4>
               <p class="px">
-                入场 {{ price(selected.entryLow) }}–{{ price(selected.entryHigh) }} · 止损 {{ price(selected.stop) }} · 止盈 {{ price(selected.take) }}
+                入场 {{ price(selected.entryLow) }}–{{ price(selected.entryHigh) }} · 止损 {{ price(selected.stop) }} ·
+                止盈 {{ price(selected.take) }}
               </p>
               <p class="valid" :class="{ warn: !selected.validUntil }">
                 {{ selected.validUntil ? validRemainText(selected.validUntil) || '已过期' : '无有效期' }}
-                <template v-if="selected.risk.requestedPct != null"> · 请求仓位 {{ (selected.risk.requestedPct * 100).toFixed(0) }}%</template>
+                <template v-if="selected.risk.requestedPct != null">
+                  · 请求仓位 {{ (selected.risk.requestedPct * 100).toFixed(0) }}%</template
+                >
               </p>
             </div>
 
@@ -389,7 +553,9 @@ onBeforeUnmount(() => {
 
           <div class="ticket__block">
             <h4>理由</h4>
-            <p v-if="!selected.reasons.length" class="nt-empty">{{ selected.degraded ? '规则分：模型降级，没有研判正文' : '未调用' }}</p>
+            <p v-if="!selected.reasons.length" class="nt-empty">
+              {{ selected.degraded ? '规则分：模型降级，没有研判正文' : '未调用' }}
+            </p>
             <ol v-else class="reasons">
               <li v-for="(item, index) in selected.reasons" :key="index">{{ item }}</li>
             </ol>
@@ -401,8 +567,10 @@ onBeforeUnmount(() => {
           <div class="ticket__block">
             <h4>风控</h4>
             <p class="px">
-              请求仓位 {{ selected.risk.requestedPct != null ? `${(selected.risk.requestedPct * 100).toFixed(1)}%` : '—' }}
-              · 允许仓位 {{ selected.risk.allowedPct != null ? `${(selected.risk.allowedPct * 100).toFixed(1)}%` : '—' }}
+              请求仓位
+              {{ selected.risk.requestedPct != null ? `${(selected.risk.requestedPct * 100).toFixed(1)}%` : '—' }} ·
+              单股上限估算
+              {{ selected.risk.allowedPct != null ? `${(selected.risk.allowedPct * 100).toFixed(1)}%` : '—' }}
               <template v-if="selected.risk.rule"> · {{ selected.risk.rule }}</template>
             </p>
             <p class="nt-note">{{ selected.risk.note }}</p>
@@ -410,9 +578,16 @@ onBeforeUnmount(() => {
 
           <footer class="ticket__actions">
             <NtButton size="sm" variant="quiet" @click="openMarket(selected.symbol)">看行情</NtButton>
-            <NtButton v-if="selected.lane === 'pending'" size="sm" @click="openTrade(selected)">去下单</NtButton>
+            <NtButton
+              v-if="selected.lane === 'pending'"
+              size="sm"
+              :disabled="!selectedAction?.canOpenTrade"
+              @click="openTrade(selected)"
+              >准备模拟盘确认</NtButton
+            >
           </footer>
         </template>
+        <p v-else-if="!signalStore.ready" class="nt-empty">信号未返回，暂时无法展开决策票。</p>
         <p v-else class="nt-empty">点左边一票读正文。没有研判正文时这里写「未调用」或「规则分」，不编理由。</p>
       </div>
     </section>
@@ -424,7 +599,9 @@ onBeforeUnmount(() => {
         <p v-else class="nt-empty">晨报未返回。</p>
         <ul v-if="briefing?.items.length" class="brief-items">
           <li v-for="(item, index) in briefing.items.slice(0, 4)" :key="index">
-            <button v-if="item.symbol" type="button" class="sym" @click="loadFocus(item.symbol)">{{ item.symbol }}</button>
+            <button v-if="item.symbol" type="button" class="sym" @click="loadFocus(item.symbol)">
+              {{ item.symbol }}
+            </button>
             <span>{{ item.title || item.body }}</span>
           </li>
         </ul>
@@ -448,7 +625,9 @@ onBeforeUnmount(() => {
 
       <section class="nt-panel">
         <h2 class="nt-panel__title">持仓</h2>
-        <p v-if="account.openHalted" class="nt-err">开仓已停{{ account.haltReason ? `：${account.haltReason}` : '' }}</p>
+        <p v-if="account.accountOk && account.openHalted" class="nt-err">
+          开仓已停{{ account.haltReason ? `：${account.haltReason}` : '' }}
+        </p>
         <!-- 持仓接口失败和真的空仓分开写：没读到时账面不显示成空仓 -->
         <p v-if="!account.positionsOk" class="nt-err">持仓接口没有应答，账面不当作空仓。</p>
         <p v-else-if="!account.positions.length" class="nt-empty">暂无持仓。</p>
@@ -894,6 +1073,37 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.action-plan {
+  padding: 10px 12px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-bg-1);
+}
+
+.action-plan h4 {
+  margin: 0 0 8px;
+  color: var(--nt-text-1);
+  font-size: 13px;
+}
+
+.action-plan p {
+  margin: 5px 0;
+  color: var(--nt-text-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.action-plan strong {
+  margin-right: 8px;
+  font-weight: 500;
+  color: var(--nt-text-3);
+}
+
+.action-plan .action-plan__blocker,
+.action-plan .action-plan__caution {
+  color: var(--nt-warn);
 }
 
 @media (max-width: 900px) {

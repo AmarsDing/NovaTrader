@@ -22,7 +22,7 @@ function pulse(id: string, from: string, to: string, kind: Pulse['identifier']['
 
 function health(score: number, deductions: [HealthPart['key'], number][]): HealthScore {
   const labels: Record<HealthPart['key'], string> = {
-    fresh: '数据新鲜度',
+    fresh: '市场结果时效',
     services: '服务存活',
     model: '模型可用',
     risk: '风控在线',
@@ -33,6 +33,8 @@ function health(score: number, deductions: [HealthPart['key'], number][]): Healt
   return {
     score,
     tone: healthTone(score),
+    measuredCount: 5,
+    totalCount: 5,
     parts: keys.map((key) => ({ key, label: labels[key], deduction: map.get(key) ?? 0, note: '', measured: true })),
   }
 }
@@ -154,7 +156,7 @@ describe('TapeSession · 累积与去重', () => {
     const rows = session.absorb({ health: health(62, [['fresh', 16], ['model', 6]]) }, 5000)
     expect(rows).toHaveLength(1)
     expect(rows[0].domain).toBe('alert')
-    expect(rows[0].text).toBe('健康 62：数据新鲜度 -16，模型可用 -6')
+    expect(rows[0].text).toBe('健康 62：市场结果时效 -16，模型可用 -6')
     expect(rows[0].text).not.toContain('系统异常')
     /* 同一个分数同一组扣分项持续存在 → 不刷屏 */
     expect(session.absorb({ health: health(62, [['fresh', 16], ['model', 6]]) }, 6000)).toHaveLength(1)
@@ -165,11 +167,21 @@ describe('TapeSession · 累积与去重', () => {
     session.absorb({ health: health(62, [['fresh', 16], ['model', 6]]) }, 5000)
     const worse = session.absorb({ health: health(54, [['fresh', 20], ['model', 6]]) }, 6000)
     expect(worse).toHaveLength(2)
-    expect(worse[0].text).toBe('健康 54：数据新鲜度 -20，模型可用 -6')
+    expect(worse[0].text).toBe('健康 54：市场结果时效 -20，模型可用 -6')
     expect(session.absorb({ health: health(96, []) }, 7000)).toHaveLength(2)
     const again = session.absorb({ health: health(68, [['channel', 12]]) }, 8000)
     expect(again).toHaveLength(3)
     expect(again[0].text).toBe('健康 68：交易通道 -12')
+  })
+
+  it('缺测没有总分，不生成健康事件，也不能当成恢复后重复触发同一告警', () => {
+    const session = new TapeSession()
+    const alert = health(62, [['fresh', 16], ['model', 6]])
+    const unknown: HealthScore = { ...health(100, []), score: null, tone: 'warn', measuredCount: 0 }
+    expect(session.absorb({ health: unknown }, 4000)).toHaveLength(0)
+    expect(session.absorb({ health: alert }, 5000)).toHaveLength(1)
+    expect(session.absorb({ health: unknown }, 6000)).toHaveLength(1)
+    expect(session.absorb({ health: alert }, 7000)).toHaveLength(1)
   })
 
   it('§6.1：只有模型域的静默进流，同一静默期只记一行', () => {

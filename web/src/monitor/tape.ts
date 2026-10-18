@@ -223,7 +223,9 @@ export class TapeSession {
   /** §6.3：健康分 <70 → 一条告警行，必须列扣分项，绝不写「系统异常」。
    * 分数或扣分项变了才算新事件；回到 ≥70 后再次跌破会再记一条 */
   private absorbHealth(health: HealthScore | null, now: number): void {
-    if (!health || health.score >= 70) {
+    /* 缺测既不是恢复，也不是新的健康事件，保留上次已观测告警签名。 */
+    if (!health || health.score == null) return
+    if (health.score >= 70) {
       this.healthSig = ''
       return
     }

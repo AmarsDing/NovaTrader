@@ -1,6 +1,6 @@
 /**
  * WebSocket 主题负载类型（admin 2003 WS 网关）。
- * 信封统一为 { topic, event?, seq, data | payload }。
+ * Cursor = server_epoch + topic_seq；seq为兼容别名，metadata保留事件外壳。
  */
 
 export type WsTopic = 'signal' | 'position' | 'alert' | 'market' | 'brain'
@@ -16,7 +16,37 @@ export interface WsEnvelope {
   seq?: number | null
   data?: unknown
   payload?: unknown
+  server_epoch?: string
+  topic_seq?: number
+  request_id?: number
+  metadata?: WsEventMetadata
+  replayed?: boolean
   [key: string]: unknown
+}
+
+export interface WsEventMetadata extends Record<string, unknown> {
+  schema_version?: number
+  event_id?: string
+  trace_id?: string
+  causation_id?: string
+  correlation_id?: string
+  entity_id?: string
+  entity_version?: number
+  source?: string
+  subject?: string
+  time?: string
+  source_time?: string
+  received_at?: string
+  published_at?: string
+  gateway_received_at?: string
+}
+
+export interface WsResyncContext {
+  serverEpoch: string
+  topics: WsTopic[]
+  watermarks: Record<string, number>
+  reason: string
+  signal: AbortSignal
 }
 
 /** 派发给 onPush 订阅者的消息。topic='resume' 为重连提示帧。 */
@@ -24,6 +54,10 @@ export interface WsPushMessage {
   topic: string
   data: unknown
   seq?: number | null
+  serverEpoch?: string
+  metadata?: WsEventMetadata
+  /** Historical replay is a read-model invalidation, never a new execution authorization. */
+  replayed?: boolean
 }
 
 export interface SignalPushPayload extends Record<string, unknown> {

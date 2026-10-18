@@ -62,13 +62,13 @@ function widthOf(levels: DepthLevel[], index: number): number {
 .nt-depth__bar {
   position: absolute;
   inset: 0 auto 0 0;
-  background: rgba(255, 77, 77, 0.08);
-  border-right: 1px solid rgba(255, 77, 77, 0.2);
+  background: color-mix(in srgb, var(--nt-up) 8%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--nt-up) 20%, transparent);
 }
 
 .nt-depth__bar--bid {
-  background: rgba(0, 208, 132, 0.08);
-  border-right: 1px solid rgba(0, 208, 132, 0.2);
+  background: color-mix(in srgb, var(--nt-down) 8%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--nt-down) 20%, transparent);
 }
 
 .nt-depth__price {
