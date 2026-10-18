@@ -52,6 +52,8 @@
 
 ## G3 告警活跃感知与规则引擎 headless（P0）
 
+> 状态：**部分实施（2026-10-19）**。后端规则语义切片交付：`pkg/alert` 三态评估、re-arm 白名单重建、坏存储显式报错，单测（race）覆盖三态与 re-arm；实施记录：[M08 开发进度 G3 节](M08-风控/开发进度.md)。运行时接线（快照节拍评估 + outbox 通知链）、规则 CRUD、前端三 sink 与 notify-center 已读未读未做。
+
 **需求**：现状 `ws/hub.ts` `handlePush` 收到任何 alert/notify 都直接 `deskNotify` 原生通知——人在屏幕前也被系统响铃打扰；规则触发逻辑前后端边界未明，缺 re-arm/防重复语义。
 
 **设计要点**（抄 `notifications/app-notifier.ts`、`plugins/builtin/alerts/alert-engine.ts`）：
