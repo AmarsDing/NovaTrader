@@ -92,6 +92,15 @@ const allItems = computed<Item[]>(() => {
       run: () => getWorkbench()?.openPanel(def.id),
     }))
 
+  const desks: Item[] = (getWorkbench()?.desks ?? []).map((desk) => ({
+    id: `desk:${desk.id}`,
+    label: desk.title,
+    hint: `桌面包 · Shift+${desk.hotkey}`,
+    keywords: `desk 桌面 ${desk.id} ${desk.description}`,
+    kind: 'preset',
+    run: () => void getWorkbench()?.applyDesk(desk.id),
+  }))
+
   const presets: Item[] = Object.keys(layout.presets).map((name) => ({
     id: `preset:${name}`,
     label: name,
@@ -135,7 +144,7 @@ const allItems = computed<Item[]>(() => {
     },
     {
       id: 'cmd:hotkeys',
-      label: '热键：B/S 买卖、Shift+K 急停、Shift+T 交易、Shift+M 涨停、Shift+R 风控、1-9 切面板',
+      label: '热键：B/S 买卖、Shift+1~4 切桌、Shift+K 急停、Shift+T 交易、Shift+M 涨停、Shift+R 风控、1-9 切面板、Ctrl+Z 撤销布局',
       hint: '参考',
       keywords: 'hotkey shortcut key',
       kind: 'command',
@@ -166,6 +175,22 @@ const allItems = computed<Item[]>(() => {
       run: () => getWorkbench()?.resetToDefault(),
     },
     {
+      id: 'cmd:layout-undo',
+      label: '撤销布局切换',
+      hint: 'Ctrl+Z',
+      keywords: 'undo layout 撤销',
+      kind: 'command',
+      run: () => void getWorkbench()?.undoLayout(),
+    },
+    {
+      id: 'cmd:layout-redo',
+      label: '重做布局切换',
+      hint: 'Ctrl+Shift+Z',
+      keywords: 'redo layout 重做',
+      kind: 'command',
+      run: () => void getWorkbench()?.redoLayout(),
+    },
+    {
       id: 'cmd:logout',
       label: '退出登录',
       hint: auth.operatorName,
@@ -178,7 +203,7 @@ const allItems = computed<Item[]>(() => {
     },
   ]
 
-  return [...panels, ...presets, ...commands]
+  return [...panels, ...desks, ...presets, ...commands]
 })
 
 /** 助记符置顶动作行 + 最近代码联想行。 */

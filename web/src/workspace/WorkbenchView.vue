@@ -19,7 +19,8 @@ import AlertCenter from './AlertCenter.vue'
 import ConfigCenter from '@/view/ConfigCenter.vue'
 import NtToast from '@/ui/NtToast.vue'
 import { startWatchdog } from './connection-watchdog'
-import { startHotkeys } from './shortcuts'
+import { getWorkbench } from './inject'
+import { isEditable, startHotkeys } from './shortcuts'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,6 +66,12 @@ function onKeydown(event: KeyboardEvent) {
   } else if (key === 'p' && event.shiftKey) {
     event.preventDefault()
     palette.value?.open('command')
+  } else if (key === 'z') {
+    // 布局撤销/重做（G6）：输入态让位给文本框原生撤销。
+    if (isEditable(event.target)) return
+    event.preventDefault()
+    if (event.shiftKey) getWorkbench()?.redoLayout()
+    else getWorkbench()?.undoLayout()
   }
 }
 

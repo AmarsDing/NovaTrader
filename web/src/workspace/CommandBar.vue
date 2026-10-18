@@ -15,6 +15,7 @@ import { useSignalsStore } from '@/stores/signals'
 import { amount, clock, pnlClass, signed } from '@/utils/format'
 import { isLive } from '@/ws/hub'
 import { isPendingStatus } from '@/view/decision-desk'
+import { DESKS } from './desks'
 import { getWorkbench } from './inject'
 
 const emit = defineEmits<{ (e: 'palette'): void; (e: 'config'): void }>()
@@ -110,6 +111,12 @@ function savePreset() {
 function applyPreset(name: string) {
   menuOpen.value = false
   getWorkbench()?.applyLayout(layout.presets[name])
+}
+
+/** G6 交易时段桌：一键换整张工作面，Ctrl+Z 可撤销。 */
+function applyDesk(id: string) {
+  menuOpen.value = false
+  getWorkbench()?.applyDesk(id)
 }
 
 function dropPreset(name: string) {
@@ -215,7 +222,13 @@ function logout() {
       <div class="preset-wrap">
         <NtButton size="sm" :aria-expanded="menuOpen" @click="toggleMenu">布局预设</NtButton>
         <div v-if="menuOpen" class="preset-menu" role="dialog" aria-label="布局预设">
-          <p class="preset-menu__label">已保存</p>
+          <p class="preset-menu__label">交易时段桌（Shift+1~4 切换 · Ctrl+Z 撤销）</p>
+          <div v-for="desk in DESKS" :key="desk.id" class="preset-menu__row">
+            <button type="button" class="preset-menu__name" :title="desk.description" @click="applyDesk(desk.id)">
+              Shift+{{ desk.hotkey }} · {{ desk.title }}
+            </button>
+          </div>
+          <p class="preset-menu__label preset-menu__gap">已保存</p>
           <p v-if="!presetNames.length" class="preset-menu__empty">还没有保存的预设</p>
           <div v-for="name in presetNames" :key="name" class="preset-menu__row">
             <template v-if="renaming === name">
@@ -427,6 +440,12 @@ button.metric {
 
 .preset-menu__label {
   color: var(--nt-text-3);
+}
+
+.preset-menu__gap {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--nt-border-1);
 }
 
 .preset-menu__empty,

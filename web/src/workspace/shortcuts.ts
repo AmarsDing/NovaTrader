@@ -4,9 +4,11 @@
  * - Shift+T：打开交易面板；
  * - Shift+K：打开 Kill Switch 对话框（只读焦点，触发仍要二次确认）；
  * - Shift+M：打开涨停梯队；Shift+R：打开风控链；
+ * - Shift+1..4：切换 G6 交易时段桌（event.code 判定，与键盘布局无关）；
  * - 1..9：切换 dock 内第 N 个面板（按当前激活组标签顺序）。
- * Ctrl 组合键在 WorkbenchView（Ctrl+K / Ctrl+Shift+P / Ctrl+Shift+K），这里只管裸键与 Shift 组合。
+ * Ctrl 组合键在 WorkbenchView（Ctrl+K / Ctrl+Shift+P / Ctrl+Shift+K / Ctrl+Z），这里只管裸键与 Shift 组合。
  */
+import { matchDeskHotkey } from './desks'
 import { getWorkbench } from './inject'
 import { getPanel } from './panel-registry'
 import type { DockviewApi } from 'dockview-core'
@@ -16,7 +18,7 @@ export interface HotkeyOptions {
   openKillSwitch: () => void
 }
 
-function isEditable(target: EventTarget | null): boolean {
+export function isEditable(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   if (!el || !el.tagName) return false
   const tag = el.tagName
@@ -59,6 +61,12 @@ export function startHotkeys(opts: HotkeyOptions): () => void {
       return
     }
     if (event.shiftKey) {
+      const desk = matchDeskHotkey(event)
+      if (desk) {
+        event.preventDefault()
+        getWorkbench()?.applyDesk(desk.id)
+        return
+      }
       switch (key) {
         case 'T':
           event.preventDefault()

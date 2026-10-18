@@ -12,12 +12,14 @@ import { useLayoutStore } from '@/stores/layout'
 import { registerWorkbench, unregisterWorkbench, type WorkbenchApi } from './inject'
 import { stagePanelParams } from './panel-bus'
 import { getPanel, listPanels, canPopout } from './panel-registry'
+import { DESKS, getDesk, type DeskPanelSpec } from './desks'
+import { recordLayout, undoLayout, redoLayout } from './layout-history'
 import { createVueRenderers } from './vue-renderer'
 
 const SAVE_DEBOUNCE_MS = 500
 
 /** 盘中全览：中决策台，右涨停/行情/信号/情报同组，下交易。布局版本升级后旧布局作废。 */
-const DEFAULT_LAYOUT: { id: string; ref?: string; direction?: 'right' | 'below' | 'within' }[] = [
+const DEFAULT_LAYOUT: DeskPanelSpec[] = [
   { id: 'overview' },
   { id: 'limit-ladder', ref: 'overview', direction: 'right' },
   { id: 'market', ref: 'limit-ladder', direction: 'within' },
@@ -46,17 +48,23 @@ function accountKey(): string {
   return auth.user?.name || 'local'
 }
 
-function buildDefault(dock: DockviewApi) {
-  for (const item of DEFAULT_LAYOUT) {
-    const def = getPanel(item.id)
+/** 按声明顺序铺面板（默认屏与桌面包共用同一构建管线；ref 必须先于依赖者出现）。 */
+function buildPanels(dock: DockviewApi, specs: DeskPanelSpec[]) {
+  for (const spec of specs) {
+    const def = getPanel(spec.id)
     if (!def) continue
+    if (spec.params) stagePanelParams(spec.id, spec.params)
     dock.addPanel({
       id: def.id,
       component: def.id,
       title: def.title,
-      position: item.ref ? { referencePanel: item.ref, direction: item.direction ?? 'within' } : undefined,
+      position: spec.ref ? { referencePanel: spec.ref, direction: spec.direction ?? 'within' } : undefined,
     })
   }
+}
+
+function buildDefault(dock: DockviewApi) {
+  buildPanels(dock, DEFAULT_LAYOUT)
 }
 
 function openPanel(id: string, params?: Record<string, unknown>) {
@@ -99,8 +107,10 @@ function pruneUnknownPanels() {
   }
 }
 
-function applyLayout(next: unknown, opts: { persist?: boolean } = {}) {
+function applyLayout(next: unknown, opts: { persist?: boolean; record?: boolean } = {}) {
   if (!api) return
+  // 程序化整版切换前先留快照（G6 撤销）；启动恢复等内部套用显式 record:false。
+  if (opts.record !== false) recordLayout(api.toJSON())
   applying = true
   try {
     api.fromJSON(next as never)
@@ -116,9 +126,41 @@ function applyLayout(next: unknown, opts: { persist?: boolean } = {}) {
 
 function resetToDefault() {
   if (!api) return
+  recordLayout(api.toJSON())
   api.clear()
   buildDefault(api)
   persist()
+}
+
+/** G6 桌面包：记录快照 → 清空 → 按声明重建（参数走 panel-bus）→ 聚焦并持久化。切桌销毁浮窗。 */
+function applyDesk(id: string): boolean {
+  const desk = getDesk(id)
+  if (!api || !desk) return false
+  recordLayout(api.toJSON())
+  applying = true
+  api.clear()
+  buildPanels(api, desk.panels)
+  applying = false
+  if (!api.panels.length) buildDefault(api)
+  api.getPanel(desk.focus)?.api.setActive()
+  persist()
+  return true
+}
+
+function undoLast(): boolean {
+  if (!api) return false
+  const prev = undoLayout(api.toJSON())
+  if (prev == null) return false
+  applyLayout(prev, { record: false })
+  return true
+}
+
+function redoNext(): boolean {
+  if (!api) return false
+  const next = redoLayout(api.toJSON())
+  if (next == null) return false
+  applyLayout(next, { record: false })
+  return true
 }
 
 const workbench: WorkbenchApi = {
@@ -126,8 +168,12 @@ const workbench: WorkbenchApi = {
   captureLayout: () => api?.toJSON() ?? null,
   applyLayout,
   resetToDefault,
+  applyDesk,
+  undoLayout: undoLast,
+  redoLayout: redoNext,
   popoutPanel: (id: string) => void popoutPanel(id),
   panels: listPanels(),
+  desks: DESKS,
 }
 
 /** 把面板弹成独立窗口（dockview popout）；不允许的面板静默拒绝。 */
@@ -171,7 +217,7 @@ onMounted(() => {
   })
 
   const stored = layout.load(accountKey())
-  if (stored) applyLayout(stored, { persist: false })
+  if (stored) applyLayout(stored, { persist: false, record: false })
   if (!api.panels.length) buildDefault(api)
 
   offLayoutChange = api.onDidLayoutChange(scheduleSave)

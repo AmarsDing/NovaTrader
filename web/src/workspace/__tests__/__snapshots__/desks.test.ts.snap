@@ -1,0 +1,102 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`桌定义完整性 > DESKS 全表快照 1`] = `
+[
+  {
+    "description": "晨报 · 数据源健康 · 股池黑名单",
+    "focus": "morning-briefing",
+    "hotkey": 1,
+    "id": "preopen",
+    "panels": [
+      {
+        "id": "morning-briefing",
+      },
+      {
+        "direction": "right",
+        "id": "datasource-health",
+        "ref": "morning-briefing",
+      },
+      {
+        "direction": "within",
+        "id": "pool-manager",
+        "ref": "datasource-health",
+      },
+    ],
+    "title": "盘前准备",
+  },
+  {
+    "description": "行情（预绑 000001）· 涨停梯队 · 自选扫描",
+    "focus": "market",
+    "hotkey": 2,
+    "id": "auction",
+    "panels": [
+      {
+        "id": "market",
+        "params": {
+          "symbol": "000001",
+        },
+      },
+      {
+        "direction": "right",
+        "id": "limit-ladder",
+        "ref": "market",
+      },
+      {
+        "direction": "within",
+        "id": "watchlist",
+        "ref": "limit-ladder",
+      },
+    ],
+    "title": "竞价监控",
+  },
+  {
+    "description": "行情 · 信号 · 交易 · 风控链",
+    "focus": "signals",
+    "hotkey": 3,
+    "id": "trading",
+    "panels": [
+      {
+        "id": "market",
+      },
+      {
+        "direction": "right",
+        "id": "signals",
+        "ref": "market",
+      },
+      {
+        "direction": "within",
+        "id": "risk-chain",
+        "ref": "signals",
+      },
+      {
+        "direction": "below",
+        "id": "trade",
+        "ref": "market",
+      },
+    ],
+    "title": "打板作战",
+  },
+  {
+    "description": "回测 · 影子进化 · 风控日报",
+    "focus": "backtest",
+    "hotkey": 4,
+    "id": "review",
+    "panels": [
+      {
+        "id": "backtest",
+      },
+      {
+        "direction": "right",
+        "id": "evolution",
+        "ref": "backtest",
+      },
+      {
+        "direction": "within",
+        "id": "risk-report",
+        "ref": "evolution",
+      },
+    ],
+    "title": "盘后复盘",
+  },
+]
+`;
