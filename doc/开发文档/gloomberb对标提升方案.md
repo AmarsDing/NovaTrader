@@ -116,7 +116,7 @@
 
 ## G7 brokerif 对齐：previewOrder 与状态机（P1）
 
-> 状态：**部分实施（2026-10-19）**。后端交付：`pkg/brokerif.PreviewOrder`（R01–R15 逐条预检 + 金额/费用/现金干跑）与 `Tracker`（idle→connected→degraded→down 状态机）；`app/risk` 引擎侧 `Engine.Preview` 已接——与 Check 同装配同守卫、零副作用（无审计/预约/计数）；proto-first 暴露已接——`PreviewOrder` RPC（请求与 CheckOrder 同型，回包带逐条风控结论 + 金额/费用/现金），前端经 admin 前缀聚合 `POST /api/risk/preview` 直达（免改网关）。UI 强制展示与适配器状态上报未做；实施记录：[M09 开发进度 G7 节](M09-交易执行/开发进度.md)。
+> 状态：**部分实施（2026-10-19）**。后端交付：`pkg/brokerif.PreviewOrder`（R01–R15 逐条预检 + 金额/费用/现金干跑）与 `Tracker`（idle→connected→degraded→down 状态机）；`app/risk` 引擎侧 `Engine.Preview` 已接——与 Check 同装配同守卫、零副作用（无审计/预约/计数）；proto-first 暴露已接——`PreviewOrder` RPC（请求与 CheckOrder 同型，回包带逐条风控结论 + 金额/费用/现金），前端经 admin 前缀聚合 `POST /api/risk/preview` 直达（免改网关）。UI 验收①已接——交易面板表单合法自动预演摘要（可下/拦截 + 金额/费用/现金影响 + 未过规则标红），落单前再以全新试算强制复核，拦截或试算不可用一律不生成委托。适配器状态上报未做；实施记录：[M09 开发进度 G7 节](M09-交易执行/开发进度.md)。
 
 **需求**：下单前没有"干跑试算"入口；文件单网关（写 CSV → 终端读走 → 回报）的状态对 UI 不够一阶。
 

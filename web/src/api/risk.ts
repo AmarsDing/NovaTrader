@@ -129,6 +129,55 @@ export async function checkOrder(body: CheckBody): Promise<CheckReply> {
   }
 }
 
+/* ---------- G7 干跑试算：不下单的风控预检 + 金额/费用/现金影响 ---------- */
+
+export interface PreviewBody {
+  client_order_id?: string
+  account_type: string
+  symbol: string
+  side: string
+  price: number
+  volume: number
+  source?: string
+  operator?: string
+  [key: string]: unknown
+}
+
+export interface PreviewReply {
+  approved: boolean
+  blockRule: string
+  reason: string
+  /** 风控缩量后的股数（未缩量为申报数） */
+  volume: number | null
+  adjusted: boolean
+  amount: number | null
+  fee: number | null
+  /** 买入为负、卖出为正 */
+  cashDelta: number | null
+  hits: RuleHit[]
+}
+
+export async function previewOrder(body: PreviewBody): Promise<PreviewReply> {
+  const raw = (await request('/api/risk/preview', { method: 'POST', json: body })) as RawRecord
+  const record = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
+  return {
+    approved: !!record.approved,
+    blockRule: pick<string>(record, 'blockRule', 'block_rule') || '',
+    reason: pick<string>(record, 'reason', 'message') || '',
+    volume: num(pick(record, 'volume')),
+    adjusted: !!record.adjusted,
+    amount: num(pick(record, 'amount')),
+    fee: num(pick(record, 'fee')),
+    cashDelta: num(pick(record, 'cashDelta', 'cash_delta')),
+    hits: asList<RawRecord>(record, 'results').map((h) => ({
+      code: pick<string>(h, 'rule', 'code') || '',
+      name: pick<string>(h, 'name', 'title') || '',
+      pass: !!(h.pass ?? h.ok),
+      detail: pick<string>(h, 'note', 'detail', 'reason') || '',
+    })),
+  }
+}
+
 /* ---------- 风控日报（M08） ---------- */
 
 export interface RiskReportRow {

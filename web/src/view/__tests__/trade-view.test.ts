@@ -7,7 +7,7 @@ import NtTable from '@/ui/NtTable.vue'
 
 const mock = vi.hoisted(() => ({
   account: vi.fn(), positions: vi.fn(), orders: vi.fn(), fills: vi.fn(), risk: vi.fn(),
-  place: vi.fn(), getOrder: vi.fn(), signal: vi.fn(), confirm: vi.fn(),
+  place: vi.fn(), getOrder: vi.fn(), signal: vi.fn(), confirm: vi.fn(), preview: vi.fn(),
   accountStore: { book: 'SIM', cash: 100_000, refresh: vi.fn() },
   params: null as null | ((params: Record<string, unknown>) => void),
   push: null as null | ((message: { topic: string; data?: unknown }) => void | Promise<void>),
@@ -16,7 +16,7 @@ vi.mock('@/api/trade', () => ({
   getAccount: mock.account, listPositions: mock.positions, listOrders: mock.orders, listFills: mock.fills,
   placeOrder: mock.place, getOrder: mock.getOrder, cancelOrder: vi.fn(),
 }))
-vi.mock('@/api/risk', () => ({ getRiskState: mock.risk }))
+vi.mock('@/api/risk', () => ({ getRiskState: mock.risk, previewOrder: mock.preview }))
 vi.mock('@/api/signals', () => ({ getSignal: mock.signal }))
 vi.mock('@/store/confirm', () => ({ askConfirm: mock.confirm }))
 vi.mock('@/stores/account', () => ({ useAccountStore: () => mock.accountStore }))
@@ -63,6 +63,8 @@ beforeEach(() => {
   mock.orders.mockResolvedValue([])
   mock.fills.mockResolvedValue([])
   mock.risk.mockResolvedValue({ mode: 'L1', killActive: false })
+  // G7 干跑试算默认放行；各用例按需要覆盖为拦截/缩量/不可用。
+  mock.preview.mockResolvedValue({ approved: true, blockRule: '', reason: '', volume: 100, adjusted: false, amount: 1000, fee: 5.05, cashDelta: -1005.05, hits: [] })
   mock.signal.mockResolvedValue({ id: '42', strategyVersionId: '9', book: 'paper', symbol: '600519.SH', side: 'buy', status: 'approved', validUntil: signalParams.validUntil, entryLow: 9.9, entryHigh: 10.1 })
   mock.place.mockImplementation(async (draft: { clientOrderId: string }) => ({ id: draft.clientOrderId, status: 'submitted', reason: '', ...draft }))
   mock.confirm.mockResolvedValue('ok')
@@ -122,6 +124,64 @@ describe('trade view contracts', () => {
     expect(wrapper!.findAllComponents(NtInput)[1]!.props('modelValue')).toBe('')
     expect(wrapper!.findAllComponents(NtInput)[2]!.props('modelValue')).toBe('')
     expect(wrapper!.text()).toContain('解除原信号关联')
+  })
+
+  it('风控试算拦截时禁提交，摘要中标出拦截规则', async () => {
+    mock.preview.mockResolvedValue({ approved: false, blockRule: 'R04', reason: '单票仓位超限', volume: 0, adjusted: false, amount: 0, fee: 0, cashDelta: 0, hits: [{ code: 'R04', name: '单票仓位', pass: false, detail: '单票仓位超限' }] })
+    await mountView()
+    await prepareSignal()
+    await wrapper!.find('form').trigger('submit')
+    await flushPromises()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.text()).toContain('风控试算未放行（R04）')
+    expect(wrapper!.text()).toContain('单票仓位超限')
+    const text = wrapper!.text()
+    expect(text).toContain('风控试算拦截 R04')
+    expect(text).toContain('未过规则')
+    // 试算拦截留在面板状态里，提交按钮持续禁用。
+    const submitButton = wrapper!.findAllComponents({ name: 'NtButton' }).find((button) => button.text().includes('提交委托'))
+    expect(submitButton!.props('disabled')).toBe(true)
+  })
+
+  it('试算接口失败按未放行处理，不落单', async () => {
+    mock.preview.mockRejectedValue(new Error('risk offline'))
+    await mountView()
+    await prepareSignal()
+    await wrapper!.find('form').trigger('submit')
+    await flushPromises()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.text()).toContain('风控试算未返回，暂不能提交')
+  })
+
+  it('缩量放行在摘要中可见，委托按原口径风控缩量提交', async () => {
+    mock.preview.mockResolvedValue({ approved: true, blockRule: '', reason: '', volume: 400, adjusted: true, amount: 4000, fee: 5.05, cashDelta: -4005.05, hits: [] })
+    await mountView()
+    await prepareSignal()
+    await wrapper!.find('form').trigger('submit')
+    await flushPromises()
+    expect(mock.place).toHaveBeenCalledWith(expect.objectContaining({ volume: 100 }))
+    expect(wrapper!.text()).toContain('缩量放行 400 股')
+  })
+
+  it('表单停笔后自动预演一次，表单再改动丢弃过期响应', async () => {
+    await mountView()
+    await prepareSignal()
+    expect(mock.preview).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(mock.preview).toHaveBeenCalledTimes(1)
+    expect(mock.preview.mock.calls[0]![0]).toMatchObject({ account_type: 'SIM', symbol: '600519.SH', side: 'buy', price: 10, volume: 100, source: 'manual' })
+    expect(String(mock.preview.mock.calls[0]![0].client_order_id)).toMatch(/^preview-/)
+    expect(wrapper!.text()).toContain('风控试算可下')
+    expect(wrapper!.text()).toContain('现金影响')
+    // 停笔期内连续改动只保留最后一次预演。
+    wrapper!.findAllComponents(NtInput)[2]!.vm.$emit('update:modelValue', '200')
+    await vi.advanceTimersByTimeAsync(100)
+    wrapper!.findAllComponents(NtInput)[2]!.vm.$emit('update:modelValue', '300')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(mock.preview).toHaveBeenCalledTimes(2)
+    expect(mock.preview.mock.calls[1]![0]).toMatchObject({ volume: 300 })
   })
 
   it('未知响应锁住重复提交，只核对原编号，不生成新委托', async () => {

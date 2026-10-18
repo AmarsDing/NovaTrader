@@ -5,7 +5,7 @@ import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { getAccount } from '@/api/trade'
-import { getRiskState, type RiskStateView } from '@/api/risk'
+import { getRiskState, previewOrder, type PreviewBody, type PreviewReply, type RiskStateView } from '@/api/risk'
 import { getSignal } from '@/api/signals'
 import { onPush, onResync } from '@/ws/hub'
 import { createPageRefresh } from './page-refresh'
@@ -107,6 +107,12 @@ const form = reactive<{ symbol: string; side: 'buy' | 'sell'; price: string; vol
   price: '',
   volume: '',
 })
+
+/** G7 干跑试算：表单合法后自动预演摘要；提交时仍以一次全新试算为准，不沿用这里的结果。 */
+const preview = ref<PreviewReply | null>(null)
+const previewIssue = ref('')
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+let previewSequence = 0
 
 // 连续运行报告只提供证据，不授予权限；当前真实文件通道尚未验收。
 const liveAllowed = computed(() => false)
@@ -243,6 +249,8 @@ const submissionBlock = computed(() => {
   if (form.side === 'buy' && (riskSnapshot.value.killActive || riskSnapshot.value.mode === 'L0')) return '当前只允许处理持仓，不能新买入'
   if (account.value === 'LIVE' && !liveAllowed.value) return '实盘准入状态未通过'
   if (account.value === 'LIVE') return '实盘文件单通道尚未验收，本轮仅支持模拟委托'
+  // G7：表单对应的试算拦截时下按钮一并禁提交（提交时还会以全新试算再拦截一次）。
+  if (preview.value && !preview.value.approved) return `风控试算未放行${preview.value.blockRule ? `（${preview.value.blockRule}）` : ''}：${preview.value.reason || '请调整委托后重试'}`
   return ''
 })
 const canSubmit = computed(() => !submissionBlock.value && !submitting.value && !loading.value && symbolOk.value && priceOk.value && volumeOk.value)
@@ -257,6 +265,38 @@ const positionRef = computed(() => {
   const code = form.symbol.trim().toUpperCase()
   if (!code) return null
   return positions.value.find((p) => p.symbol.toUpperCase() === code) ?? null
+})
+/** 试算结果里未放行的规则（展示明细）。 */
+const previewFailed = computed(() => (preview.value?.hits ?? []).filter((hit) => !hit.pass))
+
+function previewBodyFor(clientOrderId: string, symbol: string, side: 'buy' | 'sell', px: number, vol: number): PreviewBody {
+  return { client_order_id: clientOrderId, account_type: account.value, symbol, side, price: px, volume: vol, source: 'manual', operator: auth.operatorName }
+}
+
+/** 表单停笔 250ms 后预演一次（预览不落单、不占预约）。序列号丢弃过期响应。 */
+async function runPreview(sequence: number) {
+  const body = previewBodyFor(`preview-${crypto.randomUUID()}`, form.symbol.trim(), form.side, priceNum.value, volumeNum.value)
+  try {
+    const result = await previewOrder(body)
+    if (disposed || sequence !== previewSequence) return
+    previewIssue.value = ''
+    preview.value = result
+  } catch (err) {
+    if (disposed || sequence !== previewSequence) return
+    preview.value = null
+    previewIssue.value = `风控试算暂不可用：${messageOf(err)}；提交时会重新试算`
+  }
+}
+
+watch([() => form.symbol, () => form.side, () => form.price, () => form.volume, account], () => {
+  preview.value = null
+  previewIssue.value = ''
+  previewSequence += 1
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = null
+  if (!symbolOk.value || !priceOk.value || !volumeOk.value) return
+  const sequence = previewSequence
+  previewTimer = setTimeout(() => { void runPreview(sequence) }, 250)
 })
 
 watch(
@@ -388,6 +428,19 @@ async function submit() {
     if (disposed) return
     clockMs.value = Date.now()
     if (submissionBlock.value) throw new Error(submissionBlock.value)
+    // G7：落单前必跑一次全新的干跑试算（同草稿编号，只预演不留痕）。拦截或不可用都不生成委托。
+    let pv: PreviewReply
+    try {
+      pv = await previewOrder(previewBodyFor(draft.clientOrderId, draft.symbol, draft.side, draft.price, draft.volume))
+    } catch (err) {
+      throw new Error(`风控试算未返回，暂不能提交：${messageOf(err)}`, { cause: err })
+    }
+    if (disposed) return
+    preview.value = pv
+    previewIssue.value = ''
+    if (!pv.approved) throw new Error(`风控试算未放行${pv.blockRule ? `（${pv.blockRule}）` : ''}：${pv.reason || '未给出原因'}`)
+    if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) throw new Error('试算期间表单已变化，请重新核对')
+    if (disposed) return
     const pending = readPendingTrade(localStorage, journalKey)
     if (pending) {
       uncertainDraft.value = pending
@@ -551,6 +604,7 @@ const offResync = onResync(['position', 'alert'], async () => {
 onBeforeUnmount(() => {
   disposed = true
   contextVersion += 1
+  previewSequence += 1
   refreshes.dispose()
   readSequence += 1
   offPanelParams()
@@ -560,6 +614,7 @@ onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer)
   if (clockTimer) clearInterval(clockTimer)
   if (cancelAllTimer) clearTimeout(cancelAllTimer)
+  if (previewTimer) clearTimeout(previewTimer)
 })
 </script>
 
@@ -603,6 +658,19 @@ onBeforeUnmount(() => {
         · 现价 {{ price(positionRef.lastPrice) }} / 成本 {{ price(positionRef.avgCost) }}
       </template>
     </p>
+    <section v-if="preview" class="preview" :class="{ blocked: !preview.approved }">
+      <p class="preview-line">
+        <template v-if="preview.approved">风控试算可下</template>
+        <template v-else>风控试算拦截{{ preview.blockRule ? ` ${preview.blockRule}` : '' }}</template>
+        · 金额 {{ amount(preview.amount) }} · 费用 {{ amount(preview.fee) }} · 现金影响 {{ amount(preview.cashDelta) }}
+        <span v-if="preview.approved && preview.adjusted && preview.volume != null" class="shrink">· 缩量放行 {{ preview.volume }} 股</span>
+      </p>
+      <p v-if="!preview.approved && preview.reason" class="preview-reason">{{ preview.reason }}</p>
+      <p v-if="previewFailed.length" class="preview-fails">
+        未过规则：<span v-for="hit in previewFailed" :key="hit.code" class="fail">{{ hit.code }} {{ hit.name }}</span>
+      </p>
+    </section>
+    <p v-else-if="previewIssue" class="nt-note">{{ previewIssue }}</p>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <p v-if="hint" class="nt-note">{{ hint }}</p>
     <PaperAdmission />
@@ -718,6 +786,49 @@ h2 {
   color: var(--nt-text-2);
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+.preview {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: var(--nt-radius-s);
+}
+
+.preview.blocked {
+  border-color: var(--nt-danger);
+}
+
+.preview-line {
+  margin: 0;
+  color: var(--nt-text-2);
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.preview.blocked .preview-line,
+.preview-reason {
+  color: var(--nt-danger);
+}
+
+.preview-reason {
+  margin: 4px 0 0;
+}
+
+.preview-fails {
+  margin: 4px 0 0;
+  color: var(--nt-text-2);
+}
+
+.preview-fails .fail {
+  margin-right: 8px;
+  color: var(--nt-danger);
+  font-family: var(--nt-font-mono);
+}
+
+.preview .shrink {
+  color: var(--nt-warn);
 }
 
 .filters {
