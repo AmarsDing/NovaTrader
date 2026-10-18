@@ -133,6 +133,8 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.dispositions(w, r)
 	case r.URL.Path == "/api/ops/dead-letter-replay":
 		g.replayDeadLetter(w, r)
+	case r.URL.Path == "/api/ops/trace-coverage":
+		g.traceCoverage(w, r)
 	case r.URL.Path == "/api/ops/environment":
 		g.serveEnvironment(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/ops/backup":
