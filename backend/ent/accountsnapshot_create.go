@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"server/ent/accountsnapshot"
@@ -89,6 +90,12 @@ func (_c *AccountSnapshotCreate) SetRiskRatio(v float64) *AccountSnapshotCreate 
 // SetPositionCount sets the "position_count" field.
 func (_c *AccountSnapshotCreate) SetPositionCount(v int) *AccountSnapshotCreate {
 	_c.mutation.SetPositionCount(v)
+	return _c
+}
+
+// SetState sets the "state" field.
+func (_c *AccountSnapshotCreate) SetState(v json.RawMessage) *AccountSnapshotCreate {
+	_c.mutation.SetState(v)
 	return _c
 }
 
@@ -233,6 +240,10 @@ func (_c *AccountSnapshotCreate) createSpec() (*AccountSnapshot, *sqlgraph.Creat
 	if value, ok := _c.mutation.PositionCount(); ok {
 		_spec.SetField(accountsnapshot.FieldPositionCount, field.TypeInt, value)
 		_node.PositionCount = value
+	}
+	if value, ok := _c.mutation.State(); ok {
+		_spec.SetField(accountsnapshot.FieldState, field.TypeJSON, value)
+		_node.State = value
 	}
 	return _node, _spec
 }
@@ -433,6 +444,24 @@ func (u *AccountSnapshotUpsert) UpdatePositionCount() *AccountSnapshotUpsert {
 // AddPositionCount adds v to the "position_count" field.
 func (u *AccountSnapshotUpsert) AddPositionCount(v int) *AccountSnapshotUpsert {
 	u.Add(accountsnapshot.FieldPositionCount, v)
+	return u
+}
+
+// SetState sets the "state" field.
+func (u *AccountSnapshotUpsert) SetState(v json.RawMessage) *AccountSnapshotUpsert {
+	u.Set(accountsnapshot.FieldState, v)
+	return u
+}
+
+// UpdateState sets the "state" field to the value that was provided on create.
+func (u *AccountSnapshotUpsert) UpdateState() *AccountSnapshotUpsert {
+	u.SetExcluded(accountsnapshot.FieldState)
+	return u
+}
+
+// ClearState clears the value of the "state" field.
+func (u *AccountSnapshotUpsert) ClearState() *AccountSnapshotUpsert {
+	u.SetNull(accountsnapshot.FieldState)
 	return u
 }
 
@@ -648,6 +677,27 @@ func (u *AccountSnapshotUpsertOne) AddPositionCount(v int) *AccountSnapshotUpser
 func (u *AccountSnapshotUpsertOne) UpdatePositionCount() *AccountSnapshotUpsertOne {
 	return u.Update(func(s *AccountSnapshotUpsert) {
 		s.UpdatePositionCount()
+	})
+}
+
+// SetState sets the "state" field.
+func (u *AccountSnapshotUpsertOne) SetState(v json.RawMessage) *AccountSnapshotUpsertOne {
+	return u.Update(func(s *AccountSnapshotUpsert) {
+		s.SetState(v)
+	})
+}
+
+// UpdateState sets the "state" field to the value that was provided on create.
+func (u *AccountSnapshotUpsertOne) UpdateState() *AccountSnapshotUpsertOne {
+	return u.Update(func(s *AccountSnapshotUpsert) {
+		s.UpdateState()
+	})
+}
+
+// ClearState clears the value of the "state" field.
+func (u *AccountSnapshotUpsertOne) ClearState() *AccountSnapshotUpsertOne {
+	return u.Update(func(s *AccountSnapshotUpsert) {
+		s.ClearState()
 	})
 }
 
@@ -1027,6 +1077,27 @@ func (u *AccountSnapshotUpsertBulk) AddPositionCount(v int) *AccountSnapshotUpse
 func (u *AccountSnapshotUpsertBulk) UpdatePositionCount() *AccountSnapshotUpsertBulk {
 	return u.Update(func(s *AccountSnapshotUpsert) {
 		s.UpdatePositionCount()
+	})
+}
+
+// SetState sets the "state" field.
+func (u *AccountSnapshotUpsertBulk) SetState(v json.RawMessage) *AccountSnapshotUpsertBulk {
+	return u.Update(func(s *AccountSnapshotUpsert) {
+		s.SetState(v)
+	})
+}
+
+// UpdateState sets the "state" field to the value that was provided on create.
+func (u *AccountSnapshotUpsertBulk) UpdateState() *AccountSnapshotUpsertBulk {
+	return u.Update(func(s *AccountSnapshotUpsert) {
+		s.UpdateState()
+	})
+}
+
+// ClearState clears the value of the "state" field.
+func (u *AccountSnapshotUpsertBulk) ClearState() *AccountSnapshotUpsertBulk {
+	return u.Update(func(s *AccountSnapshotUpsert) {
+		s.ClearState()
 	})
 }
 

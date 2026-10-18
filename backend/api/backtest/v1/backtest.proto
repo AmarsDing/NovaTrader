@@ -10,6 +10,13 @@ option go_package = "server/api/backtest/v1;v1";
 // Backtest 是 M07 回测与自进化。客户端经 admin /api/backtest/* 转发到 /v1/backtest/*。
 // 时间字段为 RFC3339（上海时区），日期为 2006-01-02。比例都是小数。
 service Backtest {
+  // Freeze point-in-time inputs and expose all exclusions before creating a task.
+  rpc FreezeDataset(FreezeDatasetRequest) returns (DatasetReply) {
+    option (google.api.http) = { post: "/v1/backtest/datasets" body: "*" };
+  }
+  rpc GetDataset(GetDatasetRequest) returns (DatasetReply) {
+    option (google.api.http) = { get: "/v1/backtest/datasets/{manifest_id}" };
+  }
   // 已注册策略、参数范围和当前生效参数。
   rpc ListStrategies(ListStrategiesRequest) returns (ListStrategiesReply) {
     option (google.api.http) = {
@@ -145,6 +152,19 @@ message CreateTaskRequest {
   google.protobuf.Struct config = 3;
   // pkg/backtest.SearchConfig 的 JSON，optimize / walkforward 用
   google.protobuf.Struct search = 4;
+  // Optional previously frozen dataset. Empty creates a new immutable manifest before queueing.
+  string manifest_id = 5;
+}
+
+message FreezeDatasetRequest { google.protobuf.Struct config = 1; }
+message GetDatasetRequest { string manifest_id = 1; }
+message DatasetReply {
+  string manifest_id = 1;
+  string hash = 2;
+  // Exact JSON artifact. protobuf.Struct's double numbers would lose int64 precision and invalidate its hash.
+  string manifest_json = 3;
+  int32 record_count = 4;
+  int32 excluded_count = 5;
 }
 
 message TaskSummary {

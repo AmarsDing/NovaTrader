@@ -36,10 +36,11 @@ type CheckOrderRequest struct {
 	// auto / watch / manual
 	Source string `protobuf:"bytes,7,opt,name=source,proto3" json:"source,omitempty"`
 	// 人工单必填
-	Operator      string `protobuf:"bytes,8,opt,name=operator,proto3" json:"operator,omitempty"`
-	Sector        string `protobuf:"bytes,9,opt,name=sector,proto3" json:"sector,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Operator               string `protobuf:"bytes,8,opt,name=operator,proto3" json:"operator,omitempty"`
+	Sector                 string `protobuf:"bytes,9,opt,name=sector,proto3" json:"sector,omitempty"`
+	ExpectedConfigRevision *int32 `protobuf:"varint,10,opt,name=expected_config_revision,json=expectedConfigRevision,proto3,oneof" json:"expected_config_revision,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *CheckOrderRequest) Reset() {
@@ -133,6 +134,13 @@ func (x *CheckOrderRequest) GetSector() string {
 		return x.Sector
 	}
 	return ""
+}
+
+func (x *CheckOrderRequest) GetExpectedConfigRevision() int32 {
+	if x != nil && x.ExpectedConfigRevision != nil {
+		return *x.ExpectedConfigRevision
+	}
+	return 0
 }
 
 type RuleResult struct {
@@ -429,10 +437,13 @@ type StateReply struct {
 	BuysToday     int32             `protobuf:"varint,5,opt,name=buys_today,json=buysToday,proto3" json:"buys_today,omitempty"`
 	Params        map[string]string `protobuf:"bytes,6,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// 账户类型 → 最近快照时间
-	AccountAsOf   map[string]string `protobuf:"bytes,7,rep,name=account_as_of,json=accountAsOf,proto3" json:"account_as_of,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	LastQuoteAt   string            `protobuf:"bytes,8,opt,name=last_quote_at,json=lastQuoteAt,proto3" json:"last_quote_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AccountAsOf    map[string]string `protobuf:"bytes,7,rep,name=account_as_of,json=accountAsOf,proto3" json:"account_as_of,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	LastQuoteAt    string            `protobuf:"bytes,8,opt,name=last_quote_at,json=lastQuoteAt,proto3" json:"last_quote_at,omitempty"`
+	ConfigRevision int64             `protobuf:"varint,9,opt,name=config_revision,json=configRevision,proto3" json:"config_revision,omitempty"` // Successfully loaded immutable configuration version.
+	ConfigReady    *bool             `protobuf:"varint,10,opt,name=config_ready,json=configReady,proto3,oneof" json:"config_ready,omitempty"`   // false after a failed load until actual recovery.
+	Ready          *bool             `protobuf:"varint,11,opt,name=ready,proto3,oneof" json:"ready,omitempty"`                                  // Actual engine readiness; missing on legacy servers means unknown.
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *StateReply) Reset() {
@@ -519,6 +530,27 @@ func (x *StateReply) GetLastQuoteAt() string {
 		return x.LastQuoteAt
 	}
 	return ""
+}
+
+func (x *StateReply) GetConfigRevision() int64 {
+	if x != nil {
+		return x.ConfigRevision
+	}
+	return 0
+}
+
+func (x *StateReply) GetConfigReady() bool {
+	if x != nil && x.ConfigReady != nil {
+		return *x.ConfigReady
+	}
+	return false
+}
+
+func (x *StateReply) GetReady() bool {
+	if x != nil && x.Ready != nil {
+		return *x.Ready
+	}
+	return false
 }
 
 type SetModeRequest struct {
@@ -709,6 +741,7 @@ type UpdateParamRequest struct {
 	Key           string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value         string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	Operator      string `protobuf:"bytes,3,opt,name=operator,proto3" json:"operator,omitempty"`
+	BaseRevision  *int64 `protobuf:"varint,4,opt,name=base_revision,json=baseRevision,proto3,oneof" json:"base_revision,omitempty"` // Required; omitted legacy writes receive 428.
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -762,6 +795,13 @@ func (x *UpdateParamRequest) GetOperator() string {
 		return x.Operator
 	}
 	return ""
+}
+
+func (x *UpdateParamRequest) GetBaseRevision() int64 {
+	if x != nil && x.BaseRevision != nil {
+		return *x.BaseRevision
+	}
+	return 0
 }
 
 type DailyReportRequest struct {
@@ -1255,7 +1295,7 @@ var File_api_risk_v1_risk_proto protoreflect.FileDescriptor
 
 const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\n" +
-	"\x16api/risk/v1/risk.proto\x12\vapi.risk.v1\x1a\x1cgoogle/api/annotations.proto\"\x84\x02\n" +
+	"\x16api/risk/v1/risk.proto\x12\vapi.risk.v1\x1a\x1cgoogle/api/annotations.proto\"\xe0\x02\n" +
 	"\x11CheckOrderRequest\x12&\n" +
 	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12!\n" +
 	"\faccount_type\x18\x02 \x01(\tR\vaccountType\x12\x16\n" +
@@ -1265,7 +1305,10 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x06volume\x18\x06 \x01(\x05R\x06volume\x12\x16\n" +
 	"\x06source\x18\a \x01(\tR\x06source\x12\x1a\n" +
 	"\boperator\x18\b \x01(\tR\boperator\x12\x16\n" +
-	"\x06sector\x18\t \x01(\tR\x06sector\"t\n" +
+	"\x06sector\x18\t \x01(\tR\x06sector\x12=\n" +
+	"\x18expected_config_revision\x18\n" +
+	" \x01(\x05H\x00R\x16expectedConfigRevision\x88\x01\x01B\x1b\n" +
+	"\x19_expected_config_revision\"t\n" +
 	"\n" +
 	"RuleResult\x12\x12\n" +
 	"\x04rule\x18\x01 \x01(\tR\x04rule\x12\x12\n" +
@@ -1289,7 +1332,7 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x1a\n" +
 	"\boperator\x18\x04 \x01(\tR\boperator\x12\x0e\n" +
-	"\x02at\x18\x05 \x01(\tR\x02at\"\xca\x04\n" +
+	"\x02at\x18\x05 \x01(\tR\x02at\"\xd1\x05\n" +
 	"\n" +
 	"StateReply\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x128\n" +
@@ -1301,7 +1344,11 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"buys_today\x18\x05 \x01(\x05R\tbuysToday\x12;\n" +
 	"\x06params\x18\x06 \x03(\v2#.api.risk.v1.StateReply.ParamsEntryR\x06params\x12L\n" +
 	"\raccount_as_of\x18\a \x03(\v2(.api.risk.v1.StateReply.AccountAsOfEntryR\vaccountAsOf\x12\"\n" +
-	"\rlast_quote_at\x18\b \x01(\tR\vlastQuoteAt\x1a;\n" +
+	"\rlast_quote_at\x18\b \x01(\tR\vlastQuoteAt\x12'\n" +
+	"\x0fconfig_revision\x18\t \x01(\x03R\x0econfigRevision\x12&\n" +
+	"\fconfig_ready\x18\n" +
+	" \x01(\bH\x00R\vconfigReady\x88\x01\x01\x12\x19\n" +
+	"\x05ready\x18\v \x01(\bH\x01R\x05ready\x88\x01\x01\x1a;\n" +
 	"\rBreakersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a9\n" +
@@ -1310,7 +1357,9 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a>\n" +
 	"\x10AccountAsOfEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"X\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\x0f\n" +
+	"\r_config_readyB\b\n" +
+	"\x06_ready\"X\n" +
 	"\x0eSetModeRequest\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x16\n" +
@@ -1322,11 +1371,13 @@ const file_api_risk_v1_risk_proto_rawDesc = "" +
 	"\x16ResetKillSwitchRequest\x12\x1a\n" +
 	"\boperator\x18\x01 \x01(\tR\boperator\x12\x18\n" +
 	"\aconfirm\x18\x02 \x01(\tR\aconfirm\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"X\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x94\x01\n" +
 	"\x12UpdateParamRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1a\n" +
-	"\boperator\x18\x03 \x01(\tR\boperator\"(\n" +
+	"\boperator\x18\x03 \x01(\tR\boperator\x12(\n" +
+	"\rbase_revision\x18\x04 \x01(\x03H\x00R\fbaseRevision\x88\x01\x01B\x10\n" +
+	"\x0e_base_revision\"(\n" +
 	"\x12DailyReportRequest\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\"I\n" +
 	"\tRuleCount\x12\x12\n" +
@@ -1446,6 +1497,9 @@ func file_api_risk_v1_risk_proto_init() {
 	if File_api_risk_v1_risk_proto != nil {
 		return
 	}
+	file_api_risk_v1_risk_proto_msgTypes[0].OneofWrappers = []any{}
+	file_api_risk_v1_risk_proto_msgTypes[5].OneofWrappers = []any{}
+	file_api_risk_v1_risk_proto_msgTypes[9].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -59,7 +59,9 @@ type Signal struct {
 	PnlPct            float64                `protobuf:"fixed64,33,opt,name=pnl_pct,json=pnlPct,proto3" json:"pnl_pct,omitempty"`          // 百分比，3.2 表示 +3.2%
 	HasPnl            bool                   `protobuf:"varint,34,opt,name=has_pnl,json=hasPnl,proto3" json:"has_pnl,omitempty"`
 	ClosedAt          string                 `protobuf:"bytes,35,opt,name=closed_at,json=closedAt,proto3" json:"closed_at,omitempty"`
-	HoldingDays       int32                  `protobuf:"varint,36,opt,name=holding_days,json=holdingDays,proto3" json:"holding_days,omitempty"` // 平仓后才有；0 可能是当日平仓，看 has_pnl
+	HoldingDays       int32                  `protobuf:"varint,36,opt,name=holding_days,json=holdingDays,proto3" json:"holding_days,omitempty"`                // 平仓后才有；0 可能是当日平仓，看 has_pnl
+	ExecutedPrice     *float64               `protobuf:"fixed64,37,opt,name=executed_price,json=executedPrice,proto3,oneof" json:"executed_price,omitempty"`   // Authoritative fill amount / quantity, numeric(12,4); missing is unknown.
+	ExecutedVolume    *int32                 `protobuf:"varint,38,opt,name=executed_volume,json=executedVolume,proto3,oneof" json:"executed_volume,omitempty"` // Authoritative fills, including partial fills; missing is unknown.
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -342,6 +344,20 @@ func (x *Signal) GetClosedAt() string {
 func (x *Signal) GetHoldingDays() int32 {
 	if x != nil {
 		return x.HoldingDays
+	}
+	return 0
+}
+
+func (x *Signal) GetExecutedPrice() float64 {
+	if x != nil && x.ExecutedPrice != nil {
+		return *x.ExecutedPrice
+	}
+	return 0
+}
+
+func (x *Signal) GetExecutedVolume() int32 {
+	if x != nil && x.ExecutedVolume != nil {
+		return *x.ExecutedVolume
 	}
 	return 0
 }
@@ -1627,7 +1643,7 @@ var File_api_strategy_v1_strategy_proto protoreflect.FileDescriptor
 
 const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\n" +
-	"\x1eapi/strategy/v1/strategy.proto\x12\vstrategy.v1\x1a\x1cgoogle/api/annotations.proto\"\xdc\b\n" +
+	"\x1eapi/strategy/v1/strategy.proto\x12\vstrategy.v1\x1a\x1cgoogle/api/annotations.proto\"\xdd\t\n" +
 	"\x06Signal\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04book\x18\x02 \x01(\tR\x04book\x12\x1f\n" +
@@ -1677,10 +1693,14 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\apnl_pct\x18! \x01(\x01R\x06pnlPct\x12\x17\n" +
 	"\ahas_pnl\x18\" \x01(\bR\x06hasPnl\x12\x1b\n" +
 	"\tclosed_at\x18# \x01(\tR\bclosedAt\x12!\n" +
-	"\fholding_days\x18$ \x01(\x05R\vholdingDays\x1a7\n" +
+	"\fholding_days\x18$ \x01(\x05R\vholdingDays\x12*\n" +
+	"\x0eexecuted_price\x18% \x01(\x01H\x00R\rexecutedPrice\x88\x01\x01\x12,\n" +
+	"\x0fexecuted_volume\x18& \x01(\x05H\x01R\x0eexecutedVolume\x88\x01\x01\x1a7\n" +
 	"\tDimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"u\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01B\x11\n" +
+	"\x0f_executed_priceB\x12\n" +
+	"\x10_executed_volume\"u\n" +
 	"\x12ListSignalsRequest\x12\x1d\n" +
 	"\n" +
 	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x16\n" +
@@ -1888,6 +1908,7 @@ func file_api_strategy_v1_strategy_proto_init() {
 	if File_api_strategy_v1_strategy_proto != nil {
 		return
 	}
+	file_api_strategy_v1_strategy_proto_msgTypes[0].OneofWrappers = []any{}
 	file_api_strategy_v1_strategy_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

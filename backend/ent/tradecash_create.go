@@ -48,6 +48,34 @@ func (_c *TradeCashCreate) SetNillableRealizedPnl(v *float64) *TradeCashCreate {
 	return _c
 }
 
+// SetDayStartDate sets the "day_start_date" field.
+func (_c *TradeCashCreate) SetDayStartDate(v string) *TradeCashCreate {
+	_c.mutation.SetDayStartDate(v)
+	return _c
+}
+
+// SetNillableDayStartDate sets the "day_start_date" field if the given value is not nil.
+func (_c *TradeCashCreate) SetNillableDayStartDate(v *string) *TradeCashCreate {
+	if v != nil {
+		_c.SetDayStartDate(*v)
+	}
+	return _c
+}
+
+// SetDayStartEquity sets the "day_start_equity" field.
+func (_c *TradeCashCreate) SetDayStartEquity(v float64) *TradeCashCreate {
+	_c.mutation.SetDayStartEquity(v)
+	return _c
+}
+
+// SetNillableDayStartEquity sets the "day_start_equity" field if the given value is not nil.
+func (_c *TradeCashCreate) SetNillableDayStartEquity(v *float64) *TradeCashCreate {
+	if v != nil {
+		_c.SetDayStartEquity(*v)
+	}
+	return _c
+}
+
 // SetPaperDays sets the "paper_days" field.
 func (_c *TradeCashCreate) SetPaperDays(v int) *TradeCashCreate {
 	_c.mutation.SetPaperDays(v)
@@ -143,6 +171,14 @@ func (_c *TradeCashCreate) defaults() {
 		v := tradecash.DefaultRealizedPnl
 		_c.mutation.SetRealizedPnl(v)
 	}
+	if _, ok := _c.mutation.DayStartDate(); !ok {
+		v := tradecash.DefaultDayStartDate
+		_c.mutation.SetDayStartDate(v)
+	}
+	if _, ok := _c.mutation.DayStartEquity(); !ok {
+		v := tradecash.DefaultDayStartEquity
+		_c.mutation.SetDayStartEquity(v)
+	}
 	if _, ok := _c.mutation.PaperDays(); !ok {
 		v := tradecash.DefaultPaperDays
 		_c.mutation.SetPaperDays(v)
@@ -176,6 +212,17 @@ func (_c *TradeCashCreate) check() error {
 	}
 	if _, ok := _c.mutation.RealizedPnl(); !ok {
 		return &ValidationError{Name: "realized_pnl", err: errors.New(`ent: missing required field "TradeCash.realized_pnl"`)}
+	}
+	if _, ok := _c.mutation.DayStartDate(); !ok {
+		return &ValidationError{Name: "day_start_date", err: errors.New(`ent: missing required field "TradeCash.day_start_date"`)}
+	}
+	if v, ok := _c.mutation.DayStartDate(); ok {
+		if err := tradecash.DayStartDateValidator(v); err != nil {
+			return &ValidationError{Name: "day_start_date", err: fmt.Errorf(`ent: validator failed for field "TradeCash.day_start_date": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DayStartEquity(); !ok {
+		return &ValidationError{Name: "day_start_equity", err: errors.New(`ent: missing required field "TradeCash.day_start_equity"`)}
 	}
 	if _, ok := _c.mutation.PaperDays(); !ok {
 		return &ValidationError{Name: "paper_days", err: errors.New(`ent: missing required field "TradeCash.paper_days"`)}
@@ -232,6 +279,14 @@ func (_c *TradeCashCreate) createSpec() (*TradeCash, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RealizedPnl(); ok {
 		_spec.SetField(tradecash.FieldRealizedPnl, field.TypeFloat64, value)
 		_node.RealizedPnl = value
+	}
+	if value, ok := _c.mutation.DayStartDate(); ok {
+		_spec.SetField(tradecash.FieldDayStartDate, field.TypeString, value)
+		_node.DayStartDate = value
+	}
+	if value, ok := _c.mutation.DayStartEquity(); ok {
+		_spec.SetField(tradecash.FieldDayStartEquity, field.TypeFloat64, value)
+		_node.DayStartEquity = value
 	}
 	if value, ok := _c.mutation.PaperDays(); ok {
 		_spec.SetField(tradecash.FieldPaperDays, field.TypeInt, value)
@@ -346,6 +401,36 @@ func (u *TradeCashUpsert) UpdateRealizedPnl() *TradeCashUpsert {
 // AddRealizedPnl adds v to the "realized_pnl" field.
 func (u *TradeCashUpsert) AddRealizedPnl(v float64) *TradeCashUpsert {
 	u.Add(tradecash.FieldRealizedPnl, v)
+	return u
+}
+
+// SetDayStartDate sets the "day_start_date" field.
+func (u *TradeCashUpsert) SetDayStartDate(v string) *TradeCashUpsert {
+	u.Set(tradecash.FieldDayStartDate, v)
+	return u
+}
+
+// UpdateDayStartDate sets the "day_start_date" field to the value that was provided on create.
+func (u *TradeCashUpsert) UpdateDayStartDate() *TradeCashUpsert {
+	u.SetExcluded(tradecash.FieldDayStartDate)
+	return u
+}
+
+// SetDayStartEquity sets the "day_start_equity" field.
+func (u *TradeCashUpsert) SetDayStartEquity(v float64) *TradeCashUpsert {
+	u.Set(tradecash.FieldDayStartEquity, v)
+	return u
+}
+
+// UpdateDayStartEquity sets the "day_start_equity" field to the value that was provided on create.
+func (u *TradeCashUpsert) UpdateDayStartEquity() *TradeCashUpsert {
+	u.SetExcluded(tradecash.FieldDayStartEquity)
+	return u
+}
+
+// AddDayStartEquity adds v to the "day_start_equity" field.
+func (u *TradeCashUpsert) AddDayStartEquity(v float64) *TradeCashUpsert {
+	u.Add(tradecash.FieldDayStartEquity, v)
 	return u
 }
 
@@ -496,6 +581,41 @@ func (u *TradeCashUpsertOne) AddRealizedPnl(v float64) *TradeCashUpsertOne {
 func (u *TradeCashUpsertOne) UpdateRealizedPnl() *TradeCashUpsertOne {
 	return u.Update(func(s *TradeCashUpsert) {
 		s.UpdateRealizedPnl()
+	})
+}
+
+// SetDayStartDate sets the "day_start_date" field.
+func (u *TradeCashUpsertOne) SetDayStartDate(v string) *TradeCashUpsertOne {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.SetDayStartDate(v)
+	})
+}
+
+// UpdateDayStartDate sets the "day_start_date" field to the value that was provided on create.
+func (u *TradeCashUpsertOne) UpdateDayStartDate() *TradeCashUpsertOne {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.UpdateDayStartDate()
+	})
+}
+
+// SetDayStartEquity sets the "day_start_equity" field.
+func (u *TradeCashUpsertOne) SetDayStartEquity(v float64) *TradeCashUpsertOne {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.SetDayStartEquity(v)
+	})
+}
+
+// AddDayStartEquity adds v to the "day_start_equity" field.
+func (u *TradeCashUpsertOne) AddDayStartEquity(v float64) *TradeCashUpsertOne {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.AddDayStartEquity(v)
+	})
+}
+
+// UpdateDayStartEquity sets the "day_start_equity" field to the value that was provided on create.
+func (u *TradeCashUpsertOne) UpdateDayStartEquity() *TradeCashUpsertOne {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.UpdateDayStartEquity()
 	})
 }
 
@@ -819,6 +939,41 @@ func (u *TradeCashUpsertBulk) AddRealizedPnl(v float64) *TradeCashUpsertBulk {
 func (u *TradeCashUpsertBulk) UpdateRealizedPnl() *TradeCashUpsertBulk {
 	return u.Update(func(s *TradeCashUpsert) {
 		s.UpdateRealizedPnl()
+	})
+}
+
+// SetDayStartDate sets the "day_start_date" field.
+func (u *TradeCashUpsertBulk) SetDayStartDate(v string) *TradeCashUpsertBulk {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.SetDayStartDate(v)
+	})
+}
+
+// UpdateDayStartDate sets the "day_start_date" field to the value that was provided on create.
+func (u *TradeCashUpsertBulk) UpdateDayStartDate() *TradeCashUpsertBulk {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.UpdateDayStartDate()
+	})
+}
+
+// SetDayStartEquity sets the "day_start_equity" field.
+func (u *TradeCashUpsertBulk) SetDayStartEquity(v float64) *TradeCashUpsertBulk {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.SetDayStartEquity(v)
+	})
+}
+
+// AddDayStartEquity adds v to the "day_start_equity" field.
+func (u *TradeCashUpsertBulk) AddDayStartEquity(v float64) *TradeCashUpsertBulk {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.AddDayStartEquity(v)
+	})
+}
+
+// UpdateDayStartEquity sets the "day_start_equity" field to the value that was provided on create.
+func (u *TradeCashUpsertBulk) UpdateDayStartEquity() *TradeCashUpsertBulk {
+	return u.Update(func(s *TradeCashUpsert) {
+		s.UpdateDayStartEquity()
 	})
 }
 

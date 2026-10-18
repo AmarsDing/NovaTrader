@@ -22,6 +22,12 @@ type OutboxCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetMetadata sets the "metadata" field.
+func (_c *OutboxCreate) SetMetadata(v map[string]interface{}) *OutboxCreate {
+	_c.mutation.SetMetadata(v)
+	return _c
+}
+
 // SetEventID sets the "event_id" field.
 func (_c *OutboxCreate) SetEventID(v string) *OutboxCreate {
 	_c.mutation.SetEventID(v)
@@ -102,6 +108,62 @@ func (_c *OutboxCreate) SetNillableAttempts(v *int) *OutboxCreate {
 	return _c
 }
 
+// SetLeaseOwner sets the "lease_owner" field.
+func (_c *OutboxCreate) SetLeaseOwner(v string) *OutboxCreate {
+	_c.mutation.SetLeaseOwner(v)
+	return _c
+}
+
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_c *OutboxCreate) SetNillableLeaseOwner(v *string) *OutboxCreate {
+	if v != nil {
+		_c.SetLeaseOwner(*v)
+	}
+	return _c
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (_c *OutboxCreate) SetLeaseUntil(v time.Time) *OutboxCreate {
+	_c.mutation.SetLeaseUntil(v)
+	return _c
+}
+
+// SetNillableLeaseUntil sets the "lease_until" field if the given value is not nil.
+func (_c *OutboxCreate) SetNillableLeaseUntil(v *time.Time) *OutboxCreate {
+	if v != nil {
+		_c.SetLeaseUntil(*v)
+	}
+	return _c
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (_c *OutboxCreate) SetNextAttemptAt(v time.Time) *OutboxCreate {
+	_c.mutation.SetNextAttemptAt(v)
+	return _c
+}
+
+// SetNillableNextAttemptAt sets the "next_attempt_at" field if the given value is not nil.
+func (_c *OutboxCreate) SetNillableNextAttemptAt(v *time.Time) *OutboxCreate {
+	if v != nil {
+		_c.SetNextAttemptAt(*v)
+	}
+	return _c
+}
+
+// SetDeadLetter sets the "dead_letter" field.
+func (_c *OutboxCreate) SetDeadLetter(v bool) *OutboxCreate {
+	_c.mutation.SetDeadLetter(v)
+	return _c
+}
+
+// SetNillableDeadLetter sets the "dead_letter" field if the given value is not nil.
+func (_c *OutboxCreate) SetNillableDeadLetter(v *bool) *OutboxCreate {
+	if v != nil {
+		_c.SetDeadLetter(*v)
+	}
+	return _c
+}
+
 // SetLastError sets the "last_error" field.
 func (_c *OutboxCreate) SetLastError(v string) *OutboxCreate {
 	_c.mutation.SetLastError(v)
@@ -163,6 +225,14 @@ func (_c *OutboxCreate) defaults() {
 		v := outbox.DefaultAttempts
 		_c.mutation.SetAttempts(v)
 	}
+	if _, ok := _c.mutation.LeaseOwner(); !ok {
+		v := outbox.DefaultLeaseOwner
+		_c.mutation.SetLeaseOwner(v)
+	}
+	if _, ok := _c.mutation.DeadLetter(); !ok {
+		v := outbox.DefaultDeadLetter
+		_c.mutation.SetDeadLetter(v)
+	}
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -205,6 +275,17 @@ func (_c *OutboxCreate) check() error {
 	if _, ok := _c.mutation.Attempts(); !ok {
 		return &ValidationError{Name: "attempts", err: errors.New(`ent: missing required field "Outbox.attempts"`)}
 	}
+	if _, ok := _c.mutation.LeaseOwner(); !ok {
+		return &ValidationError{Name: "lease_owner", err: errors.New(`ent: missing required field "Outbox.lease_owner"`)}
+	}
+	if v, ok := _c.mutation.LeaseOwner(); ok {
+		if err := outbox.LeaseOwnerValidator(v); err != nil {
+			return &ValidationError{Name: "lease_owner", err: fmt.Errorf(`ent: validator failed for field "Outbox.lease_owner": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DeadLetter(); !ok {
+		return &ValidationError{Name: "dead_letter", err: errors.New(`ent: missing required field "Outbox.dead_letter"`)}
+	}
 	return nil
 }
 
@@ -232,6 +313,10 @@ func (_c *OutboxCreate) createSpec() (*Outbox, *sqlgraph.CreateSpec) {
 		_spec = sqlgraph.NewCreateSpec(outbox.Table, sqlgraph.NewFieldSpec(outbox.FieldID, field.TypeInt))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.Metadata(); ok {
+		_spec.SetField(outbox.FieldMetadata, field.TypeJSON, value)
+		_node.Metadata = value
+	}
 	if value, ok := _c.mutation.EventID(); ok {
 		_spec.SetField(outbox.FieldEventID, field.TypeString, value)
 		_node.EventID = value
@@ -264,6 +349,22 @@ func (_c *OutboxCreate) createSpec() (*Outbox, *sqlgraph.CreateSpec) {
 		_spec.SetField(outbox.FieldAttempts, field.TypeInt, value)
 		_node.Attempts = value
 	}
+	if value, ok := _c.mutation.LeaseOwner(); ok {
+		_spec.SetField(outbox.FieldLeaseOwner, field.TypeString, value)
+		_node.LeaseOwner = value
+	}
+	if value, ok := _c.mutation.LeaseUntil(); ok {
+		_spec.SetField(outbox.FieldLeaseUntil, field.TypeTime, value)
+		_node.LeaseUntil = &value
+	}
+	if value, ok := _c.mutation.NextAttemptAt(); ok {
+		_spec.SetField(outbox.FieldNextAttemptAt, field.TypeTime, value)
+		_node.NextAttemptAt = &value
+	}
+	if value, ok := _c.mutation.DeadLetter(); ok {
+		_spec.SetField(outbox.FieldDeadLetter, field.TypeBool, value)
+		_node.DeadLetter = value
+	}
 	if value, ok := _c.mutation.LastError(); ok {
 		_spec.SetField(outbox.FieldLastError, field.TypeString, value)
 		_node.LastError = &value
@@ -275,7 +376,7 @@ func (_c *OutboxCreate) createSpec() (*Outbox, *sqlgraph.CreateSpec) {
 // of the `INSERT` statement. For example:
 //
 //	client.Outbox.Create().
-//		SetEventID(v).
+//		SetMetadata(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -284,7 +385,7 @@ func (_c *OutboxCreate) createSpec() (*Outbox, *sqlgraph.CreateSpec) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.OutboxUpsert) {
-//			SetEventID(v+v).
+//			SetMetadata(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *OutboxCreate) OnConflict(opts ...sql.ConflictOption) *OutboxUpsertOne {
@@ -319,6 +420,24 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetMetadata sets the "metadata" field.
+func (u *OutboxUpsert) SetMetadata(v map[string]interface{}) *OutboxUpsert {
+	u.Set(outbox.FieldMetadata, v)
+	return u
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *OutboxUpsert) UpdateMetadata() *OutboxUpsert {
+	u.SetExcluded(outbox.FieldMetadata)
+	return u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *OutboxUpsert) ClearMetadata() *OutboxUpsert {
+	u.SetNull(outbox.FieldMetadata)
+	return u
+}
 
 // SetEventID sets the "event_id" field.
 func (u *OutboxUpsert) SetEventID(v string) *OutboxUpsert {
@@ -434,6 +553,66 @@ func (u *OutboxUpsert) AddAttempts(v int) *OutboxUpsert {
 	return u
 }
 
+// SetLeaseOwner sets the "lease_owner" field.
+func (u *OutboxUpsert) SetLeaseOwner(v string) *OutboxUpsert {
+	u.Set(outbox.FieldLeaseOwner, v)
+	return u
+}
+
+// UpdateLeaseOwner sets the "lease_owner" field to the value that was provided on create.
+func (u *OutboxUpsert) UpdateLeaseOwner() *OutboxUpsert {
+	u.SetExcluded(outbox.FieldLeaseOwner)
+	return u
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (u *OutboxUpsert) SetLeaseUntil(v time.Time) *OutboxUpsert {
+	u.Set(outbox.FieldLeaseUntil, v)
+	return u
+}
+
+// UpdateLeaseUntil sets the "lease_until" field to the value that was provided on create.
+func (u *OutboxUpsert) UpdateLeaseUntil() *OutboxUpsert {
+	u.SetExcluded(outbox.FieldLeaseUntil)
+	return u
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (u *OutboxUpsert) ClearLeaseUntil() *OutboxUpsert {
+	u.SetNull(outbox.FieldLeaseUntil)
+	return u
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *OutboxUpsert) SetNextAttemptAt(v time.Time) *OutboxUpsert {
+	u.Set(outbox.FieldNextAttemptAt, v)
+	return u
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *OutboxUpsert) UpdateNextAttemptAt() *OutboxUpsert {
+	u.SetExcluded(outbox.FieldNextAttemptAt)
+	return u
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *OutboxUpsert) ClearNextAttemptAt() *OutboxUpsert {
+	u.SetNull(outbox.FieldNextAttemptAt)
+	return u
+}
+
+// SetDeadLetter sets the "dead_letter" field.
+func (u *OutboxUpsert) SetDeadLetter(v bool) *OutboxUpsert {
+	u.Set(outbox.FieldDeadLetter, v)
+	return u
+}
+
+// UpdateDeadLetter sets the "dead_letter" field to the value that was provided on create.
+func (u *OutboxUpsert) UpdateDeadLetter() *OutboxUpsert {
+	u.SetExcluded(outbox.FieldDeadLetter)
+	return u
+}
+
 // SetLastError sets the "last_error" field.
 func (u *OutboxUpsert) SetLastError(v string) *OutboxUpsert {
 	u.Set(outbox.FieldLastError, v)
@@ -490,6 +669,27 @@ func (u *OutboxUpsertOne) Update(set func(*OutboxUpsert)) *OutboxUpsertOne {
 		set(&OutboxUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *OutboxUpsertOne) SetMetadata(v map[string]interface{}) *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *OutboxUpsertOne) UpdateMetadata() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *OutboxUpsertOne) ClearMetadata() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.ClearMetadata()
+	})
 }
 
 // SetEventID sets the "event_id" field.
@@ -622,6 +822,76 @@ func (u *OutboxUpsertOne) AddAttempts(v int) *OutboxUpsertOne {
 func (u *OutboxUpsertOne) UpdateAttempts() *OutboxUpsertOne {
 	return u.Update(func(s *OutboxUpsert) {
 		s.UpdateAttempts()
+	})
+}
+
+// SetLeaseOwner sets the "lease_owner" field.
+func (u *OutboxUpsertOne) SetLeaseOwner(v string) *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetLeaseOwner(v)
+	})
+}
+
+// UpdateLeaseOwner sets the "lease_owner" field to the value that was provided on create.
+func (u *OutboxUpsertOne) UpdateLeaseOwner() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateLeaseOwner()
+	})
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (u *OutboxUpsertOne) SetLeaseUntil(v time.Time) *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetLeaseUntil(v)
+	})
+}
+
+// UpdateLeaseUntil sets the "lease_until" field to the value that was provided on create.
+func (u *OutboxUpsertOne) UpdateLeaseUntil() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateLeaseUntil()
+	})
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (u *OutboxUpsertOne) ClearLeaseUntil() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.ClearLeaseUntil()
+	})
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *OutboxUpsertOne) SetNextAttemptAt(v time.Time) *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetNextAttemptAt(v)
+	})
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *OutboxUpsertOne) UpdateNextAttemptAt() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateNextAttemptAt()
+	})
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *OutboxUpsertOne) ClearNextAttemptAt() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.ClearNextAttemptAt()
+	})
+}
+
+// SetDeadLetter sets the "dead_letter" field.
+func (u *OutboxUpsertOne) SetDeadLetter(v bool) *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetDeadLetter(v)
+	})
+}
+
+// UpdateDeadLetter sets the "dead_letter" field to the value that was provided on create.
+func (u *OutboxUpsertOne) UpdateDeadLetter() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateDeadLetter()
 	})
 }
 
@@ -781,7 +1051,7 @@ func (_c *OutboxCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.OutboxUpsert) {
-//			SetEventID(v+v).
+//			SetMetadata(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *OutboxCreateBulk) OnConflict(opts ...sql.ConflictOption) *OutboxUpsertBulk {
@@ -848,6 +1118,27 @@ func (u *OutboxUpsertBulk) Update(set func(*OutboxUpsert)) *OutboxUpsertBulk {
 		set(&OutboxUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *OutboxUpsertBulk) SetMetadata(v map[string]interface{}) *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *OutboxUpsertBulk) UpdateMetadata() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *OutboxUpsertBulk) ClearMetadata() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.ClearMetadata()
+	})
 }
 
 // SetEventID sets the "event_id" field.
@@ -980,6 +1271,76 @@ func (u *OutboxUpsertBulk) AddAttempts(v int) *OutboxUpsertBulk {
 func (u *OutboxUpsertBulk) UpdateAttempts() *OutboxUpsertBulk {
 	return u.Update(func(s *OutboxUpsert) {
 		s.UpdateAttempts()
+	})
+}
+
+// SetLeaseOwner sets the "lease_owner" field.
+func (u *OutboxUpsertBulk) SetLeaseOwner(v string) *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetLeaseOwner(v)
+	})
+}
+
+// UpdateLeaseOwner sets the "lease_owner" field to the value that was provided on create.
+func (u *OutboxUpsertBulk) UpdateLeaseOwner() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateLeaseOwner()
+	})
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (u *OutboxUpsertBulk) SetLeaseUntil(v time.Time) *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetLeaseUntil(v)
+	})
+}
+
+// UpdateLeaseUntil sets the "lease_until" field to the value that was provided on create.
+func (u *OutboxUpsertBulk) UpdateLeaseUntil() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateLeaseUntil()
+	})
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (u *OutboxUpsertBulk) ClearLeaseUntil() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.ClearLeaseUntil()
+	})
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (u *OutboxUpsertBulk) SetNextAttemptAt(v time.Time) *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetNextAttemptAt(v)
+	})
+}
+
+// UpdateNextAttemptAt sets the "next_attempt_at" field to the value that was provided on create.
+func (u *OutboxUpsertBulk) UpdateNextAttemptAt() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateNextAttemptAt()
+	})
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (u *OutboxUpsertBulk) ClearNextAttemptAt() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.ClearNextAttemptAt()
+	})
+}
+
+// SetDeadLetter sets the "dead_letter" field.
+func (u *OutboxUpsertBulk) SetDeadLetter(v bool) *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetDeadLetter(v)
+	})
+}
+
+// UpdateDeadLetter sets the "dead_letter" field to the value that was provided on create.
+func (u *OutboxUpsertBulk) UpdateDeadLetter() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateDeadLetter()
 	})
 }
 

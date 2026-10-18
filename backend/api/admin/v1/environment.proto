@@ -1,0 +1,32 @@
+syntax = "proto3";
+package api.admin.v1;
+import "google/api/annotations.proto";
+import "api/platform/v1/observe.proto";
+option go_package = "server/api/admin/v1;v1";
+service EnvironmentObservability {
+  rpc GetEnvironment(GetEnvironmentRequest) returns (GetEnvironmentReply) {
+    option (google.api.http) = {get: "/api/ops/environment"};
+  }
+}
+message GetEnvironmentRequest {}
+message EnvironmentService {
+  string service = 1;
+  string state = 2; // observed / offline / unsupported / unconfigured / invalid / unknown
+  string checked_at = 3; // Admin receive time, never substituted for service sample time.
+  optional double probe_duration_ms = 4; // Admin HTTP round trip only, not business latency.
+  api.platform.v1.ConsumerObservation observation = 5;
+  string note = 6; // Fixed safe classification, no raw URL/body/error.
+}
+message GetEnvironmentReply {
+  int32 schema_version = 1;
+  string scope = 2; // configured_service_processes
+  string sampled_at = 3;
+  string cache_expires_at = 4;
+  bool cached = 5;
+  int32 cache_seconds = 6;
+  int32 probe_timeout_ms = 7;
+  int32 max_parallel_probes = 8;
+  repeated EnvironmentService services = 9;
+  repeated string unsupported = 10;
+  string note = 11;
+}

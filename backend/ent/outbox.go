@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"server/ent/outbox"
 	"strings"
@@ -17,6 +18,8 @@ type Outbox struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int `json:"id,omitempty"`
+	// Metadata holds the value of the "metadata" field.
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 	// EventID holds the value of the "event_id" field.
 	EventID string `json:"event_id,omitempty"`
 	// TraceID holds the value of the "trace_id" field.
@@ -33,6 +36,14 @@ type Outbox struct {
 	PublishedAt *time.Time `json:"published_at,omitempty"`
 	// Attempts holds the value of the "attempts" field.
 	Attempts int `json:"attempts,omitempty"`
+	// LeaseOwner holds the value of the "lease_owner" field.
+	LeaseOwner string `json:"lease_owner,omitempty"`
+	// LeaseUntil holds the value of the "lease_until" field.
+	LeaseUntil *time.Time `json:"lease_until,omitempty"`
+	// NextAttemptAt holds the value of the "next_attempt_at" field.
+	NextAttemptAt *time.Time `json:"next_attempt_at,omitempty"`
+	// DeadLetter holds the value of the "dead_letter" field.
+	DeadLetter bool `json:"dead_letter,omitempty"`
 	// LastError holds the value of the "last_error" field.
 	LastError    *string `json:"last_error,omitempty"`
 	selectValues sql.SelectValues
@@ -43,13 +54,15 @@ func (*Outbox) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case outbox.FieldPayload:
+		case outbox.FieldMetadata, outbox.FieldPayload:
 			values[i] = new([]byte)
+		case outbox.FieldDeadLetter:
+			values[i] = new(sql.NullBool)
 		case outbox.FieldID, outbox.FieldAttempts:
 			values[i] = new(sql.NullInt64)
-		case outbox.FieldEventID, outbox.FieldTraceID, outbox.FieldSubject, outbox.FieldSource, outbox.FieldLastError:
+		case outbox.FieldEventID, outbox.FieldTraceID, outbox.FieldSubject, outbox.FieldSource, outbox.FieldLeaseOwner, outbox.FieldLastError:
 			values[i] = new(sql.NullString)
-		case outbox.FieldCreatedAt, outbox.FieldPublishedAt:
+		case outbox.FieldCreatedAt, outbox.FieldPublishedAt, outbox.FieldLeaseUntil, outbox.FieldNextAttemptAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -72,6 +85,14 @@ func (_m *Outbox) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", value)
 			}
 			_m.ID = int(value.Int64)
+		case outbox.FieldMetadata:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field metadata", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.Metadata); err != nil {
+					return fmt.Errorf("unmarshal field metadata: %w", err)
+				}
+			}
 		case outbox.FieldEventID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field event_id", values[i])
@@ -121,6 +142,32 @@ func (_m *Outbox) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Attempts = int(value.Int64)
 			}
+		case outbox.FieldLeaseOwner:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field lease_owner", values[i])
+			} else if value.Valid {
+				_m.LeaseOwner = value.String
+			}
+		case outbox.FieldLeaseUntil:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field lease_until", values[i])
+			} else if value.Valid {
+				_m.LeaseUntil = new(time.Time)
+				*_m.LeaseUntil = value.Time
+			}
+		case outbox.FieldNextAttemptAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field next_attempt_at", values[i])
+			} else if value.Valid {
+				_m.NextAttemptAt = new(time.Time)
+				*_m.NextAttemptAt = value.Time
+			}
+		case outbox.FieldDeadLetter:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field dead_letter", values[i])
+			} else if value.Valid {
+				_m.DeadLetter = value.Bool
+			}
 		case outbox.FieldLastError:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field last_error", values[i])
@@ -164,6 +211,9 @@ func (_m *Outbox) String() string {
 	var builder strings.Builder
 	builder.WriteString("Outbox(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
+	builder.WriteString("metadata=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))
+	builder.WriteString(", ")
 	builder.WriteString("event_id=")
 	builder.WriteString(_m.EventID)
 	builder.WriteString(", ")
@@ -189,6 +239,22 @@ func (_m *Outbox) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("attempts=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Attempts))
+	builder.WriteString(", ")
+	builder.WriteString("lease_owner=")
+	builder.WriteString(_m.LeaseOwner)
+	builder.WriteString(", ")
+	if v := _m.LeaseUntil; v != nil {
+		builder.WriteString("lease_until=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.NextAttemptAt; v != nil {
+		builder.WriteString("next_attempt_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("dead_letter=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DeadLetter))
 	builder.WriteString(", ")
 	if v := _m.LastError; v != nil {
 		builder.WriteString("last_error=")

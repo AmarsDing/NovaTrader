@@ -30,11 +30,29 @@ type BacktestTrade func(*sql.Selector)
 // CollectCursor is the predicate function for collectcursor builders.
 type CollectCursor func(*sql.Selector)
 
+// ConfigHead is the predicate function for confighead builders.
+type ConfigHead func(*sql.Selector)
+
+// ConfigReceipt is the predicate function for configreceipt builders.
+type ConfigReceipt func(*sql.Selector)
+
 // DailyReview is the predicate function for dailyreview builders.
 type DailyReview func(*sql.Selector)
 
 // DataQualityIssue is the predicate function for dataqualityissue builders.
 type DataQualityIssue func(*sql.Selector)
+
+// DatasetManifest is the predicate function for datasetmanifest builders.
+type DatasetManifest func(*sql.Selector)
+
+// DatasetRecord is the predicate function for datasetrecord builders.
+type DatasetRecord func(*sql.Selector)
+
+// DecisionPlan is the predicate function for decisionplan builders.
+type DecisionPlan func(*sql.Selector)
+
+// ExecutionIntent is the predicate function for executionintent builders.
+type ExecutionIntent func(*sql.Selector)
 
 // FinanceReport is the predicate function for financereport builders.
 type FinanceReport func(*sql.Selector)
@@ -120,6 +138,9 @@ type OverseasMapping func(*sql.Selector)
 // OverseasQuote is the predicate function for overseasquote builders.
 type OverseasQuote func(*sql.Selector)
 
+// PaperRunSample is the predicate function for paperrunsample builders.
+type PaperRunSample func(*sql.Selector)
+
 // ParamProposal is the predicate function for paramproposal builders.
 type ParamProposal func(*sql.Selector)
 
@@ -128,6 +149,9 @@ type Position func(*sql.Selector)
 
 // RawResponse is the predicate function for rawresponse builders.
 type RawResponse func(*sql.Selector)
+
+// ResearchJob is the predicate function for researchjob builders.
+type ResearchJob func(*sql.Selector)
 
 // RiskCheck is the predicate function for riskcheck builders.
 type RiskCheck func(*sql.Selector)
@@ -155,6 +179,9 @@ type ShadowSignal func(*sql.Selector)
 
 // SignalEvent is the predicate function for signalevent builders.
 type SignalEvent func(*sql.Selector)
+
+// SimBarCursor is the predicate function for simbarcursor builders.
+type SimBarCursor func(*sql.Selector)
 
 // SourceHealth is the predicate function for sourcehealth builders.
 type SourceHealth func(*sql.Selector)
@@ -200,6 +227,9 @@ type TradeCash func(*sql.Selector)
 
 // TradeFill is the predicate function for tradefill builders.
 type TradeFill func(*sql.Selector)
+
+// TradeLedgerLock is the predicate function for tradeledgerlock builders.
+type TradeLedgerLock func(*sql.Selector)
 
 // TradeOrder is the predicate function for tradeorder builders.
 type TradeOrder func(*sql.Selector)

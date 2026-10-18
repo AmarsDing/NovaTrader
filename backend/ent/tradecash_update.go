@@ -84,6 +84,41 @@ func (_u *TradeCashUpdate) AddRealizedPnl(v float64) *TradeCashUpdate {
 	return _u
 }
 
+// SetDayStartDate sets the "day_start_date" field.
+func (_u *TradeCashUpdate) SetDayStartDate(v string) *TradeCashUpdate {
+	_u.mutation.SetDayStartDate(v)
+	return _u
+}
+
+// SetNillableDayStartDate sets the "day_start_date" field if the given value is not nil.
+func (_u *TradeCashUpdate) SetNillableDayStartDate(v *string) *TradeCashUpdate {
+	if v != nil {
+		_u.SetDayStartDate(*v)
+	}
+	return _u
+}
+
+// SetDayStartEquity sets the "day_start_equity" field.
+func (_u *TradeCashUpdate) SetDayStartEquity(v float64) *TradeCashUpdate {
+	_u.mutation.ResetDayStartEquity()
+	_u.mutation.SetDayStartEquity(v)
+	return _u
+}
+
+// SetNillableDayStartEquity sets the "day_start_equity" field if the given value is not nil.
+func (_u *TradeCashUpdate) SetNillableDayStartEquity(v *float64) *TradeCashUpdate {
+	if v != nil {
+		_u.SetDayStartEquity(*v)
+	}
+	return _u
+}
+
+// AddDayStartEquity adds value to the "day_start_equity" field.
+func (_u *TradeCashUpdate) AddDayStartEquity(v float64) *TradeCashUpdate {
+	_u.mutation.AddDayStartEquity(v)
+	return _u
+}
+
 // SetPaperDays sets the "paper_days" field.
 func (_u *TradeCashUpdate) SetPaperDays(v int) *TradeCashUpdate {
 	_u.mutation.ResetPaperDays()
@@ -187,6 +222,11 @@ func (_u *TradeCashUpdate) check() error {
 			return &ValidationError{Name: "book", err: fmt.Errorf(`ent: validator failed for field "TradeCash.book": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DayStartDate(); ok {
+		if err := tradecash.DayStartDateValidator(v); err != nil {
+			return &ValidationError{Name: "day_start_date", err: fmt.Errorf(`ent: validator failed for field "TradeCash.day_start_date": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.HaltReason(); ok {
 		if err := tradecash.HaltReasonValidator(v); err != nil {
 			return &ValidationError{Name: "halt_reason", err: fmt.Errorf(`ent: validator failed for field "TradeCash.halt_reason": %w`, err)}
@@ -221,6 +261,15 @@ func (_u *TradeCashUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRealizedPnl(); ok {
 		_spec.AddField(tradecash.FieldRealizedPnl, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.DayStartDate(); ok {
+		_spec.SetField(tradecash.FieldDayStartDate, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DayStartEquity(); ok {
+		_spec.SetField(tradecash.FieldDayStartEquity, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDayStartEquity(); ok {
+		_spec.AddField(tradecash.FieldDayStartEquity, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.PaperDays(); ok {
 		_spec.SetField(tradecash.FieldPaperDays, field.TypeInt, value)
@@ -310,6 +359,41 @@ func (_u *TradeCashUpdateOne) SetNillableRealizedPnl(v *float64) *TradeCashUpdat
 // AddRealizedPnl adds value to the "realized_pnl" field.
 func (_u *TradeCashUpdateOne) AddRealizedPnl(v float64) *TradeCashUpdateOne {
 	_u.mutation.AddRealizedPnl(v)
+	return _u
+}
+
+// SetDayStartDate sets the "day_start_date" field.
+func (_u *TradeCashUpdateOne) SetDayStartDate(v string) *TradeCashUpdateOne {
+	_u.mutation.SetDayStartDate(v)
+	return _u
+}
+
+// SetNillableDayStartDate sets the "day_start_date" field if the given value is not nil.
+func (_u *TradeCashUpdateOne) SetNillableDayStartDate(v *string) *TradeCashUpdateOne {
+	if v != nil {
+		_u.SetDayStartDate(*v)
+	}
+	return _u
+}
+
+// SetDayStartEquity sets the "day_start_equity" field.
+func (_u *TradeCashUpdateOne) SetDayStartEquity(v float64) *TradeCashUpdateOne {
+	_u.mutation.ResetDayStartEquity()
+	_u.mutation.SetDayStartEquity(v)
+	return _u
+}
+
+// SetNillableDayStartEquity sets the "day_start_equity" field if the given value is not nil.
+func (_u *TradeCashUpdateOne) SetNillableDayStartEquity(v *float64) *TradeCashUpdateOne {
+	if v != nil {
+		_u.SetDayStartEquity(*v)
+	}
+	return _u
+}
+
+// AddDayStartEquity adds value to the "day_start_equity" field.
+func (_u *TradeCashUpdateOne) AddDayStartEquity(v float64) *TradeCashUpdateOne {
+	_u.mutation.AddDayStartEquity(v)
 	return _u
 }
 
@@ -429,6 +513,11 @@ func (_u *TradeCashUpdateOne) check() error {
 			return &ValidationError{Name: "book", err: fmt.Errorf(`ent: validator failed for field "TradeCash.book": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.DayStartDate(); ok {
+		if err := tradecash.DayStartDateValidator(v); err != nil {
+			return &ValidationError{Name: "day_start_date", err: fmt.Errorf(`ent: validator failed for field "TradeCash.day_start_date": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.HaltReason(); ok {
 		if err := tradecash.HaltReasonValidator(v); err != nil {
 			return &ValidationError{Name: "halt_reason", err: fmt.Errorf(`ent: validator failed for field "TradeCash.halt_reason": %w`, err)}
@@ -480,6 +569,15 @@ func (_u *TradeCashUpdateOne) sqlSave(ctx context.Context) (_node *TradeCash, er
 	}
 	if value, ok := _u.mutation.AddedRealizedPnl(); ok {
 		_spec.AddField(tradecash.FieldRealizedPnl, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.DayStartDate(); ok {
+		_spec.SetField(tradecash.FieldDayStartDate, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DayStartEquity(); ok {
+		_spec.SetField(tradecash.FieldDayStartEquity, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDayStartEquity(); ok {
+		_spec.AddField(tradecash.FieldDayStartEquity, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.PaperDays(); ok {
 		_spec.SetField(tradecash.FieldPaperDays, field.TypeInt, value)

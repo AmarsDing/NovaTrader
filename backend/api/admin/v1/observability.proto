@@ -1,0 +1,98 @@
+syntax = "proto3";
+package api.admin.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/admin/v1;v1";
+
+// Admin gateway ingress only. This is not a business-consumer acknowledgement API.
+service Observability {
+  rpc GetTrace(GetTraceRequest) returns (GetTraceReply) {
+    option (google.api.http) = {get: "/api/ops/traces"};
+  }
+  rpc GetObservability(GetObservabilityRequest) returns (GetObservabilityReply) {
+    option (google.api.http) = {get: "/api/ops/observability"};
+  }
+}
+message GetTraceRequest { string trace_id=1; int32 limit=2; }
+message TraceEvent {
+ string event_id=1; string trace_id=2; string causation_id=3; string entity_id=4; int64 entity_version=5;
+ string source=6; string subject=7; string formed_at=8; string source_time=9; string published_at=10;
+ string state=11; int32 attempts=12; string next_attempt_at=13; string lease_until=14; string error_class=15;
+}
+message GetTraceReply {
+ int32 schema_version=1; bool available=2; string scope=3; string as_of=4; repeated TraceEvent events=5;
+ bool truncated=6; repeated string missing_parent_ids=7; uint64 pending=8; uint64 leased=9; uint64 dead_letters=10;
+ string oldest_pending_at=11; string note=12;
+}
+message GetObservabilityRequest {
+  string subject = 1; // Exact subject; no NATS wildcards.
+  string trace_id = 2; // Filters bounded samples only, never aggregate counters.
+  int32 limit = 3; // Default 80, maximum 80; negative values rejected.
+}
+message ObservationRoute {
+  string subject = 1;
+  string topic = 2;
+  string durable = 3;
+  string transport = 4;
+  string observation = 5;
+  string binding_state = 6; // declared / bound / failed; connection is separate.
+  string binding_updated_at = 7;
+}
+message ObservationEdge {
+  string subject = 1;
+  string source = 2;
+  string topic = 3;
+  uint64 received_total = 4; // All received wire envelopes, including rejected ones.
+  uint64 accepted_total = 5;
+  uint64 bytes_total = 6; // Original NATS envelope bytes, before projection/coalescing.
+  uint64 errors_total = 7; // Gateway envelope/subject validation errors only.
+  uint64 window_count = 8;
+  uint64 window_bytes = 9;
+  uint64 window_errors = 10;
+  string last_received_at = 11;
+  string last_event_id = 12;
+  string last_trace_id = 13;
+}
+message ObservationSample {
+  string received_at = 1; // Actual gateway receive time, RFC3339Nano UTC.
+  string subject = 2;
+  string source = 3;
+  string topic = 4;
+  string event_id = 5;
+  string trace_id = 6;
+  int32 schema_version = 7;
+  string causation_id = 8;
+  string correlation_id = 9;
+  string entity_id = 10;
+  int64 entity_version = 11;
+  string event_time = 12; // Legacy envelope time; not substituted for source_time.
+  string source_time = 13; // Empty means unknown; clock skew is not measured.
+  string publisher_received_at = 14;
+  string published_at = 15;
+  map<string,string> payload = 16; // Bounded safe scalar projection, no raw payload.
+  string payload_status = 17;
+}
+message GetObservabilityReply {
+  int32 schema_version = 1;
+  bool available = 2;
+  string scope = 3;
+  string server_epoch = 4;
+  string as_of = 5;
+  string started_at = 6;
+  string window_start = 7;
+  int32 window_seconds = 8;
+  string window_basis = 9;
+  bool nats_connected = 10;
+  repeated ObservationRoute registered_routes = 11;
+  repeated ObservationEdge edges = 12;
+  repeated ObservationSample samples = 13;
+  uint64 errors_total = 14;
+  bool samples_truncated = 15;
+  uint32 sample_capacity = 16;
+  string statistics_scope = 17;
+  repeated string unsupported = 18;
+  string note = 19;
+  uint64 counter_overflow_total = 20; // Receipts aggregated into the overflow bucket.
+  uint32 counter_capacity = 21;
+  double window_observed_seconds = 22; // Process coverage, capped at 60; not uptime of producers.
+  bool window_complete = 23;
+}

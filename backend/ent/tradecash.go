@@ -23,6 +23,10 @@ type TradeCash struct {
 	Cash float64 `json:"cash,omitempty"`
 	// RealizedPnl holds the value of the "realized_pnl" field.
 	RealizedPnl float64 `json:"realized_pnl,omitempty"`
+	// DayStartDate holds the value of the "day_start_date" field.
+	DayStartDate string `json:"day_start_date,omitempty"`
+	// DayStartEquity holds the value of the "day_start_equity" field.
+	DayStartEquity float64 `json:"day_start_equity,omitempty"`
 	// 模拟盘已过的交易日数
 	PaperDays int `json:"paper_days,omitempty"`
 	// 对账严重不平后停止开仓
@@ -41,11 +45,11 @@ func (*TradeCash) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case tradecash.FieldOpenHalted:
 			values[i] = new(sql.NullBool)
-		case tradecash.FieldCash, tradecash.FieldRealizedPnl:
+		case tradecash.FieldCash, tradecash.FieldRealizedPnl, tradecash.FieldDayStartEquity:
 			values[i] = new(sql.NullFloat64)
 		case tradecash.FieldID, tradecash.FieldPaperDays:
 			values[i] = new(sql.NullInt64)
-		case tradecash.FieldBook, tradecash.FieldHaltReason:
+		case tradecash.FieldBook, tradecash.FieldDayStartDate, tradecash.FieldHaltReason:
 			values[i] = new(sql.NullString)
 		case tradecash.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -87,6 +91,18 @@ func (_m *TradeCash) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field realized_pnl", values[i])
 			} else if value.Valid {
 				_m.RealizedPnl = value.Float64
+			}
+		case tradecash.FieldDayStartDate:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field day_start_date", values[i])
+			} else if value.Valid {
+				_m.DayStartDate = value.String
+			}
+		case tradecash.FieldDayStartEquity:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field day_start_equity", values[i])
+			} else if value.Valid {
+				_m.DayStartEquity = value.Float64
 			}
 		case tradecash.FieldPaperDays:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -156,6 +172,12 @@ func (_m *TradeCash) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("realized_pnl=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RealizedPnl))
+	builder.WriteString(", ")
+	builder.WriteString("day_start_date=")
+	builder.WriteString(_m.DayStartDate)
+	builder.WriteString(", ")
+	builder.WriteString("day_start_equity=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DayStartEquity))
 	builder.WriteString(", ")
 	builder.WriteString("paper_days=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PaperDays))

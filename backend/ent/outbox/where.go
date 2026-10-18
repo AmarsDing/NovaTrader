@@ -94,9 +94,39 @@ func Attempts(v int) predicate.Outbox {
 	return predicate.Outbox(sql.FieldEQ(FieldAttempts, v))
 }
 
+// LeaseOwner applies equality check predicate on the "lease_owner" field. It's identical to LeaseOwnerEQ.
+func LeaseOwner(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldLeaseOwner, v))
+}
+
+// LeaseUntil applies equality check predicate on the "lease_until" field. It's identical to LeaseUntilEQ.
+func LeaseUntil(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldLeaseUntil, v))
+}
+
+// NextAttemptAt applies equality check predicate on the "next_attempt_at" field. It's identical to NextAttemptAtEQ.
+func NextAttemptAt(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldNextAttemptAt, v))
+}
+
+// DeadLetter applies equality check predicate on the "dead_letter" field. It's identical to DeadLetterEQ.
+func DeadLetter(v bool) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldDeadLetter, v))
+}
+
 // LastError applies equality check predicate on the "last_error" field. It's identical to LastErrorEQ.
 func LastError(v string) predicate.Outbox {
 	return predicate.Outbox(sql.FieldEQ(FieldLastError, v))
+}
+
+// MetadataIsNil applies the IsNil predicate on the "metadata" field.
+func MetadataIsNil() predicate.Outbox {
+	return predicate.Outbox(sql.FieldIsNull(FieldMetadata))
+}
+
+// MetadataNotNil applies the NotNil predicate on the "metadata" field.
+func MetadataNotNil() predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotNull(FieldMetadata))
 }
 
 // EventIDEQ applies the EQ predicate on the "event_id" field.
@@ -537,6 +567,181 @@ func AttemptsLT(v int) predicate.Outbox {
 // AttemptsLTE applies the LTE predicate on the "attempts" field.
 func AttemptsLTE(v int) predicate.Outbox {
 	return predicate.Outbox(sql.FieldLTE(FieldAttempts, v))
+}
+
+// LeaseOwnerEQ applies the EQ predicate on the "lease_owner" field.
+func LeaseOwnerEQ(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerNEQ applies the NEQ predicate on the "lease_owner" field.
+func LeaseOwnerNEQ(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNEQ(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerIn applies the In predicate on the "lease_owner" field.
+func LeaseOwnerIn(vs ...string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldIn(FieldLeaseOwner, vs...))
+}
+
+// LeaseOwnerNotIn applies the NotIn predicate on the "lease_owner" field.
+func LeaseOwnerNotIn(vs ...string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotIn(FieldLeaseOwner, vs...))
+}
+
+// LeaseOwnerGT applies the GT predicate on the "lease_owner" field.
+func LeaseOwnerGT(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGT(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerGTE applies the GTE predicate on the "lease_owner" field.
+func LeaseOwnerGTE(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGTE(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerLT applies the LT predicate on the "lease_owner" field.
+func LeaseOwnerLT(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLT(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerLTE applies the LTE predicate on the "lease_owner" field.
+func LeaseOwnerLTE(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLTE(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerContains applies the Contains predicate on the "lease_owner" field.
+func LeaseOwnerContains(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldContains(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerHasPrefix applies the HasPrefix predicate on the "lease_owner" field.
+func LeaseOwnerHasPrefix(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldHasPrefix(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerHasSuffix applies the HasSuffix predicate on the "lease_owner" field.
+func LeaseOwnerHasSuffix(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldHasSuffix(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerEqualFold applies the EqualFold predicate on the "lease_owner" field.
+func LeaseOwnerEqualFold(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEqualFold(FieldLeaseOwner, v))
+}
+
+// LeaseOwnerContainsFold applies the ContainsFold predicate on the "lease_owner" field.
+func LeaseOwnerContainsFold(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldContainsFold(FieldLeaseOwner, v))
+}
+
+// LeaseUntilEQ applies the EQ predicate on the "lease_until" field.
+func LeaseUntilEQ(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldLeaseUntil, v))
+}
+
+// LeaseUntilNEQ applies the NEQ predicate on the "lease_until" field.
+func LeaseUntilNEQ(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNEQ(FieldLeaseUntil, v))
+}
+
+// LeaseUntilIn applies the In predicate on the "lease_until" field.
+func LeaseUntilIn(vs ...time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldIn(FieldLeaseUntil, vs...))
+}
+
+// LeaseUntilNotIn applies the NotIn predicate on the "lease_until" field.
+func LeaseUntilNotIn(vs ...time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotIn(FieldLeaseUntil, vs...))
+}
+
+// LeaseUntilGT applies the GT predicate on the "lease_until" field.
+func LeaseUntilGT(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGT(FieldLeaseUntil, v))
+}
+
+// LeaseUntilGTE applies the GTE predicate on the "lease_until" field.
+func LeaseUntilGTE(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGTE(FieldLeaseUntil, v))
+}
+
+// LeaseUntilLT applies the LT predicate on the "lease_until" field.
+func LeaseUntilLT(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLT(FieldLeaseUntil, v))
+}
+
+// LeaseUntilLTE applies the LTE predicate on the "lease_until" field.
+func LeaseUntilLTE(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLTE(FieldLeaseUntil, v))
+}
+
+// LeaseUntilIsNil applies the IsNil predicate on the "lease_until" field.
+func LeaseUntilIsNil() predicate.Outbox {
+	return predicate.Outbox(sql.FieldIsNull(FieldLeaseUntil))
+}
+
+// LeaseUntilNotNil applies the NotNil predicate on the "lease_until" field.
+func LeaseUntilNotNil() predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotNull(FieldLeaseUntil))
+}
+
+// NextAttemptAtEQ applies the EQ predicate on the "next_attempt_at" field.
+func NextAttemptAtEQ(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldNextAttemptAt, v))
+}
+
+// NextAttemptAtNEQ applies the NEQ predicate on the "next_attempt_at" field.
+func NextAttemptAtNEQ(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNEQ(FieldNextAttemptAt, v))
+}
+
+// NextAttemptAtIn applies the In predicate on the "next_attempt_at" field.
+func NextAttemptAtIn(vs ...time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldIn(FieldNextAttemptAt, vs...))
+}
+
+// NextAttemptAtNotIn applies the NotIn predicate on the "next_attempt_at" field.
+func NextAttemptAtNotIn(vs ...time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotIn(FieldNextAttemptAt, vs...))
+}
+
+// NextAttemptAtGT applies the GT predicate on the "next_attempt_at" field.
+func NextAttemptAtGT(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGT(FieldNextAttemptAt, v))
+}
+
+// NextAttemptAtGTE applies the GTE predicate on the "next_attempt_at" field.
+func NextAttemptAtGTE(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGTE(FieldNextAttemptAt, v))
+}
+
+// NextAttemptAtLT applies the LT predicate on the "next_attempt_at" field.
+func NextAttemptAtLT(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLT(FieldNextAttemptAt, v))
+}
+
+// NextAttemptAtLTE applies the LTE predicate on the "next_attempt_at" field.
+func NextAttemptAtLTE(v time.Time) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLTE(FieldNextAttemptAt, v))
+}
+
+// NextAttemptAtIsNil applies the IsNil predicate on the "next_attempt_at" field.
+func NextAttemptAtIsNil() predicate.Outbox {
+	return predicate.Outbox(sql.FieldIsNull(FieldNextAttemptAt))
+}
+
+// NextAttemptAtNotNil applies the NotNil predicate on the "next_attempt_at" field.
+func NextAttemptAtNotNil() predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotNull(FieldNextAttemptAt))
+}
+
+// DeadLetterEQ applies the EQ predicate on the "dead_letter" field.
+func DeadLetterEQ(v bool) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldDeadLetter, v))
+}
+
+// DeadLetterNEQ applies the NEQ predicate on the "dead_letter" field.
+func DeadLetterNEQ(v bool) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNEQ(FieldDeadLetter, v))
 }
 
 // LastErrorEQ applies the EQ predicate on the "last_error" field.

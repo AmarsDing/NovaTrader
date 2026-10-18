@@ -78,6 +78,8 @@ message Signal {
   bool has_pnl = 34;
   string closed_at = 35;
   int32 holding_days = 36; // 平仓后才有；0 可能是当日平仓，看 has_pnl
+  optional double executed_price = 37; // Authoritative fill amount / quantity, numeric(12,4); missing is unknown.
+  optional int32 executed_volume = 38; // Authoritative fills, including partial fills; missing is unknown.
 }
 
 message ListSignalsRequest {

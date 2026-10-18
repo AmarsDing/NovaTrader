@@ -19,6 +19,10 @@ const (
 	FieldCash = "cash"
 	// FieldRealizedPnl holds the string denoting the realized_pnl field in the database.
 	FieldRealizedPnl = "realized_pnl"
+	// FieldDayStartDate holds the string denoting the day_start_date field in the database.
+	FieldDayStartDate = "day_start_date"
+	// FieldDayStartEquity holds the string denoting the day_start_equity field in the database.
+	FieldDayStartEquity = "day_start_equity"
 	// FieldPaperDays holds the string denoting the paper_days field in the database.
 	FieldPaperDays = "paper_days"
 	// FieldOpenHalted holds the string denoting the open_halted field in the database.
@@ -37,6 +41,8 @@ var Columns = []string{
 	FieldBook,
 	FieldCash,
 	FieldRealizedPnl,
+	FieldDayStartDate,
+	FieldDayStartEquity,
 	FieldPaperDays,
 	FieldOpenHalted,
 	FieldHaltReason,
@@ -58,6 +64,12 @@ var (
 	BookValidator func(string) error
 	// DefaultRealizedPnl holds the default value on creation for the "realized_pnl" field.
 	DefaultRealizedPnl float64
+	// DefaultDayStartDate holds the default value on creation for the "day_start_date" field.
+	DefaultDayStartDate string
+	// DayStartDateValidator is a validator for the "day_start_date" field. It is called by the builders before save.
+	DayStartDateValidator func(string) error
+	// DefaultDayStartEquity holds the default value on creation for the "day_start_equity" field.
+	DefaultDayStartEquity float64
 	// DefaultPaperDays holds the default value on creation for the "paper_days" field.
 	DefaultPaperDays int
 	// DefaultOpenHalted holds the default value on creation for the "open_halted" field.
@@ -93,6 +105,16 @@ func ByCash(opts ...sql.OrderTermOption) OrderOption {
 // ByRealizedPnl orders the results by the realized_pnl field.
 func ByRealizedPnl(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRealizedPnl, opts...).ToFunc()
+}
+
+// ByDayStartDate orders the results by the day_start_date field.
+func ByDayStartDate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDayStartDate, opts...).ToFunc()
+}
+
+// ByDayStartEquity orders the results by the day_start_equity field.
+func ByDayStartEquity(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDayStartEquity, opts...).ToFunc()
 }
 
 // ByPaperDays orders the results by the paper_days field.

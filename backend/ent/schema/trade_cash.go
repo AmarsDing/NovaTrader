@@ -24,6 +24,8 @@ func (TradeCash) Fields() []ent.Field {
 		field.String("book").MaxLen(16).NotEmpty().Unique(),
 		field.Float("cash").SchemaType(numericMoney),
 		field.Float("realized_pnl").Default(0).SchemaType(numericMoney),
+		field.String("day_start_date").Default("").MaxLen(10),
+		field.Float("day_start_equity").Default(0).SchemaType(numericMoney),
 		field.Int("paper_days").Default(0).Comment("模拟盘已过的交易日数"),
 		field.Bool("open_halted").Default(false).Comment("对账严重不平后停止开仓"),
 		field.String("halt_reason").MaxLen(200).Default(""),

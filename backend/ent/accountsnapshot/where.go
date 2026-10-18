@@ -484,6 +484,16 @@ func PositionCountLTE(v int) predicate.AccountSnapshot {
 	return predicate.AccountSnapshot(sql.FieldLTE(FieldPositionCount, v))
 }
 
+// StateIsNil applies the IsNil predicate on the "state" field.
+func StateIsNil() predicate.AccountSnapshot {
+	return predicate.AccountSnapshot(sql.FieldIsNull(FieldState))
+}
+
+// StateNotNil applies the NotNil predicate on the "state" field.
+func StateNotNil() predicate.AccountSnapshot {
+	return predicate.AccountSnapshot(sql.FieldNotNull(FieldState))
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.AccountSnapshot) predicate.AccountSnapshot {
 	return predicate.AccountSnapshot(sql.AndPredicates(predicates...))

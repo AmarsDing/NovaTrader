@@ -1,0 +1,56 @@
+syntax = "proto3";
+package api.backtest.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/backtest/v1;v1";
+
+// Isolated research only; this API has no strategy activation or order operation.
+service Research {
+  rpc CreateResearch(CreateResearchRequest) returns (ResearchJob) {
+    option (google.api.http) = { post: "/v1/backtest/research/jobs" body: "*" };
+  }
+  rpc ListResearch(ListResearchRequest) returns (ListResearchReply) {
+    option (google.api.http) = { get: "/v1/backtest/research/jobs" };
+  }
+  rpc GetResearch(GetResearchRequest) returns (ResearchJob) {
+    option (google.api.http) = { get: "/v1/backtest/research/jobs/{run_id}" };
+  }
+  rpc CancelResearch(GetResearchRequest) returns (ResearchJob) {
+    option (google.api.http) = { post: "/v1/backtest/research/jobs/{run_id}/cancel" body: "*" };
+  }
+  rpc GetResearchArtifact(ResearchArtifactRequest) returns (ResearchArtifactReply) {
+    option (google.api.http) = { get: "/v1/backtest/research/jobs/{run_id}/artifact" };
+  }
+}
+message CreateResearchRequest {
+  string kind = 1;
+  string manifest_id = 2;
+  string as_of = 3;
+  // Exact JSON strings preserve large integer/decimal inputs. No local file paths.
+  string input_json = 4;
+  string options_json = 5;
+  int64 seed = 6;
+  int32 timeout_seconds = 7;
+}
+message GetResearchRequest { string run_id = 1; }
+message ListResearchRequest { int32 limit = 1; int32 offset = 2; string status = 3; }
+message ListResearchReply { repeated ResearchJob jobs = 1; }
+message ResearchJob {
+  string run_id = 1;
+  string kind = 2;
+  string manifest_id = 3;
+  string manifest_hash = 4;
+  string input_hash = 5;
+  string status = 6;
+  string reason = 7;
+  bool cancel_requested = 8;
+  int64 revision = 9;
+  string as_of = 10;
+  string created_at = 11;
+  string started_at = 12;
+  string finished_at = 13;
+  string result_json = 14;
+  string artifact_hash = 15;
+  int32 timeout_seconds = 16;
+}
+message ResearchArtifactRequest { string run_id = 1; string name = 2; }
+message ResearchArtifactReply { string name = 1; string sha256 = 2; bytes content = 3; }

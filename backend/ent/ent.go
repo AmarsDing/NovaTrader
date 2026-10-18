@@ -15,8 +15,14 @@ import (
 	"server/ent/backtesttask"
 	"server/ent/backtesttrade"
 	"server/ent/collectcursor"
+	"server/ent/confighead"
+	"server/ent/configreceipt"
 	"server/ent/dailyreview"
 	"server/ent/dataqualityissue"
+	"server/ent/datasetmanifest"
+	"server/ent/datasetrecord"
+	"server/ent/decisionplan"
+	"server/ent/executionintent"
 	"server/ent/financereport"
 	"server/ent/hotrank"
 	"server/ent/hsgttop10"
@@ -45,9 +51,11 @@ import (
 	"server/ent/outbox"
 	"server/ent/overseasmapping"
 	"server/ent/overseasquote"
+	"server/ent/paperrunsample"
 	"server/ent/paramproposal"
 	"server/ent/position"
 	"server/ent/rawresponse"
+	"server/ent/researchjob"
 	"server/ent/riskcheck"
 	"server/ent/riskevent"
 	"server/ent/seattag"
@@ -57,6 +65,7 @@ import (
 	"server/ent/serviceinstance"
 	"server/ent/shadowsignal"
 	"server/ent/signalevent"
+	"server/ent/simbarcursor"
 	"server/ent/sourcehealth"
 	"server/ent/stockalias"
 	"server/ent/stockbasic"
@@ -72,6 +81,7 @@ import (
 	"server/ent/tradecalendar"
 	"server/ent/tradecash"
 	"server/ent/tradefill"
+	"server/ent/tradeledgerlock"
 	"server/ent/tradeorder"
 	"server/ent/tradesignal"
 	"sync"
@@ -147,8 +157,14 @@ func checkColumn(t, c string) error {
 			backtesttask.Table:      backtesttask.ValidColumn,
 			backtesttrade.Table:     backtesttrade.ValidColumn,
 			collectcursor.Table:     collectcursor.ValidColumn,
+			confighead.Table:        confighead.ValidColumn,
+			configreceipt.Table:     configreceipt.ValidColumn,
 			dailyreview.Table:       dailyreview.ValidColumn,
 			dataqualityissue.Table:  dataqualityissue.ValidColumn,
+			datasetmanifest.Table:   datasetmanifest.ValidColumn,
+			datasetrecord.Table:     datasetrecord.ValidColumn,
+			decisionplan.Table:      decisionplan.ValidColumn,
+			executionintent.Table:   executionintent.ValidColumn,
 			financereport.Table:     financereport.ValidColumn,
 			hotrank.Table:           hotrank.ValidColumn,
 			hsgttop10.Table:         hsgttop10.ValidColumn,
@@ -177,9 +193,11 @@ func checkColumn(t, c string) error {
 			outbox.Table:            outbox.ValidColumn,
 			overseasmapping.Table:   overseasmapping.ValidColumn,
 			overseasquote.Table:     overseasquote.ValidColumn,
+			paperrunsample.Table:    paperrunsample.ValidColumn,
 			paramproposal.Table:     paramproposal.ValidColumn,
 			position.Table:          position.ValidColumn,
 			rawresponse.Table:       rawresponse.ValidColumn,
+			researchjob.Table:       researchjob.ValidColumn,
 			riskcheck.Table:         riskcheck.ValidColumn,
 			riskevent.Table:         riskevent.ValidColumn,
 			seattag.Table:           seattag.ValidColumn,
@@ -189,6 +207,7 @@ func checkColumn(t, c string) error {
 			serviceinstance.Table:   serviceinstance.ValidColumn,
 			shadowsignal.Table:      shadowsignal.ValidColumn,
 			signalevent.Table:       signalevent.ValidColumn,
+			simbarcursor.Table:      simbarcursor.ValidColumn,
 			sourcehealth.Table:      sourcehealth.ValidColumn,
 			stockalias.Table:        stockalias.ValidColumn,
 			stockbasic.Table:        stockbasic.ValidColumn,
@@ -204,6 +223,7 @@ func checkColumn(t, c string) error {
 			tradecalendar.Table:     tradecalendar.ValidColumn,
 			tradecash.Table:         tradecash.ValidColumn,
 			tradefill.Table:         tradefill.ValidColumn,
+			tradeledgerlock.Table:   tradeledgerlock.ValidColumn,
 			tradeorder.Table:        tradeorder.ValidColumn,
 			tradesignal.Table:       tradesignal.ValidColumn,
 		})

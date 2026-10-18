@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"server/ent/accountsnapshot"
 	"strings"
@@ -35,7 +36,9 @@ type AccountSnapshot struct {
 	RiskRatio float64 `json:"risk_ratio,omitempty"`
 	// PositionCount holds the value of the "position_count" field.
 	PositionCount int `json:"position_count,omitempty"`
-	selectValues  sql.SelectValues
+	// State holds the value of the "state" field.
+	State        json.RawMessage `json:"state,omitempty"`
+	selectValues sql.SelectValues
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -43,6 +46,8 @@ func (*AccountSnapshot) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case accountsnapshot.FieldState:
+			values[i] = new([]byte)
 		case accountsnapshot.FieldTotalEquity, accountsnapshot.FieldAvailableFunds, accountsnapshot.FieldUnrealizedPnl, accountsnapshot.FieldRealizedPnl, accountsnapshot.FieldMarginUsed, accountsnapshot.FieldRiskRatio:
 			values[i] = new(sql.NullFloat64)
 		case accountsnapshot.FieldID, accountsnapshot.FieldPositionCount:
@@ -126,6 +131,14 @@ func (_m *AccountSnapshot) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.PositionCount = int(value.Int64)
 			}
+		case accountsnapshot.FieldState:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field state", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.State); err != nil {
+					return fmt.Errorf("unmarshal field state: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -188,6 +201,9 @@ func (_m *AccountSnapshot) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("position_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PositionCount))
+	builder.WriteString(", ")
+	builder.WriteString("state=")
+	builder.WriteString(fmt.Sprintf("%v", _m.State))
 	builder.WriteByte(')')
 	return builder.String()
 }

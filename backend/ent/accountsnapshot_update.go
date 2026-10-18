@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"server/ent/accountsnapshot"
@@ -12,6 +13,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 )
 
@@ -203,6 +205,24 @@ func (_u *AccountSnapshotUpdate) AddPositionCount(v int) *AccountSnapshotUpdate 
 	return _u
 }
 
+// SetState sets the "state" field.
+func (_u *AccountSnapshotUpdate) SetState(v json.RawMessage) *AccountSnapshotUpdate {
+	_u.mutation.SetState(v)
+	return _u
+}
+
+// AppendState appends value to the "state" field.
+func (_u *AccountSnapshotUpdate) AppendState(v json.RawMessage) *AccountSnapshotUpdate {
+	_u.mutation.AppendState(v)
+	return _u
+}
+
+// ClearState clears the value of the "state" field.
+func (_u *AccountSnapshotUpdate) ClearState() *AccountSnapshotUpdate {
+	_u.mutation.ClearState()
+	return _u
+}
+
 // Mutation returns the AccountSnapshotMutation object of the builder.
 func (_u *AccountSnapshotUpdate) Mutation() *AccountSnapshotMutation {
 	return _u.mutation
@@ -304,6 +324,17 @@ func (_u *AccountSnapshotUpdate) sqlSave(ctx context.Context) (_node int, err er
 	}
 	if value, ok := _u.mutation.AddedPositionCount(); ok {
 		_spec.AddField(accountsnapshot.FieldPositionCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.State(); ok {
+		_spec.SetField(accountsnapshot.FieldState, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedState(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, accountsnapshot.FieldState, value)
+		})
+	}
+	if _u.mutation.StateCleared() {
+		_spec.ClearField(accountsnapshot.FieldState, field.TypeJSON)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -500,6 +531,24 @@ func (_u *AccountSnapshotUpdateOne) AddPositionCount(v int) *AccountSnapshotUpda
 	return _u
 }
 
+// SetState sets the "state" field.
+func (_u *AccountSnapshotUpdateOne) SetState(v json.RawMessage) *AccountSnapshotUpdateOne {
+	_u.mutation.SetState(v)
+	return _u
+}
+
+// AppendState appends value to the "state" field.
+func (_u *AccountSnapshotUpdateOne) AppendState(v json.RawMessage) *AccountSnapshotUpdateOne {
+	_u.mutation.AppendState(v)
+	return _u
+}
+
+// ClearState clears the value of the "state" field.
+func (_u *AccountSnapshotUpdateOne) ClearState() *AccountSnapshotUpdateOne {
+	_u.mutation.ClearState()
+	return _u
+}
+
 // Mutation returns the AccountSnapshotMutation object of the builder.
 func (_u *AccountSnapshotUpdateOne) Mutation() *AccountSnapshotMutation {
 	return _u.mutation
@@ -631,6 +680,17 @@ func (_u *AccountSnapshotUpdateOne) sqlSave(ctx context.Context) (_node *Account
 	}
 	if value, ok := _u.mutation.AddedPositionCount(); ok {
 		_spec.AddField(accountsnapshot.FieldPositionCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.State(); ok {
+		_spec.SetField(accountsnapshot.FieldState, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedState(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, accountsnapshot.FieldState, value)
+		})
+	}
+	if _u.mutation.StateCleared() {
+		_spec.ClearField(accountsnapshot.FieldState, field.TypeJSON)
 	}
 	_node = &AccountSnapshot{config: _u.config}
 	_spec.Assign = _node.assignValues

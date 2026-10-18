@@ -28,10 +28,22 @@ type Tx struct {
 	BacktestTrade *BacktestTradeClient
 	// CollectCursor is the client for interacting with the CollectCursor builders.
 	CollectCursor *CollectCursorClient
+	// ConfigHead is the client for interacting with the ConfigHead builders.
+	ConfigHead *ConfigHeadClient
+	// ConfigReceipt is the client for interacting with the ConfigReceipt builders.
+	ConfigReceipt *ConfigReceiptClient
 	// DailyReview is the client for interacting with the DailyReview builders.
 	DailyReview *DailyReviewClient
 	// DataQualityIssue is the client for interacting with the DataQualityIssue builders.
 	DataQualityIssue *DataQualityIssueClient
+	// DatasetManifest is the client for interacting with the DatasetManifest builders.
+	DatasetManifest *DatasetManifestClient
+	// DatasetRecord is the client for interacting with the DatasetRecord builders.
+	DatasetRecord *DatasetRecordClient
+	// DecisionPlan is the client for interacting with the DecisionPlan builders.
+	DecisionPlan *DecisionPlanClient
+	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
+	ExecutionIntent *ExecutionIntentClient
 	// FinanceReport is the client for interacting with the FinanceReport builders.
 	FinanceReport *FinanceReportClient
 	// HotRank is the client for interacting with the HotRank builders.
@@ -88,12 +100,16 @@ type Tx struct {
 	OverseasMapping *OverseasMappingClient
 	// OverseasQuote is the client for interacting with the OverseasQuote builders.
 	OverseasQuote *OverseasQuoteClient
+	// PaperRunSample is the client for interacting with the PaperRunSample builders.
+	PaperRunSample *PaperRunSampleClient
 	// ParamProposal is the client for interacting with the ParamProposal builders.
 	ParamProposal *ParamProposalClient
 	// Position is the client for interacting with the Position builders.
 	Position *PositionClient
 	// RawResponse is the client for interacting with the RawResponse builders.
 	RawResponse *RawResponseClient
+	// ResearchJob is the client for interacting with the ResearchJob builders.
+	ResearchJob *ResearchJobClient
 	// RiskCheck is the client for interacting with the RiskCheck builders.
 	RiskCheck *RiskCheckClient
 	// RiskEvent is the client for interacting with the RiskEvent builders.
@@ -112,6 +128,8 @@ type Tx struct {
 	ShadowSignal *ShadowSignalClient
 	// SignalEvent is the client for interacting with the SignalEvent builders.
 	SignalEvent *SignalEventClient
+	// SimBarCursor is the client for interacting with the SimBarCursor builders.
+	SimBarCursor *SimBarCursorClient
 	// SourceHealth is the client for interacting with the SourceHealth builders.
 	SourceHealth *SourceHealthClient
 	// StockAlias is the client for interacting with the StockAlias builders.
@@ -142,6 +160,8 @@ type Tx struct {
 	TradeCash *TradeCashClient
 	// TradeFill is the client for interacting with the TradeFill builders.
 	TradeFill *TradeFillClient
+	// TradeLedgerLock is the client for interacting with the TradeLedgerLock builders.
+	TradeLedgerLock *TradeLedgerLockClient
 	// TradeOrder is the client for interacting with the TradeOrder builders.
 	TradeOrder *TradeOrderClient
 	// TradeSignal is the client for interacting with the TradeSignal builders.
@@ -285,8 +305,14 @@ func (tx *Tx) init() {
 	tx.BacktestTask = NewBacktestTaskClient(tx.config)
 	tx.BacktestTrade = NewBacktestTradeClient(tx.config)
 	tx.CollectCursor = NewCollectCursorClient(tx.config)
+	tx.ConfigHead = NewConfigHeadClient(tx.config)
+	tx.ConfigReceipt = NewConfigReceiptClient(tx.config)
 	tx.DailyReview = NewDailyReviewClient(tx.config)
 	tx.DataQualityIssue = NewDataQualityIssueClient(tx.config)
+	tx.DatasetManifest = NewDatasetManifestClient(tx.config)
+	tx.DatasetRecord = NewDatasetRecordClient(tx.config)
+	tx.DecisionPlan = NewDecisionPlanClient(tx.config)
+	tx.ExecutionIntent = NewExecutionIntentClient(tx.config)
 	tx.FinanceReport = NewFinanceReportClient(tx.config)
 	tx.HotRank = NewHotRankClient(tx.config)
 	tx.HsgtTop10 = NewHsgtTop10Client(tx.config)
@@ -315,9 +341,11 @@ func (tx *Tx) init() {
 	tx.Outbox = NewOutboxClient(tx.config)
 	tx.OverseasMapping = NewOverseasMappingClient(tx.config)
 	tx.OverseasQuote = NewOverseasQuoteClient(tx.config)
+	tx.PaperRunSample = NewPaperRunSampleClient(tx.config)
 	tx.ParamProposal = NewParamProposalClient(tx.config)
 	tx.Position = NewPositionClient(tx.config)
 	tx.RawResponse = NewRawResponseClient(tx.config)
+	tx.ResearchJob = NewResearchJobClient(tx.config)
 	tx.RiskCheck = NewRiskCheckClient(tx.config)
 	tx.RiskEvent = NewRiskEventClient(tx.config)
 	tx.SeatTag = NewSeatTagClient(tx.config)
@@ -327,6 +355,7 @@ func (tx *Tx) init() {
 	tx.ServiceInstance = NewServiceInstanceClient(tx.config)
 	tx.ShadowSignal = NewShadowSignalClient(tx.config)
 	tx.SignalEvent = NewSignalEventClient(tx.config)
+	tx.SimBarCursor = NewSimBarCursorClient(tx.config)
 	tx.SourceHealth = NewSourceHealthClient(tx.config)
 	tx.StockAlias = NewStockAliasClient(tx.config)
 	tx.StockBasic = NewStockBasicClient(tx.config)
@@ -342,6 +371,7 @@ func (tx *Tx) init() {
 	tx.TradeCalendar = NewTradeCalendarClient(tx.config)
 	tx.TradeCash = NewTradeCashClient(tx.config)
 	tx.TradeFill = NewTradeFillClient(tx.config)
+	tx.TradeLedgerLock = NewTradeLedgerLockClient(tx.config)
 	tx.TradeOrder = NewTradeOrderClient(tx.config)
 	tx.TradeSignal = NewTradeSignalClient(tx.config)
 }

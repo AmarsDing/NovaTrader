@@ -28,6 +28,18 @@ func (_u *OutboxUpdate) Where(ps ...predicate.Outbox) *OutboxUpdate {
 	return _u
 }
 
+// SetMetadata sets the "metadata" field.
+func (_u *OutboxUpdate) SetMetadata(v map[string]interface{}) *OutboxUpdate {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *OutboxUpdate) ClearMetadata() *OutboxUpdate {
+	_u.mutation.ClearMetadata()
+	return _u
+}
+
 // SetEventID sets the "event_id" field.
 func (_u *OutboxUpdate) SetEventID(v string) *OutboxUpdate {
 	_u.mutation.SetEventID(v)
@@ -151,6 +163,74 @@ func (_u *OutboxUpdate) AddAttempts(v int) *OutboxUpdate {
 	return _u
 }
 
+// SetLeaseOwner sets the "lease_owner" field.
+func (_u *OutboxUpdate) SetLeaseOwner(v string) *OutboxUpdate {
+	_u.mutation.SetLeaseOwner(v)
+	return _u
+}
+
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_u *OutboxUpdate) SetNillableLeaseOwner(v *string) *OutboxUpdate {
+	if v != nil {
+		_u.SetLeaseOwner(*v)
+	}
+	return _u
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (_u *OutboxUpdate) SetLeaseUntil(v time.Time) *OutboxUpdate {
+	_u.mutation.SetLeaseUntil(v)
+	return _u
+}
+
+// SetNillableLeaseUntil sets the "lease_until" field if the given value is not nil.
+func (_u *OutboxUpdate) SetNillableLeaseUntil(v *time.Time) *OutboxUpdate {
+	if v != nil {
+		_u.SetLeaseUntil(*v)
+	}
+	return _u
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (_u *OutboxUpdate) ClearLeaseUntil() *OutboxUpdate {
+	_u.mutation.ClearLeaseUntil()
+	return _u
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (_u *OutboxUpdate) SetNextAttemptAt(v time.Time) *OutboxUpdate {
+	_u.mutation.SetNextAttemptAt(v)
+	return _u
+}
+
+// SetNillableNextAttemptAt sets the "next_attempt_at" field if the given value is not nil.
+func (_u *OutboxUpdate) SetNillableNextAttemptAt(v *time.Time) *OutboxUpdate {
+	if v != nil {
+		_u.SetNextAttemptAt(*v)
+	}
+	return _u
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (_u *OutboxUpdate) ClearNextAttemptAt() *OutboxUpdate {
+	_u.mutation.ClearNextAttemptAt()
+	return _u
+}
+
+// SetDeadLetter sets the "dead_letter" field.
+func (_u *OutboxUpdate) SetDeadLetter(v bool) *OutboxUpdate {
+	_u.mutation.SetDeadLetter(v)
+	return _u
+}
+
+// SetNillableDeadLetter sets the "dead_letter" field if the given value is not nil.
+func (_u *OutboxUpdate) SetNillableDeadLetter(v *bool) *OutboxUpdate {
+	if v != nil {
+		_u.SetDeadLetter(*v)
+	}
+	return _u
+}
+
 // SetLastError sets the "last_error" field.
 func (_u *OutboxUpdate) SetLastError(v string) *OutboxUpdate {
 	_u.mutation.SetLastError(v)
@@ -225,6 +305,11 @@ func (_u *OutboxUpdate) check() error {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "Outbox.source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LeaseOwner(); ok {
+		if err := outbox.LeaseOwnerValidator(v); err != nil {
+			return &ValidationError{Name: "lease_owner", err: fmt.Errorf(`ent: validator failed for field "Outbox.lease_owner": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -239,6 +324,12 @@ func (_u *OutboxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(outbox.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(outbox.FieldMetadata, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.EventID(); ok {
 		_spec.SetField(outbox.FieldEventID, field.TypeString, value)
@@ -273,6 +364,24 @@ func (_u *OutboxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedAttempts(); ok {
 		_spec.AddField(outbox.FieldAttempts, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.LeaseOwner(); ok {
+		_spec.SetField(outbox.FieldLeaseOwner, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LeaseUntil(); ok {
+		_spec.SetField(outbox.FieldLeaseUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LeaseUntilCleared() {
+		_spec.ClearField(outbox.FieldLeaseUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.NextAttemptAt(); ok {
+		_spec.SetField(outbox.FieldNextAttemptAt, field.TypeTime, value)
+	}
+	if _u.mutation.NextAttemptAtCleared() {
+		_spec.ClearField(outbox.FieldNextAttemptAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DeadLetter(); ok {
+		_spec.SetField(outbox.FieldDeadLetter, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.LastError(); ok {
 		_spec.SetField(outbox.FieldLastError, field.TypeString, value)
 	}
@@ -297,6 +406,18 @@ type OutboxUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *OutboxMutation
+}
+
+// SetMetadata sets the "metadata" field.
+func (_u *OutboxUpdateOne) SetMetadata(v map[string]interface{}) *OutboxUpdateOne {
+	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (_u *OutboxUpdateOne) ClearMetadata() *OutboxUpdateOne {
+	_u.mutation.ClearMetadata()
+	return _u
 }
 
 // SetEventID sets the "event_id" field.
@@ -422,6 +543,74 @@ func (_u *OutboxUpdateOne) AddAttempts(v int) *OutboxUpdateOne {
 	return _u
 }
 
+// SetLeaseOwner sets the "lease_owner" field.
+func (_u *OutboxUpdateOne) SetLeaseOwner(v string) *OutboxUpdateOne {
+	_u.mutation.SetLeaseOwner(v)
+	return _u
+}
+
+// SetNillableLeaseOwner sets the "lease_owner" field if the given value is not nil.
+func (_u *OutboxUpdateOne) SetNillableLeaseOwner(v *string) *OutboxUpdateOne {
+	if v != nil {
+		_u.SetLeaseOwner(*v)
+	}
+	return _u
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (_u *OutboxUpdateOne) SetLeaseUntil(v time.Time) *OutboxUpdateOne {
+	_u.mutation.SetLeaseUntil(v)
+	return _u
+}
+
+// SetNillableLeaseUntil sets the "lease_until" field if the given value is not nil.
+func (_u *OutboxUpdateOne) SetNillableLeaseUntil(v *time.Time) *OutboxUpdateOne {
+	if v != nil {
+		_u.SetLeaseUntil(*v)
+	}
+	return _u
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (_u *OutboxUpdateOne) ClearLeaseUntil() *OutboxUpdateOne {
+	_u.mutation.ClearLeaseUntil()
+	return _u
+}
+
+// SetNextAttemptAt sets the "next_attempt_at" field.
+func (_u *OutboxUpdateOne) SetNextAttemptAt(v time.Time) *OutboxUpdateOne {
+	_u.mutation.SetNextAttemptAt(v)
+	return _u
+}
+
+// SetNillableNextAttemptAt sets the "next_attempt_at" field if the given value is not nil.
+func (_u *OutboxUpdateOne) SetNillableNextAttemptAt(v *time.Time) *OutboxUpdateOne {
+	if v != nil {
+		_u.SetNextAttemptAt(*v)
+	}
+	return _u
+}
+
+// ClearNextAttemptAt clears the value of the "next_attempt_at" field.
+func (_u *OutboxUpdateOne) ClearNextAttemptAt() *OutboxUpdateOne {
+	_u.mutation.ClearNextAttemptAt()
+	return _u
+}
+
+// SetDeadLetter sets the "dead_letter" field.
+func (_u *OutboxUpdateOne) SetDeadLetter(v bool) *OutboxUpdateOne {
+	_u.mutation.SetDeadLetter(v)
+	return _u
+}
+
+// SetNillableDeadLetter sets the "dead_letter" field if the given value is not nil.
+func (_u *OutboxUpdateOne) SetNillableDeadLetter(v *bool) *OutboxUpdateOne {
+	if v != nil {
+		_u.SetDeadLetter(*v)
+	}
+	return _u
+}
+
 // SetLastError sets the "last_error" field.
 func (_u *OutboxUpdateOne) SetLastError(v string) *OutboxUpdateOne {
 	_u.mutation.SetLastError(v)
@@ -509,6 +698,11 @@ func (_u *OutboxUpdateOne) check() error {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "Outbox.source": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.LeaseOwner(); ok {
+		if err := outbox.LeaseOwnerValidator(v); err != nil {
+			return &ValidationError{Name: "lease_owner", err: fmt.Errorf(`ent: validator failed for field "Outbox.lease_owner": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -540,6 +734,12 @@ func (_u *OutboxUpdateOne) sqlSave(ctx context.Context) (_node *Outbox, err erro
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.Metadata(); ok {
+		_spec.SetField(outbox.FieldMetadata, field.TypeJSON, value)
+	}
+	if _u.mutation.MetadataCleared() {
+		_spec.ClearField(outbox.FieldMetadata, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.EventID(); ok {
 		_spec.SetField(outbox.FieldEventID, field.TypeString, value)
@@ -573,6 +773,24 @@ func (_u *OutboxUpdateOne) sqlSave(ctx context.Context) (_node *Outbox, err erro
 	}
 	if value, ok := _u.mutation.AddedAttempts(); ok {
 		_spec.AddField(outbox.FieldAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.LeaseOwner(); ok {
+		_spec.SetField(outbox.FieldLeaseOwner, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LeaseUntil(); ok {
+		_spec.SetField(outbox.FieldLeaseUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LeaseUntilCleared() {
+		_spec.ClearField(outbox.FieldLeaseUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.NextAttemptAt(); ok {
+		_spec.SetField(outbox.FieldNextAttemptAt, field.TypeTime, value)
+	}
+	if _u.mutation.NextAttemptAtCleared() {
+		_spec.ClearField(outbox.FieldNextAttemptAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.DeadLetter(); ok {
+		_spec.SetField(outbox.FieldDeadLetter, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.LastError(); ok {
 		_spec.SetField(outbox.FieldLastError, field.TypeString, value)

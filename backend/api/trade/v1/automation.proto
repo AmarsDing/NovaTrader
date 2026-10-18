@@ -1,0 +1,23 @@
+syntax = "proto3";
+package api.trade.v1;
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "api/trade/v1/trade.proto";
+option go_package = "server/api/trade/v1;v1";
+
+// SIM-only conditional execution. It cannot grant LIVE/L3 permission.
+service Automation {
+ rpc CreatePlan(CreatePlanRequest) returns (PlanReply) { option (google.api.http)={post:"/v1/trade/plans" body:"*"}; }
+ rpc ListPlans(ListPlansRequest) returns (PlansReply) { option (google.api.http)={get:"/v1/trade/plans"}; }
+ rpc AuthorizePlan(AuthorizePlanRequest) returns (PlanReply) { option (google.api.http)={post:"/v1/trade/plans/{plan_id}/authorize" body:"*"}; }
+ rpc ExecutePlan(ExecutePlanRequest) returns (Order) { option (google.api.http)={post:"/v1/trade/plans/{plan_id}/execute" body:"*"}; }
+ rpc ListIntents(ListPlansRequest) returns (IntentsReply) { option (google.api.http)={get:"/v1/trade/intents"}; }
+}
+message CreatePlanRequest { int32 signal_id=1; string account=2; string plan_id=3; int32 base_revision=4; }
+message ListPlansRequest { string account=1; }
+message AuthorizePlanRequest { string plan_id=1; int32 revision=2; string mode=3; string operator=4; }
+message ExecutePlanRequest { string plan_id=1; int32 revision=2; string operator=3; }
+// The nested, versioned contracts retain explicit unknowns and immutable prices.
+message PlanReply { google.protobuf.Struct record=1; }
+message PlansReply { repeated google.protobuf.Struct plans=1; }
+message IntentsReply { repeated google.protobuf.Struct intents=1; }

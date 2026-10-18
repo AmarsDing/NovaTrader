@@ -21,6 +21,7 @@ var (
 		{Name: "margin_used", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
 		{Name: "risk_ratio", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(8,4)"}},
 		{Name: "position_count", Type: field.TypeInt},
+		{Name: "state", Type: field.TypeJSON, Nullable: true},
 	}
 	// AccountSnapshotsTable holds the schema information for the "account_snapshots" table.
 	AccountSnapshotsTable = &schema.Table{
@@ -263,6 +264,47 @@ var (
 			},
 		},
 	}
+	// ConfigHeadsColumns holds the columns for the "config_heads" table.
+	ConfigHeadsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "revision", Type: field.TypeInt, Default: 0},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// ConfigHeadsTable holds the schema information for the "config_heads" table.
+	ConfigHeadsTable = &schema.Table{
+		Name:       "config_heads",
+		Columns:    ConfigHeadsColumns,
+		PrimaryKey: []*schema.Column{ConfigHeadsColumns[0]},
+	}
+	// ConfigReceiptsColumns holds the columns for the "config_receipts" table.
+	ConfigReceiptsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "service", Type: field.TypeString, Size: 32},
+		{Name: "instance", Type: field.TypeString, Size: 64},
+		{Name: "scope", Type: field.TypeString, Size: 32},
+		{Name: "revision", Type: field.TypeInt},
+		{Name: "status", Type: field.TypeString, Size: 32},
+		{Name: "detail", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "observed_at", Type: field.TypeTime},
+	}
+	// ConfigReceiptsTable holds the schema information for the "config_receipts" table.
+	ConfigReceiptsTable = &schema.Table{
+		Name:       "config_receipts",
+		Columns:    ConfigReceiptsColumns,
+		PrimaryKey: []*schema.Column{ConfigReceiptsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "configreceipt_service_instance_scope",
+				Unique:  true,
+				Columns: []*schema.Column{ConfigReceiptsColumns[1], ConfigReceiptsColumns[2], ConfigReceiptsColumns[3]},
+			},
+			{
+				Name:    "configreceipt_observed_at",
+				Unique:  false,
+				Columns: []*schema.Column{ConfigReceiptsColumns[7]},
+			},
+		},
+	}
 	// DailyReviewsColumns holds the columns for the "daily_reviews" table.
 	DailyReviewsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -316,6 +358,126 @@ var (
 				Name:    "dataqualityissue_trade_date",
 				Unique:  false,
 				Columns: []*schema.Column{DataQualityIssueColumns[4]},
+			},
+		},
+	}
+	// DatasetManifestColumns holds the columns for the "dataset_manifest" table.
+	DatasetManifestColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "manifest_id", Type: field.TypeString, Unique: true, Size: 80},
+		{Name: "hash", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "schema_version", Type: field.TypeInt, Default: 1},
+		{Name: "cutoff", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "content", Type: field.TypeJSON},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// DatasetManifestTable holds the schema information for the "dataset_manifest" table.
+	DatasetManifestTable = &schema.Table{
+		Name:       "dataset_manifest",
+		Columns:    DatasetManifestColumns,
+		PrimaryKey: []*schema.Column{DatasetManifestColumns[0]},
+	}
+	// DatasetRecordColumns holds the columns for the "dataset_record" table.
+	DatasetRecordColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "domain", Type: field.TypeString, Size: 32},
+		{Name: "business_key", Type: field.TypeString, Size: 256},
+		{Name: "source", Type: field.TypeString, Size: 64},
+		{Name: "event_time", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "available_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "availability", Type: field.TypeString, Size: 16, Default: "unknown"},
+		{Name: "availability_evidence", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "observed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "raw_hash", Type: field.TypeString, Size: 64},
+		{Name: "revision_hash", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "payload", Type: field.TypeJSON},
+	}
+	// DatasetRecordTable holds the schema information for the "dataset_record" table.
+	DatasetRecordTable = &schema.Table{
+		Name:       "dataset_record",
+		Columns:    DatasetRecordColumns,
+		PrimaryKey: []*schema.Column{DatasetRecordColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "datasetrecord_domain_business_key_event_time",
+				Unique:  false,
+				Columns: []*schema.Column{DatasetRecordColumns[1], DatasetRecordColumns[2], DatasetRecordColumns[4]},
+			},
+			{
+				Name:    "datasetrecord_observed_at",
+				Unique:  false,
+				Columns: []*schema.Column{DatasetRecordColumns[8]},
+			},
+			{
+				Name:    "datasetrecord_available_at",
+				Unique:  false,
+				Columns: []*schema.Column{DatasetRecordColumns[5]},
+			},
+		},
+	}
+	// DecisionPlansColumns holds the columns for the "decision_plans" table.
+	DecisionPlansColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "plan_id", Type: field.TypeString, Size: 64},
+		{Name: "revision", Type: field.TypeInt},
+		{Name: "book", Type: field.TypeString, Size: 16},
+		{Name: "signal_id", Type: field.TypeInt},
+		{Name: "snapshot", Type: field.TypeJSON},
+		{Name: "plan", Type: field.TypeJSON},
+		{Name: "state", Type: field.TypeString, Size: 32, Default: "draft"},
+		{Name: "mode", Type: field.TypeString, Size: 32, Default: "review"},
+		{Name: "operator", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "reason", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// DecisionPlansTable holds the schema information for the "decision_plans" table.
+	DecisionPlansTable = &schema.Table{
+		Name:       "decision_plans",
+		Columns:    DecisionPlansColumns,
+		PrimaryKey: []*schema.Column{DecisionPlansColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "decisionplan_plan_id_revision",
+				Unique:  true,
+				Columns: []*schema.Column{DecisionPlansColumns[1], DecisionPlansColumns[2]},
+			},
+			{
+				Name:    "decisionplan_book_state",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionPlansColumns[3], DecisionPlansColumns[7]},
+			},
+			{
+				Name:    "decisionplan_signal_id",
+				Unique:  false,
+				Columns: []*schema.Column{DecisionPlansColumns[4]},
+			},
+		},
+	}
+	// ExecutionIntentsColumns holds the columns for the "execution_intents" table.
+	ExecutionIntentsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "business_key", Type: field.TypeString, Unique: true, Size: 180},
+		{Name: "client_order_id", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "request_hash", Type: field.TypeString, Size: 64},
+		{Name: "book", Type: field.TypeString, Size: 16},
+		{Name: "plan_id", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "plan_revision", Type: field.TypeInt, Default: 0},
+		{Name: "state", Type: field.TypeString, Size: 32, Default: "claimed"},
+		{Name: "reason", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ExecutionIntentsTable holds the schema information for the "execution_intents" table.
+	ExecutionIntentsTable = &schema.Table{
+		Name:       "execution_intents",
+		Columns:    ExecutionIntentsColumns,
+		PrimaryKey: []*schema.Column{ExecutionIntentsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "executionintent_book_state",
+				Unique:  false,
+				Columns: []*schema.Column{ExecutionIntentsColumns[4], ExecutionIntentsColumns[7]},
 			},
 		},
 	}
@@ -1211,6 +1373,7 @@ var (
 	// OutboxColumns holds the columns for the "outbox" table.
 	OutboxColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "event_id", Type: field.TypeString, Unique: true, Size: 64},
 		{Name: "trace_id", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
 		{Name: "subject", Type: field.TypeString, Size: 128},
@@ -1219,6 +1382,10 @@ var (
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "published_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "lease_owner", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "next_attempt_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "dead_letter", Type: field.TypeBool, Default: false},
 		{Name: "last_error", Type: field.TypeString, Nullable: true, Size: 2147483647},
 	}
 	// OutboxTable holds the schema information for the "outbox" table.
@@ -1230,7 +1397,12 @@ var (
 			{
 				Name:    "outbox_published_at_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{OutboxColumns[7], OutboxColumns[6]},
+				Columns: []*schema.Column{OutboxColumns[8], OutboxColumns[7]},
+			},
+			{
+				Name:    "outbox_dead_letter_published_at_next_attempt_at_lease_until",
+				Unique:  false,
+				Columns: []*schema.Column{OutboxColumns[13], OutboxColumns[8], OutboxColumns[12], OutboxColumns[11]},
 			},
 		},
 	}
@@ -1281,6 +1453,36 @@ var (
 				Name:    "overseasquote_as_of",
 				Unique:  false,
 				Columns: []*schema.Column{OverseasQuoteColumns[6]},
+			},
+		},
+	}
+	// PaperRunSampleColumns holds the columns for the "paper_run_sample" table.
+	PaperRunSampleColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "book", Type: field.TypeString, Size: 16},
+		{Name: "account_id", Type: field.TypeString, Size: 64},
+		{Name: "trading_day", Type: field.TypeString, Size: 10},
+		{Name: "slot_start", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "instance_id", Type: field.TypeString, Size: 64},
+		{Name: "observed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "observation", Type: field.TypeJSON},
+		{Name: "evidence_hash", Type: field.TypeString, Size: 64},
+	}
+	// PaperRunSampleTable holds the schema information for the "paper_run_sample" table.
+	PaperRunSampleTable = &schema.Table{
+		Name:       "paper_run_sample",
+		Columns:    PaperRunSampleColumns,
+		PrimaryKey: []*schema.Column{PaperRunSampleColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "paperrunsample_book_account_id_slot_start_instance_id",
+				Unique:  true,
+				Columns: []*schema.Column{PaperRunSampleColumns[1], PaperRunSampleColumns[2], PaperRunSampleColumns[4], PaperRunSampleColumns[5]},
+			},
+			{
+				Name:    "paperrunsample_book_account_id_trading_day",
+				Unique:  false,
+				Columns: []*schema.Column{PaperRunSampleColumns[1], PaperRunSampleColumns[2], PaperRunSampleColumns[3]},
 			},
 		},
 	}
@@ -1364,6 +1566,50 @@ var (
 				Name:    "rawresponse_source_fetched_at",
 				Unique:  false,
 				Columns: []*schema.Column{RawResponseColumns[1], RawResponseColumns[6]},
+			},
+		},
+	}
+	// ResearchJobColumns holds the columns for the "research_job" table.
+	ResearchJobColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "run_id", Type: field.TypeString, Unique: true, Size: 80},
+		{Name: "kind", Type: field.TypeString, Size: 32},
+		{Name: "manifest_id", Type: field.TypeString, Size: 80},
+		{Name: "manifest_hash", Type: field.TypeString, Size: 64},
+		{Name: "as_of", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "input_json", Type: field.TypeString, Size: 2147483647},
+		{Name: "options_json", Type: field.TypeString, Size: 2147483647, Default: "{}"},
+		{Name: "input_hash", Type: field.TypeString, Size: 64},
+		{Name: "seed", Type: field.TypeInt64, Default: 0},
+		{Name: "timeout_seconds", Type: field.TypeInt, Default: 60},
+		{Name: "created_by", Type: field.TypeString, Size: 64, Default: "local"},
+		{Name: "status", Type: field.TypeString, Size: 32, Default: "queued"},
+		{Name: "reason", Type: field.TypeString, Size: 256, Default: ""},
+		{Name: "cancel_requested", Type: field.TypeBool, Default: false},
+		{Name: "owner", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "revision", Type: field.TypeInt64, Default: 1},
+		{Name: "result_json", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "artifact_hash", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "finished_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ResearchJobTable holds the schema information for the "research_job" table.
+	ResearchJobTable = &schema.Table{
+		Name:       "research_job",
+		Columns:    ResearchJobColumns,
+		PrimaryKey: []*schema.Column{ResearchJobColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "researchjob_status_id",
+				Unique:  false,
+				Columns: []*schema.Column{ResearchJobColumns[12], ResearchJobColumns[0]},
+			},
+			{
+				Name:    "researchjob_lease_until_status",
+				Unique:  false,
+				Columns: []*schema.Column{ResearchJobColumns[16], ResearchJobColumns[12]},
 			},
 		},
 	}
@@ -1630,6 +1876,28 @@ var (
 				Name:    "signalevent_signal_id_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{SignalEventsColumns[1], SignalEventsColumns[7]},
+			},
+		},
+	}
+	// SimBarCursorColumns holds the columns for the "sim_bar_cursor" table.
+	SimBarCursorColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "book", Type: field.TypeString, Size: 16},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "last_bar_start", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_close", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "valuation_version", Type: field.TypeInt, Default: 0},
+	}
+	// SimBarCursorTable holds the schema information for the "sim_bar_cursor" table.
+	SimBarCursorTable = &schema.Table{
+		Name:       "sim_bar_cursor",
+		Columns:    SimBarCursorColumns,
+		PrimaryKey: []*schema.Column{SimBarCursorColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "simbarcursor_book_symbol",
+				Unique:  true,
+				Columns: []*schema.Column{SimBarCursorColumns[1], SimBarCursorColumns[2]},
 			},
 		},
 	}
@@ -1986,6 +2254,8 @@ var (
 		{Name: "book", Type: field.TypeString, Unique: true, Size: 16},
 		{Name: "cash", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
 		{Name: "realized_pnl", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
+		{Name: "day_start_date", Type: field.TypeString, Size: 10, Default: ""},
+		{Name: "day_start_equity", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
 		{Name: "paper_days", Type: field.TypeInt, Default: 0},
 		{Name: "open_halted", Type: field.TypeBool, Default: false},
 		{Name: "halt_reason", Type: field.TypeString, Size: 200, Default: ""},
@@ -2029,6 +2299,17 @@ var (
 				Columns: []*schema.Column{TradeFillColumns[2], TradeFillColumns[11]},
 			},
 		},
+	}
+	// TradeLedgerLocksColumns holds the columns for the "trade_ledger_locks" table.
+	TradeLedgerLocksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "book", Type: field.TypeString, Unique: true, Size: 16},
+	}
+	// TradeLedgerLocksTable holds the schema information for the "trade_ledger_locks" table.
+	TradeLedgerLocksTable = &schema.Table{
+		Name:       "trade_ledger_locks",
+		Columns:    TradeLedgerLocksColumns,
+		PrimaryKey: []*schema.Column{TradeLedgerLocksColumns[0]},
 	}
 	// TradeOrderColumns holds the columns for the "trade_order" table.
 	TradeOrderColumns = []*schema.Column{
@@ -2156,8 +2437,14 @@ var (
 		BacktestTaskTable,
 		BacktestTradeTable,
 		CollectCursorTable,
+		ConfigHeadsTable,
+		ConfigReceiptsTable,
 		DailyReviewsTable,
 		DataQualityIssueTable,
+		DatasetManifestTable,
+		DatasetRecordTable,
+		DecisionPlansTable,
+		ExecutionIntentsTable,
 		FinanceReportTable,
 		HotRankTable,
 		HsgtTop10Table,
@@ -2186,9 +2473,11 @@ var (
 		OutboxTable,
 		OverseasMappingTable,
 		OverseasQuoteTable,
+		PaperRunSampleTable,
 		ParamProposalTable,
 		PositionsTable,
 		RawResponseTable,
+		ResearchJobTable,
 		RiskCheckTable,
 		RiskEventTable,
 		SeatTagTable,
@@ -2198,6 +2487,7 @@ var (
 		ServiceInstanceTable,
 		ShadowSignalTable,
 		SignalEventsTable,
+		SimBarCursorTable,
 		SourceHealthTable,
 		StockAliasTable,
 		StockBasicTable,
@@ -2213,6 +2503,7 @@ var (
 		TradeCalendarTable,
 		TradeCashTable,
 		TradeFillTable,
+		TradeLedgerLocksTable,
 		TradeOrderTable,
 		TradeSignalsTable,
 	}
@@ -2248,6 +2539,12 @@ func init() {
 	}
 	DataQualityIssueTable.Annotation = &entsql.Annotation{
 		Table: "data_quality_issue",
+	}
+	DatasetManifestTable.Annotation = &entsql.Annotation{
+		Table: "dataset_manifest",
+	}
+	DatasetRecordTable.Annotation = &entsql.Annotation{
+		Table: "dataset_record",
 	}
 	FinanceReportTable.Annotation = &entsql.Annotation{
 		Table: "finance_report",
@@ -2335,6 +2632,9 @@ func init() {
 	OverseasQuoteTable.Annotation = &entsql.Annotation{
 		Table: "overseas_quote",
 	}
+	PaperRunSampleTable.Annotation = &entsql.Annotation{
+		Table: "paper_run_sample",
+	}
 	ParamProposalTable.Annotation = &entsql.Annotation{
 		Table: "param_proposal",
 	}
@@ -2343,6 +2643,9 @@ func init() {
 	}
 	RawResponseTable.Annotation = &entsql.Annotation{
 		Table: "raw_response",
+	}
+	ResearchJobTable.Annotation = &entsql.Annotation{
+		Table: "research_job",
 	}
 	RiskCheckTable.Annotation = &entsql.Annotation{
 		Table: "risk_check",
@@ -2370,6 +2673,9 @@ func init() {
 	}
 	SignalEventsTable.Annotation = &entsql.Annotation{
 		Table: "signal_events",
+	}
+	SimBarCursorTable.Annotation = &entsql.Annotation{
+		Table: "sim_bar_cursor",
 	}
 	SourceHealthTable.Annotation = &entsql.Annotation{
 		Table: "source_health",

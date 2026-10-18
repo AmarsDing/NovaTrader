@@ -23,6 +23,8 @@ const OperationBacktestAdmission = "/api.backtest.v1.Backtest/Admission"
 const OperationBacktestApproveProposal = "/api.backtest.v1.Backtest/ApproveProposal"
 const OperationBacktestCancelTask = "/api.backtest.v1.Backtest/CancelTask"
 const OperationBacktestCreateTask = "/api.backtest.v1.Backtest/CreateTask"
+const OperationBacktestFreezeDataset = "/api.backtest.v1.Backtest/FreezeDataset"
+const OperationBacktestGetDataset = "/api.backtest.v1.Backtest/GetDataset"
 const OperationBacktestGetReport = "/api.backtest.v1.Backtest/GetReport"
 const OperationBacktestGetTask = "/api.backtest.v1.Backtest/GetTask"
 const OperationBacktestListIntrospections = "/api.backtest.v1.Backtest/ListIntrospections"
@@ -43,6 +45,9 @@ type BacktestHTTPServer interface {
 	ApproveProposal(context.Context, *DecideProposalRequest) (*Proposal, error)
 	CancelTask(context.Context, *GetTaskRequest) (*Task, error)
 	CreateTask(context.Context, *CreateTaskRequest) (*Task, error)
+	// FreezeDataset Freeze point-in-time inputs and expose all exclusions before creating a task.
+	FreezeDataset(context.Context, *FreezeDatasetRequest) (*DatasetReply, error)
+	GetDataset(context.Context, *GetDatasetRequest) (*DatasetReply, error)
 	GetReport(context.Context, *GetTaskRequest) (*ReportReply, error)
 	GetTask(context.Context, *GetTaskRequest) (*Task, error)
 	ListIntrospections(context.Context, *ListIntrospectionsRequest) (*ListIntrospectionsReply, error)
@@ -63,6 +68,8 @@ type BacktestHTTPServer interface {
 
 func RegisterBacktestHTTPServer(s *http.Server, srv BacktestHTTPServer) {
 	r := s.Route("/")
+	r.POST("/v1/backtest/datasets", _Backtest_FreezeDataset0_HTTP_Handler(srv))
+	r.GET("/v1/backtest/datasets/{manifest_id}", _Backtest_GetDataset0_HTTP_Handler(srv))
 	r.GET("/v1/backtest/strategies", _Backtest_ListStrategies0_HTTP_Handler(srv))
 	r.POST("/v1/backtest/tasks", _Backtest_CreateTask0_HTTP_Handler(srv))
 	r.GET("/v1/backtest/tasks", _Backtest_ListTasks0_HTTP_Handler(srv))
@@ -80,6 +87,50 @@ func RegisterBacktestHTTPServer(s *http.Server, srv BacktestHTTPServer) {
 	r.POST("/v1/backtest/strategies/{name}/rollback", _Backtest_RollbackStrategy0_HTTP_Handler(srv))
 	r.GET("/v1/backtest/reports/period", _Backtest_PeriodReport0_HTTP_Handler(srv))
 	r.GET("/v1/backtest/admission", _Backtest_Admission0_HTTP_Handler(srv))
+}
+
+func _Backtest_FreezeDataset0_HTTP_Handler(srv BacktestHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in FreezeDatasetRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBacktestFreezeDataset)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.FreezeDataset(ctx, req.(*FreezeDatasetRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DatasetReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Backtest_GetDataset0_HTTP_Handler(srv BacktestHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetDatasetRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBacktestGetDataset)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetDataset(ctx, req.(*GetDatasetRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DatasetReply)
+		return ctx.Result(200, reply)
+	}
 }
 
 func _Backtest_ListStrategies0_HTTP_Handler(srv BacktestHTTPServer) func(ctx http.Context) error {
@@ -456,6 +507,9 @@ type BacktestHTTPClient interface {
 	ApproveProposal(ctx context.Context, req *DecideProposalRequest, opts ...http.CallOption) (rsp *Proposal, err error)
 	CancelTask(ctx context.Context, req *GetTaskRequest, opts ...http.CallOption) (rsp *Task, err error)
 	CreateTask(ctx context.Context, req *CreateTaskRequest, opts ...http.CallOption) (rsp *Task, err error)
+	// FreezeDataset Freeze point-in-time inputs and expose all exclusions before creating a task.
+	FreezeDataset(ctx context.Context, req *FreezeDatasetRequest, opts ...http.CallOption) (rsp *DatasetReply, err error)
+	GetDataset(ctx context.Context, req *GetDatasetRequest, opts ...http.CallOption) (rsp *DatasetReply, err error)
 	GetReport(ctx context.Context, req *GetTaskRequest, opts ...http.CallOption) (rsp *ReportReply, err error)
 	GetTask(ctx context.Context, req *GetTaskRequest, opts ...http.CallOption) (rsp *Task, err error)
 	ListIntrospections(ctx context.Context, req *ListIntrospectionsRequest, opts ...http.CallOption) (rsp *ListIntrospectionsReply, err error)
@@ -529,6 +583,33 @@ func (c *BacktestHTTPClientImpl) CreateTask(ctx context.Context, in *CreateTaskR
 	opts = append(opts, http.Operation(OperationBacktestCreateTask))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// FreezeDataset Freeze point-in-time inputs and expose all exclusions before creating a task.
+func (c *BacktestHTTPClientImpl) FreezeDataset(ctx context.Context, in *FreezeDatasetRequest, opts ...http.CallOption) (*DatasetReply, error) {
+	var out DatasetReply
+	pattern := "/v1/backtest/datasets"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationBacktestFreezeDataset))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *BacktestHTTPClientImpl) GetDataset(ctx context.Context, in *GetDatasetRequest, opts ...http.CallOption) (*DatasetReply, error) {
+	var out DatasetReply
+	pattern := "/v1/backtest/datasets/{manifest_id}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBacktestGetDataset))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

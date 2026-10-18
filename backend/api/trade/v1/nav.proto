@@ -1,0 +1,28 @@
+syntax = "proto3";
+package api.trade.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/trade/v1;v1";
+
+// NAV is a read-only ledger export. POST carries an explicit aligned benchmark;
+// this endpoint cannot mutate an account or start a trade/research job.
+service Nav {
+  rpc ExportNav(NavExportRequest) returns (NavExportReply) {
+    option (google.api.http) = {post:"/v1/trade/nav/export" body:"*"};
+  }
+}
+message NavExportRequest {
+  string account = 1; // SIM/default only.
+  string start_date = 2; // YYYY-MM-DD. An actual previous trading close is required as initial comparison point.
+  string end_date = 3;
+  string frequency = 4; // 1d only; no fabricated daily interpolation.
+  string as_of = 5; // RFC3339 cutoff, defaults to server time.
+  string manifest_id = 6; // Optional for raw evidence; required for research input.
+  string benchmark_json = 7; // Explicit {benchmark_id,benchmark_kind,points:[{date,value}]}.
+}
+message NavExportReply {
+  string report_json = 1; // version=1, scope=account_nav_export; includes exact source identities/unknowns.
+  string input_json = 2; // Exact frozen worker input, empty unless every requirement passed.
+  string input_sha256 = 3;
+  bool input_ready = 4; // Only readiness authority; does not start research or authorize trading.
+  string ledger_hash = 5;
+}

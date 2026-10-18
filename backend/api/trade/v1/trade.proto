@@ -35,7 +35,7 @@ service Trade {
       get: "/v1/trade/account"
     };
   }
-  // 用一根 K 线撮合该标的未完成委托。涨跌停价为 0 时不判断封板。
+  // 兼容保留；服务器拒绝公开撮合输入。仅内部行情消费者可驱动模拟成交。
   rpc ApplyBar(ApplyBarRequest) returns (ApplyBarReply) {
     option (google.api.http) = {
       post: "/v1/trade/bars"
@@ -69,7 +69,7 @@ message PlaceOrderRequest {
   string operator = 8;
   string signal_id = 9;
   string strategy_version = 10;
-  // 有值时下单后立刻用这根 K 线撮合
+  // 兼容保留；公开接口收到该字段会拒绝，不能由客户端制造成交。
   Bar bar = 11;
 }
 

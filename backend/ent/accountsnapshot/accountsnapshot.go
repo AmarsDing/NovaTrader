@@ -29,6 +29,8 @@ const (
 	FieldRiskRatio = "risk_ratio"
 	// FieldPositionCount holds the string denoting the position_count field in the database.
 	FieldPositionCount = "position_count"
+	// FieldState holds the string denoting the state field in the database.
+	FieldState = "state"
 	// Table holds the table name of the accountsnapshot in the database.
 	Table = "account_snapshots"
 )
@@ -45,6 +47,7 @@ var Columns = []string{
 	FieldMarginUsed,
 	FieldRiskRatio,
 	FieldPositionCount,
+	FieldState,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).

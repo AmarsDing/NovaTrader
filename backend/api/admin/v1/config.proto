@@ -1,0 +1,49 @@
+syntax = "proto3";
+package api.admin.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/admin/v1;v1";
+
+// Save is persistent desired configuration, not proof that a service loaded it.
+service Configuration {
+ rpc GetConfiguration(ConfigReadRequest) returns (ConfigReadReply) { option (google.api.http) = {get:"/api/config"}; }
+ rpc SaveConfiguration(ConfigWriteRequest) returns (ConfigReadReply) { option (google.api.http) = {put:"/api/config" body:"*"}; }
+ rpc PreviewConfiguration(ConfigWriteRequest) returns (ConfigPreviewReply) { option (google.api.http) = {post:"/api/config/preview" body:"*"}; }
+ rpc RollbackConfiguration(ConfigWriteRequest) returns (ConfigReadReply) { option (google.api.http) = {post:"/api/config/rollback" body:"*"}; }
+}
+message ConfigReadRequest {}
+message ConfigWriteRequest {
+ optional int64 base_revision = 1; // required for all writes including legacy route
+ map<string,string> values = 2;
+ optional int64 target_revision = 3; // preview/rollback restores as NEW revision
+}
+message ConfigLoadReceipt {
+ string service = 1;
+ string instance = 2;
+ string scope = 3;
+ int64 revision = 4;
+ string status = 5;
+ string detail = 6;
+ string observed_at = 7;
+}
+message ConfigVersionSummary { int64 revision = 1; string created_at = 2; bool active = 3; }
+message ConfigReadReply {
+ int32 schema_version = 1;
+ int64 revision = 2;
+ map<string,string> values = 3; // secrets omitted, never masked as editable values
+ map<string,bool> secret_set = 4;
+ repeated ConfigLoadReceipt receipts = 5;
+ repeated ConfigVersionSummary history = 6;
+ string created_at = 7;
+ string note = 8;
+  repeated string target_services = 9;
+}
+message ConfigChange { string key = 1; string before = 2; string after = 3; bool secret = 4; string service = 5; string effective = 6; }
+message ConfigPreviewReply {
+ int32 schema_version = 1;
+ int64 base_revision = 2;
+ repeated ConfigChange changes = 3;
+ repeated string known_effects = 4;
+ repeated string unknown_effects = 5;
+ repeated string services = 6;
+ bool invalidates_plans = 7;
+}

@@ -73,6 +73,7 @@ message CheckOrderRequest {
   // 人工单必填
   string operator = 8;
   string sector = 9;
+  optional int32 expected_config_revision = 10;
 }
 
 message RuleResult {
@@ -118,6 +119,9 @@ message StateReply {
   // 账户类型 → 最近快照时间
   map<string, string> account_as_of = 7;
   string last_quote_at = 8;
+  int64 config_revision = 9; // Successfully loaded immutable configuration version.
+  optional bool config_ready = 10; // false after a failed load until actual recovery.
+  optional bool ready = 11; // Actual engine readiness; missing on legacy servers means unknown.
 }
 
 message SetModeRequest {
@@ -145,6 +149,7 @@ message UpdateParamRequest {
   string key = 1;
   string value = 2;
   string operator = 3;
+  optional int64 base_revision = 4; // Required; omitted legacy writes receive 428.
 }
 
 message DailyReportRequest {

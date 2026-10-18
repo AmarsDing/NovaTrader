@@ -1,0 +1,62 @@
+syntax = "proto3";
+package api.platform.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/platform/v1;v1";
+
+// Process-local observations. No payload, symbol, trace or arbitrary label is accepted.
+service ConsumerObservability {
+  rpc GetConsumerObservation(GetConsumerObservationRequest) returns (ConsumerObservation) {
+    option (google.api.http) = {get: "/internal/observability"};
+  }
+}
+message GetConsumerObservationRequest {}
+message ConsumerCounters {
+  uint64 received = 1; // Wire notifications, before validation/queueing; includes redelivery.
+  uint64 queued = 2; // Notification admitted to a local queue, not business completion.
+  uint64 coalesced = 3;
+  uint64 attempted = 4; // Actual execution started, separate from received.
+  uint64 succeeded = 5; // Only the operation's declared completion_scope.
+  uint64 rejected = 6;
+  uint64 failed = 7;
+  uint64 cancelled = 8;
+  uint64 skipped = 9;
+  uint64 duration_count = 10;
+  double duration_total_ms = 11;
+  double duration_max_ms = 12;
+  optional double duration_p95_upper_ms = 13; // Fixed histogram upper bound, absent if > largest bucket.
+}
+message ConsumerOperation {
+  string key = 1;
+  string kind = 2; // notification / business / infrastructure
+  string input = 3; // Compile-time subject pattern or trigger, never arbitrary labels.
+  string completion_scope = 4;
+  ConsumerCounters total = 5;
+  ConsumerCounters window = 6;
+  uint64 inflight = 7;
+  string last_received_at = 8;
+  string last_started_at = 9;
+  string last_completed_at = 10;
+}
+message ConsumerObservation {
+  int32 schema_version = 1;
+  string scope = 2; // process_consumer_operations
+  string service = 3;
+  string instance_id = 4;
+  string host = 5;
+  string os = 6;
+  string arch = 7;
+  string started_at = 8;
+  string sampled_at = 9;
+  double uptime_seconds = 10;
+  int32 window_seconds = 11;
+  double window_observed_seconds = 12;
+  bool window_complete = 13;
+  string window_basis = 14;
+  repeated ConsumerOperation operations = 15;
+  uint64 goroutines = 16;
+  uint64 heap_alloc_bytes = 17;
+  uint64 runtime_sys_bytes = 18;
+  uint32 logical_cpus = 19;
+  uint32 gomaxprocs = 20;
+  repeated string unsupported = 21;
+}

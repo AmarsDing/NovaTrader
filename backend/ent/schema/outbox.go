@@ -22,6 +22,7 @@ func (Outbox) Annotations() []schema.Annotation {
 
 func (Outbox) Fields() []ent.Field {
 	return []ent.Field{
+		field.JSON("metadata", map[string]any{}).Optional(),
 		field.String("event_id").MaxLen(64).NotEmpty().Unique(),
 		field.String("trace_id").MaxLen(64).Optional().Default(""),
 		field.String("subject").MaxLen(128).NotEmpty(),
@@ -32,6 +33,10 @@ func (Outbox) Fields() []ent.Field {
 		field.Time("published_at").Optional().Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Int("attempts").Default(0),
+		field.String("lease_owner").MaxLen(64).Default(""),
+		field.Time("lease_until").Optional().Nillable().SchemaType(pgTimestamptz),
+		field.Time("next_attempt_at").Optional().Nillable().SchemaType(pgTimestamptz),
+		field.Bool("dead_letter").Default(false),
 		field.Text("last_error").Optional().Nillable(),
 	}
 }
@@ -39,5 +44,6 @@ func (Outbox) Fields() []ent.Field {
 func (Outbox) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("published_at", "created_at"),
+		index.Fields("dead_letter", "published_at", "next_attempt_at", "lease_until"),
 	}
 }

@@ -13,6 +13,8 @@ const (
 	Label = "outbox"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
+	// FieldMetadata holds the string denoting the metadata field in the database.
+	FieldMetadata = "metadata"
 	// FieldEventID holds the string denoting the event_id field in the database.
 	FieldEventID = "event_id"
 	// FieldTraceID holds the string denoting the trace_id field in the database.
@@ -29,6 +31,14 @@ const (
 	FieldPublishedAt = "published_at"
 	// FieldAttempts holds the string denoting the attempts field in the database.
 	FieldAttempts = "attempts"
+	// FieldLeaseOwner holds the string denoting the lease_owner field in the database.
+	FieldLeaseOwner = "lease_owner"
+	// FieldLeaseUntil holds the string denoting the lease_until field in the database.
+	FieldLeaseUntil = "lease_until"
+	// FieldNextAttemptAt holds the string denoting the next_attempt_at field in the database.
+	FieldNextAttemptAt = "next_attempt_at"
+	// FieldDeadLetter holds the string denoting the dead_letter field in the database.
+	FieldDeadLetter = "dead_letter"
 	// FieldLastError holds the string denoting the last_error field in the database.
 	FieldLastError = "last_error"
 	// Table holds the table name of the outbox in the database.
@@ -38,6 +48,7 @@ const (
 // Columns holds all SQL columns for outbox fields.
 var Columns = []string{
 	FieldID,
+	FieldMetadata,
 	FieldEventID,
 	FieldTraceID,
 	FieldSubject,
@@ -46,6 +57,10 @@ var Columns = []string{
 	FieldCreatedAt,
 	FieldPublishedAt,
 	FieldAttempts,
+	FieldLeaseOwner,
+	FieldLeaseUntil,
+	FieldNextAttemptAt,
+	FieldDeadLetter,
 	FieldLastError,
 }
 
@@ -74,6 +89,12 @@ var (
 	DefaultCreatedAt func() time.Time
 	// DefaultAttempts holds the default value on creation for the "attempts" field.
 	DefaultAttempts int
+	// DefaultLeaseOwner holds the default value on creation for the "lease_owner" field.
+	DefaultLeaseOwner string
+	// LeaseOwnerValidator is a validator for the "lease_owner" field. It is called by the builders before save.
+	LeaseOwnerValidator func(string) error
+	// DefaultDeadLetter holds the default value on creation for the "dead_letter" field.
+	DefaultDeadLetter bool
 )
 
 // OrderOption defines the ordering options for the Outbox queries.
@@ -117,6 +138,26 @@ func ByPublishedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByAttempts orders the results by the attempts field.
 func ByAttempts(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAttempts, opts...).ToFunc()
+}
+
+// ByLeaseOwner orders the results by the lease_owner field.
+func ByLeaseOwner(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLeaseOwner, opts...).ToFunc()
+}
+
+// ByLeaseUntil orders the results by the lease_until field.
+func ByLeaseUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLeaseUntil, opts...).ToFunc()
+}
+
+// ByNextAttemptAt orders the results by the next_attempt_at field.
+func ByNextAttemptAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNextAttemptAt, opts...).ToFunc()
+}
+
+// ByDeadLetter orders the results by the dead_letter field.
+func ByDeadLetter(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDeadLetter, opts...).ToFunc()
 }
 
 // ByLastError orders the results by the last_error field.

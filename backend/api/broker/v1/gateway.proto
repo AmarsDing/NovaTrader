@@ -1,0 +1,35 @@
+syntax = "proto3";
+package api.broker.v1;
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+option go_package = "server/api/broker/v1;v1";
+
+// Isolated mTLS JSON transport contract. Every request additionally requires
+// X-NT-Protocol and X-NT-Account headers. No endpoint confers trading admission.
+// payload preserves terminal evidence and schema-versioned transport receipts;
+// FILE_PUBLISHED is NOT a broker ACK. See broker-gw/protocol-manifest.json.
+service BrokerGateway {
+  rpc Health(EmptyRequest) returns (GatewayReply) { option (google.api.http) = {get:"/v1/broker/health"}; }
+  rpc Snapshot(EmptyRequest) returns (GatewayReply) { option (google.api.http) = {get:"/v1/broker/snapshot"}; }
+  rpc Query(QueryRequest) returns (GatewayReply) { option (google.api.http) = {get:"/v1/broker/orders/{sid}"}; }
+  rpc Submit(SubmitRequest) returns (GatewayReply) { option (google.api.http) = {post:"/v1/broker/orders" body:"*"}; }
+  rpc Cancel(CancelRequest) returns (GatewayReply) { option (google.api.http) = {post:"/v1/broker/cancels" body:"*"}; }
+  rpc Reconcile(ReconcileRequest) returns (GatewayReply) { option (google.api.http) = {post:"/v1/broker/reconcile" body:"*"}; }
+}
+message EmptyRequest {}
+message QueryRequest { string sid = 1; }
+message OrderInput {
+  string sid = 1;
+  string symbol = 2;
+  string side = 3;
+  string price = 4; // exact decimal string, no rounding performed by transport
+  int32 volume = 5;
+}
+message SubmitRequest { OrderInput order = 1; }
+message CancelRequest { string request_id = 1 [json_name="request_id"]; string sid = 2; }
+message ReconcileRequest { google.protobuf.Struct expected = 1; }
+message GatewayReply {
+  string protocol = 1;
+  string account_id = 2 [json_name="account_id"];
+  google.protobuf.Struct payload = 3;
+}

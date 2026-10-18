@@ -1,0 +1,23 @@
+syntax = "proto3";
+package api.trade.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/trade/v1;v1";
+
+// Read-only SIM operation evidence. This service cannot create credits or enable LIVE.
+service Admission {
+  rpc GetAdmission(AdmissionEvidenceRequest) returns (AdmissionEvidenceReply) {
+    option (google.api.http)={get:"/v1/trade/admission"};
+  }
+  rpc GetEvidence(AdmissionEvidenceRequest) returns (AdmissionEvidenceReply) {
+    option (google.api.http)={get:"/v1/trade/admission/evidence"};
+  }
+}
+message AdmissionEvidenceRequest { string account=1; int32 limit=2; }
+message AdmissionEvidenceReply {
+  // Exact JSON avoids loss of timestamp/hash identity and keeps explicit unknown values.
+  string report_json=1;
+  int32 consecutive_days=2;
+  int32 required_days=3;
+  bool run_evidence_ready=4;
+  bool live_enabled=5; // Always false: execution authority is a separate gate.
+}

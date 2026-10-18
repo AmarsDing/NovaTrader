@@ -69,6 +69,16 @@ func RealizedPnl(v float64) predicate.TradeCash {
 	return predicate.TradeCash(sql.FieldEQ(FieldRealizedPnl, v))
 }
 
+// DayStartDate applies equality check predicate on the "day_start_date" field. It's identical to DayStartDateEQ.
+func DayStartDate(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldEQ(FieldDayStartDate, v))
+}
+
+// DayStartEquity applies equality check predicate on the "day_start_equity" field. It's identical to DayStartEquityEQ.
+func DayStartEquity(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldEQ(FieldDayStartEquity, v))
+}
+
 // PaperDays applies equality check predicate on the "paper_days" field. It's identical to PaperDaysEQ.
 func PaperDays(v int) predicate.TradeCash {
 	return predicate.TradeCash(sql.FieldEQ(FieldPaperDays, v))
@@ -232,6 +242,111 @@ func RealizedPnlLT(v float64) predicate.TradeCash {
 // RealizedPnlLTE applies the LTE predicate on the "realized_pnl" field.
 func RealizedPnlLTE(v float64) predicate.TradeCash {
 	return predicate.TradeCash(sql.FieldLTE(FieldRealizedPnl, v))
+}
+
+// DayStartDateEQ applies the EQ predicate on the "day_start_date" field.
+func DayStartDateEQ(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldEQ(FieldDayStartDate, v))
+}
+
+// DayStartDateNEQ applies the NEQ predicate on the "day_start_date" field.
+func DayStartDateNEQ(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldNEQ(FieldDayStartDate, v))
+}
+
+// DayStartDateIn applies the In predicate on the "day_start_date" field.
+func DayStartDateIn(vs ...string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldIn(FieldDayStartDate, vs...))
+}
+
+// DayStartDateNotIn applies the NotIn predicate on the "day_start_date" field.
+func DayStartDateNotIn(vs ...string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldNotIn(FieldDayStartDate, vs...))
+}
+
+// DayStartDateGT applies the GT predicate on the "day_start_date" field.
+func DayStartDateGT(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldGT(FieldDayStartDate, v))
+}
+
+// DayStartDateGTE applies the GTE predicate on the "day_start_date" field.
+func DayStartDateGTE(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldGTE(FieldDayStartDate, v))
+}
+
+// DayStartDateLT applies the LT predicate on the "day_start_date" field.
+func DayStartDateLT(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldLT(FieldDayStartDate, v))
+}
+
+// DayStartDateLTE applies the LTE predicate on the "day_start_date" field.
+func DayStartDateLTE(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldLTE(FieldDayStartDate, v))
+}
+
+// DayStartDateContains applies the Contains predicate on the "day_start_date" field.
+func DayStartDateContains(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldContains(FieldDayStartDate, v))
+}
+
+// DayStartDateHasPrefix applies the HasPrefix predicate on the "day_start_date" field.
+func DayStartDateHasPrefix(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldHasPrefix(FieldDayStartDate, v))
+}
+
+// DayStartDateHasSuffix applies the HasSuffix predicate on the "day_start_date" field.
+func DayStartDateHasSuffix(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldHasSuffix(FieldDayStartDate, v))
+}
+
+// DayStartDateEqualFold applies the EqualFold predicate on the "day_start_date" field.
+func DayStartDateEqualFold(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldEqualFold(FieldDayStartDate, v))
+}
+
+// DayStartDateContainsFold applies the ContainsFold predicate on the "day_start_date" field.
+func DayStartDateContainsFold(v string) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldContainsFold(FieldDayStartDate, v))
+}
+
+// DayStartEquityEQ applies the EQ predicate on the "day_start_equity" field.
+func DayStartEquityEQ(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldEQ(FieldDayStartEquity, v))
+}
+
+// DayStartEquityNEQ applies the NEQ predicate on the "day_start_equity" field.
+func DayStartEquityNEQ(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldNEQ(FieldDayStartEquity, v))
+}
+
+// DayStartEquityIn applies the In predicate on the "day_start_equity" field.
+func DayStartEquityIn(vs ...float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldIn(FieldDayStartEquity, vs...))
+}
+
+// DayStartEquityNotIn applies the NotIn predicate on the "day_start_equity" field.
+func DayStartEquityNotIn(vs ...float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldNotIn(FieldDayStartEquity, vs...))
+}
+
+// DayStartEquityGT applies the GT predicate on the "day_start_equity" field.
+func DayStartEquityGT(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldGT(FieldDayStartEquity, v))
+}
+
+// DayStartEquityGTE applies the GTE predicate on the "day_start_equity" field.
+func DayStartEquityGTE(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldGTE(FieldDayStartEquity, v))
+}
+
+// DayStartEquityLT applies the LT predicate on the "day_start_equity" field.
+func DayStartEquityLT(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldLT(FieldDayStartEquity, v))
+}
+
+// DayStartEquityLTE applies the LTE predicate on the "day_start_equity" field.
+func DayStartEquityLTE(v float64) predicate.TradeCash {
+	return predicate.TradeCash(sql.FieldLTE(FieldDayStartEquity, v))
 }
 
 // PaperDaysEQ applies the EQ predicate on the "paper_days" field.

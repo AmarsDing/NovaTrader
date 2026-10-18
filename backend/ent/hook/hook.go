@@ -104,6 +104,30 @@ func (f CollectCursorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CollectCursorMutation", m)
 }
 
+// The ConfigHeadFunc type is an adapter to allow the use of ordinary
+// function as ConfigHead mutator.
+type ConfigHeadFunc func(context.Context, *ent.ConfigHeadMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConfigHeadFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConfigHeadMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigHeadMutation", m)
+}
+
+// The ConfigReceiptFunc type is an adapter to allow the use of ordinary
+// function as ConfigReceipt mutator.
+type ConfigReceiptFunc func(context.Context, *ent.ConfigReceiptMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ConfigReceiptFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ConfigReceiptMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ConfigReceiptMutation", m)
+}
+
 // The DailyReviewFunc type is an adapter to allow the use of ordinary
 // function as DailyReview mutator.
 type DailyReviewFunc func(context.Context, *ent.DailyReviewMutation) (ent.Value, error)
@@ -126,6 +150,54 @@ func (f DataQualityIssueFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DataQualityIssueMutation", m)
+}
+
+// The DatasetManifestFunc type is an adapter to allow the use of ordinary
+// function as DatasetManifest mutator.
+type DatasetManifestFunc func(context.Context, *ent.DatasetManifestMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DatasetManifestFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DatasetManifestMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DatasetManifestMutation", m)
+}
+
+// The DatasetRecordFunc type is an adapter to allow the use of ordinary
+// function as DatasetRecord mutator.
+type DatasetRecordFunc func(context.Context, *ent.DatasetRecordMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DatasetRecordFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DatasetRecordMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DatasetRecordMutation", m)
+}
+
+// The DecisionPlanFunc type is an adapter to allow the use of ordinary
+// function as DecisionPlan mutator.
+type DecisionPlanFunc func(context.Context, *ent.DecisionPlanMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f DecisionPlanFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.DecisionPlanMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DecisionPlanMutation", m)
+}
+
+// The ExecutionIntentFunc type is an adapter to allow the use of ordinary
+// function as ExecutionIntent mutator.
+type ExecutionIntentFunc func(context.Context, *ent.ExecutionIntentMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ExecutionIntentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ExecutionIntentMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExecutionIntentMutation", m)
 }
 
 // The FinanceReportFunc type is an adapter to allow the use of ordinary
@@ -464,6 +536,18 @@ func (f OverseasQuoteFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OverseasQuoteMutation", m)
 }
 
+// The PaperRunSampleFunc type is an adapter to allow the use of ordinary
+// function as PaperRunSample mutator.
+type PaperRunSampleFunc func(context.Context, *ent.PaperRunSampleMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PaperRunSampleFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PaperRunSampleMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PaperRunSampleMutation", m)
+}
+
 // The ParamProposalFunc type is an adapter to allow the use of ordinary
 // function as ParamProposal mutator.
 type ParamProposalFunc func(context.Context, *ent.ParamProposalMutation) (ent.Value, error)
@@ -498,6 +582,18 @@ func (f RawResponseFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RawResponseMutation", m)
+}
+
+// The ResearchJobFunc type is an adapter to allow the use of ordinary
+// function as ResearchJob mutator.
+type ResearchJobFunc func(context.Context, *ent.ResearchJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ResearchJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ResearchJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ResearchJobMutation", m)
 }
 
 // The RiskCheckFunc type is an adapter to allow the use of ordinary
@@ -606,6 +702,18 @@ func (f SignalEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value,
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SignalEventMutation", m)
+}
+
+// The SimBarCursorFunc type is an adapter to allow the use of ordinary
+// function as SimBarCursor mutator.
+type SimBarCursorFunc func(context.Context, *ent.SimBarCursorMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SimBarCursorFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SimBarCursorMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SimBarCursorMutation", m)
 }
 
 // The SourceHealthFunc type is an adapter to allow the use of ordinary
@@ -786,6 +894,18 @@ func (f TradeFillFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TradeFillMutation", m)
+}
+
+// The TradeLedgerLockFunc type is an adapter to allow the use of ordinary
+// function as TradeLedgerLock mutator.
+type TradeLedgerLockFunc func(context.Context, *ent.TradeLedgerLockMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TradeLedgerLockFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TradeLedgerLockMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TradeLedgerLockMutation", m)
 }
 
 // The TradeOrderFunc type is an adapter to allow the use of ordinary

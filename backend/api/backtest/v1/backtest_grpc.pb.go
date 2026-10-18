@@ -19,6 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	Backtest_FreezeDataset_FullMethodName      = "/api.backtest.v1.Backtest/FreezeDataset"
+	Backtest_GetDataset_FullMethodName         = "/api.backtest.v1.Backtest/GetDataset"
 	Backtest_ListStrategies_FullMethodName     = "/api.backtest.v1.Backtest/ListStrategies"
 	Backtest_CreateTask_FullMethodName         = "/api.backtest.v1.Backtest/CreateTask"
 	Backtest_ListTasks_FullMethodName          = "/api.backtest.v1.Backtest/ListTasks"
@@ -45,6 +47,9 @@ const (
 // Backtest 是 M07 回测与自进化。客户端经 admin /api/backtest/* 转发到 /v1/backtest/*。
 // 时间字段为 RFC3339（上海时区），日期为 2006-01-02。比例都是小数。
 type BacktestClient interface {
+	// Freeze point-in-time inputs and expose all exclusions before creating a task.
+	FreezeDataset(ctx context.Context, in *FreezeDatasetRequest, opts ...grpc.CallOption) (*DatasetReply, error)
+	GetDataset(ctx context.Context, in *GetDatasetRequest, opts ...grpc.CallOption) (*DatasetReply, error)
 	// 已注册策略、参数范围和当前生效参数。
 	ListStrategies(ctx context.Context, in *ListStrategiesRequest, opts ...grpc.CallOption) (*ListStrategiesReply, error)
 	CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*Task, error)
@@ -74,6 +79,26 @@ type backtestClient struct {
 
 func NewBacktestClient(cc grpc.ClientConnInterface) BacktestClient {
 	return &backtestClient{cc}
+}
+
+func (c *backtestClient) FreezeDataset(ctx context.Context, in *FreezeDatasetRequest, opts ...grpc.CallOption) (*DatasetReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DatasetReply)
+	err := c.cc.Invoke(ctx, Backtest_FreezeDataset_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *backtestClient) GetDataset(ctx context.Context, in *GetDatasetRequest, opts ...grpc.CallOption) (*DatasetReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DatasetReply)
+	err := c.cc.Invoke(ctx, Backtest_GetDataset_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *backtestClient) ListStrategies(ctx context.Context, in *ListStrategiesRequest, opts ...grpc.CallOption) (*ListStrategiesReply, error) {
@@ -253,6 +278,9 @@ func (c *backtestClient) Admission(ctx context.Context, in *AdmissionRequest, op
 // Backtest 是 M07 回测与自进化。客户端经 admin /api/backtest/* 转发到 /v1/backtest/*。
 // 时间字段为 RFC3339（上海时区），日期为 2006-01-02。比例都是小数。
 type BacktestServer interface {
+	// Freeze point-in-time inputs and expose all exclusions before creating a task.
+	FreezeDataset(context.Context, *FreezeDatasetRequest) (*DatasetReply, error)
+	GetDataset(context.Context, *GetDatasetRequest) (*DatasetReply, error)
 	// 已注册策略、参数范围和当前生效参数。
 	ListStrategies(context.Context, *ListStrategiesRequest) (*ListStrategiesReply, error)
 	CreateTask(context.Context, *CreateTaskRequest) (*Task, error)
@@ -284,6 +312,12 @@ type BacktestServer interface {
 // pointer dereference when methods are called.
 type UnimplementedBacktestServer struct{}
 
+func (UnimplementedBacktestServer) FreezeDataset(context.Context, *FreezeDatasetRequest) (*DatasetReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method FreezeDataset not implemented")
+}
+func (UnimplementedBacktestServer) GetDataset(context.Context, *GetDatasetRequest) (*DatasetReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDataset not implemented")
+}
 func (UnimplementedBacktestServer) ListStrategies(context.Context, *ListStrategiesRequest) (*ListStrategiesReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListStrategies not implemented")
 }
@@ -354,6 +388,42 @@ func RegisterBacktestServer(s grpc.ServiceRegistrar, srv BacktestServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&Backtest_ServiceDesc, srv)
+}
+
+func _Backtest_FreezeDataset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FreezeDatasetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BacktestServer).FreezeDataset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Backtest_FreezeDataset_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BacktestServer).FreezeDataset(ctx, req.(*FreezeDatasetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Backtest_GetDataset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDatasetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BacktestServer).GetDataset(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Backtest_GetDataset_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BacktestServer).GetDataset(ctx, req.(*GetDatasetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Backtest_ListStrategies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -669,6 +739,14 @@ var Backtest_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "api.backtest.v1.Backtest",
 	HandlerType: (*BacktestServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "FreezeDataset",
+			Handler:    _Backtest_FreezeDataset_Handler,
+		},
+		{
+			MethodName: "GetDataset",
+			Handler:    _Backtest_GetDataset_Handler,
+		},
 		{
 			MethodName: "ListStrategies",
 			Handler:    _Backtest_ListStrategies_Handler,

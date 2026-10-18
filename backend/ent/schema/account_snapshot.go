@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/entsql"
@@ -31,6 +32,10 @@ func (AccountSnapshot) Fields() []ent.Field {
 		field.Float("risk_ratio").
 			SchemaType(map[string]string{dialect.Postgres: "numeric(8,4)"}),
 		field.Int("position_count"),
+		// Legacy aggregate rows intentionally have no state; risk must not restore
+		// them as a complete ledger. New rows store AccountSnapshotV1 atomically
+		// with the corresponding outbox event.
+		field.JSON("state", json.RawMessage{}).Optional(),
 	}
 }
 

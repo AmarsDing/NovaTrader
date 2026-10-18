@@ -1,0 +1,19 @@
+syntax = "proto3";
+package api.trade.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/trade/v1;v1";
+
+// Read-only shadow allocation. This service cannot authorize or place an order.
+service PortfolioAllocation {
+  rpc PreviewPortfolio(PortfolioPreviewRequest) returns (PortfolioPreviewReply) {
+    option (google.api.http) = { post: "/v1/trade/portfolio/preview" body: "*" };
+  }
+}
+message PortfolioPreviewRequest {
+  string research_run_id = 1;
+  string account = 2; // Only SIM/default is supported.
+}
+message PortfolioPreviewReply {
+  // Versioned JSON preserves explicit unknown/null values and exact string IDs.
+  string preview_json = 1;
+}
