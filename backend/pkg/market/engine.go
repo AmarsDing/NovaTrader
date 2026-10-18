@@ -44,6 +44,7 @@ type stockState struct {
 	values   Values
 	stale    bool
 	closed   bool // 当日日线已提交进指标状态
+	loaded   bool // Static security identity came from the successful stock-basic warmup.
 	recent   ring // 最近几根分钟线收盘，算急拉和指数 5 分钟涨跌
 	surgeAt  time.Time
 }
@@ -121,6 +122,7 @@ func (e *Engine) Load(info StockInfo, history []DayBar) {
 	}
 	e.mu.Lock()
 	e.stocks[info.Symbol] = e.newState(info, ind)
+	e.stocks[info.Symbol].loaded = true
 	e.mu.Unlock()
 }
 

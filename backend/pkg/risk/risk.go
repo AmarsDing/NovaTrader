@@ -64,15 +64,16 @@ const (
 
 // Order 是待校验的委托。Sector 由信号带入，用于板块集中度。
 type Order struct {
-	ClientID string      `json:"client_order_id"`
-	Account  AccountType `json:"account_type"`
-	Symbol   string      `json:"symbol"`
-	Side     Side        `json:"side"`
-	Price    float64     `json:"price"`
-	Volume   int         `json:"volume"`
-	Source   Source      `json:"source"`
-	Operator string      `json:"operator,omitempty"`
-	Sector   string      `json:"sector,omitempty"`
+	ExpectedConfigRevision *int        `json:"expected_config_revision,omitempty"`
+	ClientID               string      `json:"client_order_id"`
+	Account                AccountType `json:"account_type"`
+	Symbol                 string      `json:"symbol"`
+	Side                   Side        `json:"side"`
+	Price                  float64     `json:"price"`
+	Volume                 int         `json:"volume"`
+	Source                 Source      `json:"source"`
+	Operator               string      `json:"operator,omitempty"`
+	Sector                 string      `json:"sector,omitempty"`
 }
 
 // Quote 是一只股票的最新行情。ListedDays 含上市当日，0 表示不知道。
@@ -164,17 +165,18 @@ type Counters struct {
 
 // Input 是一次校验看到的全部数据，原样写进审计。
 type Input struct {
-	Now          time.Time        `json:"now"`
-	Session      tradecal.Session `json:"session"`
-	Mode         Mode             `json:"mode"`
-	KillSwitch   bool             `json:"kill_switch"`
-	Breaker      string           `json:"breaker,omitempty"`
-	Order        Order            `json:"order"`
-	Account      Account          `json:"account"`
-	Quote        *Quote           `json:"quote,omitempty"`
-	Market       Market           `json:"market"`
-	Counters     Counters         `json:"counters"`
-	Reservations []Reservation    `json:"reservations,omitempty"`
+	ConfigRevision int              `json:"config_revision"`
+	Now            time.Time        `json:"now"`
+	Session        tradecal.Session `json:"session"`
+	Mode           Mode             `json:"mode"`
+	KillSwitch     bool             `json:"kill_switch"`
+	Breaker        string           `json:"breaker,omitempty"`
+	Order          Order            `json:"order"`
+	Account        Account          `json:"account"`
+	Quote          *Quote           `json:"quote,omitempty"`
+	Market         Market           `json:"market"`
+	Counters       Counters         `json:"counters"`
+	Reservations   []Reservation    `json:"reservations,omitempty"`
 }
 
 // Result 是一条规则的结论。Volume 是这条规则之后的数量。

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "kind": "full",
+  "account_id": "default",
+  "account_type": "SIM",
+  "snapshot_id": "fixture-snapshot-1",
+  "generation": 1,
+  "as_of": "2026-10-15T10:00:00+08:00",
+  "trading_day": "2026-10-15",
+  "cash": 950000,
+  "frozen_cash": 8005.08,
+  "equity": 1000000,
+  "available": 941994.92,
+  "day_start_equity": 1000000,
+  "day_start_known": true,
+  "holdings": [{"symbol":"000001.SZ","quantity":5000,"available":3000,"frozen_sell":800,"avg_cost":9.5,"market_value":50000,"held_days":0}],
+  "open_orders": [
+    {"client_order_id":"b1","symbol":"000001.SZ","side":"buy","price":10,"volume":800},
+    {"client_order_id":"s1","symbol":"000001.SZ","side":"sell","price":10.2,"volume":800}
+  ],
+  "observed_order_ids": ["b1","s1"],
+  "reconciliation": {"status":"matched","as_of":"2026-10-15T10:00:00+08:00","reason":""}
+}

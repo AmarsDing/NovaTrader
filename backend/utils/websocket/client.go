@@ -3,6 +3,7 @@ package websocket
 import (
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/gogf/gf/v2/container/garray"
@@ -43,6 +44,8 @@ type Client struct {
 	log           *log.Helper
 	topics        map[string]struct{}
 	topicMu       sync.Mutex
+	closed        atomic.Bool
+	sendMu        sync.Mutex
 }
 
 // NewClient 初始化
@@ -112,16 +115,28 @@ func (c *Client) write() {
 
 // SendMsg 发送数据
 func (c *Client) SendMsg(msg *WResponse) {
-	if c == nil || c.SendClose {
-		return
+	if !c.TrySend(msg) && c != nil && c.Socket != nil {
+		// A slow recipient must reconnect and recover, rather than stall every client.
+		_ = c.Socket.Close()
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			// fmt.Println("SendMsg stop:", r, string(debug.Stack()))
-			c.log.Error("SendMsg stop", r, string(debug.Stack()))
-		}
-	}()
-	c.Send <- msg
+}
+
+// TrySend serializes channel writes with close and never blocks the hub.
+func (c *Client) TrySend(msg *WResponse) bool {
+	if c == nil || msg == nil {
+		return false
+	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if c.closed.Load() {
+		return false
+	}
+	select {
+	case c.Send <- msg:
+		return true
+	default:
+		return false
+	}
 }
 
 // SetTopics 替换这条连接订阅的主题。
@@ -168,9 +183,14 @@ func (c *Client) IsHeartbeatTimeout(currentTime uint64) (timeout bool) {
 
 // 关闭客户端
 func (c *Client) close() {
-	if c.SendClose {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if !c.closed.CompareAndSwap(false, true) {
 		return
 	}
 	c.SendClose = true
 	close(c.Send)
 }
+
+// IsClosed is safe to read from the hub while the transport read loop exits.
+func (c *Client) IsClosed() bool { return c == nil || c.closed.Load() }

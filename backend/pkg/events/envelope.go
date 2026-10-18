@@ -22,15 +22,17 @@ const (
 	SubjectSignal         = "strategy.signal.updated" // 信号新建与每次状态变化，载荷见 M06 设计文档第 12 节
 	SubjectRiskAlert      = "risk.alert"
 	// M08 风控，载荷见 M08 设计文档第 6 节。sys.killswitch 只有 risk 发；其他服务要停机发 request。
-	SubjectKillSwitchRequest = "sys.killswitch.request"
-	SubjectRiskExit          = "risk.exit"
-	SubjectTradeAccount      = "trade.account"
-	SubjectMarketSentiment   = "market.sentiment.updated"
-	SubjectNotifyRequest     = "notify.request"
-	SubjectNotifyDesktop     = "notify.desktop"  // M10 发给 admin，再经 WebSocket 到桌面
-	SubjectStrategyReview    = "strategy.review" // 盘后复盘。载荷 date、title、body
-	SubjectMarketSnapshot    = "market.snapshot"
-	SubjectMarketAlert       = "market.alert" // 个股异动，M06 用来触发盘中扫描：{"symbol","kind"}
+	SubjectKillSwitchRequest   = "sys.killswitch.request"
+	SubjectRiskExit            = "risk.exit"
+	SubjectTradeAccount        = "trade.account"
+	SubjectTradeReconciliation = "trade.reconciliation" // 对账差异，不是完整账户快照
+	SubjectMarketSentiment     = "market.sentiment.updated"
+	SubjectNotifyRequest       = "notify.request"
+	SubjectNotifyDesktop       = "notify.desktop"  // M10 发给 admin，再经 WebSocket 到桌面
+	SubjectStrategyReview      = "strategy.review" // 盘后复盘。载荷 date、title、body
+	SubjectMarketSnapshot      = "market.snapshot"
+	SubjectMarketAlert         = "market.alert"     // 个股异动，M06 用来触发盘中扫描：{"symbol","kind"}
+	SubjectMarketWatchlist     = "market.watchlist" // trade process lease; ordinary NATS, renewed from its durable SIM ledger.
 	// M02 发布，载荷见 M02 设计文档第 8 节。
 	SubjectMarketBar    = "market.bar.1m"
 	SubjectMarketFactor = "market.factor.updated"
@@ -67,6 +69,15 @@ func SubjectMDReady(domain string) string { return "md." + domain + ".ready" }
 func SubjectIntelRaw(kind string) string { return SubjectIntelRawPrefix + kind }
 
 type traceKey struct{}
+type parentEventKey struct{}
+
+const SchemaVersion = 1
+
+// ContextWithEnvelope 延续真实父事件身份；source_time 仅在上游已知时传递。
+// TraceID 对应整条链，CausationID 对应直接父事件，两者不能互换。
+func ContextWithEnvelope(ctx context.Context, env Envelope) context.Context {
+	return context.WithValue(WithTraceID(ctx, env.TraceID), parentEventKey{}, env)
+}
 
 // WithTraceID 把链路号放进 context，供发事件时填进信封。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
@@ -81,12 +92,20 @@ func TraceID(ctx context.Context) string {
 
 // Envelope 是跨服务事件的固定外壳。消费端用 EventID 去重。
 type Envelope struct {
-	EventID string          `json:"event_id"`
-	TraceID string          `json:"trace_id"`
-	Time    time.Time       `json:"time"`
-	Source  string          `json:"source"`
-	Subject string          `json:"subject"`
-	Payload json.RawMessage `json:"payload"`
+	SchemaVersion int             `json:"schema_version,omitempty"`
+	EventID       string          `json:"event_id"`
+	TraceID       string          `json:"trace_id"`
+	CausationID   string          `json:"causation_id,omitempty"`
+	CorrelationID string          `json:"correlation_id,omitempty"`
+	EntityID      string          `json:"entity_id,omitempty"`
+	EntityVersion int64           `json:"entity_version,omitempty"`
+	SourceTime    *time.Time      `json:"source_time,omitempty"`
+	ReceivedAt    *time.Time      `json:"received_at,omitempty"`
+	PublishedAt   *time.Time      `json:"published_at,omitempty"`
+	Time          time.Time       `json:"time"`
+	Source        string          `json:"source"`
+	Subject       string          `json:"subject"`
+	Payload       json.RawMessage `json:"payload"`
 }
 
 // New 生成一条事件。event_id 由系统分配，调用方不能指定。
@@ -102,13 +121,50 @@ func New(source, subject, traceID string, payload any) (Envelope, error) {
 		return Envelope{}, err
 	}
 	return Envelope{
-		EventID: uuid.NewString(),
-		TraceID: traceID,
-		Time:    time.Now().UTC(),
-		Source:  source,
-		Subject: subject,
-		Payload: raw,
+		SchemaVersion: SchemaVersion,
+		EventID:       uuid.NewString(),
+		TraceID:       traceID,
+		Time:          time.Now().UTC(),
+		Source:        source,
+		Subject:       subject,
+		Payload:       raw,
 	}, nil
+}
+
+// NewWithContext 从真实父事件延续因果。首次生产者没有父事件，源时间保持未知。
+func NewWithContext(ctx context.Context, source, subject string, payload any) (Envelope, error) {
+	env, err := New(source, subject, TraceID(ctx), payload)
+	if err != nil {
+		return Envelope{}, err
+	}
+	if parent, ok := ctx.Value(parentEventKey{}).(Envelope); ok {
+		env.CausationID = parent.EventID
+		env.CorrelationID = parent.CorrelationID
+		if env.CorrelationID == "" {
+			env.CorrelationID = parent.TraceID
+		}
+		if parent.SourceTime != nil {
+			stamp := parent.SourceTime.UTC()
+			env.SourceTime = &stamp
+		}
+	}
+	return env, nil
+}
+
+func (e Envelope) validate() error {
+	if strings.TrimSpace(e.EventID) == "" || strings.TrimSpace(e.Source) == "" || strings.TrimSpace(e.Subject) == "" {
+		return fmt.Errorf("events: envelope is incomplete")
+	}
+	if e.SchemaVersion != 0 && e.SchemaVersion != SchemaVersion {
+		return fmt.Errorf("events: unsupported schema_version %d", e.SchemaVersion)
+	}
+	if e.EntityVersion < 0 {
+		return fmt.Errorf("events: invalid entity_version %d", e.EntityVersion)
+	}
+	if len(e.Payload) > 0 && !json.Valid(e.Payload) {
+		return fmt.Errorf("events: invalid payload JSON")
+	}
+	return nil
 }
 
 func marshalPayload(payload any) (json.RawMessage, error) {
@@ -130,8 +186,8 @@ func marshalPayload(payload any) (json.RawMessage, error) {
 
 // Marshal 把信封编码成 JSON，供 NATS 发送。
 func (e Envelope) Marshal() ([]byte, error) {
-	if e.EventID == "" || e.Source == "" || e.Subject == "" {
-		return nil, fmt.Errorf("events: envelope is incomplete")
+	if err := e.validate(); err != nil {
+		return nil, err
 	}
 	if len(e.Payload) == 0 {
 		e.Payload = json.RawMessage(`{}`)
@@ -149,8 +205,8 @@ func Unmarshal(b []byte) (Envelope, error) {
 	if err := json.Unmarshal(b, &env); err != nil {
 		return Envelope{}, fmt.Errorf("events: unmarshal: %w", err)
 	}
-	if env.EventID == "" || env.Source == "" || env.Subject == "" {
-		return Envelope{}, fmt.Errorf("events: envelope is incomplete")
+	if err := env.validate(); err != nil {
+		return Envelope{}, err
 	}
 	return env, nil
 }

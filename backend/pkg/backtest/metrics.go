@@ -218,27 +218,30 @@ func Worst(rounds []Round, n int) []Round {
 
 // Report 是一个任务的完整报告，整体存进 backtest_report.result。
 type Report struct {
-	Kind        string             `json:"kind"`
-	Config      Config             `json:"config"`
-	Metrics     Metrics            `json:"metrics"`
-	Yearly      []YearStat         `json:"yearly"`
-	Equity      []EquityPoint      `json:"equity"`
-	Worst       []Round            `json:"worst"`
-	Rounds      []Round            `json:"rounds"`
-	Open        []OpenPosition     `json:"open"`
-	Rejects     int                `json:"rejects"`
-	RejectWhy   map[string]int     `json:"reject_why"`
-	Warnings    []string           `json:"warnings"`
-	Assumptions []string           `json:"assumptions"`
-	DataHash    string             `json:"data_hash"`
-	FillsHash   string             `json:"fills_hash"`
-	DataCutoff  time.Time          `json:"data_cutoff"`
-	Lookahead   *LookaheadResult   `json:"lookahead,omitempty"`
-	MonteCarlo  *MonteCarloResult  `json:"monte_carlo,omitempty"`
-	Optimize    *OptimizeResult    `json:"optimize,omitempty"`
-	WalkForward *WalkForwardResult `json:"walk_forward,omitempty"`
-	Evolve      *EvolveResult      `json:"evolve,omitempty"`
-	Reproduce   *Reproduce         `json:"reproduce,omitempty"`
+	DatasetManifestID    string             `json:"dataset_manifest_id,omitempty"`
+	DatasetManifestHash  string             `json:"dataset_manifest_hash,omitempty"`
+	DatasetExcludedCount int                `json:"dataset_excluded_count"`
+	Kind                 string             `json:"kind"`
+	Config               Config             `json:"config"`
+	Metrics              Metrics            `json:"metrics"`
+	Yearly               []YearStat         `json:"yearly"`
+	Equity               []EquityPoint      `json:"equity"`
+	Worst                []Round            `json:"worst"`
+	Rounds               []Round            `json:"rounds"`
+	Open                 []OpenPosition     `json:"open"`
+	Rejects              int                `json:"rejects"`
+	RejectWhy            map[string]int     `json:"reject_why"`
+	Warnings             []string           `json:"warnings"`
+	Assumptions          []string           `json:"assumptions"`
+	DataHash             string             `json:"data_hash"`
+	FillsHash            string             `json:"fills_hash"`
+	DataCutoff           time.Time          `json:"data_cutoff"`
+	Lookahead            *LookaheadResult   `json:"lookahead,omitempty"`
+	MonteCarlo           *MonteCarloResult  `json:"monte_carlo,omitempty"`
+	Optimize             *OptimizeResult    `json:"optimize,omitempty"`
+	WalkForward          *WalkForwardResult `json:"walk_forward,omitempty"`
+	Evolve               *EvolveResult      `json:"evolve,omitempty"`
+	Reproduce            *Reproduce         `json:"reproduce,omitempty"`
 }
 
 // Reproduce 是重跑任务与原任务的比对结果。

@@ -16,6 +16,12 @@ type Bar struct {
 	Close  float64   `json:"close"`
 	Volume int64     `json:"volume"`
 	Amount float64   `json:"amount"`
+	// Execution metadata is attached only to live watched bars. Persistence and
+	// historical research bars keep their existing independent contracts.
+	LimitKnown bool     `json:"limit_known,omitempty"`
+	NoLimit    bool     `json:"no_limit,omitempty"`
+	LimitUp    *float64 `json:"limit_up,omitempty"`
+	LimitDown  *float64 `json:"limit_down,omitempty"`
 }
 
 // BarsPerDay 是每个交易日的 1 分钟线根数。

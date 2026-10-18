@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "manifest_id": "sha256:7a14b50005e37a6e09e854f2463f919c1ad508e9c5be5be21f8a8ec30c85302a",
+  "hash": "7a14b50005e37a6e09e854f2463f919c1ad508e9c5be5be21f8a8ec30c85302a",
+  "from": "2026-02-01T07:00:00Z",
+  "to": "2026-04-01T08:00:00Z",
+  "cutoff": "2026-04-01T08:00:00Z",
+  "freq": "1d",
+  "calendar": [
+    "2026-04-01T07:00:00Z"
+  ],
+  "universe": [],
+  "records": [
+    {
+      "domain": "macro",
+      "business_key": "CPI/2026-03",
+      "source": "fixture",
+      "event_time": "2026-03-01T07:00:00Z",
+      "available_at": "2026-04-01T07:00:00Z",
+      "availability": "known",
+      "availability_evidence": "explicit synthetic publication fixture",
+      "observed_at": "2026-04-01T08:00:00Z",
+      "raw_hash": "4fc5d5105898c75ea0fa8fa8be5623899ecea0c681bbfa0450a79dbb70b147be",
+      "revision_hash": "e7bf3cf6ddf2b04200da475f0cff09c189395c96356df1166b9cfe0b8ecdf761",
+      "payload": {
+        "big": 9007199254740993,
+        "scientific": 1000000000000000000000,
+        "small": 0.0000001,
+        "value": 1.25,
+        "中文": "宏观 \u003cfixture\u003e \u0026 数据"
+      }
+    }
+  ],
+  "excluded": [],
+  "replay_excluded": null,
+  "raw_hash_kind": "canonical_normalized_payload_sha256"
+}

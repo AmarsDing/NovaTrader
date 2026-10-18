@@ -105,6 +105,10 @@ func (b *Bus) Conn() *nats.Conn {
 
 // Publish 发送一条已经编好号的事件。同一 event_id 在去重窗口内再次发送会被 JetStream 丢掉。
 func (b *Bus) Publish(ctx context.Context, env Envelope) error {
+	// 此时间只表示本次发布尝试，不能替代源时间/首次接收时间。
+	// outbox 重投保留 event_id，重新记录本次发布时刻。
+	now := time.Now().UTC()
+	env.PublishedAt = &now
 	body, err := env.Marshal()
 	if err != nil {
 		return err

@@ -22,6 +22,11 @@ type WResponse struct {
 	Topic   string      `json:"topic,omitempty"`
 	Seq     int64       `json:"seq,omitempty"`
 	Payload interface{} `json:"data,omitempty"`
+	// Cursor belongs to one admin process. Seq remains the legacy alias.
+	ServerEpoch string                 `json:"server_epoch,omitempty"`
+	TopicSeq    int64                  `json:"topic_seq,omitempty"`
+	RequestID   uint64                 `json:"request_id,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type TagWResponse struct {

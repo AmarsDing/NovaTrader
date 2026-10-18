@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"server/ent"
-	"server/ent/strategyconfig"
+	"server/pkg/params"
 )
 
 // 配置页写入 strategy_config 的 app.* 键。各服务启动后按这个缓存读取，盖过配置文件。
@@ -15,10 +15,13 @@ import (
 const ttl = 5 * time.Second
 
 type cache struct {
-	client *ent.Client
-	mu     sync.Mutex
-	at     time.Time
-	rows   map[string]string
+	client   *ent.Client
+	mu       sync.Mutex
+	at       time.Time
+	rows     map[string]string
+	revision int
+	failed   bool
+	receipts map[string]time.Time
 }
 
 var current atomic.Pointer[cache]
@@ -36,7 +39,12 @@ func Get(ctx context.Context, key string) string {
 	if key == "" {
 		return ""
 	}
-	rows := Snapshot(ctx)
+	c := current.Load()
+	if c == nil {
+		return ""
+	}
+	service, _ := params.Target(key)
+	rows := c.snapshot(ctx, service)
 	return rows[key]
 }
 
@@ -46,42 +54,60 @@ func Snapshot(ctx context.Context) map[string]string {
 	if c == nil {
 		return map[string]string{}
 	}
-	return c.snapshot(ctx)
+	return c.snapshot(ctx, "brain")
 }
 
-func (c *cache) snapshot(ctx context.Context) map[string]string {
+func (c *cache) snapshot(ctx context.Context, service string) map[string]string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer c.ack(ctx, service)
 	if c.rows != nil && time.Since(c.at) < ttl {
 		return clone(c.rows)
 	}
 	loaded, err := c.load(ctx)
 	if err != nil {
+		c.failed = true
 		if c.rows == nil {
 			c.rows = map[string]string{}
 		}
 		c.at = time.Now()
 		return clone(c.rows)
 	}
-	c.rows = loaded
+	c.failed = false
+	if c.revision != loaded.Revision {
+		c.receipts = nil
+	}
+	c.revision = loaded.Revision
+	c.rows = loaded.Values
 	c.at = time.Now()
 	return clone(c.rows)
 }
 
-func (c *cache) load(ctx context.Context) (map[string]string, error) {
+func (c *cache) load(ctx context.Context) (params.Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	rows, err := c.client.StrategyConfig.Query().
-		Where(strategyconfig.ConfigKeyHasPrefix("app.")).
-		All(ctx)
-	if err != nil {
-		return nil, err
+	return params.Read(ctx, c.client)
+}
+
+func (c *cache) ack(ctx context.Context, service string) {
+	if service == "unknown" {
+		return
 	}
-	out := make(map[string]string, len(rows))
-	for _, row := range rows {
-		out[row.ConfigKey] = row.ConfigValue
+	if time.Since(c.receipts[service]) < 30*time.Second {
+		return
 	}
-	return out, nil
+	status := "cache_loaded"
+	if c.failed {
+		status = "failed"
+	}
+	ackCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	if params.Record(ackCtx, c.client, service, "app_cache", c.revision, status) == nil {
+		if c.receipts == nil {
+			c.receipts = map[string]time.Time{}
+		}
+		c.receipts[service] = time.Now()
+	}
 }
 
 func clone(in map[string]string) map[string]string {

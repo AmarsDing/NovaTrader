@@ -82,3 +82,69 @@ func TestUnmarshalRejectsIncomplete(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestEnvelopeVersionAndLegacy(t *testing.T) {
+	legacy := []byte(`{"event_id":"old","trace_id":"t","time":"2026-10-15T00:00:00Z","source":"trade","subject":"trade.account","payload":{}}`)
+	if _, err := Unmarshal(legacy); err != nil {
+		t.Fatalf("legacy envelope must remain readable: %v", err)
+	}
+	for _, version := range []int{-1, 2, 99} {
+		env, _ := New("trade", SubjectTradeAccount, "t", map[string]any{})
+		env.SchemaVersion = version
+		if _, err := env.Marshal(); err == nil {
+			t.Fatalf("unsupported version %d accepted", version)
+		}
+		raw, _ := json.Marshal(env)
+		if _, err := Unmarshal(raw); err == nil {
+			t.Fatalf("unsupported version %d decoded", version)
+		}
+	}
+}
+
+func TestCausationAndKnownSourceTime(t *testing.T) {
+	parent, _ := New("datahub", SubjectMarketSnapshot, "trace-root", map[string]any{"batch": "a"})
+	stamp := time.Date(2026, 10, 15, 9, 30, 0, 0, time.FixedZone("CST", 8*60*60))
+	parent.SourceTime = &stamp
+	parent.CorrelationID = "batch-a"
+	ctx := ContextWithEnvelope(context.Background(), parent)
+	child, err := NewWithContext(ctx, "market", SubjectMarketFactor, map[string]any{"symbol": "600519.SH"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if child.EventID == parent.EventID || child.CausationID != parent.EventID || child.TraceID != parent.TraceID || child.CorrelationID != "batch-a" {
+		t.Fatalf("child identities = %+v", child)
+	}
+	if child.SourceTime == nil || !child.SourceTime.Equal(stamp) || child.SourceTime.Location() != time.UTC {
+		t.Fatalf("source_time not preserved: %+v", child.SourceTime)
+	}
+	root, _ := NewWithContext(context.Background(), "datahub", SubjectMarketSnapshot, nil)
+	if root.SourceTime != nil || root.ReceivedAt != nil || root.PublishedAt != nil || root.CausationID != "" {
+		t.Fatalf("unknown clocks/parent must not be invented: %+v", root)
+	}
+	child.SourceTime = nil
+	if parent.SourceTime == nil {
+		t.Fatal("child changed parent")
+	}
+}
+
+func TestEnvelopePreservesOptionalMetadata(t *testing.T) {
+	env, _ := New("strategy", SubjectSignal, "trace", json.RawMessage(`{"signal_id":"s1"}`))
+	stamp := time.Now().UTC()
+	env.EntityID, env.EntityVersion = "s1", 3
+	env.ReceivedAt = &stamp
+	raw, err := env.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Unmarshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != 1 || got.EntityID != "s1" || got.EntityVersion != 3 || got.ReceivedAt == nil || !got.ReceivedAt.Equal(stamp) {
+		t.Fatalf("metadata lost: %+v", got)
+	}
+	env.EntityVersion = -1
+	if _, err := env.Marshal(); err == nil {
+		t.Fatal("negative entity version accepted")
+	}
+}

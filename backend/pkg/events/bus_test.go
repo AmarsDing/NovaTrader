@@ -2,11 +2,26 @@ package events
 
 import (
 	"context"
+	"net/url"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/nats-io/nats.go"
 )
+
+func isolatedTestURL(t *testing.T) string {
+	t.Helper()
+	value := os.Getenv("NT_TEST_NATS_URL")
+	if value == "" {
+		t.Skip("set NT_TEST_NATS_URL to an isolated loopback NATS test server")
+	}
+	u, err := url.Parse(value)
+	if err != nil || (u.Hostname() != "127.0.0.1" && u.Hostname() != "localhost" && u.Hostname() != "::1") || u.Port() == "" || u.Port() == "4222" {
+		t.Fatal("NT_TEST_NATS_URL must use a separate loopback test port, never production 4222")
+	}
+	return value
+}
 
 func TestMissingSubjects(t *testing.T) {
 	got := missingSubjects([]string{"sys.>", "trade.>"}, []string{"sys.>", "trade.>", "intel.>"})
@@ -19,9 +34,9 @@ func TestMissingSubjects(t *testing.T) {
 }
 
 func TestStreamCapturesIntel(t *testing.T) {
-	bus, err := Dial("")
+	bus, err := Dial(isolatedTestURL(t))
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 	defer bus.Close()
 	info, err := bus.JetStream().StreamInfo(StreamName)
@@ -34,13 +49,14 @@ func TestStreamCapturesIntel(t *testing.T) {
 }
 
 func TestBusPersistsOrderAndSkipsMarket(t *testing.T) {
-	bus, err := Dial("")
+	testURL := isolatedTestURL(t)
+	bus, err := Dial(testURL)
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 	defer bus.Close()
 
-	nc, err := nats.Connect(nats.DefaultURL, nats.Timeout(2*time.Second))
+	nc, err := nats.Connect(testURL, nats.Timeout(2*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}

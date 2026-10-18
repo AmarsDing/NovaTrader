@@ -3,14 +3,12 @@ package outbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"time"
 
 	"server/ent"
-	"server/ent/outbox"
-	"server/pkg/events"
 
-	"entgo.io/ent/dialect/sql"
+	"server/pkg/events"
 )
 
 // Publisher 是 Dispatch 使用的发送端口。*events.Bus 可以直接传入。
@@ -20,8 +18,9 @@ type Publisher interface {
 
 // Insert 把事件写入当前事务。调用方负责提交。
 func Insert(ctx context.Context, tx *ent.Tx, env events.Envelope) error {
-	if env.EventID == "" || env.Subject == "" || env.Source == "" {
-		return fmt.Errorf("outbox: incomplete envelope")
+	meta, err := envelopeMetadata(env)
+	if err != nil {
+		return err
 	}
 	payload := []byte(env.Payload)
 	if len(payload) == 0 {
@@ -32,11 +31,54 @@ func Insert(ctx context.Context, tx *ent.Tx, env events.Envelope) error {
 		SetTraceID(env.TraceID).
 		SetSubject(env.Subject).
 		SetSource(env.Source).
+		SetMetadata(meta).
 		SetPayload(payload).
+		SetCreatedAt(env.Time).
 		Exec(ctx); err != nil {
 		return fmt.Errorf("outbox: insert: %w", err)
 	}
 	return nil
+}
+
+// envelopeMetadata 不重复保存大payload；保留事件形成时刻及所有可选身份/时钟。
+func envelopeMetadata(env events.Envelope) (map[string]any, error) {
+	if env.Time.IsZero() {
+		return nil, fmt.Errorf("outbox: missing event time")
+	}
+	raw, err := env.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, err
+	}
+	delete(meta, "payload")
+	delete(meta, "published_at") // 每次实际发布尝试由Bus重新记录
+	return meta, nil
+}
+
+func envelopeFromRow(row *ent.Outbox) (events.Envelope, error) {
+	env := events.Envelope{}
+	if len(row.Metadata) != 0 {
+		raw, err := json.Marshal(row.Metadata)
+		if err != nil {
+			return env, fmt.Errorf("outbox: metadata: %w", err)
+		}
+		if err := json.Unmarshal(raw, &env); err != nil {
+			return env, fmt.Errorf("outbox: metadata: %w", err)
+		}
+	}
+	// 主列是稳定身份与payload真值。旧行没有metadata，继续读取legacy外壳。
+	env.EventID, env.TraceID, env.Source, env.Subject = row.EventID, row.TraceID, row.Source, row.Subject
+	env.Payload = row.Payload
+	if env.Time.IsZero() {
+		env.Time = row.CreatedAt.UTC()
+	}
+	if _, err := env.Marshal(); err != nil {
+		return events.Envelope{}, err
+	}
+	return env, nil
 }
 
 // Dispatcher 把 outbox 投递从常驻循环里隔开，core 不必持有 *ent.Client。
@@ -58,41 +100,8 @@ func (d *Dispatcher) Dispatch(ctx context.Context, limit int) (int, error) {
 	return Dispatch(ctx, d.client, d.bus, limit)
 }
 
-// Dispatch 发送尚未投递的事件。发送失败时停下，已成功的行会写下 published_at。
+// Dispatch leases one row per bounded publish attempt. Bad rows are isolated
+// with retry/dead-letter state; a poison row does not block unrelated events.
 func Dispatch(ctx context.Context, client *ent.Client, pub Publisher, limit int) (int, error) {
-	if limit <= 0 {
-		limit = 100
-	}
-	rows, err := client.Outbox.Query().
-		Where(outbox.PublishedAtIsNil()).
-		Order(outbox.ByCreatedAt(sql.OrderAsc())).
-		Limit(limit).
-		All(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("outbox: query: %w", err)
-	}
-	sent := 0
-	for _, row := range rows {
-		env := events.Envelope{
-			EventID: row.EventID,
-			TraceID: row.TraceID,
-			Time:    row.CreatedAt.UTC(),
-			Source:  row.Source,
-			Subject: row.Subject,
-			Payload: row.Payload,
-		}
-		if err := pub.Publish(ctx, env); err != nil {
-			msg := err.Error()
-			if len(msg) > 500 {
-				msg = msg[:500]
-			}
-			_ = client.Outbox.UpdateOneID(row.ID).AddAttempts(1).SetLastError(msg).Exec(ctx)
-			return sent, err
-		}
-		if err := client.Outbox.UpdateOneID(row.ID).SetPublishedAt(time.Now()).ClearLastError().Exec(ctx); err != nil {
-			return sent, fmt.Errorf("outbox: mark published: %w", err)
-		}
-		sent++
-	}
-	return sent, nil
+	return dispatchLeased(ctx, client, pub, limit)
 }

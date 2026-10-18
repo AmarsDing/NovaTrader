@@ -55,13 +55,29 @@ func level(book [][2]float64) (float64, int64) {
 	return book[0][0], int64(book[0][1])
 }
 
-// Expired 判断快照是否不能用于计算：上游标记过期，或写入时间距 now 超过 maxAge。
+// FreshnessTime 返回行情和写入时间中较早的一个。写入新批次不能更新源行情的年龄。
+// 源时间缺失时返回零值；没有写入时间的旧格式快照仍使用其源时间。
+func (s Snapshot) FreshnessTime() time.Time {
+	if s.Time.IsZero() {
+		return time.Time{}
+	}
+	if !s.AsOf.IsZero() && s.AsOf.Before(s.Time) {
+		return s.AsOf
+	}
+	return s.Time
+}
+
+// Expired 判断快照是否不能用于计算。源行情时间和写入时间都须有效，
+// 未成交/停牌的旧价可供展示，但不能通过刷新 AsOf 获得新的计算或交易资格。
 func (s Snapshot) Expired(now time.Time, maxAge time.Duration) bool {
-	if s.Stale {
+	if s.Stale || s.Time.IsZero() {
 		return true
 	}
-	if maxAge <= 0 || s.AsOf.IsZero() {
+	if s.Time.After(now.Add(time.Minute)) || s.AsOf.After(now.Add(time.Minute)) {
+		return true
+	}
+	if maxAge <= 0 {
 		return false
 	}
-	return now.Sub(s.AsOf) > maxAge
+	return now.Sub(s.FreshnessTime()) > maxAge
 }
