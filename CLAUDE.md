@@ -168,7 +168,7 @@ backend/ent/
   - `go.mod` 无 GORM/mysql/mongo/mssqld：直接 DB 依赖仅 ent + pgx/v5；全仓（含 third_party、app/discovery）零 gorm/mongo/mssqld 导入；go.sum 保留 go-sql-driver/mysql 校验和属 ent 模块图合法要求，不 prune。
   - web 纯 JS 门面清零：router/index.js、store/confirm.js 迁 TS 并删源文件；零引用门面 utils/request.js 已删；src 下无 .js 业务文件（vite/eslint 工程配置按惯例保留 JS）。
   - admin 服务编译（data.go 模板引用已裁剪）、main.go 头注释、web 登录页+骨架（P1–P6 重构完成，21 面板驾驶舱）。
-- 新浮出的死链（已核查引用、提出删除待用户点名批准）：admin 整链模板残留 —— `app/admin/internal/core/topic.go`（气象/snmp/dataForward 等死主题常量，零外部引用）、`app/admin/internal/biz/` 整个包（nats.go/topic.go 组成死 NatsCase/TopicCase 链，wire.go 未引用 biz.ProviderSet）、`app/admin/internal/data/nats.go`（死 NatsCoreRepo，无 TopicRepo 实现存在）、`backend/utils/natserver/`（全仓仅此两处死代码引用）。删除后需重跑 go build/vet/test 确认。
+  - admin 模板死链四件套已删（用户批准后执行，2026-10-19）：`app/admin/internal/core/topic.go` 死主题常量、`app/admin/internal/biz/` 死 NatsCase/TopicCase 链（整包）、`app/admin/internal/data/nats.go` 死 NatsCoreRepo、`backend/utils/natserver/` 孤儿包；删除后 admin 限定 build/vet/test 与隔离PG集成仍绿。
 
 ## 10. 一句话总结
 
