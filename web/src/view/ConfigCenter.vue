@@ -5,7 +5,7 @@ import ConfigRevisionPanel from './ConfigRevisionPanel.vue'
 import { opsStatus, type OpsNode } from '@/api/ops'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
-import { useSettingsStore, type DensityName, type ThemeName } from '@/stores/settings'
+import { useSettingsStore, type ColorVisionName, type DensityName, type ThemeName } from '@/stores/settings'
 import type { VisualQuality } from '@/theme/visual-quality'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
@@ -41,6 +41,10 @@ const themeOptions: { value: ThemeName; label: string }[] = [
 const densityOptions: { value: DensityName; label: string }[] = [
   { value: 'normal', label: '标准' },
   { value: 'compact', label: '紧凑' },
+]
+const colorVisionOptions: { value: ColorVisionName; label: string }[] = [
+  { value: 'default', label: '红涨绿跌' },
+  { value: 'safe', label: '色觉安全' },
 ]
 const qualityOptions: { value: VisualQuality; label: string }[] = [
   { value: 'full', label: '完整' },
@@ -370,6 +374,17 @@ onBeforeUnmount(() => {
               @update:model-value="settings.setDensity($event as DensityName)"
             />
           </div>
+          <div class="pref">
+            <span>色觉</span>
+            <NtSegmented
+              :model-value="settings.colorVision"
+              :options="colorVisionOptions"
+              @update:model-value="settings.setColorVision($event as ColorVisionName)"
+            />
+          </div>
+          <p class="nt-note quality-note">
+            {{ settings.colorVision === 'safe' ? '色觉安全：涨跌与成败改为朱红/钴蓝暖冷对，红绿色盲下仍可分辨；A 股红涨绿跌约定以暖冷方式保留。' : '红涨绿跌：A 股惯例配色，正常视觉下区分度最佳。' }}
+          </p>
           <div class="pref">
             <span>显示质量</span>
             <NtSegmented

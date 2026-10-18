@@ -8,12 +8,15 @@ import { reduceVisualMotion, VISUAL_DOCUMENT_EVENT, visualQualityOf, type Visual
 
 export type ThemeName = 'dark' | 'light'
 export type DensityName = 'normal' | 'compact'
+export type ColorVisionName = 'default' | 'safe'
 
 const KEY = 'nt.settings.v1'
 
 export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<ThemeName>('dark')
   const density = ref<DensityName>('normal')
+  /** 色觉安全：涨/跌与成败色换为朱红/钴蓝暖冷对（G4，红绿盲可辨）。 */
+  const colorVision = ref<ColorVisionName>('default')
   const visualQuality = ref<VisualQuality>('full')
   const systemReducedMotion = ref(false)
   const pageVisible = ref(true)
@@ -27,9 +30,10 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       const raw = localStorage.getItem(KEY)
       if (!raw) return
-      const data = JSON.parse(raw) as { theme?: ThemeName; density?: DensityName; sound?: boolean; visualQuality?: unknown }
+      const data = JSON.parse(raw) as { theme?: ThemeName; density?: DensityName; colorVision?: ColorVisionName; sound?: boolean; visualQuality?: unknown }
       if (data.theme === 'dark' || data.theme === 'light') theme.value = data.theme
       if (data.density === 'normal' || data.density === 'compact') density.value = data.density
+      if (data.colorVision === 'default' || data.colorVision === 'safe') colorVision.value = data.colorVision
       if (typeof data.sound === 'boolean') sound.value = data.sound
       visualQuality.value = visualQualityOf(data.visualQuality)
     } catch {
@@ -40,7 +44,7 @@ export const useSettingsStore = defineStore('settings', () => {
   function persist() {
     try {
       localStorage.setItem(KEY, JSON.stringify({
-        theme: theme.value, density: density.value, sound: sound.value, visualQuality: visualQuality.value,
+        theme: theme.value, density: density.value, colorVision: colorVision.value, sound: sound.value, visualQuality: visualQuality.value,
       }))
     } catch {
       /* 忽略 */
@@ -51,6 +55,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const root = target.documentElement
     root.dataset.theme = theme.value
     root.dataset.density = density.value
+    root.dataset.colorVision = colorVision.value
     root.dataset.visualQuality = visualQuality.value
     root.dataset.motion = reducedMotion.value ? 'reduced' : 'full'
     root.dataset.pageVisibility = target.visibilityState !== 'hidden' ? 'visible' : 'hidden'
@@ -89,6 +94,12 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function setDensity(value: DensityName) {
     density.value = value
+    persist()
+    applyAll()
+  }
+
+  function setColorVision(value: ColorVisionName) {
+    colorVision.value = value
     persist()
     applyAll()
   }
@@ -139,7 +150,7 @@ export const useSettingsStore = defineStore('settings', () => {
   })
 
   return {
-    theme, density, sound, visualQuality, systemReducedMotion, pageVisible, reducedMotion,
-    init, load, applyAll, setTheme, setDensity, setSound, setVisualQuality, attachVisualDocument,
+    theme, density, colorVision, sound, visualQuality, systemReducedMotion, pageVisible, reducedMotion,
+    init, load, applyAll, setTheme, setDensity, setColorVision, setSound, setVisualQuality, attachVisualDocument,
   }
 })

@@ -90,6 +90,19 @@ it('页面隐藏和恢复标志即时更新，显示质量和动态偏好保持'
   expect(document.documentElement.dataset.pageVisibility).toBe('visible')
 })
 
+it('色觉安全模式写入 data 属性并跨实例恢复', () => {
+  const store = settings()
+  store.init()
+  expect(document.documentElement.dataset.colorVision).toBe('default')
+  store.setColorVision('safe')
+  expect(document.documentElement.dataset.colorVision).toBe('safe')
+  expect(JSON.parse(localStorage.getItem('nt.settings.v1') || '{}').colorVision).toBe('safe')
+  setActivePinia(createPinia())
+  const restored = settings()
+  restored.init()
+  expect(restored.colorVision).toBe('safe')
+})
+
 it('受管弹窗同步主题/密度/质量，独立可见性与解绑清理', () => {
   const store = settings()
   store.init()

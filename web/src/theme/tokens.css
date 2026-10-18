@@ -145,6 +145,25 @@
   --nt-scroll-hover: #00677f;
 }
 
+/* 色觉安全（data-colorvision='safe'，G4）：涨=朱红、跌=钴蓝——暖涨冷跌语义保持，
+   红绿色盲下靠明度与黄蓝轴仍可辨（OKLab ≥0.15 由 theme/__tests__/color-vision.test.ts 硬门禁）。
+   danger/success 归并到同一暖/冷族，保证 fail/pass 与涨/跌在色盲下同样可辨。 */
+:root[data-colorvision='safe'] {
+  --nt-up: #f95738;
+  --nt-down: #4da3ff;
+  --nt-danger: #f95738;
+  --nt-success: #4da3ff;
+  --nt-glow-danger: 0 0 14px rgba(249, 87, 56, 0.35);
+}
+
+:root[data-theme='light'][data-colorvision='safe'] {
+  --nt-up: #d9480f;
+  --nt-down: #2563eb;
+  --nt-danger: #d9480f;
+  --nt-success: #2563eb;
+  --nt-glow-danger: 0 0 10px rgba(217, 72, 15, 0.24);
+}
+
 :root[data-density='compact'] {
   --nt-row-h: 22px;
   --nt-cell-pad: 2px 6px;

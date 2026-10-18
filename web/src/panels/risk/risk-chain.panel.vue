@@ -225,8 +225,8 @@ onMounted(() => {
 }
 
 .chain__step.blocked {
-  border-color: rgba(255, 58, 58, 0.5);
-  background: rgba(255, 58, 58, 0.06);
+  border-color: color-mix(in srgb, var(--nt-danger) 50%, transparent);
+  background: color-mix(in srgb, var(--nt-danger) 6%, transparent);
 }
 
 .chain__code {

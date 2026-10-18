@@ -327,7 +327,7 @@ onMounted(loadAll)
 }
 
 .checks__item.fail {
-  border-color: rgba(255, 58, 58, 0.4);
+  border-color: color-mix(in srgb, var(--nt-danger) 40%, transparent);
 }
 
 .checks__verdict {
