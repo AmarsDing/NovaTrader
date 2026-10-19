@@ -127,33 +127,45 @@ func (c *Client) Submit(ctx context.Context, value Order) (Receipt, error) {
 	if !safeSID.MatchString(value.SID) {
 		return result, errors.New("broker remote: invalid sid")
 	}
-	err := c.request(ctx, http.MethodPost, "/v1/broker/orders", map[string]any{"order": value}, &result)
-	if err == nil && (result.BrokerACK || result.RetryAllowed || result.Protocol != Protocol || result.SID != value.SID || result.Key != value.SID || result.Kind != "order" || !receiptState(result.State)) {
-		err = errors.New("broker remote: invalid transport receipt")
+	if err := c.request(ctx, http.MethodPost, "/v1/broker/orders", map[string]any{"order": value}, &result); err != nil {
+		return result, err
 	}
-	return result, err
+	if result.BrokerACK || result.RetryAllowed || result.Protocol != Protocol || result.SID != value.SID || result.Key != value.SID || result.Kind != "order" || !receiptState(result.State) {
+		c.reportFail()
+		return result, errors.New("broker remote: invalid transport receipt")
+	}
+	c.reportOK()
+	return result, nil
 }
 func (c *Client) Query(ctx context.Context, sid string) (QueryResult, error) {
 	var result QueryResult
 	if !safeSID.MatchString(sid) {
 		return result, errors.New("broker remote: invalid sid")
 	}
-	err := c.request(ctx, http.MethodGet, "/v1/broker/orders/"+url.PathEscape(sid), nil, &result)
-	if err == nil && (result.SID != sid || result.AccountID != c.account || result.Protocol != Protocol || result.CanOpenLive || result.RetryAllowed || !queryState(result.State) || (result.State != "UNKNOWN" && (len(result.Order) == 0 || result.StatusVersion == ""))) {
-		err = errors.New("broker remote: invalid query evidence")
+	if err := c.request(ctx, http.MethodGet, "/v1/broker/orders/"+url.PathEscape(sid), nil, &result); err != nil {
+		return result, err
 	}
-	return result, err
+	if result.SID != sid || result.AccountID != c.account || result.Protocol != Protocol || result.CanOpenLive || result.RetryAllowed || !queryState(result.State) || (result.State != "UNKNOWN" && (len(result.Order) == 0 || result.StatusVersion == "")) {
+		c.reportFail()
+		return result, errors.New("broker remote: invalid query evidence")
+	}
+	c.reportOK()
+	return result, nil
 }
 func (c *Client) Cancel(ctx context.Context, requestID, sid string) (Receipt, error) {
 	var result Receipt
 	if !safeSID.MatchString(sid) || !safeSID.MatchString(requestID) {
 		return result, errors.New("broker remote: invalid identity")
 	}
-	err := c.request(ctx, http.MethodPost, "/v1/broker/cancels", map[string]string{"request_id": requestID, "sid": sid}, &result)
-	if err == nil && (result.BrokerACK || result.CancelConfirmed || result.RetryAllowed || result.SID != sid || result.Key != requestID || result.Protocol != Protocol || result.Kind != "cancel" || !receiptState(result.State)) {
-		err = errors.New("broker remote: invalid cancel receipt")
+	if err := c.request(ctx, http.MethodPost, "/v1/broker/cancels", map[string]string{"request_id": requestID, "sid": sid}, &result); err != nil {
+		return result, err
 	}
-	return result, err
+	if result.BrokerACK || result.CancelConfirmed || result.RetryAllowed || result.SID != sid || result.Key != requestID || result.Protocol != Protocol || result.Kind != "cancel" || !receiptState(result.State) {
+		c.reportFail()
+		return result, errors.New("broker remote: invalid cancel receipt")
+	}
+	c.reportOK()
+	return result, nil
 }
 
 func receiptState(state string) bool { return state == "FILE_PUBLISHED" || state == "UNKNOWN" }
@@ -168,20 +180,30 @@ func queryState(state string) bool {
 }
 func (c *Client) Health(ctx context.Context) (Health, error) {
 	var result Health
-	err := c.request(ctx, http.MethodGet, "/v1/broker/health", nil, &result)
-	if err == nil && (result.Protocol != Protocol || result.AccountID != c.account || result.Mode != "ISOLATED" || result.CanOpenLive || result.TerminalLoginVerified) {
-		err = errors.New("broker remote: invalid isolated health")
+	if err := c.request(ctx, http.MethodGet, "/v1/broker/health", nil, &result); err != nil {
+		return result, err
 	}
-	return result, err
+	if result.Protocol != Protocol || result.AccountID != c.account || result.Mode != "ISOLATED" || result.CanOpenLive || result.TerminalLoginVerified {
+		c.reportFail()
+		return result, errors.New("broker remote: invalid isolated health")
+	}
+	c.reportOK()
+	return result, nil
 }
 func (c *Client) Snapshot(ctx context.Context) (json.RawMessage, error) {
 	var result json.RawMessage
 	err := c.request(ctx, http.MethodGet, "/v1/broker/snapshot", nil, &result)
+	if err == nil {
+		c.reportOK()
+	}
 	return result, err
 }
 func (c *Client) Reconcile(ctx context.Context, expected json.RawMessage) (json.RawMessage, error) {
 	var result json.RawMessage
 	err := c.request(ctx, http.MethodPost, "/v1/broker/reconcile", map[string]json.RawMessage{"expected": expected}, &result)
+	if err == nil {
+		c.reportOK()
+	}
 	return result, err
 }
 
@@ -241,11 +263,17 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 		c.reportFail()
 		return errors.New("broker remote: invalid response shape")
 	}
-	c.reportOK()
+	// 传输层到此为止不记 Ok：回包的语义校验（回声/隔离约束）由各方法自己做，
+	// 校验不过必须记 Fail（「回包身份不符」契约），全部通过才记 Ok。
 	return nil
 }
 
 // reportOK/reportFail 只在配置了 Track 时折算状态；没配就是纯传输。
+// 记账矩阵（每次请求至多一笔）：
+//   - 本地校验/编码失败（请求未发出）：不记账——本地配置问题不是通道健康证据；
+//   - 传输失败（连接错误/读取截断/非 200/信封身份不符/回包形状非法）：request 记 Fail；
+//   - 回包语义校验不过（SID/Key/Kind/State/账户不回声、隔离约束被违反）：方法记 Fail；
+//   - 传输与语义全部通过：方法记 Ok。
 func (c *Client) reportOK() {
 	if c.obs != nil {
 		c.obs.Ok()

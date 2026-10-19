@@ -14,11 +14,13 @@ import (
 )
 
 // toggleFixture 是一个可远程切换「断线/恢复」的协议夹具：fail 打开时
-// hijack 并直接断开连接（制造http层传输错误），关闭时回合法协议信封。
+// hijack 并直接断开连接（制造http层传输错误），关闭时回合法协议信封；
+// bogus 打开时信封身份合法但回执不回声（SID 对不上）——制造语义层伪回执。
 // 状态机回放不依赖 Python 网关进程，CI 常跑。
 type toggleFixture struct {
-	srv  *httptest.Server
-	fail atomic.Int32
+	srv   *httptest.Server
+	fail  atomic.Int32
+	bogus atomic.Int32
 }
 
 func newToggleFixture(t *testing.T, ca, server testCertificate, account string) *toggleFixture {
@@ -62,9 +64,13 @@ func newToggleFixture(t *testing.T, ca, server testCertificate, account string) 
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+		sid := in.Order.SID
+		if f.bogus.Load() != 0 {
+			sid = "forged-" + sid // 信封合法、回执身份不回声
+		}
 		_, _ = w.Write(wrap(map[string]any{
 			"protocol": Protocol, "kind": "order", "state": "FILE_PUBLISHED",
-			"sid": in.Order.SID, "key": in.Order.SID,
+			"sid": sid, "key": sid,
 			"broker_ack": false, "retry_allowed": false, "duplicate": false,
 			"cancel_confirmed": false, "reason": "",
 		}))
@@ -91,8 +97,10 @@ func (f *toggleFixture) cut(w http.ResponseWriter) bool {
 	return true
 }
 
-func (f *toggleFixture) cutNow()  { f.fail.Store(1) }
-func (f *toggleFixture) recover() { f.fail.Store(0) }
+func (f *toggleFixture) cutNow()   { f.fail.Store(1) }
+func (f *toggleFixture) recover()  { f.fail.Store(0) }
+func (f *toggleFixture) bogusNow() { f.bogus.Store(1) }
+func (f *toggleFixture) honest()   { f.bogus.Store(0) }
 
 func (f *toggleFixture) client(t *testing.T, ca, cli testCertificate, account string, track *brokerif.Tracker) *Client {
 	t.Helper()
@@ -182,5 +190,50 @@ func TestStatusNotTrackedWithoutConfig(t *testing.T) {
 	c := fx.client(t, ca, cli, account, nil)
 	if _, err := c.Health(context.Background()); err != nil {
 		t.Fatalf("health: %v", err)
+	}
+}
+
+// TestBogusReceiptCountsAsFailure 钉死记账矩阵的语义层那条边：
+// 信封身份合法但回执不回声（SID 对不上）必须按 Observer.Fail 契约
+// （「回包身份不符」）折算成一次通道失败，而不是拿「信封能解开」误记 Ok
+// 把通道钉在 connected。一次伪回执应恰好计一笔失败（connected→degraded）。
+func TestBogusReceiptCountsAsFailure(t *testing.T) {
+	ca, server, cli, _ := testPKI(t)
+	const account = "TEST_ACCOUNT"
+	fx := newToggleFixture(t, ca, server, account)
+	track := brokerif.NewTracker(time.Now())
+	c := fx.client(t, ca, cli, account, track)
+	ctx := context.Background()
+
+	if _, err := c.Health(ctx); err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	if s, _ := track.Current(); s != brokerif.Connected {
+		t.Fatalf("want connected after health, got %s", s)
+	}
+
+	fx.bogusNow()
+	ord := Order{SID: "wire-bogus-1", Symbol: "SHSE.600519", Side: "BUY", Price: "1700.00", Volume: 100}
+	if _, err := c.Submit(ctx, ord); err == nil {
+		t.Fatal("bogus receipt must be rejected")
+	}
+	if s, _ := track.Current(); s != brokerif.Degraded {
+		t.Fatalf("one semantic-bogus receipt must count as exactly one failure (connected→degraded), got %s", s)
+	}
+
+	// 恢复诚实回包后一次成功：degraded→connected 且连败清零（再伪一次只降级）。
+	fx.honest()
+	if _, err := c.Health(ctx); err != nil {
+		t.Fatalf("health after honest: %v", err)
+	}
+	if s, _ := track.Current(); s != brokerif.Connected {
+		t.Fatalf("want recovered connected, got %s", s)
+	}
+	fx.bogusNow()
+	if _, err := c.Submit(ctx, ord); err == nil {
+		t.Fatal("bogus receipt must be rejected")
+	}
+	if s, _ := track.Current(); s != brokerif.Degraded {
+		t.Fatalf("post-recovery bogus receipt must degrade only (streak was reset), got %s", s)
 	}
 }
