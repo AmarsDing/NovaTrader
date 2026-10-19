@@ -90,7 +90,8 @@ func NewObserver(tr *Tracker, now func() time.Time) *Observer {
 	return &Observer{tr: tr, now: now}
 }
 
-// Ok 记录一次通道成功。
+// Ok 记录一次通道成功。Success 是最新的存活证据，无条件迁回 connected；
+// 恢复只能从 down 经 connected，边表已保证。
 func (o *Observer) Ok() {
 	o.mu.Lock()
 	o.fails = 0
@@ -99,24 +100,30 @@ func (o *Observer) Ok() {
 }
 
 // Fail 记录一次通道失败：请求层面的任何错误（连接失败、被拒、回包身份不符）都算。
+// 决策（连败计数 + 当前状态读取）在同一把锁内取出并整体应用——决出的迁移以
+// 决策时刻的状态为前提条件（CAS）：若 Ok 或并发 Fail 先把状态迁走，这条过期
+// 决策直接作废，不会拿「已被清零的旧连败」把刚恢复的通道再推回 down。
 func (o *Observer) Fail() {
 	o.mu.Lock()
 	o.fails++
 	fails := o.fails
-	o.mu.Unlock()
-	cur, _ := o.tr.Current()
+	from, _ := o.tr.Current()
+	var to Status
 	switch {
-	case cur == Idle:
-		if fails >= FailThreshold {
-			_ = o.tr.Transition(Down, o.now())
-		}
-	case cur == Down:
+	case from == Down:
 		// 保持 down，直到 Ok 恢复。
 	case fails >= FailThreshold:
-		_ = o.tr.Transition(Down, o.now())
+		to = Down
+	case from == Idle:
+		// 未建连过的失败只累计（degraded 严格留给「连上过又出问题」）。
 	default:
-		_ = o.tr.Transition(Degraded, o.now())
+		to = Degraded
 	}
+	o.mu.Unlock()
+	if to == "" {
+		return // 无决策（down 保持 / idle 只累计），不打扰 Tracker。
+	}
+	_ = o.tr.TransitionIf(from, to, o.now())
 }
 
 // Transition 迁移状态：合法则更新并逐个通知；同状态幂等返回 nil 不通知；
@@ -133,6 +140,28 @@ func (t *Tracker) Transition(to Status, now time.Time) error {
 		return fmt.Errorf("brokerif: illegal status transition %s → %s", from, to)
 	}
 	from := t.status
+	t.status, t.since = to, now
+	listeners := append([]func(Status, Status, time.Time){}, t.listeners...)
+	t.mu.Unlock()
+	for _, fn := range listeners {
+		fn(from, to, now)
+	}
+	return nil
+}
+
+// TransitionIf 以期望的当前状态为条件迁移：决策在锁外被并发改动顶掉时
+// （当前状态已不再是决策时刻的 from），过期决策直接作废返回 nil，保持现状；
+// 已处于 to 视同幂等。其余语义（边表校验、变化才通知）与 Transition 相同。
+func (t *Tracker) TransitionIf(from, to Status, now time.Time) error {
+	t.mu.Lock()
+	if t.status == to || t.status != from {
+		t.mu.Unlock()
+		return nil
+	}
+	if !TransitionOK(from, to) {
+		t.mu.Unlock()
+		return fmt.Errorf("brokerif: illegal status transition %s → %s", from, to)
+	}
 	t.status, t.since = to, now
 	listeners := append([]func(Status, Status, time.Time){}, t.listeners...)
 	t.mu.Unlock()

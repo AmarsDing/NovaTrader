@@ -1,6 +1,7 @@
 package brokerif
 
 import (
+	"sync"
 	"testing"
 	"time"
 )
@@ -143,5 +144,79 @@ func TestObserverDefaultsClock(t *testing.T) {
 	NewObserver(tr, nil).Ok()
 	if s, _ := tr.Current(); s != Connected {
 		t.Fatalf("nil clock must default to time.Now, got %s", s)
+	}
+}
+
+func TestTransitionIfDiscardsStaleDecisions(t *testing.T) {
+	tr := NewTracker(st0)
+	type event struct{ from, to Status }
+	var got []event
+	tr.Subscribe(func(from, to Status, _ time.Time) { got = append(got, event{from, to}) })
+
+	// 期望状态已不在：过期决策作废，不动状态不通知。
+	if err := tr.TransitionIf(Connected, Degraded, st0); err != nil {
+		t.Fatalf("stale decision must be a silent no-op, got %v", err)
+	}
+	if s, _ := tr.Current(); s != Idle || len(got) != 0 {
+		t.Fatalf("stale decision must not move state, got %s events=%v", s, got)
+	}
+	// 命中期望状态：与 Transition 一样迁移、前进 since 并通知。
+	if err := tr.TransitionIf(Idle, Connected, st0.Add(time.Minute)); err != nil {
+		t.Fatalf("expected-state transition should apply, got %v", err)
+	}
+	if s, since := tr.Current(); s != Connected || !since.Equal(st0.Add(time.Minute)) {
+		t.Fatalf("expected-state decision must apply, got %s at %v", s, since)
+	}
+	// 已处目标态：幂等 nil 不通知。
+	if err := tr.TransitionIf(Idle, Connected, st0.Add(2*time.Minute)); err != nil {
+		t.Fatalf("already-at-target must be idempotent, got %v", err)
+	}
+	// 命中期望但迁移非法：报错、状态与通知都不动。
+	if err := tr.TransitionIf(Connected, Idle, st0); err == nil {
+		t.Fatal("illegal hop must error even when the expected from matches")
+	}
+	if s, _ := tr.Current(); s != Connected || len(got) != 1 {
+		t.Fatalf("illegal hop must leave state and events untouched, got %s events=%v", s, got)
+	}
+	if got[0] != (event{Idle, Connected}) {
+		t.Fatalf("events %v, want only {Idle→Connected}", got)
+	}
+}
+
+// TestObserverConcurrentOps 真并发下混跑 Ok/Fail：数据竞争由 -race 裁决，
+// 每条通知的迁移都必须合法；全部落下后一次 Ok 必回复 connected。
+func TestObserverConcurrentOps(t *testing.T) {
+	tr := NewTracker(st0)
+	var mu sync.Mutex
+	var hops [][2]Status
+	tr.Subscribe(func(from, to Status, _ time.Time) {
+		mu.Lock()
+		hops = append(hops, [2]Status{from, to})
+		mu.Unlock()
+	})
+	obs := NewObserver(tr, time.Now)
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%2 == 0 {
+				obs.Ok()
+			} else {
+				obs.Fail()
+			}
+		}(i)
+	}
+	wg.Wait()
+	obs.Ok()
+	if s, _ := tr.Current(); s != Connected {
+		t.Fatalf("final ok must recover connected, got %s", s)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, h := range hops {
+		if h[0] == h[1] || !TransitionOK(h[0], h[1]) {
+			t.Fatalf("notified illegal hop %s → %s", h[0], h[1])
+		}
 	}
 }
