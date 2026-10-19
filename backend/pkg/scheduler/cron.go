@@ -35,6 +35,10 @@ func parseSpec(spec string) ([5]field, error) {
 	return out, nil
 }
 
+// parseField 的方言边界（与 Vixie cron 不同，行为钉在 cron_test.go TestCronCommaStepDialect）：
+// "/N" 在第一个斜杠处切分，步进施于逗号清单的每一段（"1-10,15-20/2" → 两段各自步进 2）；
+// "*/N" 展开成整段区间，但 any 保持 false——落在 dom/dow 时按受限段参与双限取 OR
+// （Vixie 视 star 带步进仍为非受限、走 AND）。运维配置可改，口径以此实现与钉死测试为准。
 func parseField(s string, min, max int) (field, error) {
 	f := field{vals: map[int]bool{}}
 	if s == "*" {

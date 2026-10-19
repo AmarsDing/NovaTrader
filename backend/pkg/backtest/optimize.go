@@ -476,11 +476,22 @@ func Optimize(ctx context.Context, cfg Config, sc SearchConfig, src Source, prog
 	}
 	tick()
 	out.OOS = Compute(cfg.InitialCash, cfg.RiskFree, oos.Equity, oos.Rounds, oos.Trades)
-	isObj, oosObj := objective(sc.Objective, out.BestIS), objective(sc.Objective, out.OOS)
-	if out.OOS.TotalReturn <= 0 || (isObj > 0 && oosObj < 0.5*isObj) {
+	if decayedByOOS(sc.Objective, out.BestIS, out.OOS) {
 		out.Flags = append(out.Flags, "样本外衰减")
 	}
 	return out, oos, nil
+}
+
+// decayedByOOS 样本外衰减的双条件判定（设计 :210）：样本外收益 ≤ 0，或样本外目标值
+// 不足样本内的一半（样本内目标值不为正时一半支无意义，只看收益支）。
+// 准入报告逐字消费「样本外衰减」flag（app/backtest task.go :394 → report.go 准入项），
+// 阈值与守卫的改动等价于改准入口径——行为钉在 optimize_test.go TestDecayByOOSBothBranches。
+func decayedByOOS(objectiveName string, is, oos Metrics) bool {
+	if oos.TotalReturn <= 0 {
+		return true
+	}
+	isObj, oosObj := objective(objectiveName, is), objective(objectiveName, oos)
+	return isObj > 0 && oosObj < 0.5*isObj
 }
 
 // WalkForward 按 train_days 训练、test_days 测试滚动，测试窗步进。返回结果和拼接后的测试窗运行。
