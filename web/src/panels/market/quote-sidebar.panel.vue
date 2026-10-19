@@ -284,6 +284,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 10px 12px;
   margin-bottom: 10px;
@@ -314,8 +315,9 @@ onBeforeUnmount(() => {
 .head__meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: 6px;
-  white-space: nowrap;
 }
 
 .asof {

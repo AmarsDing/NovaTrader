@@ -327,7 +327,7 @@ onBeforeUnmount(() => {
         <template v-if="previewing && !preview">试算中……</template>
         <template v-else-if="previewError">试算不可用：{{ previewError }}</template>
         <template v-else-if="preview">
-          <span :class="preview.approved ? 'up' : 'down'">
+          <span :class="preview.approved ? 'verdict-ok' : 'verdict-bad'">
             {{ preview.approved ? `试算放行${preview.adjusted ? `（缩量至 ${preview.volume ?? '?'} 股）` : ''}` : `试算拦截${preview.blockRule ? ` ${preview.blockRule}` : ''}` }}
           </span>
           <span v-if="preview.reason" class="pv">{{ preview.reason }}</span>
@@ -513,6 +513,15 @@ onBeforeUnmount(() => {
   color: var(--nt-text-2);
 }
 
+/* 试算结论走语义色：放行=成功，拦截=风险（§7.1 风险色不按涨跌判断）。 */
+.verdict-ok {
+  color: var(--nt-success);
+}
+
+.verdict-bad {
+  color: var(--nt-danger);
+}
+
 .sheet {
   width: 100%;
   border-collapse: collapse;
@@ -523,12 +532,12 @@ onBeforeUnmount(() => {
   text-align: left;
   font-weight: 500;
   color: var(--nt-text-3);
-  padding: 3px 8px 3px 0;
+  padding: var(--nt-cell-pad);
   border-bottom: 1px solid var(--nt-border-1);
 }
 
 .sheet td {
-  padding: 4px 8px 4px 0;
+  padding: var(--nt-cell-pad);
   border-bottom: 1px solid var(--nt-bg-2);
   white-space: nowrap;
 }
