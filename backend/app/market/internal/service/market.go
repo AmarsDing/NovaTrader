@@ -157,6 +157,34 @@ func (s *MarketService) GetBars(ctx context.Context, req *v1.GetBarsRequest) (*v
 	return reply, nil
 }
 
+func (s *MarketService) GetQuote(ctx context.Context, req *v1.GetQuoteRequest) (*v1.Quote, error) {
+	sym, err := parseSymbol(req.GetSymbol())
+	if err != nil {
+		return nil, err
+	}
+	q, err := s.uc.Quote(ctx, sym)
+	if err != nil {
+		return nil, internal(err)
+	}
+	out := &v1.Quote{
+		Symbol: q.Symbol, Name: q.Name, Market: q.Market, TradeStatus: q.Status,
+		Last: q.Last, Chg: q.Chg, PctChg: q.PctChg,
+		Open: q.Open, High: q.High, Low: q.Low, PrevClose: q.PreClose,
+		Volume: q.Volume, Amount: q.Amount,
+		TurnoverRate: q.TurnoverRate, Amplitude: q.Amplitude,
+		PeTtm: q.PeTtm, Pb: q.Pb, CircMv: q.CircMv, TotalMv: q.TotalMv,
+		LimitUpPrice: q.LimitUp, LimitDownPrice: q.LimitDown, NoLimit: q.NoLimit,
+		Source: q.Source, AsOf: fmtTime(q.AsOf), Stale: q.Stale, Found: q.Found,
+	}
+	for _, l := range q.Bid {
+		out.Bid = append(out.Bid, &v1.QuoteLevel{Price: l[0], Volume: int64(l[1])})
+	}
+	for _, l := range q.Ask {
+		out.Ask = append(out.Ask, &v1.QuoteLevel{Price: l[0], Volume: int64(l[1])})
+	}
+	return out, nil
+}
+
 func (s *MarketService) GetIndicators(ctx context.Context, req *v1.GetIndicatorsRequest) (*v1.GetIndicatorsReply, error) {
 	sym, err := parseSymbol(req.GetSymbol())
 	if err != nil {

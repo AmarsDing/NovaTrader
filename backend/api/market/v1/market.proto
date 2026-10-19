@@ -82,6 +82,13 @@ service Market {
       get: "/v1/market/kline-gaps"
     };
   }
+  // 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
+  // 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
+  rpc GetQuote(GetQuoteRequest) returns (Quote) {
+    option (google.api.http) = {
+      get: "/v1/market/quote"
+    };
+  }
 }
 
 // 复权方式。NONE：价格不复权，指标为每天当时看到的值；QFQ：前复权（以区间最后一天为基准）；HFQ：后复权。
@@ -402,3 +409,48 @@ message GetKlineGapsReply {
   string as_of = 7;
 }
 
+// GetQuoteRequest 单券快照。
+message GetQuoteRequest {
+  string symbol = 1;
+}
+
+// QuoteLevel 一档盘口（价格 / 股数）。
+message QuoteLevel {
+  double price = 1;
+  int64 volume = 2;
+}
+
+// Quote 单券快照。纪律：算不出的字段保持零值（前端显「未知」），不做近似填充。
+// source 是价格与盘口的取值口径：snap=盘中实时快照（Redis snap:latest），1d=最近日线，""=无行情数据。
+// stale 为真表示截面陈旧或快照过期规则命中；非交易时段按最近收盘口径展示不算陈旧。
+// found=false 表示证券不在 stock_basic，价格区全零。
+message Quote {
+  string symbol = 1;
+  string name = 2;
+  string market = 3;         // SH / SZ / BJ
+  string trade_status = 4;   // TRADE / SUSPEND
+  double last = 5;           // 最新价；无行情为 0
+  double chg = 6;            // last - prev_close；prev_close=0 时为 0
+  double pct_chg = 7;        // 相对昨收涨跌幅 %
+  double open = 8;
+  double high = 9;
+  double low = 10;
+  double prev_close = 11;
+  int64 volume = 12;         // 当日累计成交（股）
+  double amount = 13;        // 当日累计成交额（元）
+  double turnover_rate = 14; // 换手 %：volume / float_share；无股本数据为 0
+  double amplitude = 15;     // 振幅 %：(high - low) / prev_close；prev_close=0 为 0
+  repeated QuoteLevel bid = 16; // 买一至买五；快照无盘口为空（1d 口径恒为空）
+  repeated QuoteLevel ask = 17; // 卖一至卖五
+  double pe_ttm = 18;        // stock_basic 同步值；无数据为 0
+  double pb = 19;
+  double circ_mv = 20;       // 流通市值（元）：stock_basic.circ_mv，缺列且可定义计算时补 last×float_share
+  double total_mv = 21;      // 总市值（元）：last × total_share；缺股本或价为 0 时为 0
+  double limit_up_price = 22;   // 无涨跌幅限制（新股前五日等）为 0 且 no_limit=true
+  double limit_down_price = 23;
+  bool no_limit = 24;
+  string source = 25;
+  string as_of = 26;         // RFC3339；快照口径取行情时间与写入时间中较早者
+  bool stale = 27;
+  bool found = 28;
+}

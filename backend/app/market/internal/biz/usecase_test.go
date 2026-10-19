@@ -24,6 +24,9 @@ type fakeRepo struct {
 	boards    map[string]market.LimitBoard
 	sentiment []market.Sentiment
 	heat      int
+	basic     StockBasicRow
+	basicErr  error
+	dayBars   []BarRow
 
 	// P2 测试桩数据
 	barDays      []DailyBarDay
@@ -36,6 +39,9 @@ type fakeRepo struct {
 }
 
 func (f *fakeRepo) LoadStocks(context.Context) ([]market.StockInfo, error) { return f.stocks, nil }
+func (f *fakeRepo) StockBasic(context.Context, string) (StockBasicRow, error) {
+	return f.basic, f.basicErr
+}
 func (f *fakeRepo) DailyHistory(context.Context, time.Time, int) (map[string][]market.DayBar, error) {
 	return f.hist, nil
 }
@@ -99,6 +105,9 @@ func (f *fakeRepo) OverseasQuotes(context.Context, time.Time) ([]market.Quote, e
 }
 func (f *fakeRepo) OverseasMappings(context.Context) ([]market.Mapping, error) { return nil, nil }
 func (f *fakeRepo) Bars(context.Context, string, string, time.Time, time.Time, int) ([]BarRow, error) {
+	if f.dayBars != nil {
+		return f.dayBars, nil
+	}
 	return nil, nil
 }
 func (f *fakeRepo) FactorsAt(context.Context, time.Time, string, time.Time, []string) ([]FactorRecord, error) {

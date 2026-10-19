@@ -46,6 +46,8 @@ type FactorRecord struct {
 // Repo 是数据层端口。所有写入都是 upsert，可重复执行。
 type Repo interface {
 	LoadStocks(ctx context.Context) ([]market.StockInfo, error)
+	// StockBasic 读单券静态（报价侧）。库中无此证券时返回 Found=false 而不是错误。
+	StockBasic(ctx context.Context, symbol string) (StockBasicRow, error)
 	// DailyHistory 返回每只股票 before 之前最近 n 根日线，按时间升序。
 	DailyHistory(ctx context.Context, before time.Time, n int) (map[string][]market.DayBar, error)
 	// SealedOn 返回某交易日收盘涨停股的连板数。

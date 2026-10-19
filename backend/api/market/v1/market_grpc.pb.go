@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v6.32.1
-// source: api/market/v1/market.proto
+// source: market/v1/market.proto
 
 // M02 行情与因子对内接口。桌面端经 admin 聚合访问，不直连本服务。
 // 设计见 doc/开发文档/M02-行情与因子/设计文档.md 第 8 节。
@@ -34,6 +34,7 @@ const (
 	Market_GetLimitPremium_FullMethodName = "/api.market.v1.Market/GetLimitPremium"
 	Market_GetBreadth_FullMethodName      = "/api.market.v1.Market/GetBreadth"
 	Market_GetKlineGaps_FullMethodName    = "/api.market.v1.Market/GetKlineGaps"
+	Market_GetQuote_FullMethodName        = "/api.market.v1.Market/GetQuote"
 )
 
 // MarketClient is the client API for Market service.
@@ -64,6 +65,9 @@ type MarketClient interface {
 	GetBreadth(ctx context.Context, in *GetBreadthRequest, opts ...grpc.CallOption) (*GetBreadthReply, error)
 	// 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
 	GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest, opts ...grpc.CallOption) (*GetKlineGapsReply, error)
+	// 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
+	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
+	GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*Quote, error)
 }
 
 type marketClient struct {
@@ -194,6 +198,16 @@ func (c *marketClient) GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest
 	return out, nil
 }
 
+func (c *marketClient) GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*Quote, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Quote)
+	err := c.cc.Invoke(ctx, Market_GetQuote_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MarketServer is the server API for Market service.
 // All implementations must embed UnimplementedMarketServer
 // for forward compatibility.
@@ -222,6 +236,9 @@ type MarketServer interface {
 	GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error)
 	// 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
 	GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error)
+	// 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
+	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
+	GetQuote(context.Context, *GetQuoteRequest) (*Quote, error)
 	mustEmbedUnimplementedMarketServer()
 }
 
@@ -267,6 +284,9 @@ func (UnimplementedMarketServer) GetBreadth(context.Context, *GetBreadthRequest)
 }
 func (UnimplementedMarketServer) GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetKlineGaps not implemented")
+}
+func (UnimplementedMarketServer) GetQuote(context.Context, *GetQuoteRequest) (*Quote, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetQuote not implemented")
 }
 func (UnimplementedMarketServer) mustEmbedUnimplementedMarketServer() {}
 func (UnimplementedMarketServer) testEmbeddedByValue()                {}
@@ -505,6 +525,24 @@ func _Market_GetKlineGaps_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Market_GetQuote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetQuoteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetQuote(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetQuote_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetQuote(ctx, req.(*GetQuoteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Market_ServiceDesc is the grpc.ServiceDesc for Market service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -560,7 +598,11 @@ var Market_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetKlineGaps",
 			Handler:    _Market_GetKlineGaps_Handler,
 		},
+		{
+			MethodName: "GetQuote",
+			Handler:    _Market_GetQuote_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/market/v1/market.proto",
+	Metadata: "market/v1/market.proto",
 }

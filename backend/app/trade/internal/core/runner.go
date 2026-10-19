@@ -34,6 +34,7 @@ type Runner struct {
 	now        func() time.Time
 	e          *biz.Engine
 	bus        *events.Bus
+	publish    func(ctx context.Context, env events.Envelope) error
 	box        *outbox.Dispatcher
 	track      *brokerif.Tracker
 	obs        *brokerif.Observer
@@ -60,6 +61,9 @@ func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, bus *events.B
 		ch = NewChannelTracker()
 	}
 	r := &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger), watchOwner: "trade." + uuid.NewString()}
+	if bus != nil {
+		r.publish = bus.Publish
+	}
 	r.track = ch
 	r.obs = brokerif.NewObserver(ch, time.Now)
 	r.track.Subscribe(r.publishChannel)
@@ -84,11 +88,16 @@ func (r *Runner) channelFail() {
 
 // publishChannel 把每次状态迁移投递到 trade.channel.status（随 trade.> 走 JetStream）。
 // 回调由 Tracker 在锁外同步触发，发布带 5s 上限，不会反压状态机。
+// 链纪律（决策 C）：Tracker 回调结构上不带因果父，每次迁移即一条根链——OpenTrace
+// 幂等开新链、不编 causation_id；若未来 Tracker 透传上游链，OpenTrace 尊重不另开。
 func (r *Runner) publishChannel(from, to brokerif.Status, at time.Time) {
-	if r.bus == nil {
+	if r.publish == nil {
 		return
 	}
-	env, err := events.New("trade", events.SubjectTradeChannel, "", map[string]any{
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ctx = events.OpenTrace(ctx)
+	env, err := events.New("trade", events.SubjectTradeChannel, events.TraceID(ctx), map[string]any{
 		"channel": "sim", "from": string(from), "to": string(to),
 		"at": at.UTC().Format(time.RFC3339),
 	})
@@ -96,9 +105,7 @@ func (r *Runner) publishChannel(from, to brokerif.Status, at time.Time) {
 		r.log.Warnf("channel event: %v", err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := r.bus.Publish(ctx, env); err != nil {
+	if err := r.publish(ctx, env); err != nil {
 		r.log.Warnf("publish channel %s→%s: %v", from, to, err)
 	}
 }

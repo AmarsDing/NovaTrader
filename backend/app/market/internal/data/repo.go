@@ -110,6 +110,27 @@ func (r *Repo) LoadStocks(ctx context.Context) ([]market.StockInfo, error) {
 	return out, nil
 }
 
+// StockBasic 读单券静态（报价侧）。无行返回 Found=false，不是错误。
+func (r *Repo) StockBasic(ctx context.Context, symbol string) (biz.StockBasicRow, error) {
+	row, err := r.db.StockBasic.Query().Where(stockbasic.StockCodeEQ(symbol)).Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.StockBasicRow{}, nil
+		}
+		return biz.StockBasicRow{}, err
+	}
+	out := biz.StockBasicRow{
+		Found: true, Name: row.StockName, Market: row.Market,
+		TotalShare: i64(row.TotalShare), FloatShare: i64(row.FloatShare),
+		CircMv: f64(row.CircMv), PeTtm: f64(row.PeTtm), Pb: f64(row.Pb),
+		ST: row.StFlag, Suspended: row.SuspendFlag,
+	}
+	if row.ListDate != nil {
+		out.ListDate = fromPgDay(*row.ListDate)
+	}
+	return out, nil
+}
+
 func toDayBar(row *ent.MarketData) market.DayBar {
 	return market.DayBar{
 		Symbol: row.Symbol, Time: row.BarTime.In(tradecal.Shanghai()),

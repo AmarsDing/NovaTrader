@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-http v2.9.2
 // - protoc             v6.32.1
-// source: api/market/v1/market.proto
+// source: market/v1/market.proto
 
 package v1
 
@@ -28,6 +28,7 @@ const OperationMarketGetKlineGaps = "/api.market.v1.Market/GetKlineGaps"
 const OperationMarketGetLadder = "/api.market.v1.Market/GetLadder"
 const OperationMarketGetLimitBoards = "/api.market.v1.Market/GetLimitBoards"
 const OperationMarketGetLimitPremium = "/api.market.v1.Market/GetLimitPremium"
+const OperationMarketGetQuote = "/api.market.v1.Market/GetQuote"
 const OperationMarketGetSectorHeat = "/api.market.v1.Market/GetSectorHeat"
 const OperationMarketGetSentiment = "/api.market.v1.Market/GetSentiment"
 const OperationMarketSetWatchlist = "/api.market.v1.Market/SetWatchlist"
@@ -51,6 +52,9 @@ type MarketHTTPServer interface {
 	GetLimitBoards(context.Context, *GetLimitBoardsRequest) (*GetLimitBoardsReply, error)
 	// GetLimitPremium 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
 	GetLimitPremium(context.Context, *GetLimitPremiumRequest) (*GetLimitPremiumReply, error)
+	// GetQuote 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
+	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
+	GetQuote(context.Context, *GetQuoteRequest) (*Quote, error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(context.Context, *GetSectorHeatRequest) (*GetSectorHeatReply, error)
 	// GetSentiment 情绪截面，as_of 规则同上。
@@ -73,6 +77,7 @@ func RegisterMarketHTTPServer(s *http.Server, srv MarketHTTPServer) {
 	r.GET("/v1/market/limit-premium", _Market_GetLimitPremium0_HTTP_Handler(srv))
 	r.GET("/v1/market/breadth", _Market_GetBreadth0_HTTP_Handler(srv))
 	r.GET("/v1/market/kline-gaps", _Market_GetKlineGaps0_HTTP_Handler(srv))
+	r.GET("/v1/market/quote", _Market_GetQuote0_HTTP_Handler(srv))
 }
 
 func _Market_GetBars0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
@@ -306,6 +311,25 @@ func _Market_GetKlineGaps0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Cont
 	}
 }
 
+func _Market_GetQuote0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetQuoteRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetQuote)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetQuote(ctx, req.(*GetQuoteRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*Quote)
+		return ctx.Result(200, reply)
+	}
+}
+
 type MarketHTTPClient interface {
 	// GetAuction 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
 	GetAuction(ctx context.Context, req *GetAuctionRequest, opts ...http.CallOption) (rsp *GetAuctionReply, err error)
@@ -325,6 +349,9 @@ type MarketHTTPClient interface {
 	GetLimitBoards(ctx context.Context, req *GetLimitBoardsRequest, opts ...http.CallOption) (rsp *GetLimitBoardsReply, err error)
 	// GetLimitPremium 监控驾驶舱 P2（只读）：昨日涨停今日溢价快照——09:26 落开盘溢价，收盘补收盘/最高溢价。
 	GetLimitPremium(ctx context.Context, req *GetLimitPremiumRequest, opts ...http.CallOption) (rsp *GetLimitPremiumReply, err error)
+	// GetQuote 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
+	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
+	GetQuote(ctx context.Context, req *GetQuoteRequest, opts ...http.CallOption) (rsp *Quote, err error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(ctx context.Context, req *GetSectorHeatRequest, opts ...http.CallOption) (rsp *GetSectorHeatReply, err error)
 	// GetSentiment 情绪截面，as_of 规则同上。
@@ -459,6 +486,21 @@ func (c *MarketHTTPClientImpl) GetLimitPremium(ctx context.Context, in *GetLimit
 	pattern := "/v1/market/limit-premium"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetLimitPremium))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetQuote 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
+// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
+func (c *MarketHTTPClientImpl) GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...http.CallOption) (*Quote, error) {
+	var out Quote
+	pattern := "/v1/market/quote"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetQuote))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
