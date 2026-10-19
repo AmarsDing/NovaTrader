@@ -16,7 +16,7 @@ import (
 
 func TestHTTPObservationMountedWithClosedTradeContract(t *testing.T) {
 	e := biz.NewEngine(biz.NewMemStore(), nil, biz.Settings{}, log.DefaultLogger)
-	svc := service.NewTradeService(e)
+	svc := service.NewTradeService(e, nil)
 	srv := NewHTTPServer(&conf.Trade{}, svc, service.NewAdmissionService(svc), service.NewNavService(svc), log.DefaultLogger)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/observability", nil))

@@ -12,7 +12,7 @@ import (
 // TestRunnerChannelHeartbeatWiring 验证 sim 通道心跳的接线缝：
 // NewRunner 自带状态机，channelOK/channelFail 折算迁移并触发订阅（bus 为 nil 时发布只跳过不panic）。
 func TestRunnerChannelHeartbeatWiring(t *testing.T) {
-	r := NewRunner(nil, nil, nil, nil, log.DefaultLogger)
+	r := NewRunner(nil, nil, nil, nil, nil, log.DefaultLogger)
 	type event struct{ from, to brokerif.Status }
 	var got []event
 	r.Channel().Subscribe(func(from, to brokerif.Status, _ time.Time) { got = append(got, event{from, to}) })

@@ -22,7 +22,10 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-var ProviderSet = wire.NewSet(NewRunner)
+var ProviderSet = wire.NewSet(NewRunner, NewChannelTracker)
+
+// NewChannelTracker 建 sim 执行通道的状态机单例（G7）：Runner 记心跳，service 读状态面。
+func NewChannelTracker() *brokerif.Tracker { return brokerif.NewTracker(time.Now()) }
 
 // Runner 每 10 秒记一次模拟账户快照，投递 outbox，并用分钟线撮合未完成的模拟委托。
 // 快照回路同时充当 sim 执行通道的心跳（G7）：连续失败按 brokerif.Observer 口径
@@ -48,14 +51,17 @@ type Runner struct {
 	wg         sync.WaitGroup
 }
 
-func NewRunner(c *conf.Trade, e *biz.Engine, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
+func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
 	every := 10 * time.Second
 	if c != nil && c.GetSnapshotInterval() != nil && c.GetSnapshotInterval().AsDuration() > 0 {
 		every = c.GetSnapshotInterval().AsDuration()
 	}
+	if ch == nil {
+		ch = NewChannelTracker()
+	}
 	r := &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger), watchOwner: "trade." + uuid.NewString()}
-	r.track = brokerif.NewTracker(time.Now())
-	r.obs = brokerif.NewObserver(r.track, time.Now)
+	r.track = ch
+	r.obs = brokerif.NewObserver(ch, time.Now)
 	r.track.Subscribe(r.publishChannel)
 	return r
 }

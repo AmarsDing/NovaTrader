@@ -9,7 +9,7 @@ import (
 
 func TestPublicInputsCannotSynthesizeSIMFills(t *testing.T) {
 	// Reject before an engine or any ledger is available.
-	s := NewTradeService(nil)
+	s := NewTradeService(nil, nil)
 	if _, err := s.PlaceOrder(context.Background(), &v1.PlaceOrderRequest{Bar: &v1.Bar{Open: 10, High: 10, Low: 10, Volume: 100000}}); kerrors.Code(err) != 400 {
 		t.Fatalf("client bar accepted: %v", err)
 	}

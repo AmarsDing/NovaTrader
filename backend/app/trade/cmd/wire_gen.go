@@ -34,6 +34,7 @@ func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, redis 
 	riskClient := data.NewRiskClient(trade)
 	settings := data.NewSettings(trade)
 	engine := biz.NewEngine(repo, riskClient, settings, logger)
+	tracker := core.NewChannelTracker()
 	bus, cleanup3, err := data.NewBus(nats)
 	if err != nil {
 		cleanup2()
@@ -41,8 +42,8 @@ func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, redis 
 		return nil, nil, err
 	}
 	dispatcher := outbox.NewDispatcher(client, bus)
-	runner := core.NewRunner(trade, engine, bus, dispatcher, logger)
-	tradeService := service.NewTradeService(engine)
+	runner := core.NewRunner(trade, engine, tracker, bus, dispatcher, logger)
+	tradeService := service.NewTradeService(engine, tracker)
 	admissionService := service.NewAdmissionService(tradeService)
 	navService := service.NewNavService(tradeService)
 	httpServer := server.NewHTTPServer(trade, tradeService, admissionService, navService, logger)

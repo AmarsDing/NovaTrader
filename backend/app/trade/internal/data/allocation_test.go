@@ -72,7 +72,7 @@ func TestPostgresPortfolioPreviewHTTPUsesAuthorityAndWritesNoBusinessRows(t *tes
 	}
 	before := count()
 	srv := khttp.NewServer()
-	v1.RegisterPortfolioAllocationHTTPServer(srv, service.NewTradeService(e))
+	v1.RegisterPortfolioAllocationHTTPServer(srv, service.NewTradeService(e, nil))
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	post := func(account string) (int, allocation.Preview) {

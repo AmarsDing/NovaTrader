@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"time"
 
 	v1 "server/api/trade/v1"
 	"server/app/trade/internal/biz"
+	"server/pkg/brokerif"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/wire"
@@ -17,10 +19,34 @@ type TradeService struct {
 	v1.UnimplementedTradeServer
 	v1.UnimplementedAutomationServer
 	v1.UnimplementedPortfolioAllocationServer
-	e *biz.Engine
+	e  *biz.Engine
+	ch *brokerif.Tracker
 }
 
-func NewTradeService(e *biz.Engine) *TradeService { return &TradeService{e: e} }
+func NewTradeService(e *biz.Engine, ch *brokerif.Tracker) *TradeService {
+	return &TradeService{e: e, ch: ch}
+}
+
+// GetChannelStatus 只回服务端真实跟踪的通道（G7）：sim 状态机由 core 心跳记账；
+// emfile 通道服务端未接线，不回而不是虚报 idle。
+func (s *TradeService) GetChannelStatus(context.Context, *v1.GetChannelStatusRequest) (*v1.ChannelStatusReply, error) {
+	out := &v1.ChannelStatusReply{}
+	if s.ch == nil {
+		return out, nil
+	}
+	status, since := s.ch.Current()
+	out.Channels = append(out.Channels, &v1.ChannelStatus{
+		Channel: "sim", Status: string(status), Since: rfc3339(since),
+	})
+	return out, nil
+}
+
+func rfc3339(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
 
 func mapErr(err error) error {
 	if err == nil {

@@ -50,7 +50,7 @@ func lifecycleRunnerSymbol(t *testing.T, checker *lifecycleChecker, symbol strin
 		t.Fatal(err)
 	}
 	e := biz.NewEngine(store, checker, biz.Settings{}, log.DefaultLogger)
-	return NewRunner(nil, e, nil, nil, log.DefaultLogger)
+	return NewRunner(nil, e, nil, nil, nil, log.DefaultLogger)
 }
 
 func exitMessage(t *testing.T, source, subject, account string) *nats.Msg {
