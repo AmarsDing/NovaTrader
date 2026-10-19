@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DICHROMACY_TYPES,
   hexToSrgb,
+  minDichromacyDistance,
   OKLAB_DISTINCT,
   oklabDistance,
   oklabDistanceUnder,
@@ -104,6 +105,42 @@ describe('主题状态色可辨度硬门禁', () => {
         expect(vars[`nt-${key}`], `${name} 必须显式覆盖 --nt-${key}`).toBeTruthy()
       }
     }
+  })
+})
+
+describe('warn 关系硬门禁（G4 weak-pair 加固）', () => {
+  /**
+   * 2026-10-19 G4 定色：暗 --nt-warn #ffe852（h52 黄琥珀，safe≥base 成对成立）、亮 #705600（h47 深金琥珀）。
+   * 实测三类二色觉最小 OKLab 距离：暗 up-warn 0.044→0.080、亮 up-warn 0.088→0.133；
+   * down-warn 暗 0.216 / 亮 0.132；warn vs danger·success 暗 0.087 / 亮 0.132。
+   * 地板按实测值再留余量钉死——任何 dilute warn 的改动必须在此显式放数评审。
+   */
+  const FLOORS: Record<'dark' | 'light', { up: number; down: number; bad: number }> = {
+    dark: { up: 0.075, down: 0.2, bad: 0.085 },
+    light: { up: 0.13, down: 0.13, bad: 0.13 },
+  }
+  for (const theme of THEMES) {
+    const floor = theme.name.startsWith('亮色') ? FLOORS.light : FLOORS.dark
+    it(`${theme.name}：warn 对 up/down/danger/success 三类二色觉最小距离达到 G4 地板`, () => {
+      expect(minDichromacyDistance(requireVar(theme, 'up'), requireVar(theme, 'warn'))).toBeGreaterThanOrEqual(floor.up)
+      expect(minDichromacyDistance(requireVar(theme, 'down'), requireVar(theme, 'warn'))).toBeGreaterThanOrEqual(floor.down)
+      expect(minDichromacyDistance(requireVar(theme, 'danger'), requireVar(theme, 'warn'))).toBeGreaterThanOrEqual(floor.bad)
+      expect(minDichromacyDistance(requireVar(theme, 'success'), requireVar(theme, 'warn'))).toBeGreaterThanOrEqual(floor.bad)
+    })
+  }
+  it('两轮主题 --nt-glow-warn 与 --nt-warn 必须同源（rgba 派生不自说自话）', () => {
+    const glowRgb = (selector: string): [number, number, number] => {
+      const head = css.indexOf(`${selector} {`)
+      expect(head, `${selector} 块必须存在`).toBeGreaterThanOrEqual(0)
+      const open = css.indexOf('{', head)
+      const close = css.indexOf('\n}', open)
+      const body = css.slice(open, close)
+      const m = /--nt-glow-warn\s*:\s*[^;]*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(body)
+      expect(m, `${selector} 必须声明 --nt-glow-warn`).toBeTruthy()
+      return [Number(m![1]), Number(m![2]), Number(m![3])]
+    }
+    expect(glowRgb(':root')).toEqual(hexToSrgb(dark['nt-warn']))
+    expect(glowRgb(":root[data-theme='light']")).toEqual(hexToSrgb(light['nt-warn']))
   })
 })
 

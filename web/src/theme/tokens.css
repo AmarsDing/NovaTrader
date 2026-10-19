@@ -21,7 +21,7 @@
 
   --nt-accent: #45e0ff;
   --nt-accent-2: #769dff;
-  --nt-warn: #ffbb66;
+  --nt-warn: #ffe852; /* G4：h52 黄琥珀，涨-警 CVD 最短距 0.044→0.080，且 safe≥base 成对成立 */
   --nt-danger: #ff5c7c;
   --nt-success: #35dfb1;
   --nt-info: #66b5ff;
@@ -66,7 +66,7 @@
   /* 语义发光，不覆盖正文或涨跌色。 */
   --nt-glow-accent: 0 0 14px rgba(69, 224, 255, 0.28);
   --nt-glow-danger: 0 0 14px rgba(255, 92, 124, 0.35);
-  --nt-glow-warn: 0 0 14px rgba(255, 187, 102, 0.28);
+  --nt-glow-warn: 0 0 14px rgba(255, 232, 82, 0.28);
 
   --nt-radius-s: 6px;
   --nt-radius-m: 8px;
@@ -105,7 +105,7 @@
 
   --nt-accent: #00677f;
   --nt-accent-2: #2c58c3;
-  --nt-warn: #875000;
+  --nt-warn: #705600; /* G4：深金琥珀，涨-警 CVD 最短距 0.088→0.133 */
   --nt-danger: #b92249;
   --nt-success: #066c4c;
   --nt-info: #1964b1;
@@ -139,7 +139,7 @@
 
   --nt-glow-accent: 0 0 10px rgba(0, 103, 127, 0.2);
   --nt-glow-danger: 0 0 10px rgba(185, 34, 73, 0.24);
-  --nt-glow-warn: 0 0 10px rgba(135, 80, 0, 0.2);
+  --nt-glow-warn: 0 0 10px rgba(112, 86, 0, 0.2);
 
   --nt-scroll: #8aa9bd;
   --nt-scroll-hover: #00677f;

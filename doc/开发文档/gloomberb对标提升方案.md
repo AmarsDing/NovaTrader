@@ -69,7 +69,7 @@
 
 ## G4 视觉工程化守护（P0）
 
-> 状态：**已实施（2026-10-18）**。守护双套件 + 色觉安全模式交付：ui-literals 扫描（countLock 从 0 起档，存量 3 处裸色已收编 --nt-danger）；Machado/OKLab 色觉门禁对默认与安全两组四块 up/down、danger/success 硬卡 ≥0.15（实测默认红涨绿跌本就达标，warn 关系守护不劣化）；安全模式朱红/钴蓝经全候选模拟测距选型，走 `data-colorvision` + ConfigCenter 开关。实施记录：[M12 开发进度 G4 节](M12-桌面客户端/开发进度.md)。
+> 状态：**已实施（2026-10-18）**。守护双套件 + 色觉安全模式交付：ui-literals 扫描（countLock 从 0 起档，存量 3 处裸色已收编 --nt-danger）；Machado/OKLab 色觉门禁对默认与安全两组四块 up/down、danger/success 硬卡 ≥0.15（实测默认红涨绿跌本就达标；warn 弱项 2026-10-19 已加刀：up-warn 暗 0.044→0.080、亮 0.088→0.133 并升级为四类二色觉硬地板，暗 #ffe852 / 亮 #705600 黄琥珀定色，glow 派生同源守护）；安全模式朱红/钴蓝经全候选模拟测距选型，走 `data-colorvision` + ConfigCenter 开关。实施记录：[M12 开发进度 G4 节](M12-桌面客户端/开发进度.md)。
 
 **需求**：`1.视觉需求.md` 是纸面规范、`/dev/gallery` 是人工走查，没有人能拦住"新面板裸写 hex 色值"。
 
