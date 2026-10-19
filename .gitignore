@@ -33,3 +33,8 @@ web/.vite/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# 本地临时与研究克隆（勿提交，2026-10-19）
+node_modules/
+.tmp/
+research-worker/
