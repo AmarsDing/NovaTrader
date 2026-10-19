@@ -92,6 +92,7 @@ func (w *Worker) collect(ctx context.Context, domain string) error {
 }
 
 func (w *Worker) marginPrev(ctx context.Context) error {
+	ctx = biz.OpenRunTrace(ctx)
 	if !w.col.Pipeline().DomainEnabled(biz.DomainMargin) {
 		return nil
 	}
@@ -104,6 +105,7 @@ func (w *Worker) marginPrev(ctx context.Context) error {
 }
 
 func (w *Worker) reconcile(ctx context.Context) error {
+	ctx = biz.OpenRunTrace(ctx)
 	day, err := w.col.LastOpenDay(time.Now())
 	if err != nil {
 		return err
@@ -208,7 +210,7 @@ func (w *Worker) snapshotLoop(ctx context.Context) {
 			if err != nil || !biz.InQuoteSession(sess) {
 				continue
 			}
-			if _, err := w.col.CollectSnapshot(ctx); err != nil && ctx.Err() == nil {
+			if _, err := w.col.CollectSnapshot(biz.OpenRunTrace(ctx)); err != nil && ctx.Err() == nil {
 				w.log.Errorf("snapshot: %v", err)
 			}
 		}
@@ -292,7 +294,7 @@ func (w *Worker) maybe(ctx context.Context, domain string, def time.Duration, la
 	}
 	last[domain] = time.Now()
 	finish := observe.ForService("datahub").Op("scheduled_collect").Begin()
-	err := fn(ctx)
+	err := fn(biz.OpenRunTrace(ctx))
 	observe.FinishError(finish, err)
 	if err != nil && ctx.Err() == nil {
 		w.log.Errorf("%s: %v", domain, err)

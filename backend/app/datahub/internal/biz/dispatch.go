@@ -9,6 +9,7 @@ import (
 
 // RunDomain 按数据域名采集一次。date 为空则用最近一个交易日。供 RPC 和调度调用。
 func (c *Collector) RunDomain(ctx context.Context, domain, date, only string) (Result, error) {
+	ctx = OpenRunTrace(ctx)
 	finish := observe.ForService("datahub").Op("collect_request").Begin()
 	result, err := c.runDomain(ctx, domain, date, only)
 	observe.FinishError(finish, err)

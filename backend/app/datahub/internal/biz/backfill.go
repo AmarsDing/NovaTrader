@@ -45,6 +45,7 @@ func (c *Collector) SubmitBackfill(ctx context.Context, job BackfillJob) (Backfi
 
 // RunBackfill 逐个交易日补数。单日失败不影响其他日，最后有失败则任务为 failed。
 func (c *Collector) RunBackfill(ctx context.Context, job BackfillJob) BackfillJob {
+	ctx = OpenRunTrace(ctx)
 	now := c.now()
 	job.Status = JobRunning
 	job.StartedAt = &now
