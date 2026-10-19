@@ -166,7 +166,7 @@
 10. **服务端时钟校准**：admin 提供 `GET /api/system/time`，前端所有倒计时/竞价进度显示用 server clock + drift 补偿（参照 `datafeed.js:304-325` 的失败降级）。
 11. **盘口合成兜底**（G7）：`NtDepthBoard` 无档时用最近价+涨跌停/tick 规则生成占位阶梯，标注"合成/待数据"，杜绝空屏（`datafeed.js:771-820`）。（2026-10-19 已落地见 §7 P2-11：viz 层能力就位，刻意不合成挂单量；业务侧等 M01 五档数据通道后传 prop 即生效）
 12. **viz 图形回归**：借鉴 `tests/e2e/graphics` 思路——`/dev/gallery` 每组件固定数据+固定尺寸截图入 CI（Puppeteer/Playwright + pixelmatch），主题×密度矩阵天然适合 golden 比对。
-13. **高频文本缓存**：监控画布与 TerminalStrip 引入 `text-width-cache`/`formatted-labels-cache` 等价物，按 (font+text) 缓存，周期清理；canvas 销毁处学 `releaseCanvas`（`canvas-utils.ts:28-36`）。
+13. **高频文本缓存**：监控画布与 TerminalStrip 引入 `text-width-cache`/`formatted-labels-cache` 等价物，按 (font+text) 缓存，周期清理；canvas 销毁处学 `releaseCanvas`（`canvas-utils.ts:28-36`）。（2026-10-19 已落地见 §7 P2-13：宽测缓存 4bac98e 已有、本轮补卸载清零+releaseCanvas；formatted-labels 不另造——热点全在 Vue computed，框架已 memo）
 14. **行情边车合同文档化**：把 G2 落地后推送帧的 bar/tick schema 写进 `doc/开发文档/M01` 设计文档（proto-first 原则），前后端类型同时从它生成。
 
 ## 5. UI 走查（对照 `doc/开发文档/1.视觉需求.md` 与本次静态审读）
@@ -175,7 +175,7 @@
 - ✔ ~~K线十字线处于 Normal 漂移态~~（2026-10-19 P1-5 已开 MagnetOHLC，十字线吸附 OHLC + 价格轴精确对价）。
 - ✔ ~~K线图无法式水印~~（2026-10-19 P1-5 已接 `createTextWatermark` 证券代码水印，主题联动，与毛玻璃材质叠加无碍）。
 - ✔ ~~副图指标与主图两个渲染体系（ECharts vs lightweight-charts）风格断裂~~（2026-10-19 P1-6 已统一 v5 pane：MACD/RSI 迁入 NtKline，fontFamily/fontSize/网格/文字色与主图同一份 ChartOptions，ECharts 只留 dev-gallery 走查）。
-- ⚠ 监控画布数字闪动与文字宽测量无缓存（G10），节能模式应同时降帧+减 measure；对齐视觉需求的"节能/减少动态"档。
+- ✔ ~~监控画布数字闪动与文字宽测量无缓存（G10），节能模式应同时降帧+减 measure；对齐视觉需求的"节能/减少动态"档。~~（2026-10-19 P2-13：宽测缓存已有（256 条、主题切换/卸载清零、二分 clip），reduce 档由 `createVisualFrameLoop` 的 canRender 与全局 data-motion 接管降帧；数字闪动保留为事件脉冲）
 
 ## 6. 附录：可整体抄录的资产速查
 
@@ -293,3 +293,13 @@
 - **边界诚实交代**：全仓 Grep 核实 `NtDepthBoard` 目前仅 `/dev/gallery` 消费（业务面板无五档落点），本轮交付的是 viz 能力与兜底行为本体；M01 行情边车接通五档后，行情面板传 `:last-price/:symbol/:pre-close` 即自动获得断档兜底。顺带核实：P2-9（重连缺口时间窗回填）被 `api/market.ts` 的 `getBars(symbol, freq)` 无时间窗参数卡住，需先扩后端 bars 接口再动，暂搁置。
 - 测试一件：`viz/__tests__/depth-board.test.ts`（纯函数 4 例：常规五档含 null 量、临近涨停截断到封板价（含 20% 档）、封板两侧镜像、无昨收不封顶+自定义 tick+无效最近价 null；组件 4 例：合成标注与卖五→卖一倒序、量柱隐藏、封板不越价、有真档不合成、无档无价纯空态）。
 - 验收：焦点 8/8、全套 **76 文件 679 用例**、vue-tsc/eslint 零告警。
+
+### P2-13 高频文本缓存与画布销毁卫生（2026-10-19 收尾，G10）
+
+- **现状核实（不重复造）**：`CanvasStage` 的文字宽测量缓存已由 4bac98e（监控驾驶舱 UI 整改）落地——font+text 复合键、256 条到顶清、主题/画质切换在 `syncVisualMode` 清、`clipText` 二分 8 次测量封顶；`TerminalStrip` 是 DOM 磁带条，文本全走 Vue computed（框架自带 memo），无 canvas/无 measureText——本条对 TerminalStrip 无客可做，诚实销项。
+- **本轮补齐销毁卫生**：
+  - `canvas-stage.ts` 新增 `releaseCanvas`（对照 lwc `canvas-utils.ts:28-36`）：宽高缩 1×1，GPU 位图立刻让位不等 GC；null 兜底（getContext 失败路径 ref 未接上）。多屏 popout 关窗时确定性回收背板。
+  - `CanvasStage.onBeforeUnmount` 补 `measureCache.clear()`（防御性清零；该宽测缓存是 `<script setup>` 顶层的**每实例** Map、随卸载随 GC，主题切换另有 `syncVisualMode` 清零路径——本轮评审曾把此表述误写为「模块级 Map」，已修正）+ `releaseCanvas(canvas.value)` + `ctx = null`。
+- **未做并说明理由**：formatted-labels-cache 等价物不引入——逐帧文本的热路径都在 scene-model/computed 层，Vue 响应式已 memo，再加一层等于重造 computed。
+- 测试：`canvas-stage.test.ts` 新增 releaseCanvas 例（1×1 收缩 + null/undefined 安全）；监控全套 **18 文件 261 用例** 绿。
+- 验收注意：全量测试当时有并行会话半场红（`panels/__tests__` 整目录未跟踪 + registry-integrity 与 .snap 在其 WIP；vue-tsc 仅剩其 `panels/risk/alert-rules.panel.vue` 类型错），按惯例（门禁红先查归属）核实与本条无关。评审 workflow（3 维审视 + 逐条反证，lifecycle/coverage 两维被 429 打断）回归维发现 1 条措辞错误（measureCache 被误称模块级 Map）经反证确认并修正，覆盖/生命周期两维由主会话亲自复核补齐（全 src 唯一自绘 2D 画布即 CanvasStage；NtEChart `dispose():102`、NtKline `chart?.remove():545` 库层自管；TerminalStrip 纯 DOM）。

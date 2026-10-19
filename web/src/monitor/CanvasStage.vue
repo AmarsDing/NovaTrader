@@ -20,6 +20,7 @@ import {
   hitEdge,
   readStageTheme,
   reCurve,
+  releaseCanvas,
   screenToWorld,
   stagePulse,
   withAlpha,
@@ -309,6 +310,12 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   themeObserver?.disconnect()
   document.removeEventListener('visibilitychange', syncVisualMode)
+  // measureCache 是 <script setup> 顶层的每实例 Map，卸载随实例 GC；
+  // 这里 clear 是防御性清零，与 syncVisualMode 的主题切换清零路径对齐
+  measureCache.clear()
+  // 背板缩 1×1，GPU 位图立刻让位（多屏 popout 关窗时尤其要紧）；元素交给 GC
+  releaseCanvas(canvas.value)
+  ctx = null
 })
 
 watch(

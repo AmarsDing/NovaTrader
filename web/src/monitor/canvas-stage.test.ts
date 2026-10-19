@@ -9,6 +9,7 @@ import {
   hitEdge,
   isTrunkEdge,
   reCurve,
+  releaseCanvas,
   screenToWorld,
   stagePulse,
   worldToScreen,
@@ -567,5 +568,15 @@ describe('S3 漏斗光带布局', () => {
     const b = buildStage(funnelGraph())
     expect(JSON.stringify(a.funnel)).toBe(JSON.stringify(b.funnel))
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
+  })
+})
+
+describe('releaseCanvas：销毁背板', () => {
+  it('宽高缩到 1×1，null/undefined 安全忽略', () => {
+    const cv: { width: number; height: number } = { width: 1920, height: 640 }
+    releaseCanvas(cv)
+    expect(cv).toEqual({ width: 1, height: 1 })
+    expect(() => releaseCanvas(null)).not.toThrow()
+    expect(() => releaseCanvas(undefined)).not.toThrow()
   })
 })

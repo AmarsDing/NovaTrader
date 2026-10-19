@@ -720,3 +720,14 @@ export function hash01(text: string): number {
   }
   return ((hash >>> 0) % 10000) / 10000
 }
+
+/**
+ * 销毁画布背板（对照 lwc `canvas-utils.ts:28-36` 的 releaseCanvas）：宽高缩 1×1，
+ * GPU 位图立刻让位不等 GC；元素自身随组件卸载被回收。
+ * 收 null 兜底：画布初始化失败（getContext 为空）时 ref 可能还没接上。
+ */
+export function releaseCanvas(cv: { width: number; height: number } | null | undefined) {
+  if (!cv) return
+  cv.width = 1
+  cv.height = 1
+}
