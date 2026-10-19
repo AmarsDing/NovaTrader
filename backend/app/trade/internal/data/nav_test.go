@@ -33,6 +33,7 @@ import (
 	"server/pkg/dataset"
 	"server/pkg/risk"
 	"server/pkg/tradecal"
+	"strings"
 	"testing"
 	"time"
 )
@@ -284,6 +285,62 @@ func TestPostgresNAVValuationRejectsLegacyAndMismatchedCursor(t *testing.T) {
 	mismatch := save(s)
 	if mismatch.Valuation == nil || mismatch.Valuation.Complete {
 		t.Fatal("different position mark reused old source price")
+	}
+}
+
+func TestPostgresNAVReaderSelectsLatestActualCloseAndRejectsOversizedEvidence(t *testing.T) {
+	c := navClient(t)
+	ctx := context.Background()
+	r := NewRepo(c, log.DefaultLogger)
+	ids := []int{}
+	t.Cleanup(func() {
+		if _, err := c.AccountSnapshot.Delete().Where(accountsnapshot.IDIn(ids...)).Exec(ctx); err != nil {
+			t.Error(err)
+		}
+	})
+	// These rows exercise storage selection only. Padding is deliberately not
+	// an AccountSnapshotV1 and can never become a performance/admission sample.
+	save := func(book string, at time.Time, state json.RawMessage) int {
+		t.Helper()
+		builder := c.AccountSnapshot.Create().SetBook(book).SetSnapshotTime(at).
+			SetTotalEquity(100000).SetAvailableFunds(100000).SetUnrealizedPnl(0).
+			SetRealizedPnl(0).SetRiskRatio(0).SetPositionCount(0)
+		if state != nil {
+			builder.SetState(state)
+		}
+		row, err := builder.Save(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, row.ID)
+		return row.ID
+	}
+	state := json.RawMessage(`{"synthetic_storage_fixture":true}`)
+	save("paper", navAt(13, 14, 59, 59), state)
+	save("paper", navAt(13, 15, 0, 0), state)
+	save("paper", navAt(13, 15, 9, 40), state)
+	lastTieID := save("paper", navAt(13, 15, 9, 40), state)
+	save("paper", navAt(13, 15, 9, 50), state)     // after the explicit as_of
+	save("paper", navAt(13, 15, 10, 0), state)     // outside the closing window
+	save("nav-other", navAt(13, 15, 9, 44), state) // a separate synthetic test book
+	q := accountnav.Query{Request: accountnav.Request{AsOf: navAt(13, 15, 9, 45)}, ExpectedDates: []string{"2026-10-13"}, From: navAt(13, 0, 0, 0), To: navAt(13, 16, 0, 0)}
+	e, err := r.ReadNAVEvidence(ctx, q)
+	if err != nil || len(e.Snapshots) != 1 || e.Snapshots[0].ID != lastTieID {
+		t.Fatalf("did not select last observed SIM closing row using time/ID: %+v %v", e.Snapshots, err)
+	}
+	lastLegacyID := save("paper", navAt(13, 15, 9, 59), nil)
+	q.AsOf = navAt(13, 16, 0, 0)
+	e, err = r.ReadNAVEvidence(ctx, q)
+	if err != nil || len(e.Snapshots) != 1 || e.Snapshots[0].ID != lastLegacyID || len(e.Snapshots[0].State) != 0 {
+		t.Fatalf("latest legacy aggregate was hidden by an older state: %+v %v", e.Snapshots, err)
+	}
+	padding := json.RawMessage(`{"synthetic_storage_padding":"` + strings.Repeat("x", 8<<20) + `"}`)
+	save("paper", navAt(14, 15, 9, 50), padding)
+	save("paper", navAt(15, 15, 9, 50), padding)
+	q.ExpectedDates = []string{"2026-10-14", "2026-10-15"}
+	q.AsOf, q.To = navAt(15, 16, 0, 0), navAt(15, 16, 0, 0)
+	if _, err = r.ReadNAVEvidence(ctx, q); err == nil || !strings.Contains(err.Error(), "16 MiB") {
+		t.Fatalf("oversized selected evidence must fail instead of truncate: %v", err)
 	}
 }
 
