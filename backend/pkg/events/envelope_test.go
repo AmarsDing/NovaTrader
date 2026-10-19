@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestEnvelopeRoundTrip(t *testing.T) {
@@ -165,5 +167,48 @@ func TestParentEnvelopeReadOnlyLookup(t *testing.T) {
 	got, ok := ParentEnvelope(ctx)
 	if !ok || got.EventID != parent.EventID || got.TraceID != parent.TraceID {
 		t.Fatalf("parent lookup: %+v ok=%v", got, ok)
+	}
+}
+
+// New 是诚实的纯构造：链号给什么是什么，绝不发明。这条契约一旦被
+// 「空链自动发链」岔口翻转，本测试会红——翻转动作本身即一次可评审的合同变更。
+func TestNewDoesNotInventTrace(t *testing.T) {
+	env, err := New("trade", SubjectTradeOrder, "", map[string]any{"symbol": "600519.SH"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.TraceID != "" || env.CausationID != "" {
+		t.Fatalf("root event must stay naked: %+v", env)
+	}
+	// NewWithContext 在无父 ctx 上逐字退化为 New：同样不发明。
+	env2, err := NewWithContext(context.Background(), "trade", SubjectTradeOrder, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env2.TraceID != "" || env2.CausationID != "" {
+		t.Fatalf("parentless ctor must match New: %+v", env2)
+	}
+}
+
+// OpenTrace 是入口处的幂等开链：无链开合法 uuid、逐次新鲜；已有链
+// （调用方串链/级联回放透传/父信封链）一律尊重，不另开、不编父。
+func TestOpenTraceOpensRespectsAndStaysFresh(t *testing.T) {
+	first, second := OpenTrace(context.Background()), OpenTrace(context.Background())
+	t1, t2 := TraceID(first), TraceID(second)
+	if t1 == "" || t2 == "" || t1 == t2 {
+		t.Fatalf("fresh traces: %q %q", t1, t2)
+	}
+	if _, err := uuid.Parse(t1); err != nil {
+		t.Fatalf("trace not a uuid: %q", t1)
+	}
+	if got := TraceID(OpenTrace(WithTraceID(context.Background(), "caller-chain"))); got != "caller-chain" {
+		t.Fatalf("caller chain not respected: %q", got)
+	}
+	parent, err := New("intel", SubjectIntelAlert, "parent-trace-9", map[string]any{"k": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := TraceID(OpenTrace(ContextWithEnvelope(context.Background(), parent))); got != "parent-trace-9" {
+		t.Fatalf("parent trace not respected: %q", got)
 	}
 }

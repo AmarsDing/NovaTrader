@@ -6,34 +6,12 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
-	"github.com/google/uuid"
 
 	"server/pkg/events"
 )
 
-func TestOpenRunTraceOpensRespectsAndStaysFresh(t *testing.T) {
-	// 无链 ctx：开新链，且是合法 uuid
-	first, second := OpenRunTrace(context.Background()), OpenRunTrace(context.Background())
-	t1, t2 := events.TraceID(first), events.TraceID(second)
-	if t1 == "" || t2 == "" || t1 == t2 {
-		t.Fatalf("fresh traces: %q %q", t1, t2)
-	}
-	if _, err := uuid.Parse(t1); err != nil {
-		t.Fatalf("trace not a uuid: %q", t1)
-	}
-	// 已有链：尊重调用方串链，不另开
-	if got := events.TraceID(OpenRunTrace(events.WithTraceID(context.Background(), "caller-chain"))); got != "caller-chain" {
-		t.Fatalf("caller chain not respected: %q", got)
-	}
-	// 上游父信封的链：同样尊重（级联/回放触发透传）
-	parent, err := events.New("intel", events.SubjectIntelAlert, "parent-trace-9", map[string]any{"k": 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := events.TraceID(OpenRunTrace(events.ContextWithEnvelope(context.Background(), parent))); got != "parent-trace-9" {
-		t.Fatalf("parent trace not respected: %q", got)
-	}
-}
+// OpenRunTrace 的幂等/新鲜/尊重语义与「New 不发明链」合同钉在 pkg/events
+// 的 OpenTrace / New 测试里（本函数只是一行委托），此处只保留运行级行为验证。
 
 type intelCursorRepo struct {
 	Repo

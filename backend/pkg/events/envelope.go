@@ -90,6 +90,17 @@ func ParentEnvelope(ctx context.Context) (Envelope, bool) {
 	return parent, ok
 }
 
+// OpenTrace 在调用入口幂等开链：ctx 已有链号则尊重（调用方串链、级联/回放触发的
+// 上游透传优先），没有才开 uuid 新链。调用方自己是链根——不编 causation_id。
+// 供各服务「一次运行/一次触发」的入口使用，与消费侧因果缝合
+// （ContextWithEnvelope + NewWithContext）配套：入口开链、消费续链。
+func OpenTrace(ctx context.Context) context.Context {
+	if TraceID(ctx) != "" {
+		return ctx
+	}
+	return WithTraceID(ctx, uuid.NewString())
+}
+
 // WithTraceID 把链路号放进 context，供发事件时填进信封。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
 	return context.WithValue(ctx, traceKey{}, traceID)
