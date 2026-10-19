@@ -88,3 +88,60 @@ func TestTrackerRejectsIllegalWithoutStateChange(t *testing.T) {
 		t.Fatalf("failed transition must leave state untouched, got %s called=%d", s, called)
 	}
 }
+
+// TestObserverPolicy 策略面：idle 期的失败不降级（degraded 保留给连上过又出问题），
+// 连败到阈值判 down；Ok 清零连败并回 connected；down 后失败不再迁移。
+func TestObserverPolicy(t *testing.T) {
+	at := st0
+	tick := func() time.Time { at = at.Add(time.Second); return at }
+	tr := NewTracker(st0)
+	type event struct{ from, to Status }
+	var got []event
+	tr.Subscribe(func(from, to Status, _ time.Time) { got = append(got, event{from, to}) })
+	obs := NewObserver(tr, tick)
+
+	// 未建立过连接：单次/两次失败只累计不动迁，到阈值判 down。
+	obs.Fail()
+	obs.Fail()
+	if s, _ := tr.Current(); s != Idle || len(got) != 0 {
+		t.Fatalf("pre-connect failures must stay idle, got %s events=%v", s, got)
+	}
+	obs.Fail()
+	if s, _ := tr.Current(); s != Down {
+		t.Fatalf("pre-connect failure #%d should be down, got %s", FailThreshold, s)
+	}
+	// down 后失败不再迁移；一次成功恢复 connected 并清零连败。
+	obs.Fail()
+	obs.Ok()
+	if s, _ := tr.Current(); s != Connected {
+		t.Fatalf("ok after down must recover connected, got %s", s)
+	}
+	// 连败已清零：再失败一次只 degraded。
+	obs.Fail()
+	if s, _ := tr.Current(); s != Degraded {
+		t.Fatalf("fail counter must reset on ok, got %s", s)
+	}
+	// degraded 上持续失败：到阈值 down。
+	obs.Fail()
+	obs.Fail()
+	if s, _ := tr.Current(); s != Down {
+		t.Fatalf("sustained failures must reach down, got %s", s)
+	}
+	want := []event{{Idle, Down}, {Down, Connected}, {Connected, Degraded}, {Degraded, Down}}
+	if len(got) != len(want) {
+		t.Fatalf("events %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("event %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestObserverDefaultsClock(t *testing.T) {
+	tr := NewTracker(st0)
+	NewObserver(tr, nil).Ok()
+	if s, _ := tr.Current(); s != Connected {
+		t.Fatalf("nil clock must default to time.Now, got %s", s)
+	}
+}

@@ -17,6 +17,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"server/pkg/brokerif"
 )
 
 const Protocol = "eastmoney-file-csv-isolated-v1"
@@ -30,11 +32,14 @@ type Config struct {
 	AccountID                            string // single allowlisted account, never selected by an HTTP caller
 	CAPEM, CertificatePEM, PrivateKeyPEM []byte
 	Timeout                              time.Duration
+	// Track 可选：给了就把每次请求的成败按 brokerif.Observer 口径折算进状态机。
+	Track *brokerif.Tracker
 }
 
 type Client struct {
 	base, account string
 	http          *http.Client
+	obs           *brokerif.Observer
 }
 
 func New(config Config) (*Client, error) {
@@ -58,8 +63,12 @@ func New(config Config) (*Client, error) {
 	}
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, Certificates: []tls.Certificate{certificate}},
 		TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 5 * time.Second, MaxConnsPerHost: 8, MaxIdleConnsPerHost: 2}
-	return &Client{base: strings.TrimSuffix(config.URL, "/"), account: config.AccountID,
-		http: &http.Client{Transport: transport, Timeout: config.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("broker remote: redirects forbidden") }}}, nil
+	c := &Client{base: strings.TrimSuffix(config.URL, "/"), account: config.AccountID,
+		http: &http.Client{Transport: transport, Timeout: config.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("broker remote: redirects forbidden") }}}
+	if config.Track != nil {
+		c.obs = brokerif.NewObserver(config.Track, time.Now)
+	}
+	return c, nil
 }
 
 func (c *Client) Close() { c.http.CloseIdleConnections() }
@@ -199,11 +208,13 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
+		c.reportFail()
 		return errors.New("broker remote: transport unknown; query original sid, do not resubmit")
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024+1))
 	if err != nil || len(data) > 16*1024*1024 {
+		c.reportFail()
 		return errors.New("broker remote: incomplete or oversized response")
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -214,6 +225,7 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 		if !safeError.MatchString(failure.Error) {
 			failure.Error = "TRANSPORT_REJECTED"
 		}
+		c.reportFail()
 		return fmt.Errorf("broker remote: %s (HTTP %d)", failure.Error, resp.StatusCode)
 	}
 	var envelope struct {
@@ -222,10 +234,26 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 		Payload   json.RawMessage `json:"payload"`
 	}
 	if json.Unmarshal(data, &envelope) != nil || envelope.Protocol != Protocol || envelope.AccountID != c.account || len(envelope.Payload) == 0 || string(envelope.Payload) == "null" {
+		c.reportFail()
 		return errors.New("broker remote: response identity mismatch")
 	}
 	if json.Unmarshal(envelope.Payload, output) != nil {
+		c.reportFail()
 		return errors.New("broker remote: invalid response shape")
 	}
+	c.reportOK()
 	return nil
+}
+
+// reportOK/reportFail 只在配置了 Track 时折算状态；没配就是纯传输。
+func (c *Client) reportOK() {
+	if c.obs != nil {
+		c.obs.Ok()
+	}
+}
+
+func (c *Client) reportFail() {
+	if c.obs != nil {
+		c.obs.Fail()
+	}
 }

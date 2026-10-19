@@ -10,6 +10,7 @@ import (
 
 	"server/app/trade/internal/biz"
 	"server/conf"
+	"server/pkg/brokerif"
 	"server/pkg/events"
 	"server/pkg/market"
 	"server/pkg/observe"
@@ -24,11 +25,15 @@ import (
 var ProviderSet = wire.NewSet(NewRunner)
 
 // Runner 每 10 秒记一次模拟账户快照，投递 outbox，并用分钟线撮合未完成的模拟委托。
+// 快照回路同时充当 sim 执行通道的心跳（G7）：连续失败按 brokerif.Observer 口径
+// 折算为通道降级/停机，迁移发布到 trade.channel.status。
 type Runner struct {
 	now        func() time.Time
 	e          *biz.Engine
 	bus        *events.Bus
 	box        *outbox.Dispatcher
+	track      *brokerif.Tracker
+	obs        *brokerif.Observer
 	interval   time.Duration
 	log        *log.Helper
 	sub        *nats.Subscription
@@ -48,7 +53,48 @@ func NewRunner(c *conf.Trade, e *biz.Engine, bus *events.Bus, box *outbox.Dispat
 	if c != nil && c.GetSnapshotInterval() != nil && c.GetSnapshotInterval().AsDuration() > 0 {
 		every = c.GetSnapshotInterval().AsDuration()
 	}
-	return &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger), watchOwner: "trade." + uuid.NewString()}
+	r := &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger), watchOwner: "trade." + uuid.NewString()}
+	r.track = brokerif.NewTracker(time.Now())
+	r.obs = brokerif.NewObserver(r.track, time.Now)
+	r.track.Subscribe(r.publishChannel)
+	return r
+}
+
+// Channel 暴露 sim 执行通道的状态机，供状态读面与测试订阅（G7）。
+func (r *Runner) Channel() *brokerif.Tracker { return r.track }
+
+// channelOK/channelFail 是 nil 安全的心跳记账；测试里按字面量拼的 Runner 没有状态机。
+func (r *Runner) channelOK() {
+	if r.obs != nil {
+		r.obs.Ok()
+	}
+}
+
+func (r *Runner) channelFail() {
+	if r.obs != nil {
+		r.obs.Fail()
+	}
+}
+
+// publishChannel 把每次状态迁移投递到 trade.channel.status（随 trade.> 走 JetStream）。
+// 回调由 Tracker 在锁外同步触发，发布带 5s 上限，不会反压状态机。
+func (r *Runner) publishChannel(from, to brokerif.Status, at time.Time) {
+	if r.bus == nil {
+		return
+	}
+	env, err := events.New("trade", events.SubjectTradeChannel, "", map[string]any{
+		"channel": "sim", "from": string(from), "to": string(to),
+		"at": at.UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		r.log.Warnf("channel event: %v", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := r.bus.Publish(ctx, env); err != nil {
+		r.log.Warnf("publish channel %s→%s: %v", from, to, err)
+	}
 }
 
 func (r *Runner) Start(ctx context.Context) error {
@@ -109,6 +155,8 @@ func (r *Runner) Start(ctx context.Context) error {
 		}(run)
 	}
 	r.lifecycle.Unlock()
+	// 引擎装配（首帧快照）已是 Start 前置条件；走到这里通道视为连上。
+	r.channelOK()
 	return nil
 }
 
@@ -399,6 +447,9 @@ func (r *Runner) loop(ctx context.Context) {
 			if c.Err() == nil {
 				if err := observedTradeCall("snapshot", func() error { _, err := r.e.Snapshot(c, "SIM"); return err }); err != nil && c.Err() == nil {
 					r.log.Warnf("snapshot: %v", err)
+					r.channelFail()
+				} else if c.Err() == nil {
+					r.channelOK()
 				}
 			}
 			cancel()

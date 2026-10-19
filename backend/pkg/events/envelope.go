@@ -26,6 +26,9 @@ const (
 	SubjectRiskExit            = "risk.exit"
 	SubjectTradeAccount        = "trade.account"
 	SubjectTradeReconciliation = "trade.reconciliation" // 对账差异，不是完整账户快照
+	// SubjectTradeChannel 是执行通道状态迁移（G7）：idle→connected→degraded→down。
+	// 迁移罕见但对运维留痕有价值，随 trade.> 走 JetStream；载荷 {"channel","from","to","at"}。
+	SubjectTradeChannel = "trade.channel.status"
 	SubjectMarketSentiment     = "market.sentiment.updated"
 	SubjectNotifyRequest       = "notify.request"
 	SubjectNotifyDesktop       = "notify.desktop"  // M10 发给 admin，再经 WebSocket 到桌面
