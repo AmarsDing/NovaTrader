@@ -5,6 +5,8 @@
  * G2 彭博式助记符：首段大写精确命中面板助记符时置顶动作行——
  * `GP 600519` 开个股行情、`JY buy` 预填买单、`DB` 涨停梯队；
  * ticker 参数输入中列最近代码联想；页脚为聚焦面板的功能卡（描述/用法）。
+ * G2 帮助入口：面板态输入「帮助 [助记符]」检索功能卡，Enter 开 F1 浮层并定格该卡
+ * （事件回 WorkbenchView 转手 FunctionIndexOverlay，与本面板 close-then-run 纪律一致）。
  * G5 问 AI：≥3 字符且无助记符命中时置顶「问 AI」候选——带当前聚焦面板上下文
  * （pane-context 隐私过滤后内嵌问题文本）走本地 /api/brain/ask；Esc 先清答案再关面板。
  */
@@ -20,6 +22,7 @@ import { messageOf } from '@/utils/format'
 import { restartLink } from '@/ws/hub'
 import { resolveMnemonic, type MnemonicResolution } from './command-grammar'
 import { refreshAll } from './connection-watchdog'
+import { buildHelpSpecs, parseHelpQuery } from './function-index'
 import { getWorkbench } from './inject'
 import { buildPaneAttachment, composePaneQuestion, offerAskCandidate } from './pane-context'
 import { peekPanelParams } from './panel-bus'
@@ -57,6 +60,11 @@ const mnemonic = computed<MnemonicResolution | null>(() =>
   mode.value === 'panel' ? resolveMnemonic(keyword.value) : null,
 )
 
+/** 帮助查询（G2）：面板态以「帮助」开头的输入改走功能卡检索；分流判据在纯层（parseHelpQuery 单测锁定）。 */
+const helpQuery = computed<string | null>(() =>
+  mode.value === 'panel' ? parseHelpQuery(keyword.value) : null,
+)
+
 /* ---------- G5 问 AI ---------- */
 
 interface AskAnswer {
@@ -78,6 +86,7 @@ let askSeq = 0
 /** 问 AI 候选行：≥3 字符、无助记符命中、面板态；不挂 run，run() 对 kind=ask 特判。 */
 const askItem = computed<Item | null>(() => {
   if (mode.value !== 'panel') return null
+  if (helpQuery.value !== null) return null // 帮助态整段接管结果池，不再出「问 AI」
   if (!offerAskCandidate(keyword.value, mnemonic.value != null)) return null
   return {
     id: 'ask:ai',
@@ -392,7 +401,25 @@ const mnemonicItems = computed<Item[]>(() => {
   }]
 })
 
+/** 帮助行动项：构造在纯层（buildHelpSpecs 单测锁定）；此处仅接线——spec → 行 + openHelp 接线。
+ *  顺序纪律（审查回写）：results 必须以 helpQuery 为最先判据整段接管，ask 候选同步让位。 */
+const helpItems = computed<Item[]>(() => {
+  const term = helpQuery.value
+  if (term === null) return []
+  const openHelp = (panelId?: string) => () =>
+    window.dispatchEvent(new CustomEvent<{ panelId?: string }>('nt:open-help', { detail: { panelId } }))
+  return buildHelpSpecs(term).map((spec) => ({
+    id: spec.id,
+    label: spec.label,
+    hint: spec.hint,
+    kind: 'command' as const,
+    panelId: spec.panelId,
+    run: spec.action === 'open' ? openHelp(spec.panelId) : undefined,
+  }))
+})
+
 const results = computed<Item[]>(() => {
+  if (helpQuery.value !== null) return helpItems.value
   const mnemonicPanelId = mnemonic.value?.def.id ?? null
   let pool = mode.value === 'command' ? allItems.value.filter((i) => i.kind !== 'panel') : allItems.value
   // 助记符命中时其动作行已置顶，去掉同一面板的普通行防双份。
@@ -420,7 +447,7 @@ const footCard = computed(() => {
         : `用法：${s.prefix}`
     return `${s.prefix} ${def.title} — ${s.description} ${argDoc}`
   }
-  return '助记符：GP 600519 开行情 · JY buy 预填买 · DB 涨停梯队 · `>` 命令态'
+  return '助记符：GP 600519 开行情 · JY buy 预填买 · DB 涨停梯队 · 帮助 GP 看功能卡 · `>` 命令态'
 })
 
 watch(results, () => {

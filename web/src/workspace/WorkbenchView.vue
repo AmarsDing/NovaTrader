@@ -52,6 +52,12 @@ function openConfig() {
   configOpen.value = true
 }
 
+/** 命令面板「帮助 <助记符>」转手：显式带卡开浮层；词空则沿用 F1 定格当前面板。 */
+function onOpenHelp(event: Event) {
+  const panelId = (event as CustomEvent<{ panelId?: string }>).detail?.panelId
+  help.value?.open(typeof panelId === 'string' && panelId ? panelId : undefined)
+}
+
 function onKeydown(event: KeyboardEvent) {
   // Esc 先由 useOverlay 栈消费（栈非空即 preventDefault）——这里只收拾未消费时的 config 层，一按一层。
   if (event.key === 'Escape' && configOpen.value && !event.defaultPrevented) {
@@ -124,6 +130,7 @@ onMounted(() => {
   })
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('nt:open-config', openConfig)
+  window.addEventListener('nt:open-help', onOpenHelp)
   consumeDeepLink()
 })
 
@@ -133,6 +140,7 @@ onBeforeUnmount(() => {
   stopPopoutAppearance?.()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('nt:open-config', openConfig)
+  window.removeEventListener('nt:open-help', onOpenHelp)
 })
 
 watch(() => route.fullPath, consumeDeepLink)

@@ -17,11 +17,17 @@ const overlay = useOverlay(() => overlay.close())
 
 /** 当前卡快照：只在 open 时取一次（聚焦面板可能随后切换，卡随操作定格）。 */
 const currentCard = ref<FunctionCard | null>(null)
+/** 区块标签快照：与定格卡同源——显式带卡（palette 帮助入口）且非聚焦面板时不再自称「当前面板」。 */
+const pinnedLabel = ref('当前面板')
 const filter = ref('')
 const dialog = ref<HTMLElement | null>(null)
 
-function open() {
-  currentCard.value = cardOf(getWorkbench()?.activePanelId())
+function open(panelId?: string) {
+  // palette「帮助 <助记符>」显式带卡；否则沿用 F1 定格语义（聚焦面板快照）。
+  currentCard.value = cardOf(panelId ?? getWorkbench()?.activePanelId())
+  pinnedLabel.value = panelId && currentCard.value && currentCard.value.id !== getWorkbench()?.activePanelId()
+    ? '定格功能卡'
+    : '当前面板'
   filter.value = ''
   overlay.open()
   // 与同栈 NtModal/CommandPalette 同纪律：打开即把焦点送入对话框（直达过滤框）。
@@ -62,7 +68,7 @@ defineExpose({ open })
       </header>
 
       <section v-if="currentCard" class="help__current">
-        <p class="help__label">当前面板</p>
+        <p class="help__label">{{ pinnedLabel }}</p>
         <div class="card">
           <div class="card__titleline">
             <span class="prefix">{{ currentCard.prefix }}</span>
@@ -75,7 +81,7 @@ defineExpose({ open })
       </section>
 
       <section v-else class="help__current">
-        <p class="help__label">当前面板</p>
+        <p class="help__label">{{ pinnedLabel }}</p>
         <p class="help__nocard">本面板未挂助记符，从下方目录开启任意功能。</p>
       </section>
 
