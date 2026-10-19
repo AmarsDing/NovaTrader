@@ -9,9 +9,12 @@ type ParamsHandler = (params: Record<string, unknown>) => void
 
 const pending = new Map<string, Record<string, unknown>>()
 const subscribers = new Map<string, Set<ParamsHandler>>()
+/** G5：每次经总线应用的参数快照（pending 与立即推送两路都落），面板上下文发问回读用。 */
+const lastApplied = new Map<string, Record<string, unknown>>()
 
 export function stagePanelParams(id: string, params: Record<string, unknown>): void {
   if (!params || !Object.keys(params).length) return
+  lastApplied.set(id, { ...params })
   const subs = subscribers.get(id)
   if (subs && subs.size > 0) {
     for (const handler of subs) handler({ ...params })
@@ -24,6 +27,12 @@ export function consumePanelParams(id: string): Record<string, unknown> | undefi
   const params = pending.get(id)
   if (params) pending.delete(id)
   return params
+}
+
+/** G5 回读最近一次经总线应用的参数副本（pending 未消费时同样可见）；只读语义，不消费、不清除。 */
+export function peekPanelParams(id: string): Record<string, unknown> | undefined {
+  const params = lastApplied.get(id)
+  return params ? { ...params } : undefined
 }
 
 /** 面板挂载后调用并保存返回值以便卸载时退订；已挂载面板的 openPanel 参数会立即推给 handler。 */

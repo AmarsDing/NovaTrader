@@ -172,6 +172,7 @@ const workbench: WorkbenchApi = {
   undoLayout: undoLast,
   redoLayout: redoNext,
   popoutPanel: (id: string) => void popoutPanel(id),
+  activePanelId: () => api?.activePanel?.id ?? undefined,
   panels: listPanels(),
   desks: DESKS,
 }

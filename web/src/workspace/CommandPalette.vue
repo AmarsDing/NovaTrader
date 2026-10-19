@@ -5,18 +5,24 @@
  * G2 彭博式助记符：首段大写精确命中面板助记符时置顶动作行——
  * `GP 600519` 开个股行情、`JY buy` 预填买单、`DB` 涨停梯队；
  * ticker 参数输入中列最近代码联想；页脚为聚焦面板的功能卡（描述/用法）。
+ * G5 问 AI：≥3 字符且无助记符命中时置顶「问 AI」候选——带当前聚焦面板上下文
+ * （pane-context 隐私过滤后内嵌问题文本）走本地 /api/brain/ask；Esc 先清答案再关面板。
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { askBrain } from '@/api/brain'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useRecentStore } from '@/stores/recent'
 import { useSettingsStore } from '@/stores/settings'
 import { useOverlay } from '@/ui/useOverlay'
+import { messageOf } from '@/utils/format'
 import { restartLink } from '@/ws/hub'
 import { resolveMnemonic, type MnemonicResolution } from './command-grammar'
 import { refreshAll } from './connection-watchdog'
 import { getWorkbench } from './inject'
+import { buildPaneAttachment, composePaneQuestion, offerAskCandidate } from './pane-context'
+import { peekPanelParams } from './panel-bus'
 import { getPanel } from './panel-registry'
 
 type PaletteMode = 'panel' | 'command'
@@ -26,10 +32,10 @@ interface Item {
   label: string
   hint: string
   keywords?: string
-  kind: 'panel' | 'command' | 'preset' | 'mnemonic' | 'recent'
+  kind: 'panel' | 'command' | 'preset' | 'mnemonic' | 'recent' | 'ask'
   /** 关联面板 id（功能卡页脚取描述用）。 */
   panelId?: string
-  /** undefined = 提示行（不可执行，Enter/点击忽略）。 */
+  /** undefined = 提示行（不可执行，Enter/点击忽略）；kind=ask 在 run() 特判。 */
   run?: () => void
 }
 
@@ -38,7 +44,7 @@ const auth = useAuthStore()
 const layout = useLayoutStore()
 const settings = useSettingsStore()
 const recent = useRecentStore()
-const overlay = useOverlay(() => close())
+const overlay = useOverlay(() => onEsc())
 const query = ref('')
 const active = ref(0)
 const inputEl = ref<HTMLInputElement | null>(null)
@@ -50,6 +56,80 @@ const keyword = computed(() => (mode.value === 'command' ? query.value.slice(1) 
 const mnemonic = computed<MnemonicResolution | null>(() =>
   mode.value === 'panel' ? resolveMnemonic(keyword.value) : null,
 )
+
+/* ---------- G5 问 AI ---------- */
+
+interface AskAnswer {
+  q: string
+  text: string
+  model: string
+  citations: string[]
+  generatedAt: string
+  /** 发送时携带的面板上下文一句话摘要（透明给操作员看送了什么）。 */
+  pane: string
+}
+
+const askBusy = ref(false)
+const askError = ref('')
+const answer = ref<AskAnswer | null>(null)
+/** 迟到响应作废：Esc 清除或重新打开后序号单调，旧响应落地即弃。 */
+let askSeq = 0
+
+/** 问 AI 候选行：≥3 字符、无助记符命中、面板态；不挂 run，run() 对 kind=ask 特判。 */
+const askItem = computed<Item | null>(() => {
+  if (mode.value !== 'panel') return null
+  if (!offerAskCandidate(keyword.value, mnemonic.value != null)) return null
+  return {
+    id: 'ask:ai',
+    label: `问 AI：${keyword.value}`,
+    hint: '带当前面板上下文 · Enter 发送',
+    kind: 'ask',
+  }
+})
+
+async function sendAsk() {
+  const question = keyword.value.trim()
+  if (!question || askBusy.value) return
+  const seq = ++askSeq
+  askBusy.value = true
+  askError.value = ''
+  answer.value = null
+  try {
+    const panelId = getWorkbench()?.activePanelId() ?? ''
+    const def = panelId ? getPanel(panelId) : undefined
+    const attachment = panelId && def ? buildPaneAttachment(panelId, def.title, peekPanelParams(panelId)) : null
+    const reply = await askBrain({ question: composePaneQuestion(attachment, question) })
+    if (seq !== askSeq) return
+    const pairText = attachment
+      ? Object.entries(attachment.params).map(([key, value]) => `${key}=${String(value)}`).join(' ')
+      : ''
+    answer.value = {
+      q: question,
+      text: reply.answer || '（模型未返回正文）',
+      model: reply.model,
+      citations: reply.citations,
+      generatedAt: reply.generatedAt,
+      pane: attachment ? `${attachment.panelTitle}${pairText ? ` · ${pairText}` : ' · 无参数'}` : '无面板上下文',
+    }
+  } catch (err) {
+    if (seq !== askSeq) return
+    askError.value = messageOf(err)
+  } finally {
+    if (seq === askSeq) askBusy.value = false
+  }
+}
+
+/** Esc 纪律：有答案/在问/有错先清回答层，再按才是关面板（走 useOverlay 栈顶回调）。 */
+function onEsc() {
+  if (askBusy.value || answer.value || askError.value) {
+    askSeq += 1
+    askBusy.value = false
+    answer.value = null
+    askError.value = ''
+    return
+  }
+  close()
+}
 
 /** 极简打分：完全等 > 前缀 > 子串（越靠前越高）> 子序列；-1 表示不匹配。 */
 function score(target: string, term: string): number {
@@ -323,7 +403,8 @@ const results = computed<Item[]>(() => {
     .filter((row) => row.s >= 0)
     .sort((a, b) => b.s - a.s)
     .map((row) => row.item)
-  return [...mnemonicItems.value, ...scored].slice(0, 40)
+  const head = [...(askItem.value ? [askItem.value] : []), ...mnemonicItems.value]
+  return [...head, ...scored].slice(0, 40)
 })
 
 /** 功能卡页脚：聚焦面板行出描述；否则出助记符速查。 */
@@ -347,7 +428,12 @@ watch(results, () => {
 })
 
 function run(item: Item | undefined) {
-  if (!item?.run) return
+  if (!item) return
+  if (item.kind === 'ask') {
+    void sendAsk()
+    return
+  }
+  if (!item.run) return
   close()
   item.run()
 }
@@ -368,6 +454,10 @@ function onKey(event: KeyboardEvent) {
 function open(source: PaletteMode = 'panel') {
   query.value = source === 'command' ? '>' : ''
   active.value = 0
+  askSeq += 1
+  askBusy.value = false
+  answer.value = null
+  askError.value = ''
   overlay.open()
   void nextTick(() => inputEl.value?.focus())
 }
@@ -406,8 +496,8 @@ defineExpose({ open, close })
             class="row"
             role="option"
             :aria-selected="index === active"
-            :aria-disabled="!item.run"
-            :class="{ on: index === active, dis: !item.run }"
+            :aria-disabled="item.kind !== 'ask' && !item.run"
+            :class="{ on: index === active, dis: item.kind !== 'ask' && !item.run, ask: item.kind === 'ask' }"
             @mousemove="active = index"
             @click="run(item)"
           >
@@ -416,6 +506,20 @@ defineExpose({ open, close })
           </li>
         </ul>
         <p v-else class="none">没有匹配项</p>
+        <div v-if="askBusy || answer || askError" class="askbox">
+          <p v-if="askError" class="askbox__err">问 AI 失败：{{ askError }}</p>
+          <template v-else>
+            <p class="askbox__q">
+              {{ answer?.q ?? keyword }}
+              <span v-if="answer?.pane" class="askbox__pane">{{ answer.pane }}</span>
+            </p>
+            <p class="askbox__body">{{ askBusy ? '本地模型思考中…' : answer?.text }}</p>
+            <p v-if="answer && answer.citations.length" class="askbox__cite">证据：{{ answer.citations.join(' · ') }}</p>
+            <p class="askbox__meta">
+              {{ askBusy ? 'Esc 取消等待' : `${answer?.model || '模型'}${answer?.generatedAt ? ` · ${answer.generatedAt}` : ''} · Esc 先清答案` }}
+            </p>
+          </template>
+        </div>
         <div class="foot">{{ footCard }}</div>
       </div>
     </div>
@@ -505,6 +609,66 @@ defineExpose({ open, close })
 
 .row.dis .label {
   color: var(--nt-text-2);
+}
+
+.row.ask .label {
+  color: var(--nt-accent);
+}
+
+.askbox {
+  max-height: 30vh;
+  overflow: auto;
+  padding: 10px 14px;
+  border-top: 1px solid var(--nt-border-1);
+  background: var(--nt-data-raised);
+}
+
+.askbox__q {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nt-text-1);
+}
+
+.askbox__pane {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--nt-text-3);
+}
+
+.askbox__body {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--nt-text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.askbox__cite {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--nt-text-2);
+  overflow-wrap: anywhere;
+}
+
+.askbox__meta,
+.askbox__err {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+}
+
+.askbox__meta {
+  color: var(--nt-text-3);
+}
+
+.askbox__err {
+  color: var(--nt-danger);
 }
 
 .label {

@@ -23,6 +23,8 @@ export interface WorkbenchApi {
   redoLayout: () => boolean
   /** 把面板弹成独立窗口；不允许的 id 静默拒绝。 */
   popoutPanel: (id: string) => void
+  /** 当前 dock 内聚焦面板 id（G5 面板上下文发问用；无 dock/无面板时 undefined）。 */
+  activePanelId: () => string | undefined
   /** 注册表里的全部面板。 */
   panels: PanelDef[]
   /** 交易时段桌面包（G6）。 */

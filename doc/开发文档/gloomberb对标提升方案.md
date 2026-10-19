@@ -52,7 +52,7 @@
 
 ## G3 告警活跃感知与规则引擎 headless（P0）
 
-> 状态：**部分实施（2026-10-19）**。后端规则语义切片交付：`pkg/alert` 三态评估、re-arm 白名单重建、坏存储显式报错，单测（race）覆盖三态与 re-arm；实施记录：[M08 开发进度 G3 节](M08-风控/开发进度.md)。前端切片交付：deskNotify 活跃感知三 sink（活跃仅 in-app toast / 不活跃走原生 / 无壳兜底 in-app，severity 映 toast 色调，hub 仅透传第三参）、toast 栈上限 5 + 按级 TTL、任务栏标题未读徽标（零依赖替代 OS badge）、notify-center 逐条已读/未读 + 全部已读（localStorage 持久化，坏数据容错）；实施记录：[M10 开发进度 G3 节](M10-通知/开发进度.md)。运行时接线（快照节拍评估 + outbox 通知链）、规则 CRUD、后端已读回写接口未做。
+> 状态：**部分实施（2026-10-19）**。后端规则语义切片交付：`pkg/alert` 三态评估、re-arm 白名单重建、坏存储显式报错，单测（race）覆盖三态与 re-arm。运行时接线交付（同日二切）：`alert_rule` ent 表、`biz.AlertCenter` 评估中心（2s 节流、批量快照、零写库短路、单规则失败隔离）、Runner 快照节拍+3s poll 双路 Tick、`ApplyAlertStep` 单事务落库+`notify.request` outbox（category=alert-rule），5 条 CRUD proto-first（`/risk/v1/alert/rules` 系，经 admin 前缀转发直达，`go test -race` 全绿）；实施记录：[M08 开发进度 G3 节](M08-风控/开发进度.md)。前端切片交付：deskNotify 活跃感知三 sink（活跃仅 in-app toast / 不活跃走原生 / 无壳兜底 in-app，severity 映 toast 色调，hub 仅透传第三参）、toast 栈上限 5 + 按级 TTL、任务栏标题未读徽标（零依赖替代 OS badge）、notify-center 逐条已读/未读 + 全部已读（localStorage 持久化，坏数据容错）；实施记录：[M10 开发进度 G3 节](M10-通知/开发进度.md)。规则管理前端面板、后端已读回写接口未做。
 
 **需求**：现状 `ws/hub.ts` `handlePush` 收到任何 alert/notify 都直接 `deskNotify` 原生通知——人在屏幕前也被系统响铃打扰；规则触发逻辑前后端边界未明，缺 re-arm/防重复语义。
 
@@ -84,6 +84,8 @@
 **规模**：eslint 规则 + 两个 vitest 套件，1–2 天。
 
 ## G5 面板上下文注入 LLM（P0）
+
+> 状态：**部分实施（2026-10-19）**。前端首版交付：`workspace/pane-context.ts` 附件纯库（账面键/敏感键正则剔除、仅标量 ≤8、值 ≤80、deny 面板 settings 参数整片不出、嵌入段 ≤800 尾部裁对，验收②快照测试锁定）+ panel-bus `peekPanelParams` 参数快照回读（pending/推送两路同落、只读副本）+ `WorkbenchApi.activePanelId` 聚焦面板回读 + 命令面板「问 AI」：≥3 字符且无助记符命中时候选置顶，Enter 发送答案内嵌面板呈卡（问题/正文/证据/模型/随发上下文一句话摘要），Esc 先清回答层再关面板，Esc/重开后迟到响应按序号作废。**范围诚实调整**：附件经规范化文本内嵌问题送达——AskRequest proto 无 pane 字段，不发明结构化通道（字段化入 proto + brain topic 推流渲染留给后端窗口）；gloomberb 式去抖活体校验候选不做（选中才调用，省本地算力）；面板旁浮层延后。验收①「回答含正确代码与数据」中「随问随带面板参数」已由前端保证，模型正确性依赖 M05 联调（vLLM 未就绪，见 M05 阻塞条）。实施记录：[M05 开发进度 G5 节](M05-AI智脑/开发进度.md)。
 
 **需求**：M05 目前只有"推"模式（定量产出评分信号），无"问"模式——盯盘时针对当前面板发问「这只票为什么跳水/这条风控链卡在哪」是 AI 副驾最短路径。
 
