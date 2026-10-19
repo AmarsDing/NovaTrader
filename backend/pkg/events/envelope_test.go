@@ -148,3 +148,22 @@ func TestEnvelopePreservesOptionalMetadata(t *testing.T) {
 		t.Fatal("negative entity version accepted")
 	}
 }
+
+func TestParentEnvelopeReadOnlyLookup(t *testing.T) {
+	if _, ok := ParentEnvelope(context.Background()); ok {
+		t.Fatal("background ctx has no parent envelope")
+	}
+	// 只有链号没有父信封：ParentEnvelope 不得把链号当父。
+	if _, ok := ParentEnvelope(WithTraceID(context.Background(), "trace-only")); ok {
+		t.Fatal("trace-only ctx is not a causation parent")
+	}
+	parent, err := New("risk", "risk.alert", "trace-risk-7", map[string]any{"k": 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := ContextWithEnvelope(context.Background(), parent)
+	got, ok := ParentEnvelope(ctx)
+	if !ok || got.EventID != parent.EventID || got.TraceID != parent.TraceID {
+		t.Fatalf("parent lookup: %+v ok=%v", got, ok)
+	}
+}

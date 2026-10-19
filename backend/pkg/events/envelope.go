@@ -82,6 +82,14 @@ func ContextWithEnvelope(ctx context.Context, env Envelope) context.Context {
 	return context.WithValue(WithTraceID(ctx, env.TraceID), parentEventKey{}, env)
 }
 
+// ParentEnvelope 只读返回 ContextWithEnvelope 放入的父信封；没有时 ok 为 false。
+// 供发射缝按「ctx 是否已有真实因果父」二选一：有父用 NewWithContext 全真续链，
+// 无父回退调用方自己的链号。绝不用于凭空新建因果——没有父就是没有父。
+func ParentEnvelope(ctx context.Context) (Envelope, bool) {
+	parent, ok := ctx.Value(parentEventKey{}).(Envelope)
+	return parent, ok
+}
+
 // WithTraceID 把链路号放进 context，供发事件时填进信封。
 func WithTraceID(ctx context.Context, traceID string) context.Context {
 	return context.WithValue(ctx, traceKey{}, traceID)

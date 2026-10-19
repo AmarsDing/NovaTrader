@@ -115,9 +115,12 @@ func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
 	ctx = events.WithTraceID(ctx, env.TraceID)
 	var handleErr error
 	if flush {
+		// Flush 的触发事件只是重投指令，不是被重投消息的因果父——父信封不下放；
+		// 各行链号仍以行内携带的 trace（DesktopNote.TraceID）为准，不编因果。
 		handleErr = r.p.Flush(ctx)
 	} else {
-		handleErr = r.p.Handle(ctx, env)
+		// 直发消费：父信封完整下传，notify.desktop 才能经发射缝续上真实因果父。
+		handleErr = r.p.Handle(events.ContextWithEnvelope(ctx, env), env)
 	}
 	observe.FinishError(finish, handleErr)
 	if handleErr != nil {

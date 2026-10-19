@@ -16,18 +16,31 @@ import (
 	"server/pkg/events"
 )
 
-// Desktop 把通知发到 notify.desktop，由 admin 转给 WebSocket。
-type Desktop struct {
-	bus *events.Bus
+// DesktopPublisher 是 Desktop 依赖的最小发布口（*events.Bus 满足），便于按行为单测。
+type DesktopPublisher interface {
+	Publish(ctx context.Context, env events.Envelope) error
 }
 
-func NewDesktop(bus *events.Bus) *Desktop { return &Desktop{bus: bus} }
+// Desktop 把通知发到 notify.desktop，由 admin 转给 WebSocket。
+type Desktop struct {
+	bus DesktopPublisher
+}
+
+func NewDesktop(bus DesktopPublisher) *Desktop { return &Desktop{bus: bus} }
 
 func (d *Desktop) Push(ctx context.Context, note biz.DesktopNote) error {
 	if d == nil || d.bus == nil {
 		return fmt.Errorf("notify: desktop bus is nil")
 	}
-	env, err := events.New("notify", events.SubjectNotifyDesktop, note.TraceID, note)
+	var env events.Envelope
+	var err error
+	if _, ok := events.ParentEnvelope(ctx); ok {
+		// 直发链：消费侧放进 ctx 的父信封是真因果，trace/causation/correlation/source_time 全续。
+		env, err = events.NewWithContext(ctx, "notify", events.SubjectNotifyDesktop, note)
+	} else {
+		// 无父直发与静默重投：行内链号仍为准，没有真实父就不编 causation_id。
+		env, err = events.New("notify", events.SubjectNotifyDesktop, note.TraceID, note)
+	}
 	if err != nil {
 		return err
 	}
