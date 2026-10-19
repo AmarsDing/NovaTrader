@@ -325,11 +325,51 @@ describe('trade view contracts', () => {
     const pill = wrapper!.find('.channel-pill')
     expect(pill.text()).toBe('模拟通道：降级')
     expect(pill.classes()).toContain('warn')
+    // tooltip 本地化（Asia/Shanghai）且不直显 RFC3339 原文；文案不虚报「恢复中」。
+    const title = pill.attributes('title') || ''
+    expect(title).toContain('未判定断开')
+    expect(title).toContain('2026-10-14 09:59:00')
+    expect(title).not.toContain('T09:59:00+08:00')
+  })
+
+  it('模拟通道 idle 徽标未连接（显式分支，不落未知）', async () => {
+    mock.channel.mockResolvedValue([{ channel: 'sim', status: 'idle', since: '2026-10-14T09:30:00+08:00' }])
+    await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：未连接')
+    expect(pill.classes()).toContain('dim')
+  })
+
+  it('未识别的通道状态显示状态未知，不误报未连接', async () => {
+    mock.channel.mockResolvedValue([{ channel: 'sim', status: 'melted', since: '2026-10-14T09:30:00+08:00' }])
+    await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：状态未知')
+    expect(pill.classes()).toContain('unknown')
+  })
+
+  it('通道清单为空显示状态未知', async () => {
+    mock.channel.mockResolvedValue([])
+    await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：状态未知')
+    expect(pill.classes()).toContain('unknown')
   })
 
   it('通道状态读取失败显示状态未知，不沿用旧值虚报', async () => {
     mock.channel.mockRejectedValue(new Error('boom'))
     await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：状态未知')
+    expect(pill.classes()).toContain('unknown')
+  })
+
+  it('先成功后失败两拍下徽标回落状态未知，不沿用上一拍的正常', async () => {
+    await mountView()
+    expect(wrapper!.find('.channel-pill').text()).toBe('模拟通道：正常')
+    mock.channel.mockRejectedValue(new Error('boom'))
+    await vi.advanceTimersByTimeAsync(10_000)
+    await flushPromises()
     const pill = wrapper!.find('.channel-pill')
     expect(pill.text()).toBe('模拟通道：状态未知')
     expect(pill.classes()).toContain('unknown')

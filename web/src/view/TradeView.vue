@@ -39,6 +39,7 @@ import {
   ratioPct,
   sideLabel,
 } from '@/utils/format'
+import { formatDateTime } from '@/utils/time'
 import { router } from '@/router'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
@@ -277,12 +278,14 @@ const previewFailed = computed(() => (preview.value?.hits ?? []).filter((hit) =>
 const channelPill = computed(() => {
   const c = channelStatus.value
   if (!c) return { kind: 'unknown', text: '模拟通道：状态未知', title: '通道状态读取失败或服务端未跟踪' }
-  const since = c.since ? ` · 自 ${c.since}` : ''
+  const stamp = formatDateTime(c.since) || c.since // 本地化成上海时刻；解析不了原样展示，绝不编造
+  const since = stamp ? ` · 自 ${stamp}` : ''
   switch (c.status) {
     case 'connected': return { kind: 'ok', text: '模拟通道：正常', title: `撮合账本心跳正常${since}` }
-    case 'degraded': return { kind: 'warn', text: '模拟通道：降级', title: `快照回路连续失败，恢复中${since}` }
+    case 'degraded': return { kind: 'warn', text: '模拟通道：降级', title: `快照回路连续失败，未判定断开${since}` }
     case 'down': return { kind: 'danger', text: '模拟通道：断开', title: `快照回路持续失败${since}` }
-    default: return { kind: 'dim', text: '模拟通道：未连接', title: `引擎尚未完成首次心跳${since}` }
+    case 'idle': return { kind: 'dim', text: '模拟通道：未连接', title: `引擎尚未完成首次心跳${since}` }
+    default: return { kind: 'unknown', text: '模拟通道：状态未知', title: `未识别的通道状态 ${c.status || '(空)'}${since}` }
   }
 })
 
