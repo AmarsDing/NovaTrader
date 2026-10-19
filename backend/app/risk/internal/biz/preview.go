@@ -16,10 +16,9 @@ func (e *Engine) Preview(ctx context.Context, o risk.Order) brokerif.Preview {
 	if s, ok := normSymbol(o.Symbol); ok {
 		o.Symbol = s
 	}
-	side := brokerif.Buy
-	if o.Side == risk.Sell {
-		side = brokerif.Sell
-	}
+	// 方向如实透传：脏方向（缺省/错值）交给 brokerif→risk.validate 判 R00，
+	// 不在此归并为买单（否则同型请求试算放行、实检被拒，两链结论相反）。
+	side := brokerif.Side(string(o.Side))
 	req := brokerif.PreviewRequest{
 		Order:   brokerif.Order{ClientID: o.ClientID, Symbol: o.Symbol, Side: side, Price: o.Price, Volume: o.Volume},
 		Account: o.Account, Source: o.Source, Operator: o.Operator,

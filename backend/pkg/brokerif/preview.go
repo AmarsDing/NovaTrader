@@ -40,7 +40,7 @@ type Preview struct {
 // 同一来源，结果才可信），req 给要下的单，fee 是券商口径（ashare.DefaultFee 为默认）。
 // 不落单、不占预约、不改任何状态。
 func PreviewOrder(in risk.Input, p risk.Params, req PreviewRequest, fee ashare.Fee) Preview {
-	in.Order = toRiskOrder(req)
+	in.Order = mergeOrder(in.Order, req)
 	d := risk.Check(in, p)
 	out := Preview{
 		Order:    req.Order,
@@ -64,16 +64,24 @@ func PreviewOrder(in risk.Input, p risk.Params, req PreviewRequest, fee ashare.F
 	return out
 }
 
-func toRiskOrder(req PreviewRequest) risk.Order {
-	side := risk.Buy
-	if req.Order.Side == Sell {
-		side = risk.Sell
-	}
-	o := req.Order
-	return risk.Order{
-		ClientID: o.ClientID, Account: req.Account, Symbol: o.Symbol,
-		Side: side, Price: o.Price, Volume: o.Volume, Source: req.Source, Operator: req.Operator,
-	}
+// mergeOrder 把请求里的委托覆盖到调用方装配的 in.Order 上。风控依赖的装配字段
+// （Sector 由引擎侧 ref 表回填、ExpectedConfigRevision 由计划绑定，请求形状上都不带）
+// 必须原样保留——整体重建会把它们清零，R09 板块集中这类按回填字段判的规则会在
+// 试算链静默放行，而同笔单在实检被缩/被拒（试算所见必须即所下）。
+func mergeOrder(assembled risk.Order, req PreviewRequest) risk.Order {
+	o := assembled
+	o.ClientID = req.Order.ClientID
+	o.Account = req.Account
+	o.Symbol = req.Order.Symbol
+	// 方向如实透传：Buy/Sell 明示，其余原样交给 risk.validate 判 R00。
+	// 既往「非卖即买」的归并会让脏方向（缺省/错值）在试算链被当买单放行，
+	// 同型请求打实检却被 R00 拒——两链结论相反。
+	o.Side = risk.Side(string(req.Order.Side))
+	o.Price = req.Order.Price
+	o.Volume = req.Order.Volume
+	o.Source = req.Source
+	o.Operator = req.Operator
+	return o
 }
 
 // round2 把正的金额四舍五入到分；ashare.Fee.Cost 已自行取整，这里只管金额口径。

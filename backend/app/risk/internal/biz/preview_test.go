@@ -90,6 +90,21 @@ func TestPreviewConfigRevisionGuard(t *testing.T) {
 	}
 }
 
+func TestPreviewGarbageSideIsR00(t *testing.T) {
+	// 方向缺省/脏值必须沿试算链原样走到 validate 判 R00——与实检同一防线；
+	// 既往 biz 层「非卖即买」归并会让此类请求被按买单试算放行。
+	for _, side := range []risk.Side{"", "hodor"} {
+		r := newRig(t, nil)
+		r.account(1_000_000, 500_000)
+		o := buy("pv", 100)
+		o.Side = side
+		pv := r.e.Preview(context.Background(), o)
+		if pv.Approved || pv.BlockRule != risk.RuleInvalid {
+			t.Fatalf("garbage side %q must surface as R00 like Check, got %+v", side, pv)
+		}
+	}
+}
+
 func TestPreviewSellCollectsStampTax(t *testing.T) {
 	r := newRig(t, nil)
 	r.account(1_000_000, 500_000, risk.Holding{Symbol: "000001.SZ", Quantity: 1000, Available: 1000, AvgCost: 10})

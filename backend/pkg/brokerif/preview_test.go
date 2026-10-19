@@ -110,3 +110,48 @@ func TestPreviewEchoesAdapterOrder(t *testing.T) {
 		t.Fatalf("preview must echo the adapter-side order verbatim: %+v", p.Order)
 	}
 }
+
+func TestPreviewKeepsAssembledSectorAndR09Shrinks(t *testing.T) {
+	// 调用方装配带板块（引擎侧由 ref 表回填）；权益 1e6 × MaxSectorPct 0.30 = 板块限额 30 万。
+	in := previewBase()
+	in.Account.Holdings["600036.SH"] = risk.Holding{Symbol: "600036.SH", Sector: "银行", Quantity: 10000, Available: 10000, AvgCost: 29.5, MarketValue: 295_000}
+	in.Order = risk.Order{Sector: "银行"}
+	p := PreviewOrder(in, risk.Defaults(), buyReq(10.00, 1000), ashare.DefaultFee())
+	// R09：已用 29.5 万、余量 5 千 → 缩量 1000 → 500。若装配的 Sector 被冲掉，
+	// 规则走「没有板块信息，未检查」放行全额 1000——本例钉的就是这个回归。
+	if !p.Approved || !p.Adjusted || p.Volume != 500 {
+		t.Fatalf("R09 shrink via assembled sector: %+v", p)
+	}
+	var r09 *risk.Result
+	for i := range p.Results {
+		if p.Results[i].Rule == "R09" {
+			r09 = &p.Results[i]
+		}
+	}
+	if r09 == nil || !r09.Pass || r09.Note == "" {
+		t.Fatalf("R09 must pass with a shrink note: %+v", r09)
+	}
+}
+
+func TestPreviewSectorFullRejectsR09(t *testing.T) {
+	// 板块额度用满：已用 30 万 = 上限 → 放不下一手，实检口径的 R09 拒绝必须原样出现在试算。
+	in := previewBase()
+	in.Account.Holdings["600036.SH"] = risk.Holding{Symbol: "600036.SH", Sector: "银行", Quantity: 10000, Available: 10000, AvgCost: 30, MarketValue: 300_000}
+	in.Order = risk.Order{Sector: "银行"}
+	p := PreviewOrder(in, risk.Defaults(), buyReq(10.00, 1000), ashare.DefaultFee())
+	if p.Approved || p.BlockRule != "R09" || p.Volume != 0 || p.Amount != 0 {
+		t.Fatalf("saturated sector must surface the same R09 reject as Check: %+v", p)
+	}
+}
+
+func TestPreviewGarbageSideIsR00(t *testing.T) {
+	// 方向缺省/脏值不得归并为买单：如实透传给 validate，与实检同一 R00 防线。
+	for _, side := range []Side{"", "hodor"} {
+		req := buyReq(10.00, 1000)
+		req.Order.Side = side
+		p := PreviewOrder(previewBase(), risk.Defaults(), req, ashare.DefaultFee())
+		if p.Approved || p.BlockRule != risk.RuleInvalid {
+			t.Fatalf("garbage side %q must surface as R00 like Check, got %+v", side, p)
+		}
+	}
+}
