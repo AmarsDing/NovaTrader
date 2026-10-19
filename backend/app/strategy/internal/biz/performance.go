@@ -29,11 +29,12 @@ type ScorePnlPoint struct {
 }
 
 // FeedbackRepo 读 strategy_feedback 与 trade_signals 的后验数据（只读）。
+// strategy 为空串表示全部策略不过滤；非空按 strategy_feedback.strategy 精确匹配。
 type FeedbackRepo interface {
-	// RecentFeedback 按交易日倒序返回最近 limit 条 signal_correct 非空的反馈。
-	RecentFeedback(ctx context.Context, limit int) ([]FeedbackRow, error)
+	// RecentFeedback 按交易日升序返回最近 limit 条 signal_correct 非空的反馈。
+	RecentFeedback(ctx context.Context, limit int, strategy string) ([]FeedbackRow, error)
 	// ScoreVsPnl 返回最近 limit 条挂得上信号的反馈的评分-收益对照。
-	ScoreVsPnl(ctx context.Context, limit int) ([]ScorePnlPoint, error)
+	ScoreVsPnl(ctx context.Context, limit int, strategy string) ([]ScorePnlPoint, error)
 }
 
 // Performance 是近 N 笔后验的绩效汇总。Sample 为 0 表示还没有后验样本。
@@ -46,8 +47,8 @@ type Performance struct {
 	Attributions map[string]int
 }
 
-// Performance 汇总近 last 笔后验反馈（默认 20，上限 200）。
-func (uc *Usecase) Performance(ctx context.Context, last int) (*Performance, error) {
+// Performance 汇总近 last 笔后验反馈（默认 20，上限 200）。strategy 空 = 不过滤。
+func (uc *Usecase) Performance(ctx context.Context, last int, strategy string) (*Performance, error) {
 	if uc.feedback == nil {
 		return nil, ErrNotFound
 	}
@@ -57,7 +58,7 @@ func (uc *Usecase) Performance(ctx context.Context, last int) (*Performance, err
 	if last > 200 {
 		last = 200
 	}
-	rows, err := uc.feedback.RecentFeedback(ctx, last)
+	rows, err := uc.feedback.RecentFeedback(ctx, last, strategy)
 	if err != nil {
 		return nil, err
 	}
@@ -105,9 +106,9 @@ func (uc *Usecase) Performance(ctx context.Context, last int) (*Performance, err
 	return p, nil
 }
 
-// ScoreVsPnl 返回评分-收益散点与 Pearson 相关系数（默认 50，上限 500）。
+// ScoreVsPnl 返回评分-收益散点与 Pearson 相关系数（默认 50，上限 500）。strategy 空 = 不过滤。
 // 样本 <2 或任一维方差为 0 时 Pearson 为 0，由前端写「样本不足」。
-func (uc *Usecase) ScoreVsPnl(ctx context.Context, last int) ([]ScorePnlPoint, float64, error) {
+func (uc *Usecase) ScoreVsPnl(ctx context.Context, last int, strategy string) ([]ScorePnlPoint, float64, error) {
 	if uc.feedback == nil {
 		return nil, 0, ErrNotFound
 	}
@@ -117,7 +118,7 @@ func (uc *Usecase) ScoreVsPnl(ctx context.Context, last int) ([]ScorePnlPoint, f
 	if last > 500 {
 		last = 500
 	}
-	points, err := uc.feedback.ScoreVsPnl(ctx, last)
+	points, err := uc.feedback.ScoreVsPnl(ctx, last, strategy)
 	if err != nil {
 		return nil, 0, err
 	}

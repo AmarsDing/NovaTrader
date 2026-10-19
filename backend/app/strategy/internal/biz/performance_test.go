@@ -9,12 +9,19 @@ import (
 )
 
 type fakeFeedback struct {
-	rows   []FeedbackRow
-	points []ScorePnlPoint
+	rows     []FeedbackRow
+	points   []ScorePnlPoint
+	strategy []string // 逐次调用收到的 strategy 过滤词（钉透传契约）
 }
 
-func (f fakeFeedback) RecentFeedback(context.Context, int) ([]FeedbackRow, error) { return f.rows, nil }
-func (f fakeFeedback) ScoreVsPnl(context.Context, int) ([]ScorePnlPoint, error)   { return f.points, nil }
+func (f *fakeFeedback) RecentFeedback(_ context.Context, _ int, strategy string) ([]FeedbackRow, error) {
+	f.strategy = append(f.strategy, strategy)
+	return f.rows, nil
+}
+func (f *fakeFeedback) ScoreVsPnl(_ context.Context, _ int, strategy string) ([]ScorePnlPoint, error) {
+	f.strategy = append(f.strategy, strategy)
+	return f.points, nil
+}
 
 func day(s string) time.Time {
 	t, _ := time.Parse("2006-01-02", s)
@@ -23,13 +30,13 @@ func day(s string) time.Time {
 
 func TestPerformance(t *testing.T) {
 	yes, no := true, false
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, fakeFeedback{rows: []FeedbackRow{
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{rows: []FeedbackRow{
 		{TradeDate: day("2026-10-09"), Symbol: "A", ActualReturn: 0.05, SignalCorrect: &yes, Attribution: ""},
 		{TradeDate: day("2026-10-10"), Symbol: "B", ActualReturn: -0.02, SignalCorrect: &no, Attribution: "indicator_failed"},
 		{TradeDate: day("2026-10-12"), Symbol: "C", ActualReturn: 0.01, SignalCorrect: &yes, Attribution: "unfilled"},
 	}}, log.DefaultLogger)
 
-	p, err := uc.Performance(context.Background(), 20)
+	p, err := uc.Performance(context.Background(), 20, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,8 +60,8 @@ func TestPerformance(t *testing.T) {
 }
 
 func TestPerformanceEmpty(t *testing.T) {
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, fakeFeedback{}, log.DefaultLogger)
-	p, err := uc.Performance(context.Background(), 0)
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{}, log.DefaultLogger)
+	p, err := uc.Performance(context.Background(), 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,14 +71,14 @@ func TestPerformanceEmpty(t *testing.T) {
 }
 
 func TestScoreVsPnlPearson(t *testing.T) {
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, fakeFeedback{points: []ScorePnlPoint{
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{points: []ScorePnlPoint{
 		{SignalID: 1, Score: 90, ActualReturn: 0.09},
 		{SignalID: 2, Score: 80, ActualReturn: 0.07},
 		{SignalID: 3, Score: 70, ActualReturn: 0.04},
 		{SignalID: 4, Score: 60, ActualReturn: 0.02},
 	}}, log.DefaultLogger)
 
-	points, r, err := uc.ScoreVsPnl(context.Background(), 50)
+	points, r, err := uc.ScoreVsPnl(context.Background(), 50, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,5 +98,20 @@ func TestPearsonInsufficient(t *testing.T) {
 	// 方差为 0（全部同分）也必须返回 0，不做除零
 	if got := pearson([]ScorePnlPoint{{Score: 80, ActualReturn: 0.01}, {Score: 80, ActualReturn: 0.02}}); got != 0 {
 		t.Fatalf("zero-variance pearson = %v, want 0", got)
+	}
+}
+
+// strategy 过滤词必须原样透传到 repo（空串 = 不过滤同样逐字透传），两层之间不许改写。
+func TestStrategyFilterForward(t *testing.T) {
+	fb := &fakeFeedback{}
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, fb, log.DefaultLogger)
+	if _, err := uc.Performance(context.Background(), 20, "breakout_ref"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := uc.ScoreVsPnl(context.Background(), 50, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(fb.strategy) != 2 || fb.strategy[0] != "breakout_ref" || fb.strategy[1] != "" {
+		t.Fatalf("strategy forward = %v, want [breakout_ref \"\"]", fb.strategy)
 	}
 }

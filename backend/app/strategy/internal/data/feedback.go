@@ -15,9 +15,13 @@ type feedbackRepo struct{ d *Data }
 
 func NewFeedbackRepo(d *Data) biz.FeedbackRepo { return &feedbackRepo{d: d} }
 
-func (r *feedbackRepo) RecentFeedback(ctx context.Context, limit int) ([]biz.FeedbackRow, error) {
-	rows, err := r.d.client.StrategyFeedback.Query().
-		Where(strategyfeedback.SignalCorrectNotNil()).
+func (r *feedbackRepo) RecentFeedback(ctx context.Context, limit int, strategy string) ([]biz.FeedbackRow, error) {
+	q := r.d.client.StrategyFeedback.Query().
+		Where(strategyfeedback.SignalCorrectNotNil())
+	if strategy != "" {
+		q = q.Where(strategyfeedback.StrategyEQ(strategy))
+	}
+	rows, err := q.
 		Order(strategyfeedback.ByTradeDate(), strategyfeedback.ByID()).
 		// 要的是最近 N 笔：ent 的 Order 升序后从尾部取，保持简单不引入 desc 修饰
 		All(ctx)
@@ -42,10 +46,13 @@ func (r *feedbackRepo) RecentFeedback(ctx context.Context, limit int) ([]biz.Fee
 	return out, nil
 }
 
-func (r *feedbackRepo) ScoreVsPnl(ctx context.Context, limit int) ([]biz.ScorePnlPoint, error) {
-	rows, err := r.d.client.StrategyFeedback.Query().
-		Where(strategyfeedback.SignalIDNotNil(), strategyfeedback.SignalCorrectNotNil()).
-		All(ctx)
+func (r *feedbackRepo) ScoreVsPnl(ctx context.Context, limit int, strategy string) ([]biz.ScorePnlPoint, error) {
+	q := r.d.client.StrategyFeedback.Query().
+		Where(strategyfeedback.SignalIDNotNil(), strategyfeedback.SignalCorrectNotNil())
+	if strategy != "" {
+		q = q.Where(strategyfeedback.StrategyEQ(strategy))
+	}
+	rows, err := q.All(ctx)
 	if err != nil {
 		return nil, err
 	}

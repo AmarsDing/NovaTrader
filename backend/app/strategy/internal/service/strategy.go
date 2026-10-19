@@ -253,7 +253,7 @@ func (s *StrategyService) RemoveBlacklist(ctx context.Context, req *v1.RemoveBla
 
 // Performance 返回近 N 笔后验的绩效汇总（监控驾驶舱 P1，只读）。
 func (s *StrategyService) Performance(ctx context.Context, req *v1.PerformanceRequest) (*v1.PerformanceReply, error) {
-	p, err := s.uc.Performance(ctx, int(req.GetLast()))
+	p, err := s.uc.Performance(ctx, int(req.GetLast()), req.GetStrategy())
 	if err != nil {
 		return nil, toErr(err)
 	}
@@ -274,7 +274,7 @@ func (s *StrategyService) Performance(ctx context.Context, req *v1.PerformanceRe
 
 // ScoreVsPnl 返回评分-收益散点与 Pearson 相关系数（监控驾驶舱 P1，只读）。
 func (s *StrategyService) ScoreVsPnl(ctx context.Context, req *v1.ScoreVsPnlRequest) (*v1.ScoreVsPnlReply, error) {
-	points, r, err := s.uc.ScoreVsPnl(ctx, int(req.GetLast()))
+	points, r, err := s.uc.ScoreVsPnl(ctx, int(req.GetLast()), req.GetStrategy())
 	if err != nil {
 		return nil, toErr(err)
 	}

@@ -1271,7 +1271,8 @@ func (x *BlacklistReply) GetSymbol() string {
 // PerformanceRequest 取近 N 笔已出后验（signal_correct 非空）的反馈。
 type PerformanceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Last          int32                  `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"` // 默认 20，上限 200
+	Last          int32                  `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"`        // 默认 20，上限 200
+	Strategy      string                 `protobuf:"bytes,2,opt,name=strategy,proto3" json:"strategy,omitempty"` // 空 = 全部策略；非空按 strategy_feedback.strategy 精确过滤
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1311,6 +1312,13 @@ func (x *PerformanceRequest) GetLast() int32 {
 		return x.Last
 	}
 	return 0
+}
+
+func (x *PerformanceRequest) GetStrategy() string {
+	if x != nil {
+		return x.Strategy
+	}
+	return ""
 }
 
 // PerformanceReply 全量为空时（还没有后验样本）sample=0，其余字段为 0，由前端写「样本不足」。
@@ -1453,7 +1461,8 @@ func (x *AttributionCount) GetCount() int32 {
 // ScoreVsPnlRequest 取近 N 笔挂得上信号的反馈，做评分-收益对照。
 type ScoreVsPnlRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Last          int32                  `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"` // 默认 50，上限 500
+	Last          int32                  `protobuf:"varint,1,opt,name=last,proto3" json:"last,omitempty"`        // 默认 50，上限 500
+	Strategy      string                 `protobuf:"bytes,2,opt,name=strategy,proto3" json:"strategy,omitempty"` // 空 = 全部策略；非空按 strategy_feedback.strategy 精确过滤
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1493,6 +1502,13 @@ func (x *ScoreVsPnlRequest) GetLast() int32 {
 		return x.Last
 	}
 	return 0
+}
+
+func (x *ScoreVsPnlRequest) GetStrategy() string {
+	if x != nil {
+		return x.Strategy
+	}
+	return ""
 }
 
 type ScorePnlPoint struct {
@@ -1793,9 +1809,10 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\x16RemoveBlacklistRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"(\n" +
 	"\x0eBlacklistReply\x12\x16\n" +
-	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"(\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\"D\n" +
 	"\x12PerformanceRequest\x12\x12\n" +
-	"\x04last\x18\x01 \x01(\x05R\x04last\"\xe5\x01\n" +
+	"\x04last\x18\x01 \x01(\x05R\x04last\x12\x1a\n" +
+	"\bstrategy\x18\x02 \x01(\tR\bstrategy\"\xe5\x01\n" +
 	"\x10PerformanceReply\x12\x16\n" +
 	"\x06sample\x18\x01 \x01(\x05R\x06sample\x12\x19\n" +
 	"\bwin_rate\x18\x02 \x01(\x01R\awinRate\x12\x19\n" +
@@ -1806,9 +1823,10 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\fattributions\x18\x06 \x03(\v2\x1d.strategy.v1.AttributionCountR\fattributions\"J\n" +
 	"\x10AttributionCount\x12 \n" +
 	"\vattribution\x18\x01 \x01(\tR\vattribution\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x05R\x05count\"'\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"C\n" +
 	"\x11ScoreVsPnlRequest\x12\x12\n" +
-	"\x04last\x18\x01 \x01(\x05R\x04last\"\xba\x01\n" +
+	"\x04last\x18\x01 \x01(\x05R\x04last\x12\x1a\n" +
+	"\bstrategy\x18\x02 \x01(\tR\bstrategy\"\xba\x01\n" +
 	"\rScorePnlPoint\x12\x1b\n" +
 	"\tsignal_id\x18\x01 \x01(\x03R\bsignalId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x14\n" +

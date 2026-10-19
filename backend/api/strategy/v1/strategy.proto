@@ -181,7 +181,8 @@ message BlacklistReply {
 
 // PerformanceRequest 取近 N 笔已出后验（signal_correct 非空）的反馈。
 message PerformanceRequest {
-  int32 last = 1; // 默认 20，上限 200
+  int32 last = 1;      // 默认 20，上限 200
+  string strategy = 2; // 空 = 全部策略；非空按 strategy_feedback.strategy 精确过滤
 }
 
 // PerformanceReply 全量为空时（还没有后验样本）sample=0，其余字段为 0，由前端写「样本不足」。
@@ -201,7 +202,8 @@ message AttributionCount {
 
 // ScoreVsPnlRequest 取近 N 笔挂得上信号的反馈，做评分-收益对照。
 message ScoreVsPnlRequest {
-  int32 last = 1; // 默认 50，上限 500
+  int32 last = 1;      // 默认 50，上限 500
+  string strategy = 2; // 空 = 全部策略；非空按 strategy_feedback.strategy 精确过滤
 }
 
 message ScorePnlPoint {
