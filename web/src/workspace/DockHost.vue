@@ -15,6 +15,7 @@ import { getPanel, listPanels, canPopout } from './panel-registry'
 import { DESKS, getDesk, type DeskPanelSpec } from './desks'
 import { recordLayout, undoLayout, redoLayout } from './layout-history'
 import { createVueRenderers } from './vue-renderer'
+import { buildPanelTabMenu } from './panel-tab-menu'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -215,6 +216,8 @@ onMounted(() => {
     createComponent: renderers.createComponent,
     createTabComponent: renderers.createTabComponent,
     createWatermarkComponent: renderers.createWatermarkComponent,
+    // G2 面板菜单：tab 右键/长按菜单项纯层（功能卡 F1 / 弹出（白名单把关）/ 关闭）；渲染与 Esc 由 dockview 自营。
+    getTabContextMenuItems: buildPanelTabMenu,
     disableFloatingGroups: false,
     popoutUrl: '/popout.html',
   })
