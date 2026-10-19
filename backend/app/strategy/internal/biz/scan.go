@@ -11,8 +11,6 @@ import (
 	"server/pkg/events"
 	"server/pkg/params"
 	"server/pkg/rules"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -81,11 +79,10 @@ func (uc *Usecase) Scan(ctx context.Context, req ScanRequest) (*ScanReport, erro
 	if req.Pool == "" {
 		req.Pool = PoolIntraday
 	}
+	// 入口开链（合同工具 events.OpenTrace，语义单点维护）：调度/手工触发的
+	// 已有链尊重，链根入口没有才开新链；一次扫描内报告、AI 分析、信号共享此链。
+	ctx = events.OpenTrace(ctx)
 	trace := events.TraceID(ctx)
-	if trace == "" {
-		trace = uuid.NewString()
-		ctx = events.WithTraceID(ctx, trace)
-	}
 	day := tradeDay(req.AsOf)
 	p := uc.loadParams(ctx)
 	rep := &ScanReport{TraceID: trace, Pool: req.Pool, Misses: map[string]int{}, KillState: uc.KillSwitch()}

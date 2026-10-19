@@ -16,6 +16,7 @@ import (
 	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/google/uuid"
 )
 
 var (
@@ -688,6 +689,84 @@ func TestScanExits(t *testing.T) {
 	e2.pos.list = []Holding{{Symbol: "600000.SH", Quantity: 1000, Available: 0}}
 	if ids, _ := e2.uc.ScanExits(ctx, asOf); len(ids) != 0 {
 		t.Fatalf("T+1 locked %v", ids)
+	}
+}
+
+// 买入扫描的入口开链纪律（决策 C 集成钉，语义由 pkg/events OpenTrace 单点维护）：
+// 链根运行不编父、报告/信号/发射共用本条运行链；两次运行链互异；调用方已串链
+// （级联触发）则尊重不另开。
+func TestScanOpensOneRunTraceAndRespectsCallerChain(t *testing.T) {
+	e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+	rep := scan(t, e, ScanRequest{})
+	if _, err := uuid.Parse(rep.TraceID); err != nil {
+		t.Fatalf("run trace not a uuid: %q", rep.TraceID)
+	}
+	if len(e.signals.events) != 1 {
+		t.Fatalf("events %+v", e.signals.events)
+	}
+	env0 := e.signals.events[0]
+	if env0.TraceID != rep.TraceID || env0.CausationID != "" {
+		t.Fatalf("run root must share run trace and invent no parent: %+v", env0)
+	}
+	sig, _ := e.signals.Get(ctx, rep.Signals[0])
+	if sig.TraceID != rep.TraceID {
+		t.Fatalf("signal row trace %q != scan trace %q", sig.TraceID, rep.TraceID)
+	}
+
+	// 第二次运行：新链，不沿用上一次。
+	e2 := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+	rep2 := scan(t, e2, ScanRequest{})
+	if rep2.TraceID == "" || rep2.TraceID == rep.TraceID {
+		t.Fatalf("second run must open a fresh trace: %q vs %q", rep2.TraceID, rep.TraceID)
+	}
+
+	// 调用方已串链：尊重，不另开。
+	e3 := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+	rep3, err := e3.uc.Scan(events.WithTraceID(ctx, "caller-chain-scan"), ScanRequest{AsOf: asOf, Pool: PoolIntraday, Full: true})
+	if err != nil || len(rep3.Signals) != 1 {
+		t.Fatalf("rep=%+v err=%v", rep3, err)
+	}
+	if rep3.TraceID != "caller-chain-scan" || e3.signals.events[0].TraceID != "caller-chain-scan" {
+		t.Fatalf("caller chain not respected: rep=%q env=%q", rep3.TraceID, e3.signals.events[0].TraceID)
+	}
+}
+
+// 出口扫描与买入扫描同一开链纪律：链根运行开出的链是合法 uuid、发射不编父；
+// 调用方串链（如级联触发复核）透传进行内卖出信号。
+func TestScanExitsOpensRunTraceAndRespectsCallerChain(t *testing.T) {
+	putHolding := func(e *env) {
+		e.pos.list = []Holding{{Symbol: "600000.SH", Quantity: 1000, Available: 1000, AvgCost: 12}}
+		e.signals.put(Signal{
+			Book: "paper", Symbol: "600000.SH", Side: rules.SideBuy, Status: StatusDone, Strategy: rules.NameFirstBoard,
+			StopLoss: 11.6, TakeProfit: 13, TradeDate: tradeDay(asOf.AddDate(0, 0, -1)),
+		})
+	}
+
+	// 链根运行：开合法新链、不编父。
+	e := newEnv(t, nil, nil, firstBoard("600000.SH"))
+	putHolding(e)
+	ids, err := e.uc.ScanExits(ctx, asOf)
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("ids=%v err=%v", ids, err)
+	}
+	s, _ := e.signals.Get(ctx, ids[0])
+	if _, perr := uuid.Parse(s.TraceID); perr != nil {
+		t.Fatalf("exit run trace not a uuid: %q", s.TraceID)
+	}
+	if len(e.signals.events) != 1 || e.signals.events[0].TraceID != s.TraceID || e.signals.events[0].CausationID != "" {
+		t.Fatalf("exit run root must not invent a parent: %+v", e.signals.events)
+	}
+
+	// 调用方已串链：尊重。
+	e2 := newEnv(t, nil, nil, firstBoard("600000.SH"))
+	putHolding(e2)
+	ids2, err := e2.uc.ScanExits(events.WithTraceID(ctx, "caller-chain-exit"), asOf)
+	if err != nil || len(ids2) != 1 {
+		t.Fatalf("ids=%v err=%v", ids2, err)
+	}
+	s2, _ := e2.signals.Get(ctx, ids2[0])
+	if s2.TraceID != "caller-chain-exit" || e2.signals.events[0].TraceID != "caller-chain-exit" {
+		t.Fatalf("caller chain not respected in exit scan: row=%q env=%q", s2.TraceID, e2.signals.events[0].TraceID)
 	}
 }
 

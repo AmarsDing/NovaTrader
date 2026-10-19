@@ -7,8 +7,6 @@ import (
 
 	"server/pkg/events"
 	"server/pkg/rules"
-
-	"github.com/google/uuid"
 )
 
 // ScanExits 检查可卖持仓，按开仓模板的 ExitPlan 出卖出信号。Kill Switch 不影响卖出。
@@ -18,10 +16,11 @@ func (uc *Usecase) ScanExits(ctx context.Context, asOf time.Time) ([]int, error)
 	if asOf.IsZero() {
 		asOf = time.Now()
 	}
+	// 出口扫描同为链根入口：与 Scan 同一开链纪律（events.OpenTrace 幂等，已有链尊重）。
+	// 与旧手写版唯一差别是链号回放进 ctx——今日无可观察差（出口信号仍走行内链号
+	// 权威发射，见 signalEnvelope），此后 ctx 派生的发射自动汇入本次扫描链。
+	ctx = events.OpenTrace(ctx)
 	trace := events.TraceID(ctx)
-	if trace == "" {
-		trace = uuid.NewString()
-	}
 	holdings, err := uc.positions.Holdings(ctx, uc.cfg.Book)
 	if err != nil {
 		return nil, fmt.Errorf("strategy: positions: %w", err)
