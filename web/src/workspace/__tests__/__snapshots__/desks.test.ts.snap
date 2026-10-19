@@ -50,7 +50,7 @@ exports[`桌定义完整性 > DESKS 全表快照 1`] = `
     "title": "竞价监控",
   },
   {
-    "description": "行情 · 信号 · 交易 · 风控链",
+    "description": "行情 · 侧栏 · 信号 · 下单条 · 风控链",
     "focus": "signals",
     "hotkey": 3,
     "id": "trading",
@@ -69,8 +69,13 @@ exports[`桌定义完整性 > DESKS 全表快照 1`] = `
         "ref": "signals",
       },
       {
+        "direction": "right",
+        "id": "quote-sidebar",
+        "ref": "signals",
+      },
+      {
         "direction": "below",
-        "id": "trade",
+        "id": "trade-bar",
         "ref": "market",
       },
     ],

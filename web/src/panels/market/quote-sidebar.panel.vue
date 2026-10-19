@@ -1,0 +1,426 @@
+<script setup lang="ts">
+/**
+ * 单券行情侧栏（视频设计指引 §8 右栏恒随）：报价头卡 + 字段网格 + 五档 + 相关情报。
+ * 纪律：
+ * - 恒随全局 symbol store——切代码只换数据，布局不动；
+ * - 数据面：切代码 REST 首刷 → subscribe('market', {symbol}) 推送防抖触发再刷 → 手动刷新兜底；
+ *   WS 断连显「非实时」，快照过期显琥珀「已过期」；
+ * - 算不出的字段显「未知」（后端零值不猜），无盘口时五档区显占位，逐笔/异动入口显「P1 待接入」。
+ */
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { getQuote, type QuoteView } from '@/api/market'
+import { timeline, type IntelItem } from '@/api/intel'
+import NtBadge from '@/ui/NtBadge.vue'
+import NtButton from '@/ui/NtButton.vue'
+import NtInput from '@/ui/NtInput.vue'
+import NtTabs from '@/ui/NtTabs.vue'
+import { clock, compactAmount, messageOf, pctText, price, signed, toneOf } from '@/utils/format'
+import { useSymbolStore } from '@/stores/symbol'
+import { getWorkbench } from '@/workspace/inject'
+import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
+import { isLive, onPush, subscribe, type WsPushMessage } from '@/ws/hub'
+
+const symbolStore = useSymbolStore()
+
+/** 面板头的手输框：跟随全局代码；回车/失焦写回 store（source 记本面板）。 */
+const draft = ref(symbolStore.code)
+const quote = ref<QuoteView | null>(null)
+const news = ref<IntelItem[]>([])
+const newsReady = ref(false)
+const error = ref('')
+const loading = ref(false)
+const tab = ref<'intel' | 'flash'>('intel')
+/** 面板生命周期内的连接快照（渲染期用 isLive() 直读，watcher 只负责触发刷新）。 */
+const liveNow = computed(() => isLive())
+
+let loadSeq = 0
+let disposed = false
+let debounceTimer: ReturnType<typeof setTimeout> | undefined
+let unsubscribe: (() => void) | undefined
+let offPush: (() => void) | undefined
+let offParams: (() => void) | undefined
+
+const code = computed(() => symbolStore.code)
+
+async function load(withNews = false) {
+  const sym = code.value
+  if (!sym) return
+  const seq = ++loadSeq
+  loading.value = true
+  error.value = ''
+  try {
+    const [q, intelRes] = await Promise.all([
+      getQuote(sym),
+      withNews ? timeline(sym).catch(() => null) : Promise.resolve(null),
+    ])
+    if (disposed || seq !== loadSeq || sym !== code.value) return
+    quote.value = q
+    if (q.found && q.name) symbolStore.fillName(sym, q.name)
+    if (intelRes) {
+      news.value = intelRes.items.slice(0, 8)
+      newsReady.value = true
+    }
+    if (!q.found) error.value = '还没有这只证券的行情，先确认代码与数据采集。'
+  } catch (err) {
+    if (disposed || seq !== loadSeq) return
+    error.value = messageOf(err)
+  } finally {
+    if (seq === loadSeq) loading.value = false
+  }
+}
+
+/** 推送只当刷新信号：同代码的 bar/快照帧到达 → 800ms 防抖重取快照（推送不背五档/涨跌停）。 */
+function scheduleRefresh() {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    debounceTimer = undefined
+    if (!disposed && isLive() && code.value) void load()
+  }, 800)
+}
+
+function resub() {
+  unsubscribe?.()
+  unsubscribe = code.value ? subscribe('market', { symbol: code.value }) : undefined
+}
+
+function onPushMessage(msg: WsPushMessage) {
+  if (msg.topic !== 'market' || !msg.data || typeof msg.data !== 'object') return
+  const sym = (msg.data as Record<string, unknown>).symbol
+  // 帧不带 symbol（快照批次广播）或与当前代码一致都算刷新信号；
+  // 带别的代码的帧说明推送收窄未生效，忽略。
+  if (typeof sym === 'string' && sym && sym !== code.value) return
+  scheduleRefresh()
+}
+
+function applyStoreCode(next: string) {
+  if (!next) return
+  if (draft.value !== next) draft.value = next
+  quote.value = null
+  news.value = []
+  newsReady.value = false
+  resub()
+  void load(true)
+}
+
+function submitDraft() {
+  if (symbolStore.setSymbol(draft.value, 'QL')) return
+  // 同值：等同手动刷新
+  void load(true)
+}
+
+watch(code, (next, before) => {
+  if (next && next !== before) applyStoreCode(next)
+}, { flush: 'sync' })
+
+/* ---------- 展示派生 ---------- */
+
+const displayName = computed(() => quote.value?.name || symbolStore.name)
+const tone = computed(() => toneOf(quote.value?.pctChg ?? null))
+const priceNow = computed(() => (quote.value && quote.value.last > 0 ? price(quote.value.last) : '未知'))
+const statusBadges = computed(() => {
+  const q = quote.value
+  const out: { text: string; badge: 'warn' | 'danger' | 'accent' | 'neutral' }[] = []
+  if (!q) return out
+  if (q.tradeStatus === 'SUSPEND') out.push({ text: '停牌', badge: 'danger' })
+  if (q.noLimit) out.push({ text: '无涨跌幅', badge: 'accent' })
+  if (q.stale) out.push({ text: '已过期', badge: 'warn' })
+  return out
+})
+
+interface FieldItem { label: string; value: string }
+
+/** 两列字段网格：0/空显「未知」（口径见后端 Quote 注释）；比率为百分点。 */
+const fields = computed<FieldItem[]>(() => {
+  const q = quote.value
+  const miss = '未知'
+  if (!q || !q.found) {
+    return ['昨收', '今开', '最高', '最低', '成交量', '成交额', '换手率', '振幅', 'PE-TTM', 'PB', '流通市值', '总市值', '涨停价', '跌停价']
+      .map((label) => ({ label, value: miss }))
+  }
+  const num = (v: number, fmt: (v: number) => string) => (v ? fmt(v) : miss)
+  return [
+    { label: '昨收', value: num(q.prevClose, price) },
+    { label: '今开', value: num(q.open, price) },
+    { label: '最高', value: num(q.high, price) },
+    { label: '最低', value: num(q.low, price) },
+    { label: '成交量', value: num(q.volume, compactAmount) },
+    { label: '成交额', value: num(q.amount, compactAmount) },
+    { label: '换手率', value: q.turnoverRate > 0 ? pctText(q.turnoverRate) : miss },
+    { label: '振幅', value: q.amplitude > 0 ? pctText(q.amplitude) : miss },
+    { label: 'PE-TTM', value: num(q.peTtm, (v) => v.toFixed(1)) },
+    { label: 'PB', value: num(q.pb, (v) => v.toFixed(2)) },
+    { label: '流通市值', value: num(q.circMv, compactAmount) },
+    { label: '总市值', value: num(q.totalMv, compactAmount) },
+    { label: '涨停价', value: q.noLimit ? '无' : num(q.limitUp, price) },
+    { label: '跌停价', value: q.noLimit ? '无' : num(q.limitDown, price) },
+  ]
+})
+
+function openIntel(item?: IntelItem) {
+  getWorkbench()?.openPanel('intel', {
+    symbol: code.value || undefined,
+    highlight: item?.id || undefined,
+  })
+}
+
+onMounted(() => {
+  // 命令面板 QL 600519 / 他面板直达：参数写回 store（store 不变则本面板也无需再动）。
+  const params = consumePanelParams('quote-sidebar')
+  const staged = typeof params?.symbol === 'string' ? params.symbol : ''
+  if (staged) symbolStore.setSymbol(staged, 'QL')
+  offParams = onPanelParams('quote-sidebar', (p) => {
+    if (typeof p.symbol === 'string') symbolStore.setSymbol(p.symbol, 'QL')
+  })
+  if (code.value) applyStoreCode(code.value)
+  offPush = onPush(onPushMessage)
+})
+
+onBeforeUnmount(() => {
+  disposed = true
+  if (debounceTimer) clearTimeout(debounceTimer)
+  unsubscribe?.()
+  offPush?.()
+  offParams?.()
+})
+</script>
+
+<template>
+  <div class="nt-page qs">
+    <header class="nt-head">
+      <div>
+        <h1 class="nt-title">行情侧栏</h1>
+        <p class="nt-note">恒随当前证券：{{ displayName || '—' }} · 图纸见 M12 附议。</p>
+      </div>
+    </header>
+
+    <form class="nt-form" @submit.prevent="submitDraft">
+      <label class="grow">
+        <span>代码</span>
+        <NtInput v-model="draft" placeholder="600519.SH" @blur="submitDraft" />
+      </label>
+      <NtButton :loading="loading" @click="submitDraft">刷新</NtButton>
+    </form>
+
+    <p v-if="!code" class="nt-empty">还没有当前证券。用命令面板 GP 600519 或在行情面板选一只。</p>
+    <p v-if="error" class="nt-err">{{ error }}</p>
+
+    <template v-if="quote">
+      <header class="head">
+        <div class="head__main" :class="tone">
+          <b class="last">{{ priceNow }}</b>
+          <span class="chg">
+            {{ quote.last > 0 ? `${signed(quote.chg)} · ${quote.pctChg >= 0 ? '+' : ''}${quote.pctChg.toFixed(2)}%` : '' }}
+          </span>
+        </div>
+        <div class="head__meta">
+          <span v-for="b in statusBadges" :key="b.text"><NtBadge :tone="b.badge">{{ b.text }}</NtBadge></span>
+          <NtBadge v-if="!liveNow" tone="warn">非实时</NtBadge>
+          <span class="asof">{{ quote.asOf ? clock(quote.asOf) : '时间未知' }}<template v-if="quote.source"> · {{ quote.source === 'snap' ? '盘中快照' : '日线回退' }}</template></span>
+        </div>
+      </header>
+
+      <section class="book nt-panel">
+        <h2 class="nt-panel__title">五档盘口</h2>
+        <div v-if="quote.bid.length || quote.ask.length" class="ladder">
+          <div class="ladder__col">
+            <p v-for="(l, i) in [...quote.ask].reverse()" :key="`a${i}`" class="level down">
+              <span class="side">卖{{ quote.ask.length - i }}</span>
+              <b>{{ price(l.price) }}</b>
+              <span class="vol">{{ compactAmount(l.volume) }}</span>
+            </p>
+          </div>
+          <div class="ladder__sep" />
+          <div class="ladder__col">
+            <p v-for="(l, i) in quote.bid" :key="`b${i}`" class="level up">
+              <span class="side">买{{ i + 1 }}</span>
+              <b>{{ price(l.price) }}</b>
+              <span class="vol">{{ compactAmount(l.volume) }}</span>
+            </p>
+          </div>
+        </div>
+        <p v-else class="nt-empty">当前数据源没有盘口（{{ quote.source === 'snap' ? '盘口缺失' : '快照不可用，按日线回退' }}）。</p>
+      </section>
+
+      <section class="grid nt-panel">
+        <h2 class="nt-panel__title">概况</h2>
+        <dl class="pairs">
+          <template v-for="f in fields" :key="f.label">
+            <dt>{{ f.label }}</dt>
+            <dd :class="{ miss: f.value === '未知' }">{{ f.value }}</dd>
+          </template>
+        </dl>
+      </section>
+
+      <section class="nt-panel">
+        <NtTabs
+          v-model="tab"
+          :items="[
+            { value: 'intel', label: '相关情报' },
+            { value: 'flash', label: '快讯' },
+          ]"
+        />
+        <div v-if="tab === 'intel'">
+          <p v-if="!news.length" class="nt-empty">{{ newsReady ? '没有相关消息。' : '读取中……' }}</p>
+          <ul v-else class="news">
+            <li v-for="item in news" :key="item.id || item.time + item.title" @click="openIntel(item)">
+              <b>{{ clock(item.time) }}</b>
+              <span>{{ item.title }}</span>
+            </li>
+          </ul>
+          <NtButton size="sm" variant="ghost" @click="openIntel()">打开情报面板</NtButton>
+        </div>
+        <p v-else class="nt-empty">逐笔与异动流：P1 待接入通达信采集通道（无数据源，不造假）。</p>
+      </section>
+    </template>
+  </div>
+</template>
+
+<style scoped>
+.qs {
+  font-size: 12.5px;
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--nt-bg-1);
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-m);
+}
+
+.head__main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.last {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.chg {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.head__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.asof {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--nt-text-3);
+}
+
+.book,
+.grid {
+  margin-bottom: 10px;
+}
+
+.ladder__col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ladder__sep {
+  border-top: 1px dashed var(--nt-border-1);
+  margin: 6px 0;
+}
+
+.level {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.level .side {
+  width: 3em;
+  flex: none;
+  font-size: 11px;
+  color: var(--nt-text-3);
+}
+
+.level b {
+  font-weight: 600;
+}
+
+.level .vol {
+  margin-left: auto;
+  color: var(--nt-text-2);
+  font-size: 11.5px;
+}
+
+.pairs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 18px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.pairs dt {
+  color: var(--nt-text-3);
+}
+
+.pairs dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--nt-text-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pairs dd.miss {
+  color: var(--nt-text-3);
+}
+
+.news {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.news li {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.news li:hover span {
+  color: var(--nt-text-1);
+}
+
+.news b {
+  flex: none;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--nt-text-3);
+}
+</style>

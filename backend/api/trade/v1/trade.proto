@@ -182,7 +182,7 @@ message ChannelStatus {
   string channel = 1;
   // idle | connected | degraded | down
   string status = 2;
-  // RFC3339 UTC；初始 idle 取进程启动时刻（brokerif.NewTracker 口径），仅防御性零值为空串。
+  // RFC3339；零值（从未迁移）为空串。
   string since = 3;
 }
 

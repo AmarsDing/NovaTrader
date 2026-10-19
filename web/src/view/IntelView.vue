@@ -7,10 +7,13 @@ import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { clock, messageOf, pctText, pnlClass } from '@/utils/format'
+import { useSymbolStore } from '@/stores/symbol'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
 
 const symbol = ref('')
+/** QB 参数直达时同步全局当前证券（§8 恒随），手工查询留在面板内不写。 */
+const symbolStore = useSymbolStore()
 const items = ref<IntelItem[]>([])
 const words = ref<HotWord[]>([])
 const sectors = ref<SectorRow[]>([])
@@ -79,6 +82,7 @@ function applyPanelParams(params: Record<string, unknown>) {
   const code = typeof params.symbol === 'string' ? params.symbol : ''
   if (!code) return
   highlight.value = typeof params.highlight === 'string' ? params.highlight : ''
+  symbolStore.setSymbol(code, 'QB')
   void loadNews(code)
 }
 

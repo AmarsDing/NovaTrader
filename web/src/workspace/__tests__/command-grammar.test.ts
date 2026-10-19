@@ -1,6 +1,6 @@
 /**
  * G2 助记符语法单测：解析、归一、参数状态机。
- * 用真实注册表（21 面板）驱动，助记符表变更时此套件同步锁定行为。
+ * 用真实注册表（22 面板）驱动，助记符表变更时此套件同步锁定行为。
  */
 import { describe, expect, it } from 'vitest'
 import {
@@ -124,9 +124,9 @@ describe('resolveMnemonic 状态机', () => {
 })
 
 describe('functionIndex 功能卡', () => {
-  it('覆盖全部 21 面板且字段齐备', () => {
+  it('覆盖全部面板且字段齐备（数量与 registry 同步演进）', () => {
     const cards = functionIndex()
-    expect(cards).toHaveLength(21)
+    expect(cards).toHaveLength(21 + 2)
     for (const c of cards) {
       expect(c.prefix).toMatch(/^[A-Z0-9]{2,4}$/)
       expect(c.title).toBeTruthy()

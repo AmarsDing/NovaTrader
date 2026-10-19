@@ -382,3 +382,88 @@ export async function getKlineGaps(days = 5): Promise<KlineGapsSummary> {
     asOf: pick<string>(raw, 'asOf', 'as_of') || '',
   }
 }
+
+/* ---------- 视频落地 P0：单券快照（GetQuote，只读） ---------- */
+
+export interface QuoteLevel {
+  price: number
+  volume: number
+}
+
+/** 单券快照：数值 0 与空串一律按「未知」处理（proto 零值不猜），source/stale/found 是口径依据。 */
+export interface QuoteView {
+  symbol: string
+  name: string
+  market: string
+  tradeStatus: string
+  last: number
+  chg: number
+  pctChg: number
+  open: number
+  high: number
+  low: number
+  prevClose: number
+  volume: number
+  amount: number
+  turnoverRate: number
+  amplitude: number
+  bid: QuoteLevel[]
+  ask: QuoteLevel[]
+  peTtm: number
+  pb: number
+  circMv: number
+  totalMv: number
+  limitUp: number
+  limitDown: number
+  noLimit: boolean
+  /** snap=盘中快照；1d=最近日线回退；空=无数据。 */
+  source: string
+  asOf: string
+  stale: boolean
+  found: boolean
+}
+
+function quoteLevels(list: QuoteLevel[]): QuoteLevel[] {
+  return list.filter((l) => l.price > 0)
+}
+
+export async function getQuote(symbol: string): Promise<QuoteView> {
+  const data = await request('/api/market/quote', { query: { symbol } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    symbol: pick<string>(raw, 'symbol') || symbol,
+    name: pick<string>(raw, 'name') || '',
+    market: pick<string>(raw, 'market') || '',
+    tradeStatus: pick<string>(raw, 'tradeStatus', 'trade_status') || '',
+    last: num(pick(raw, 'last')) ?? 0,
+    chg: num(pick(raw, 'chg')) ?? 0,
+    pctChg: num(pick(raw, 'pctChg', 'pct_chg')) ?? 0,
+    open: num(pick(raw, 'open')) ?? 0,
+    high: num(pick(raw, 'high')) ?? 0,
+    low: num(pick(raw, 'low')) ?? 0,
+    prevClose: num(pick(raw, 'prevClose', 'prev_close')) ?? 0,
+    volume: num(pick(raw, 'volume')) ?? 0,
+    amount: num(pick(raw, 'amount')) ?? 0,
+    turnoverRate: num(pick(raw, 'turnoverRate', 'turnover_rate')) ?? 0,
+    amplitude: num(pick(raw, 'amplitude')) ?? 0,
+    bid: quoteLevels(asList<RawRecord>(raw, 'bid').map((l) => ({
+      price: num(pick(l, 'price')) ?? 0,
+      volume: num(pick(l, 'volume')) ?? 0,
+    }))),
+    ask: quoteLevels(asList<RawRecord>(raw, 'ask').map((l) => ({
+      price: num(pick(l, 'price')) ?? 0,
+      volume: num(pick(l, 'volume')) ?? 0,
+    }))),
+    peTtm: num(pick(raw, 'peTtm', 'pe_ttm')) ?? 0,
+    pb: num(pick(raw, 'pb')) ?? 0,
+    circMv: num(pick(raw, 'circMv', 'circ_mv')) ?? 0,
+    totalMv: num(pick(raw, 'totalMv', 'total_mv')) ?? 0,
+    limitUp: num(pick(raw, 'limitUpPrice', 'limit_up_price')) ?? 0,
+    limitDown: num(pick(raw, 'limitDownPrice', 'limit_down_price')) ?? 0,
+    noLimit: !!(raw.noLimit ?? raw.no_limit),
+    source: pick<string>(raw, 'source') || '',
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+    stale: !!raw.stale,
+    found: !!raw.found,
+  }
+}

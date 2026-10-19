@@ -42,6 +42,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
   },
   {
     "aliases": [],
+    "argHint": "buy|sell",
+    "argKind": "side",
+    "description": "底条恒随的轻量下单：试算 → 提交两段拦截，当前委托/持仓一屏看；全量订单中心走 JY。",
+    "id": "trade-bar",
+    "prefix": "XD",
+    "title": "下单条",
+  },
+  {
+    "aliases": [],
     "argHint": "600519",
     "argKind": "ticker",
     "description": "个股消息面聚合：公告、新闻与情绪线索，QB 600519 直达个股。",
@@ -84,6 +93,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
     "id": "limit-ladder",
     "prefix": "DB",
     "title": "涨停梯队",
+  },
+  {
+    "aliases": [],
+    "argHint": "600519",
+    "argKind": "ticker",
+    "description": "单券快照侧栏：报价/五档/概况恒随当前证券，QL 600519 直达。",
+    "id": "quote-sidebar",
+    "prefix": "QL",
+    "title": "行情侧栏",
   },
   {
     "aliases": [],
@@ -296,6 +314,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "id": "intel",
     "title": "情报",
   },
+  "QL": {
+    "aliases": [],
+    "arg": "ticker(600519)",
+    "id": "quote-sidebar",
+    "title": "行情侧栏",
+  },
   "SJ": {
     "aliases": [],
     "arg": "none",
@@ -307,6 +331,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "arg": "none",
     "id": "notify-center",
     "title": "通知中心",
+  },
+  "XD": {
+    "aliases": [],
+    "arg": "side(buy|sell)",
+    "id": "trade-bar",
+    "title": "下单条",
   },
   "XG": {
     "aliases": [],

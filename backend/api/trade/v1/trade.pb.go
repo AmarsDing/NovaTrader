@@ -1134,7 +1134,7 @@ type ChannelStatus struct {
 	Channel string `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
 	// idle | connected | degraded | down
 	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	// RFC3339 UTC；初始 idle 取进程启动时刻（brokerif.NewTracker 口径），仅防御性零值为空串。
+	// RFC3339；零值（从未迁移）为空串。
 	Since         string `protobuf:"bytes,3,opt,name=since,proto3" json:"since,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

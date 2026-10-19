@@ -12,6 +12,7 @@ import NtKline, { type KlineLevel, type KlineMarker } from '@/viz/NtKline.vue'
 import { PALETTE } from '@/theme/tokens'
 import { clock, compactAmount, messageOf, num, pick, pnlClass, price } from '@/utils/format'
 import { router } from '@/router'
+import { useSymbolStore } from '@/stores/symbol'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
 import { isLive, onPush, onResync, subscribe, type MarketSnapshotMeta, type WsPushMessage } from '@/ws/hub'
@@ -22,6 +23,11 @@ import { createPageRefresh } from './page-refresh'
 /** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转），路由 query 作兼容兜底。 */
 const panelParams = consumePanelParams('market')
 const symbol = ref(String(panelParams?.symbol ?? router.currentRoute.value.query.symbol ?? ''))
+
+/** 全局当前证券存根（视频设计指引 §8「切 symbol 不换布局」单一事实源）：
+ *  本页是 market 发起方之一（手工输入/面板参数/路由 query），写入 source='market'；
+ *  他源（QB/QL/信号票等）切的券经下方 store watch 回流，布局恒不动、只换数据。 */
+const symbolStore = useSymbolStore()
 const freq = ref('1d')
 const account = ref('SIM')
 const bars = ref<Bar[]>([])
@@ -274,6 +280,7 @@ watch(
   () => router.currentRoute.value.query.symbol,
   (value) => {
     if (typeof value === 'string' && value && value !== symbol.value) {
+      symbolStore.setSymbol(value, 'market')
       symbol.value = value
       void reloadWithRefit()
     }
@@ -308,9 +315,28 @@ function resubMarket() {
 const offPanelParams = onPanelParams('market', (params) => {
   const code = typeof params.symbol === 'string' ? params.symbol.trim() : ''
   if (!code) return
+  symbolStore.setSymbol(code, 'market')
   symbol.value = code
   void reloadWithRefit()
 })
+
+/** 手工换代码：先写全局存根再全量重载并复位视口；下方 store watch 对 source='market' 短路，
+ *  这里必须显式重载而不是指望 watch 回路。同值重读也走此口（存根同值短路、重载恒执行）。 */
+function applyManualSymbol(): void {
+  const code = symbol.value.trim()
+  if (!code) return
+  symbolStore.setSymbol(code, 'market')
+  void reloadWithRefit()
+}
+
+/** 他源切券回流（QB/QL/信号票等）：同值与本页自写（source='market'）不回灌，布局恒不动。 */
+watch(() => symbolStore.code, (next) => {
+  if (!next || symbolStore.source === 'market') return
+  if (next !== symbol.value.trim()) {
+    symbol.value = next
+    void reloadWithRefit()
+  }
+}, { flush: 'sync' })
 
 /** 最近一轮快照批次信息（market 主题推的 SnapshotMeta），null = 还没收到过推送。 */
 const snapshot = ref<MarketSnapshotMeta | null>(null)
@@ -357,6 +383,9 @@ function onPushMessage(msg: WsPushMessage) {
 function onVisible() { if (!document.hidden && symbol.value.trim()) void load() }
 
 onMounted(() => {
+  // 存根对齐：本页带参数则以本页为准回写；无参数且别处已选好证券则沿用全局当前券。
+  if (symbol.value) symbolStore.setSymbol(symbol.value, 'market')
+  else if (symbolStore.code) symbol.value = symbolStore.code
   if (symbol.value) void load()
   offResync = onResync(['market'], async () => {
     if (!symbol.value.trim()) return
@@ -396,14 +425,14 @@ onBeforeUnmount(() => {
         <p class="nt-note">K 线、均线、MACD / RSI，以及消息和成交标记。</p>
       </div>
     </header>
-    <form class="nt-form" @submit.prevent="reloadWithRefit">
+    <form class="nt-form" @submit.prevent="applyManualSymbol">
       <label class="grow">
         <span>代码</span>
         <NtInput v-model="symbol" placeholder="600519.SH" />
       </label>
       <NtSelect v-model="freq" label="周期" :options="freqOptions" />
       <NtSelect v-model="account" label="成交账户" :options="accountOptions" />
-      <NtButton variant="primary" :loading="loading" @click="reloadWithRefit">读取</NtButton>
+      <NtButton variant="primary" :loading="loading" @click="applyManualSymbol">读取</NtButton>
     </form>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <p v-else-if="snapshotLine" class="nt-note snap-line">行情推送：{{ snapshotLine }}</p>

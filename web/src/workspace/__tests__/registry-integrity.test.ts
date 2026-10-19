@@ -1,5 +1,5 @@
 /**
- * G2 注册表完整性锁定：21 面板助记符的结构性约束 + 快照。
+ * G2 注册表完整性锁定：面板助记符的结构性约束 + 快照。
  * - 每个面板必须挂 shortcut（新增面板漏挂即刻红）；
  * - prefix/aliases 全局唯一（大小写不敏感）——命令面板精确匹配的根基；
  * - 助记符表与功能卡快照：任何表变更必须显式更新快照进评审。
@@ -37,7 +37,7 @@ describe('panel-registry shortcut 完整性', () => {
   })
 
   it('面板数量与 popout 白名单不自相矛盾', () => {
-    expect(listPanels()).toHaveLength(21)
+    expect(listPanels()).toHaveLength(21 + 2)
   })
 })
 

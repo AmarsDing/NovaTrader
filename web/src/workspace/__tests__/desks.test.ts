@@ -29,9 +29,11 @@ describe('桌定义完整性', () => {
     expect(market?.params).toEqual({ symbol: '000001' })
   })
 
-  it('打板桌含交易面板且为 docked 编排（桌不开 popout）', () => {
+  it('打板桌底条为下单条、右列挂行情侧栏（贸易动线落位；桌不开 popout）', () => {
     const trading = getDesk('trading')
-    expect(trading?.panels.map((p) => p.id)).toContain('trade')
+    const ids = trading?.panels.map((p) => p.id)
+    expect(ids).toContain('trade-bar')
+    expect(ids).toContain('quote-sidebar')
     for (const desk of DESKS) {
       for (const p of desk.panels) {
         expect(['right', 'below', 'within', undefined]).toContain(p.direction)

@@ -32,6 +32,12 @@ const riskHint = computed(() => risk.checkedAt ? `风控最近读取 ${clock(new
 const riskCurrent = computed(() => risk.ready && isLive())
 const killText = computed(() => riskCurrent.value ? (risk.killActive ? '已触发' : '未触发') :
   risk.killActive ? '待核对 · 上次已触发' : '状态待核对')
+/** 授权级别徽标（N9 阶梯）：SIM 撮合=青；LIVE 逐单确认=琥珀；LIVE 未验收=红且禁提交。 */
+const authzText = computed(() => account.book === 'LIVE' ? 'LIVE · 未授权' : 'SIM 撮合')
+const authzClass = computed(() => account.book === 'LIVE' ? 'danger' : 'accent')
+const authzHint = computed(() => account.book === 'LIVE'
+  ? '实盘执行通道尚未验收，提交保持禁用；切换到 SIM 可继续模拟'
+  : '模拟账本撮合授权在位；LIVE 钥匙另行验收（点击开下单条）')
 /** 主题健康依赖 hub 的内部计数器，跟着秒针与最后收包时刻重算。 */
 const topics = computed(() => {
   void link.lastAt
@@ -82,6 +88,13 @@ onBeforeUnmount(() => {
     <div class="cell book" :class="{ live: account.book === 'LIVE', pending: !account.accountOk || !isLive() }" :title="accountHint">
       {{ account.book === 'LIVE' ? 'LIVE 实盘' : 'SIM 模拟' }} · {{ account.accountOk && isLive() ? '账户已核对' : '账户待核对' }}
     </div>
+    <button
+      type="button"
+      class="cell authz"
+      :class="authzClass"
+      :title="authzHint"
+      @click="getWorkbench()?.openPanel('trade-bar')"
+    >授权 {{ authzText }}</button>
     <div class="cell" :class="{ pending: !riskCurrent }" :title="riskHint">模式 {{ riskCurrent ? risk.mode : '待核对' }}</div>
     <div class="cell" :class="{ warn: risk.killActive, pending: !riskCurrent }" :title="riskHint">Kill Switch {{ killText }}</div>
     <button type="button" class="cell bell" :class="{ has: notify.unread > 0 }" @click="openNotify">
@@ -142,6 +155,29 @@ onBeforeUnmount(() => {
 
 .book.live {
   color: var(--nt-warn);
+}
+
+.authz {
+  padding: 2px 7px;
+  border: 1px solid var(--nt-glass-border);
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-data-raised);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.authz:hover {
+  text-decoration: none;
+  border-color: var(--nt-accent);
+}
+
+.authz.accent {
+  color: var(--nt-accent);
+}
+
+.authz.danger {
+  color: var(--nt-danger);
 }
 
 .bell {
