@@ -92,19 +92,25 @@ func NewObserver(tr *Tracker, now func() time.Time) *Observer {
 
 // Ok 记录一次通道成功。Success 是最新的存活证据，无条件迁回 connected；
 // 恢复只能从 down 经 connected，边表已保证。
+//
+// 计数清零与迁移在同一把 o.mu 内完成：与 Fail 的「锁内决策+应用」互斥，
+// 每条记账整体线性化——不存在「Ok 已清连败、并发 Fail 拿旧决策照迁」的窗
+// （旧窗：Transition(Connected) 幂等空转不改 CAS 前提，旧 Fail 决策仍能落地）。
+// 迁移真正发生时监听回调在 o.mu 内同步运行（Tracker 锁已先放），回调耗时
+// 只串行本 Observer 的后续记账，不反压 Tracker 本身。
 func (o *Observer) Ok() {
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.fails = 0
-	o.mu.Unlock()
 	_ = o.tr.Transition(Connected, o.now())
 }
 
 // Fail 记录一次通道失败：请求层面的任何错误（连接失败、被拒、回包身份不符）都算。
-// 决策（连败计数 + 当前状态读取）在同一把锁内取出并整体应用——决出的迁移以
-// 决策时刻的状态为前提条件（CAS）：若 Ok 或并发 Fail 先把状态迁走，这条过期
-// 决策直接作废，不会拿「已被清零的旧连败」把刚恢复的通道再推回 down。
+// 决策（连败计数 + 当前状态读取）与应用在同一把 o.mu 内整体完成，与 Ok 互斥；
+// TransitionIf 的 CAS 继续兜底：Observer 之外的写方若动了 Tracker，过期决策照样作废。
 func (o *Observer) Fail() {
 	o.mu.Lock()
+	defer o.mu.Unlock()
 	o.fails++
 	fails := o.fails
 	from, _ := o.tr.Current()
@@ -119,7 +125,6 @@ func (o *Observer) Fail() {
 	default:
 		to = Degraded
 	}
-	o.mu.Unlock()
 	if to == "" {
 		return // 无决策（down 保持 / idle 只累计），不打扰 Tracker。
 	}
