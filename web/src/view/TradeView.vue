@@ -11,11 +11,13 @@ import { onPush, onResync } from '@/ws/hub'
 import { createPageRefresh } from './page-refresh'
 import {
   cancelOrder,
+  getChannelStatus,
   getOrder,
   listFills,
   listOrders,
   listPositions,
   placeOrder,
+  type ChannelStatus,
   type Fill,
   type Order,
   type Position,
@@ -58,6 +60,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const accountSnapshot = ref<AccountSnapshot | null>(null)
 const riskSnapshot = ref<RiskStateView | null>(null)
+// G7 执行通道状态（sim）：读取失败或清单为空一律按「状态未知」呈现，绝不沿用上一次的值虚报。
+const channelStatus = ref<ChannelStatus | null>(null)
 const positionsOk = ref(false)
 const ordersOk = ref(false)
 const fillsOk = ref(false)
@@ -269,6 +273,19 @@ const positionRef = computed(() => {
 /** 试算结果里未放行的规则（展示明细）。 */
 const previewFailed = computed(() => (preview.value?.hits ?? []).filter((hit) => !hit.pass))
 
+// 模拟通道徽标（G7）：信息性提示，不接管提交闸门（闸门是风控试算）。
+const channelPill = computed(() => {
+  const c = channelStatus.value
+  if (!c) return { kind: 'unknown', text: '模拟通道：状态未知', title: '通道状态读取失败或服务端未跟踪' }
+  const since = c.since ? ` · 自 ${c.since}` : ''
+  switch (c.status) {
+    case 'connected': return { kind: 'ok', text: '模拟通道：正常', title: `撮合账本心跳正常${since}` }
+    case 'degraded': return { kind: 'warn', text: '模拟通道：降级', title: `快照回路连续失败，恢复中${since}` }
+    case 'down': return { kind: 'danger', text: '模拟通道：断开', title: `快照回路持续失败${since}` }
+    default: return { kind: 'dim', text: '模拟通道：未连接', title: `引擎尚未完成首次心跳${since}` }
+  }
+})
+
 function previewBodyFor(clientOrderId: string, symbol: string, side: 'buy' | 'sell', px: number, vol: number): PreviewBody {
   return { client_order_id: clientOrderId, account_type: account.value, symbol, side, price: px, volume: vol, source: 'manual', operator: auth.operatorName }
 }
@@ -332,17 +349,20 @@ async function readPage(key: string): Promise<boolean> {
   loading.value = true
   error.value = ''
   const currentAccount = getAccount(book)
-  const [pos, ord, fill, acc, riskRes] = await Promise.allSettled([
+  const [pos, ord, fill, acc, riskRes, chan] = await Promise.allSettled([
     listPositions(book),
     listOrders(book),
     listFills(book),
     currentAccount,
     getRiskState(),
+    getChannelStatus(),
   ])
   if (disposed || key !== refreshKey() || sequence !== readSequence || account.value !== book) return false
   positionsOk.value = pos.status === 'fulfilled'
   ordersOk.value = ord.status === 'fulfilled'
   fillsOk.value = fill.status === 'fulfilled'
+  const channels = chan.status === 'fulfilled' ? chan.value : []
+  channelStatus.value = channels.find((c) => c.channel === 'sim') ?? null
   positions.value = pos.status === 'fulfilled' ? pos.value : []
   orders.value = ord.status === 'fulfilled' ? ord.value : []
   fills.value = fill.status === 'fulfilled' ? fill.value : []
@@ -626,6 +646,7 @@ onBeforeUnmount(() => {
         <p class="nt-note">
           B 买入 · S 卖出 · Shift+K 急停。实盘单先确认。股数按 100 股一手。
           <span v-if="riskStore.buysToday != null" class="head-meta">今日买入 {{ riskStore.buysToday }}/5</span>
+          <span class="channel-pill" :class="channelPill.kind" :title="channelPill.title">{{ channelPill.text }}</span>
         </p>
       </div>
       <NtSelect v-model="account" label="账户" :options="accountOptions" />
@@ -756,6 +777,21 @@ h2 {
   font-variant-numeric: tabular-nums;
   color: var(--nt-text-2);
 }
+
+.channel-pill {
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--nt-border-1);
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.channel-pill.ok { color: var(--nt-success); border-color: var(--nt-success); }
+.channel-pill.warn { color: var(--nt-warn); border-color: var(--nt-warn); }
+.channel-pill.danger { color: var(--nt-danger); border-color: var(--nt-danger); }
+.channel-pill.dim, .channel-pill.unknown { color: var(--nt-text-3); border-color: var(--nt-border-1); }
 
 .sym {
   padding: 0;

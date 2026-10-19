@@ -7,14 +7,14 @@ import NtTable from '@/ui/NtTable.vue'
 
 const mock = vi.hoisted(() => ({
   account: vi.fn(), positions: vi.fn(), orders: vi.fn(), fills: vi.fn(), risk: vi.fn(),
-  place: vi.fn(), getOrder: vi.fn(), signal: vi.fn(), confirm: vi.fn(), preview: vi.fn(),
+  place: vi.fn(), getOrder: vi.fn(), signal: vi.fn(), confirm: vi.fn(), preview: vi.fn(), channel: vi.fn(),
   accountStore: { book: 'SIM', cash: 100_000, refresh: vi.fn() },
   params: null as null | ((params: Record<string, unknown>) => void),
   push: null as null | ((message: { topic: string; data?: unknown }) => void | Promise<void>),
 }))
 vi.mock('@/api/trade', () => ({
   getAccount: mock.account, listPositions: mock.positions, listOrders: mock.orders, listFills: mock.fills,
-  placeOrder: mock.place, getOrder: mock.getOrder, cancelOrder: vi.fn(),
+  placeOrder: mock.place, getOrder: mock.getOrder, cancelOrder: vi.fn(), getChannelStatus: mock.channel,
 }))
 vi.mock('@/api/risk', () => ({ getRiskState: mock.risk, previewOrder: mock.preview }))
 vi.mock('@/api/signals', () => ({ getSignal: mock.signal }))
@@ -68,6 +68,8 @@ beforeEach(() => {
   mock.signal.mockResolvedValue({ id: '42', strategyVersionId: '9', book: 'paper', symbol: '600519.SH', side: 'buy', status: 'approved', validUntil: signalParams.validUntil, entryLow: 9.9, entryHigh: 10.1 })
   mock.place.mockImplementation(async (draft: { clientOrderId: string }) => ({ id: draft.clientOrderId, status: 'submitted', reason: '', ...draft }))
   mock.confirm.mockResolvedValue('ok')
+  // G7 通道状态默认正常；各用例按需要覆盖为降级/读取失败。
+  mock.channel.mockResolvedValue([{ channel: 'sim', status: 'connected', since: '2026-10-14T09:30:00+08:00' }])
 })
 afterEach(() => {
   wrapper?.unmount()
@@ -308,5 +310,28 @@ describe('trade view contracts', () => {
     await flushPromises()
     expect(mock.place).not.toHaveBeenCalled()
     expect(wrapper!.text()).toContain('此信号已有关联委托 original')
+  })
+
+  it('模拟通道徽标呈现服务端状态', async () => {
+    await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：正常')
+    expect(pill.classes()).toContain('ok')
+  })
+
+  it('模拟通道降级时徽标警示（信息性，不接管提交闸门）', async () => {
+    mock.channel.mockResolvedValue([{ channel: 'sim', status: 'degraded', since: '2026-10-14T09:59:00+08:00' }])
+    await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：降级')
+    expect(pill.classes()).toContain('warn')
+  })
+
+  it('通道状态读取失败显示状态未知，不沿用旧值虚报', async () => {
+    mock.channel.mockRejectedValue(new Error('boom'))
+    await mountView()
+    const pill = wrapper!.find('.channel-pill')
+    expect(pill.text()).toBe('模拟通道：状态未知')
+    expect(pill.classes()).toContain('unknown')
   })
 })

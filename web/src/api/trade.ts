@@ -52,6 +52,23 @@ export async function listFills(account: string): Promise<Fill[]> {
   }))
 }
 
+export interface ChannelStatus {
+  channel: string
+  status: string
+  since: string
+}
+
+// G7 执行通道状态读面。服务端只回真实跟踪的通道：今日只有 sim；
+// 空清单 = 服务端未跟踪任何通道（与「读取失败」一样按状态未知呈现）。
+export async function getChannelStatus(): Promise<ChannelStatus[]> {
+  const data = await request('/api/trade/channel/status')
+  return asList(data, 'channels').map((raw) => ({
+    channel: pick<string>(raw, 'channel') || '',
+    status: pick<string>(raw, 'status') || '',
+    since: pick<string>(raw, 'since') || '',
+  }))
+}
+
 export async function placeOrder(body: OrderDraft): Promise<Order> {
   return normalizeOrder(await request('/api/trade/orders', { method: 'POST', json: body }))
 }
