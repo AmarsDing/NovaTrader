@@ -1,0 +1,50 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`HOTKEY_ROWS 全局热键呈现副本 > 清单快照（漂移必须显式评审同步） 1`] = `
+[
+  {
+    "action": "开交易面板并预填买 / 卖",
+    "keys": "B / S",
+  },
+  {
+    "action": "开交易面板",
+    "keys": "Shift+T",
+  },
+  {
+    "action": "开 Kill Switch 对话框（需二次确认）",
+    "keys": "Shift+K",
+  },
+  {
+    "action": "开涨停梯队",
+    "keys": "Shift+M",
+  },
+  {
+    "action": "开风控链",
+    "keys": "Shift+R",
+  },
+  {
+    "action": "切换交易时段桌（盘前/竞价/打板/复盘）",
+    "keys": "Shift+1..4",
+  },
+  {
+    "action": "聚焦组内第 N 个面板",
+    "keys": "1..9",
+  },
+  {
+    "action": "命令面板（面板态）",
+    "keys": "Ctrl+K",
+  },
+  {
+    "action": "命令面板（命令态）",
+    "keys": "Ctrl+Shift+P / Ctrl+Shift+K",
+  },
+  {
+    "action": "布局撤销 / 重做",
+    "keys": "Ctrl+Z / Ctrl+Shift+Z",
+  },
+  {
+    "action": "本帮助浮层",
+    "keys": "F1",
+  },
+]
+`;

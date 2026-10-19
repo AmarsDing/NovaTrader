@@ -13,6 +13,7 @@ import { clock } from '@/utils/format'
 import { isLive, link } from '@/ws/hub'
 import CommandBar from './CommandBar.vue'
 import CommandPalette from './CommandPalette.vue'
+import FunctionIndexOverlay from './FunctionIndexOverlay.vue'
 import StatusBar from './StatusBar.vue'
 import DockHost from './DockHost.vue'
 import AlertCenter from './AlertCenter.vue'
@@ -29,6 +30,7 @@ const settings = useSettingsStore()
 
 const dock = ref<InstanceType<typeof DockHost> | null>(null)
 const palette = ref<InstanceType<typeof CommandPalette> | null>(null)
+const help = ref<InstanceType<typeof FunctionIndexOverlay> | null>(null)
 const configOpen = ref(false)
 
 const banner = computed(() => {
@@ -51,7 +53,8 @@ function openConfig() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && configOpen.value) {
+  // Esc 先由 useOverlay 栈消费（栈非空即 preventDefault）——这里只收拾未消费时的 config 层，一按一层。
+  if (event.key === 'Escape' && configOpen.value && !event.defaultPrevented) {
     configOpen.value = false
     return
   }
@@ -117,6 +120,7 @@ onMounted(() => {
   stopHotkeys = startHotkeys({
     dock: () => dock.value?.getApi() ?? null,
     openKillSwitch: () => window.dispatchEvent(new CustomEvent('nt:kill-switch')),
+    openHelp: () => help.value?.open(),
   })
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('nt:open-config', openConfig)
@@ -142,6 +146,7 @@ watch(() => route.fullPath, consumeDeepLink)
     <StatusBar />
     <ConfirmSheet />
     <CommandPalette ref="palette" />
+    <FunctionIndexOverlay ref="help" />
     <div v-if="configOpen" class="config-mask" @mousedown.self="configOpen = false">
       <ConfigCenter overlay @close="configOpen = false" />
     </div>

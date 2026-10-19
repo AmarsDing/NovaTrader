@@ -5,8 +5,10 @@
  * - Shift+K：打开 Kill Switch 对话框（只读焦点，触发仍要二次确认）；
  * - Shift+M：打开涨停梯队；Shift+R：打开风控链；
  * - Shift+1..4：切换 G6 交易时段桌（event.code 判定，与键盘布局无关）；
- * - 1..9：切换 dock 内第 N 个面板（按当前激活组标签顺序）。
+ * - 1..9：切换 dock 内第 N 个面板（按当前激活组标签顺序）；
+ * - F1：打开 G2 帮助浮层（preventDefault 拦浏览器帮助）。
  * Ctrl 组合键在 WorkbenchView（Ctrl+K / Ctrl+Shift+P / Ctrl+Shift+K / Ctrl+Z），这里只管裸键与 Shift 组合。
+ * ⚠ 本表与 `function-index.ts` 的 HOTKEY_ROWS 是同一清单的两份——改热键两边同步，快照测试守护。
  */
 import { matchDeskHotkey } from './desks'
 import { getWorkbench } from './inject'
@@ -16,6 +18,8 @@ import type { DockviewApi } from 'dockview-core'
 export interface HotkeyOptions {
   dock: () => DockviewApi | null
   openKillSwitch: () => void
+  /** F1：打开功能卡帮助浮层（G2）。 */
+  openHelp: () => void
 }
 
 export function isEditable(target: EventTarget | null): boolean {
@@ -45,6 +49,11 @@ export function startHotkeys(opts: HotkeyOptions): () => void {
     if (isEditable(event.target)) return
     const key = event.key
 
+    if (!event.shiftKey && key === 'F1') {
+      event.preventDefault()
+      opts.openHelp()
+      return
+    }
     if (!event.shiftKey && (key === 'b' || key === 'B')) {
       event.preventDefault()
       orderTicket('buy')
