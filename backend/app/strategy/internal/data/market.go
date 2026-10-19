@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"server/app/strategy/internal/biz"
@@ -33,12 +34,64 @@ const (
 // marketSource 用库里的日线、Redis 最新快照、情绪截面和情报拼出 rules.Snapshot。
 // 只读 asOf 之前的数据；asOf 不是今天时不读 Redis，避免把现在的价格混进过去的快照。
 type marketSource struct {
-	d   *Data
-	log *log.Helper
+	d        *Data
+	log      *log.Helper
+	barCache dayBarsCache
 }
 
 func NewMarketSource(d *Data, logger log.Logger) biz.MarketSource {
 	return &marketSource{d: d, log: log.NewHelper(log.With(logger, "module", "strategy/market"))}
+}
+
+// dayBarsCache 按交易日缓存全市场日线。已收盘日线盘内视为不可变：盘后自动采集
+// （16:00 日线/16:20 复权）只写当日、查询窗口不含当日；人工 Backfill/Collect RPC
+// 盘中同样可能改写更早日线，这类纠正也要换天才被本键感知——陈腐窗口最长一个
+// 交易日，重启 strategy 进程即刻失效，口径与取舍记录见 M06 开发进度。
+// 最多留两个交易日（今天/昨天），扫描热路径每天只查一次库。
+// 读取一律浅拷贝交付 map——pkg/rules 全部消费方只读 Bars 已逐文件核实，
+// 切片本体共享不复制；钉死在 market_cache_test.go。
+// 串行化约定：当前所有触缓存路径都在 biz 的 scanMu 下（scan/exit 扫描）；
+// 未命中路径 put 后不回读缓存（直接克隆手上的 map），key 即便被第三日并发
+// put 挤出 keep-2 窗口也不会把 nil 静默交付成空仓。
+type dayBarsCache struct {
+	mu   sync.Mutex
+	days []int64 // 旧 → 新，最多 2 个
+	bars map[int64]map[string][]rules.Bar
+}
+
+func (c *dayBarsCache) get(day int64) (map[string][]rules.Bar, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	m, ok := c.bars[day]
+	if !ok {
+		return nil, false
+	}
+	return cloneDayBars(m), true
+}
+
+// cloneDayBars 浅拷贝一层 map；深层的 []rules.Bar 按只读合同共享。
+func cloneDayBars(m map[string][]rules.Bar) map[string][]rules.Bar {
+	out := make(map[string][]rules.Bar, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func (c *dayBarsCache) put(day int64, m map[string][]rules.Bar) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.bars == nil {
+		c.bars = map[int64]map[string][]rules.Bar{}
+	}
+	if _, ok := c.bars[day]; !ok {
+		c.days = append(c.days, day)
+		for len(c.days) > 2 {
+			delete(c.bars, c.days[0])
+			c.days = c.days[1:]
+		}
+	}
+	c.bars[day] = m
 }
 
 func dayStart(t time.Time) time.Time {
@@ -110,15 +163,37 @@ func (m *marketSource) build(ctx context.Context, basics []*ent.StockBasic, asOf
 	return out, nil
 }
 
-// dailyBars 取 asOf 当天之前的日线，按复权因子换成以最后一根为基准的前复权价。
+// dailyBars 取 asOf 当天之前的日线。小批量（≤symbolFilter）按代码 IN 查询、每次集合
+// 不同不走缓存；全市场调研（>symbolFilter）省略 IN、结果与代码集无关，按交易日缓存
+// 最多两天——陈腐窗口与失效口径见 dayBarsCache 注释，记录见 M06 开发进度。
 func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.Time) (map[string][]rules.Bar, error) {
 	day := dayStart(asOf)
+	if len(codes) > symbolFilter {
+		key := day.Unix()
+		if cached, ok := m.barCache.get(key); ok {
+			return cached, nil
+		}
+		bars, err := m.queryDailyBars(ctx, day, nil)
+		if err != nil {
+			return nil, err
+		}
+		m.barCache.put(key, bars)
+		// 与命中路径同一份浅拷贝口径交付。不回头 get——put/get 是两次独立加锁，
+		// 若 key 恰被第三日并发 put 挤出 keep-2 窗口，回读会把 nil 静默交付成空仓。
+		return cloneDayBars(bars), nil
+	}
+	return m.queryDailyBars(ctx, day, codes)
+}
+
+// queryDailyBars 查 day 之前的日线并按复权因子换成以最后一根为基准的前复权价。
+// codes 为空（nil）时省略 IN 条件、按时间取全市场。
+func (m *marketSource) queryDailyBars(ctx context.Context, day time.Time, codes []string) (map[string][]rules.Bar, error) {
 	q := m.d.client.MarketData.Query().Where(
 		marketdata.Freq("1d"),
 		marketdata.BarTimeGTE(day.AddDate(0, 0, -historyDays)),
 		marketdata.BarTimeLT(day),
 	)
-	if len(codes) <= symbolFilter {
+	if len(codes) > 0 {
 		q = q.Where(marketdata.SymbolIn(codes...))
 	}
 	rows, err := q.Order(marketdata.BySymbol(), marketdata.ByBarTime()).All(ctx)
