@@ -114,11 +114,11 @@ class VueTabRenderer implements ITabRenderer {
 
   constructor(
     private ctx: AppContext,
-    private name: string,
+    private panelId: string,
   ) {}
 
   init(params: TabPartInitParameters): void {
-    this.host.mount(this.ctx, PanelTab, { title: params.title, name: this.name, api: params.api })
+    this.host.mount(this.ctx, PanelTab, { title: params.title, panelId: this.panelId, api: params.api })
   }
 
   dispose(): void {
@@ -151,7 +151,9 @@ export interface VueRenderers {
 export function createVueRenderers(ctx: AppContext): VueRenderers {
   return {
     createComponent: (options) => new VueContentRenderer(ctx, options.name),
-    createTabComponent: (options) => new VueTabRenderer(ctx, options.name),
+    // tab 的 options.name 是 tabComponent 名（'nt-tab'），面板 id 在 options.id（dockview 以 this.id 调用）；
+    // 白名单/popout 判定必须取后者——传 name 会让 canPopout('nt-tab') 恒 false（⧉ 死按钮）。
+    createTabComponent: (options) => new VueTabRenderer(ctx, options.id),
     createWatermarkComponent: () => new VueWatermarkRenderer(ctx),
   }
 }

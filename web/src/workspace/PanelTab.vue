@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 自定义标签页：标题 + 链路状态点 + 弹窗（白名单内）+ 关闭。关闭走 dockview panel api。 */
+/** 自定义标签页：标题 + 链路状态点 + 弹窗（白名单内，按 panelId 判定）+ 关闭。关闭走 dockview panel api。 */
 import { computed } from 'vue'
 import type { DockviewPanelApi } from 'dockview-core'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
@@ -9,7 +9,7 @@ import { getWorkbench } from './inject'
 
 const props = defineProps<{
   title: string
-  name: string
+  panelId: string
   api: DockviewPanelApi
 }>()
 
@@ -19,10 +19,10 @@ const status = computed<'ok' | 'stale' | 'down' | 'off'>(() => {
   return link.health === 'down' ? 'down' : 'off'
 })
 
-const poppable = computed(() => canPopout(props.name))
+const poppable = computed(() => canPopout(props.panelId))
 
 function popout() {
-  getWorkbench()?.popoutPanel(props.name)
+  getWorkbench()?.popoutPanel(props.panelId)
 }
 
 function close() {
