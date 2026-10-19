@@ -128,7 +128,7 @@
 | G4 | lightweight-charts 卡在 ^4.2.2，上游 v5 已 GA（迁移成本可控：add*Series→addSeries、setMarkers→createSeriesMarkers） | `web/package.json:26` | vendored master `api/chart-api.ts:206/324` |
 | G5 | 无数据合流：缩略到 barSpacing<1px 时仍全量画 | 无对应实现 | `data-conflater.ts:40-53` + DPR 阈值常量 |
 | G6 | 副图指标靠 ECharts/自绘拼窗，无多 pane 联动十字线 | `NtIndicatorChart.vue`（ECharts 路线） | v5 `addPane`/`swapPanes`，unity crosshair 天然 |
-| G7 | 盘口/深度面板无合成兜底，断档即空 | `NtDepthBoard.vue`（无合成数据路径） | `datafeed.js:771-820` 合成阶梯 |
+| G7 | 盘口/深度面板无合成兜底，断档即空 | `NtDepthBoard.vue`（2026-10-19 已落地合成兜底，见 §7 P2-11） | `datafeed.js:771-820` 合成阶梯 |
 | G8 | 无图形/交互 e2e；viz 只有单测 mock | `web/src/viz/__tests__/theme-chart.test.ts`（mock 级） | `tests/e2e/graphics`、`tests/e2e/coverage` |
 | G9 | 无服务端时钟校准，倒计时/竞价计时可能漂 | 未实现 | `datafeed.js:304-325` getServerTime |
 | G10 | 高频文本无 measure/label 缓存，监控画布每帧量字 | `CanvasStage.vue:1047 measureWidth` 每帧调用 | `text-width-cache.ts`、`formatted-labels-cache.ts` |
@@ -157,14 +157,14 @@
    - 迁移点：`addCandlestickSeries`→`addSeries(CandlestickSeries)`；`setMarkers`→`createSeriesMarkers`；顺手引入 v5 的 conflation（G5）与 `addPane`（G6）。可视化回收看 `/dev/gallery` 矩阵 + 补两个 graphics 截图用例。
 5. **专业化交互开关**（G3）：磁吸十字线（信号标注对齐 OHLC，`magnet.ts:67-69`）、TrackingMode 开关、价格轴拖拽缩放、双击复位、K线区 priceLine（市价/成本/止损止盈线，`api/options/price-line-options-defaults.ts`）、`text-watermark` 股票代码水印（现成插件）。
 6. **多 pane 副图收敛**（G6）：成交量已用 overlay 方案（`NtKline.vue:149-153`）；MACD/RSI/KDJ 迁到 v5 pane，十字线/时间轴天然联动，逐步替换 `NtIndicatorChart` 的 ECharts 拼窗（ECharts 保留给热力/雷达等轻图）。
-7. **自定义系列沉淀 NT 特色层**：集合竞价区段底色、涨跌停高亮 bar、龙虎榜/大宗交易标记、复权断点标注——一个 `ICustomSeriesPaneView` 一个，hitTest 挂气泡（`icustom-series.ts:139-167`）。
-8. **信号/成本 primitives**：持仓成本线、止损止盈框、框选测量（区间涨跌统计）用 ISeriesPrimitive + hitTest 实现可拖拽（`iseries-primitive.ts` 契约 + `pane-primitive-with-hit-test.js` 用例）。
+7. **自定义系列沉淀 NT 特色层**：集合竞价区段底色、涨跌停高亮 bar、龙虎榜/大宗交易标记、复权断点标注——一个 `ICustomSeriesPaneView` 一个，hitTest 挂气泡（`icustom-series.ts:139-167`）。（2026-10-19 前两项已落地，见 §7 P1-7；后两项等 M01/M03 结构化数据到了再做）
+8. **信号/成本 primitives**：持仓成本线、止损止盈框、框选测量（区间涨跌统计）用 ISeriesPrimitive + hitTest 实现可拖拽（`iseries-primitive.ts` 契约 + `pane-primitive-with-hit-test.js` 用例）。（2026-10-19 框选测量已落地见 §7 P1-8；成本线 P1-5 已用 priceLine 实现；止损止盈框等 M05/M06 信号数据进行情页后再用同一 primitive 管线做可拖拽版）
 
 ### P2（链路健壮性与工程化）
 
 9. **重连续接范式对齐**（streaming.js:83-98）：WS 恢复时除 resync 外，让图表自动 REST 回填缺口区间（NT 已有 resync→load 机制，补上"K线级别的缺口时间窗回填"，而非整段重载）。
 10. **服务端时钟校准**：admin 提供 `GET /api/system/time`，前端所有倒计时/竞价进度显示用 server clock + drift 补偿（参照 `datafeed.js:304-325` 的失败降级）。
-11. **盘口合成兜底**（G7）：`NtDepthBoard` 无档时用最近价+涨跌停/tick 规则生成占位阶梯，标注"合成/待数据"，杜绝空屏（`datafeed.js:771-820`）。
+11. **盘口合成兜底**（G7）：`NtDepthBoard` 无档时用最近价+涨跌停/tick 规则生成占位阶梯，标注"合成/待数据"，杜绝空屏（`datafeed.js:771-820`）。（2026-10-19 已落地见 §7 P2-11：viz 层能力就位，刻意不合成挂单量；业务侧等 M01 五档数据通道后传 prop 即生效）
 12. **viz 图形回归**：借鉴 `tests/e2e/graphics` 思路——`/dev/gallery` 每组件固定数据+固定尺寸截图入 CI（Puppeteer/Playwright + pixelmatch），主题×密度矩阵天然适合 golden 比对。
 13. **高频文本缓存**：监控画布与 TerminalStrip 引入 `text-width-cache`/`formatted-labels-cache` 等价物，按 (font+text) 缓存，周期清理；canvas 销毁处学 `releaseCanvas`（`canvas-utils.ts:28-36`）。
 14. **行情边车合同文档化**：把 G2 落地后推送帧的 bar/tick schema 写进 `doc/开发文档/M01` 设计文档（proto-first 原则），前后端类型同时从它生成。
@@ -174,7 +174,7 @@
 - ✔ 红涨绿跌、主题×密度、玻璃霓虹材质已实现并有 token 层（`theme/tokens`），NtKline 颜色全部走 palette，不留硬编码色。保持。
 - ✔ ~~K线十字线处于 Normal 漂移态~~（2026-10-19 P1-5 已开 MagnetOHLC，十字线吸附 OHLC + 价格轴精确对价）。
 - ✔ ~~K线图无法式水印~~（2026-10-19 P1-5 已接 `createTextWatermark` 证券代码水印，主题联动，与毛玻璃材质叠加无碍）。
-- ⚠ 副图指标与主图两个渲染体系（ECharts vs lightweight-charts）风格断裂（legend/网格/字体密度不一）——统一 v5 pane 后，密度/间距/字阶用同一组 token。
+- ✔ ~~副图指标与主图两个渲染体系（ECharts vs lightweight-charts）风格断裂~~（2026-10-19 P1-6 已统一 v5 pane：MACD/RSI 迁入 NtKline，fontFamily/fontSize/网格/文字色与主图同一份 ChartOptions，ECharts 只留 dev-gallery 走查）。
 - ⚠ 监控画布数字闪动与文字宽测量无缓存（G10），节能模式应同时降帧+减 measure；对齐视觉需求的"节能/减少动态"档。
 
 ## 6. 附录：可整体抄录的资产速查
@@ -184,7 +184,7 @@
 | WS 生命周期+脏标记合并 | `vendor/.../streaming.js` 全文 | `web/src/ws/batch.ts` + bar 订阅器 |
 | countBack 翻页器 | `datafeed.js:125-155` | `web/src/api/market.ts` 历史 K 线分页 |
 | quotes 双状态机(REST 播种+WS 增量) | `datafeed.js:175-295` | quote-strip / 自选行情 |
-| 合成盘口+断档兜底 | `datafeed.js:771-820` | `NtDepthBoard.vue` |
+| 合成盘口+断档兜底 | `datafeed.js:771-820` | `NtDepthBoard.vue` + `viz/depth-synth.ts`（2026-10-19 已落地，剔伪量） |
 | DPR 自适应数据合流算法 | `data-conflater.ts:40-53` + `conflation/constants.ts` | 升级 v5 后开箱即用；自监控画布可移植思想 |
 | 手势/惯性/磁吸参数 | `kinetic-animation.ts`、`magnet.ts` | 直接开关 options；参数可调 |
 | 像素级柱状渲染技巧 | `candlesticks-renderer.ts` | monitor 画布柱状元素（如 TerminalStrip 画块）复用奇偶对齐/prevEdge |
@@ -256,3 +256,40 @@
 - 价格轴拖拽缩放、双击复位在 v5 为默认内置（`handleScale`/`handleScroll`/double-click reset），零代码获得；TrackingMode 开关做成何 UI 形态未定，本轮不硬做。
 - 验收：mock 补 `createTextWatermark`/`LineStyle`/`createPriceLine` 与 `chart.panes()`；新增用例覆盖磁吸 mode=3、水印主题联动（暗→亮 rgba(97,98,99,0.28)）、参考线去重/非法跳过/样式映射/主题重建；7/7 viz 用例、`vue-tsc`/eslint 零告警、全套 67 文件 614 用例通过。
 - 止损止盈/入场价三线等信号级 priceLine：数据在信号面板（trade_signals），等 M05/M06 链路把信号带到行情页时直接用 `levels` 传入即可，无需再改 viz。
+
+### P1-6 多 pane 副图收敛（2026-10-19 落地，G6）
+
+- **MACD/RSI 迁入 v5 pane**：`NtKline` 新增副图管线（`ensureSubPanes/feedSubPanes/destroySubPanes`）——MACD 窗（柱按符号红涨绿跌 + 电蓝 DIF + 琥珀 DEA，stretch 0.35）、RSI6 窗（冰青线 + 80/20 虚线参考位，stretch 0.25），与主图共用时间轴/十字线（MagnetOHLC 全域生效），fontFamily/fontSize/网格/文字色与主图同一份 ChartOptions，风格断裂消除。
+- **懒建饿拆**：指标行 macd/dif/dea/rsi6 全空时两窗格整体拆除（`removePane` 先高索引后低索引，索引实时取防错位）；主题切换先拆再由 `apply(false)` 按新色重建（序列色在建图时固化，增量 patch 改不到）。
+- **信息升级**：旧 ECharts `NtIndicatorChart` 只画 macd+rsi6，v5 版补上 `dif`/`dea` 两条线（`MarketIndicator` 字段本就有，零协议改动）。
+- **ECharts 指标图退场**：`MarketView` 删除 `NtIndicatorChart` 渲染分支与孤儿 v-else；`NtIndicatorChart.vue` 保留给 `/dev/gallery` 走查，业务零引用。legend 增"副图 MACD 柱/电蓝 DIF/琥珀 DEA、冰青 RSI6（虚线 80/20）"按需后缀；指标未返回仍保留诚实提示行。
+- 验收：测试 mock 补 `addPane/removePane`（`paneIndex()` 动态取当前索引）与 `setStretchFactor`；新增用例覆盖建仓（2 pane + 拉伸系数 + 柱色符号性 + DIF/DEA/RSI 全量 setData + 80/20 参考线）与指标清空拆窗；8/8 viz 用例、eslint 零告警。
+- 残留待真机复核：260px 窄容器三窗格高度分配（0.35/0.25 拉伸比效小）、pane 分隔线拖拽手感、RSI 80/20 虚线在深海的克制度——走查项已随本轮交付列出。
+
+### P1-7 自定义系列沉淀 NT 特色层（2026-10-19 落地，首批两项）
+
+- **集合竞价时段底色（首个 custom series 落地件）**：新文件 `web/src/viz/session-bands.ts` 产出 `createSessionBandPaneView`——沪深 09:15–09:25 开盘竞价（冰青 7%）、09:25–09:30 静默报单（text3 6%）、14:57–15:00 收盘竞价（电蓝 7%），1m 图整高铺底、相邻同类合并 fillRect；颜色 draw 时实时读 palette，主题切换零重建。v5 两条关键契约：序列按创建顺序分层（无 zIndex），色带必须在蜡烛之前建（`NtKline` onMounted 首个序列）；`priceValueBuilder: () => []` + `autoscaleInfoProvider: () => null` 让色带既不碰价格轴缩放也不进十字线取值。数据只放窗内的根，时段外天然不占位。
+- **涨/跌停封板高亮**：新文件 `web/src/utils/limit.ts` 纯函数——按代码前缀推断涨跌幅档（创业 300/301/302、科创 68x → 20%；北交所 920/4/8 段 → 30%；其余 10%；ST 的 ±5% 从代码不可见，已知启发式缺口：**只会漏亮不会误亮**）；判定=收盘精确落在「昨收×(1±档)」取整 0.01 的理论价 且 最高/最低=收盘（尾盘封死未开板）。命中即单项 `borderColor/wickColor=warn` 琥珀描边，实体保持红涨绿跌；全量 setData 与 updateLast 增量通道同规则（同根替换取前根收盘、新根取末根收盘，均在 closes 账本更新前算）。
+- **NtKline 新增 `symbol` prop**：与 `watermark` 独立传参（显示文本不兼任逻辑输入）；watch 键含上 symbol；MarketView 接 `symbol.trim()`，legend 按需补「底色=集合竞价时段」（仅分钟）与「琥珀描边=涨/跌停封板（板块推断）」。
+- 未做（数据未到，不造假图层）：龙虎榜/大宗交易标记、复权断点标注——等 M01/M03 的结构化数据落地后复用同一 custom series 管线加 hitTest 气泡；纯背景色带无可悬停信息，故本轮不实现 hitTest。
+- 测试三件：`utils/__tests__/limit.test.ts`（9 例：档位映射/封板/触板未封/20% 档不误亮/昨收缺失与非法值）、`viz/__tests__/session-bands.test.ts`（窗边界 09:15/09:25/09:30/14:57/15:00、数据过滤、fake canvas target 下的合并矩形几何断言）、`theme-chart.test.ts` 新增集成例（1m 铺带→切日线清空、全量封板描边、updateLast 新根封板与同根解封复位）。
+- 验收：焦点 23/23、全套 **72 文件 648 用例**、vue-tsc/eslint 零告警。中途自修两处类型对齐：`Bar` 字段实为 `number | null`（`limitFrame`/`limitState` 入参放宽，Number.isFinite 不转型故天然兜住 null）、`crosshairMarkerVisible` 不属于 `CustomSeriesOptions`（删）。
+
+### P1-8 框选测量 primitive（2026-10-19 落地，信号/成本层首件）
+
+- **框选测量（区间涨跌统计）**：新文件 `web/src/viz/measure-box.ts` 产出 `createMeasurePrimitive`——半透明填充（accent 8%）+ 单像素描边（accent 55%，半像素对齐防发虚）；状态存**逻辑索引×价格双区间**（不存像素/时间戳），缩放平移后框仍贴住原批 K 线；角越出可视区即整框跳过（`logicalToCoordinate/priceToCoordinate` 返回 null，不做半框裁剪）。hitTest 按 range 级（priority 0）命中，不抢 K 线点/线语义。
+- **交互在组件侧**：`NtKline` 新增 `measure` prop；pointerdown/move/up 以**捕获相**绑在图表容器（先于 lwc 内层 canvas 的手势处理，免得被平移抢走）；拖拽起点=anchor、move 更新对角；统计读数走 overlay chip（`N 根 · Δ价 (Δ%) · 振幅 %`，方向性：基准=起点收盘），Esc 或 chip × 清框摘件；关闭开关同样清框。颜色 draw 时实时读 palette，主题切换零重建（与色带同策略）。
+- **逻辑索引即行号**的隐含约定：测量统计按 `seriesRows()` 全量行的数组下标对齐 lwc 逻辑索引（主图无 whitespace 错位）；`apply()` 里 `lastRows` 快照供统计。
+- MarketView：表单行加「框选测量」开关钮（无数据禁用，开启时高亮），测量提示行；换 symbol/周期/账户一律复位测量态（防框住旧数据）。NtButton 默认 `type="button"`，表单内免 prevent。
+- 未做（依赖前置）：可拖拽止损止盈框——等 M05/M06 把 trade_signals 带进行情页后，在同一 primitive 管线（attached/detached + hitTest 已有雏形）加边线拖拽与气泡；命中层暂不区分「边/面」两级。
+- 测试两件：`viz/__tests__/measure-box.test.ts`（正/反向统计、越界收敛、fake 换算下的 fillRect/strokeRect 几何断言、框内/框外/出屏 hitTest、detached 复位）；`theme-chart.test.ts` 集成例（mock 的 detachPrimitive 仿真 lwc 回调 `detached()`；pointerdown→move→up 出框、chip 读数 3 根/+18.18%/36.36%、Esc 清框、关开关不再出框）。
+- 验收：焦点 16/16、全套 **75 文件 671 用例**、vue-tsc/eslint 零告警。自修：`Logical` 在 5.2.1 是品牌类型（`number & {[Symbol.species]:'Logical'}`），坐标换算处补 cast。
+
+### P2-11 盘口合成兜底（2026-10-19 落地，G7）
+
+- **合成阶梯纯函数**：新文件 `web/src/viz/depth-synth.ts` 产出 `buildSyntheticDepth(last, { symbol, preClose, tick })`——最近价 ± tick 累进上下各五档、价格 round2；封顶复用 `utils/limit.ts` 板块档（封板价本身可排，越过即停：封涨停时卖侧空、买侧照出，封跌停镜像）；昨收缺失不封顶；两侧合计为空返回 null（交给空态）。对照 `datafeed.js:771-820` 但**刻意剔掉伪造挂单量**：volume 恒 null → 量位显示 '—'，挂单量是无法合成的事实，画柱子最有欺骗性（诚实数据：宁缺勿假）。
+- **组件接通**：`NtDepthBoard` 新增 `lastPrice/symbol/preClose/tick` 四个可选 prop；**双边都无档才触发合成**（任意一侧有真实档位即原样渲染，真/合不混）；合成态量柱不渲染、行价加 `--syn` 类透明度 0.55（保留卖红买绿方向色），中线显示「最近价 + 合成·待数据」琥珀标注。价单元格顺势统一走 `price()` 展示格式（两位小数），真实档位同样生效。
+- 展示面：`/dev/gallery` 新增两卡——常规无档占位（上下各五）与涨停封板（只出买侧）。
+- **边界诚实交代**：全仓 Grep 核实 `NtDepthBoard` 目前仅 `/dev/gallery` 消费（业务面板无五档落点），本轮交付的是 viz 能力与兜底行为本体；M01 行情边车接通五档后，行情面板传 `:last-price/:symbol/:pre-close` 即自动获得断档兜底。顺带核实：P2-9（重连缺口时间窗回填）被 `api/market.ts` 的 `getBars(symbol, freq)` 无时间窗参数卡住，需先扩后端 bars 接口再动，暂搁置。
+- 测试一件：`viz/__tests__/depth-board.test.ts`（纯函数 4 例：常规五档含 null 量、临近涨停截断到封板价（含 20% 档）、封板两侧镜像、无昨收不封顶+自定义 tick+无效最近价 null；组件 4 例：合成标注与卖五→卖一倒序、量柱隐藏、封板不越价、有真档不合成、无档无价纯空态）。
+- 验收：焦点 8/8、全套 **76 文件 679 用例**、vue-tsc/eslint 零告警。

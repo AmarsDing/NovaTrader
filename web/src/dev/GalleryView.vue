@@ -906,6 +906,14 @@ const demoTapeRows = demoTapeSession.absorb(
           <h3>NtDepthBoard（五档，卖红买绿）</h3>
           <NtDepthBoard :asks="asks" :bids="bids" />
         </div>
+        <div class="g-card">
+          <h3>NtDepthBoard · 合成兜底（无档占位）</h3>
+          <NtDepthBoard :last-price="10.35" symbol="600519.SH" :pre-close="10" />
+        </div>
+        <div class="g-card">
+          <h3>NtDepthBoard · 合成兜底（涨停封板）</h3>
+          <NtDepthBoard :last-price="11" symbol="600519.SH" :pre-close="10" />
+        </div>
       </div>
     </section>
 
