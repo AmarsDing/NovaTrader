@@ -122,3 +122,73 @@ func TestRequeueDeadLetterOnIsolatedPostgres(t *testing.T) {
 		t.Fatal("published row must be untouched by replay attempts")
 	}
 }
+
+// 批量重放持久往返（隔离PG）：逐条独立事务，一条找不到不拖垮其余；
+// 输入顺序与重复如实保留在结果序列——同一 id 第二次出现时条件已被第一次改掉，found=false。
+func TestRequeueDeadLettersOnIsolatedPostgres(t *testing.T) {
+	client := adminContractClient(t, "novatrader_admin_replay_batch_test")
+	s := &AuditStore{client: client}
+	ctx := context.Background()
+
+	tag := uuid.NewString()[:8]
+	mk := func(name string) string {
+		id := "evt-bat-" + name + "-" + tag
+		if _, err := client.Outbox.Create().
+			SetEventID(id).
+			SetSubject("novatrader.test.replay_batch").
+			SetSource("admin-test").
+			SetPayload([]byte(`{}`)).
+			SetDeadLetter(true).
+			Save(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	dead1, dead2 := mk("d1"), mk("d2")
+	pubID := "evt-bat-pub-" + tag
+	if _, err := client.Outbox.Create().
+		SetEventID(pubID).
+		SetSubject("novatrader.test.replay_batch").
+		SetSource("admin-test").
+		SetPayload([]byte(`{}`)).
+		SetPublishedAt(time.Now().UTC()).
+		SetDeadLetter(true).
+		Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	missing := "evt-bat-missing-" + tag
+
+	outcomes := s.RequeueDeadLetters(ctx, []string{dead1, pubID, dead2, dead2, missing})
+	if len(outcomes) != 5 {
+		t.Fatalf("outcomes len = %d, want 5", len(outcomes))
+	}
+	wantIDs := []string{dead1, pubID, dead2, dead2, missing}
+	wantFound := []bool{true, false, true, false, false}
+	for i, o := range outcomes {
+		if o.EventID != wantIDs[i] || o.Requeued != wantFound[i] || o.Err != nil {
+			t.Fatalf("outcome[%d] = %+v, want id=%s found=%v err=nil", i, o, wantIDs[i], wantFound[i])
+		}
+	}
+
+	// 两条真死信已回落到调度器取单谓词；已投递行原样未动
+	now := time.Now().UTC()
+	claimable, err := client.Outbox.Query().Where(
+		box.EventIDIn(dead1, dead2),
+		box.PublishedAtIsNil(), box.DeadLetter(false),
+		box.Or(box.NextAttemptAtIsNil(), box.NextAttemptAtLTE(now)),
+		box.Or(box.LeaseUntilIsNil(), box.LeaseUntilLTE(now)),
+	).Count(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimable != 2 {
+		t.Fatalf("claimable after batch = %d, want 2", claimable)
+	}
+	pubRow, err := client.Outbox.Query().Where(box.EventID(pubID)).Only(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pubRow.PublishedAt == nil || !pubRow.DeadLetter {
+		t.Fatal("published row must be untouched by batch replay")
+	}
+}

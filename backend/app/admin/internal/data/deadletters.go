@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"server/app/admin/internal/gateway"
 	"server/ent"
 	box "server/ent/outbox"
 )
@@ -44,4 +45,16 @@ func (s *AuditStore) RequeueDeadLetter(ctx context.Context, eventID string) (boo
 		return false, err
 	}
 	return true, nil
+}
+
+// RequeueDeadLetters（N2-02 批量重放）：逐条复用条件单行重排，各条事务相互独立、
+// 一条失败如实记 Err 并继续（不拖垮同批其余）；输入顺序保留——同一 event_id 重复出现时，
+// 第二次的条件检查已被第一次改掉，自然如实返回 found=false 不重复改动。
+func (s *AuditStore) RequeueDeadLetters(ctx context.Context, eventIDs []string) []gateway.DeadLetterRequeueOutcome {
+	out := make([]gateway.DeadLetterRequeueOutcome, 0, len(eventIDs))
+	for _, id := range eventIDs {
+		found, err := s.RequeueDeadLetter(ctx, id)
+		out = append(out, gateway.DeadLetterRequeueOutcome{EventID: id, Requeued: found, Err: err})
+	}
+	return out
 }
