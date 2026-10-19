@@ -1,0 +1,19 @@
+syntax = "proto3";
+package api.admin.v1;
+import "google/api/annotations.proto";
+option go_package = "server/api/admin/v1;v1";
+
+// 服务端时钟读口（P2-10）：前端倒计时/竞价时段显示以服务器钟为准并做本地漂移补偿，
+// 参照 TradingView datafeed.js 的 getServerTime 失败降级纪律（请求失败即回退本地钟）。
+service SystemClock {
+  rpc GetServerTime(GetServerTimeRequest) returns (GetServerTimeReply) {
+    option (google.api.http) = {get: "/api/ops/time"};
+  }
+}
+message GetServerTimeRequest {}
+message GetServerTimeReply {
+  // Admin 收到请求后的处理时刻，RFC3339Nano，含时区；无缓存、无转发，直接读处理进程当前时间。
+  string server_time = 1;
+  // 同一时刻的 epoch 毫秒。前端漂移补偿的运算源（无需解析时间串）。
+  int64 epoch_ms = 2;
+}

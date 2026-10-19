@@ -91,6 +91,8 @@ type Gate struct {
 	environmentOnce    sync.Once
 	environmentHandler http.Handler
 	environment        environmentCache
+	systemClockOnce    sync.Once
+	systemClockHandler http.Handler
 }
 
 type route struct {
@@ -137,6 +139,8 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.traceCoverage(w, r)
 	case r.URL.Path == "/api/ops/environment":
 		g.serveEnvironment(w, r)
+	case r.URL.Path == "/api/ops/time":
+		g.serveSystemClock(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/ops/backup":
 		g.backup(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v1/audit":
