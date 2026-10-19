@@ -119,3 +119,48 @@ export async function writeDisposition(payload: {
     json: { event_id: payload.eventId, trace_id: payload.traceId || '', action: payload.action, note: payload.note || '' },
   })
 }
+
+/** 全域因果覆盖口径（N2-02）：窗口内持久域事件的因果形状分布。计数解析不出为 null，绝不补 0。 */
+export interface SourceCoverage {
+  source: string
+  total: number | null
+  withTrace: number | null
+  withoutTrace: number | null
+  children: number | null
+  orphanParents: number | null
+}
+export interface TraceCoverage {
+  available: boolean
+  scope: string
+  asOf: string
+  note: string
+  windowLimit: number | null
+  windowRows: number | null
+  oldestInWindow: string
+  totals: SourceCoverage
+  bySource: SourceCoverage[]
+}
+export async function getTraceCoverage(signal?: AbortSignal): Promise<TraceCoverage> {
+  const raw = await request('/api/ops/trace-coverage', { signal })
+  if (pick(raw, 'schemaVersion', 'schema_version') !== 1 || pick(raw, 'scope') !== 'durable_outbox_history')
+    throw new Error('因果覆盖合同不可用')
+  const row = (v: unknown): SourceCoverage => ({
+    source: pick<string>(v, 'source') || '',
+    total: count(pick(v, 'total')),
+    withTrace: count(pick(v, 'withTrace', 'with_trace')),
+    withoutTrace: count(pick(v, 'withoutTrace', 'without_trace')),
+    children: count(pick(v, 'children')),
+    orphanParents: count(pick(v, 'orphanParents', 'orphan_parents')),
+  })
+  return {
+    available: pick(raw, 'available') === true,
+    scope: pick<string>(raw, 'scope') || '',
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+    note: pick<string>(raw, 'note') || '',
+    windowLimit: count(pick(raw, 'windowLimit', 'window_limit')),
+    windowRows: count(pick(raw, 'windowRows', 'window_rows')),
+    oldestInWindow: pick<string>(raw, 'oldestInWindow', 'oldest_in_window') || '',
+    totals: row(pick(raw, 'totals')),
+    bySource: asList(raw, 'bySource', 'by_source').map(row),
+  }
+}

@@ -4,9 +4,11 @@ import {
   DISPOSITION_ACTIONS,
   dispositionLabel,
   getTrace,
+  getTraceCoverage,
   listDispositions,
   writeDisposition,
   type Disposition,
+  type TraceCoverage,
   type TraceSnapshot,
 } from '@/api/traces'
 import { useAuthStore } from '@/stores/auth'
@@ -20,7 +22,9 @@ const query = ref(''),
   busy = ref(false),
   error = ref(''),
   dispositions = ref<Disposition[]>([]),
-  dispositionError = ref('')
+  dispositionError = ref(''),
+  coverage = ref<TraceCoverage | null>(null),
+  coverageError = ref('')
 let generation = 0,
   controller: AbortController | undefined
 async function load() {
@@ -32,12 +36,20 @@ async function load() {
   snapshot.value = null
   dispositions.value = []
   dispositionError.value = ''
+  coverage.value = null
+  coverageError.value = ''
   try {
     const out = await getTrace(query.value.trim(), controller.signal)
     if (run !== generation) return
     snapshot.value = out
     if (out.events.length && !out.events.some((e) => e.eventId === draft.value.eventId)) {
       draft.value.eventId = out.events[0].eventId
+    }
+    try {
+      const cov = await getTraceCoverage(controller.signal)
+      if (run === generation) coverage.value = cov
+    } catch (e) {
+      if (run === generation) coverageError.value = messageOf(e)
     }
     const trace = query.value.trim()
     if (trace && out.events.length) {
@@ -153,6 +165,59 @@ function shortEvent(id: string): string {
             </div>
           </dl>
           <p class="note">{{ snapshot.note }} 截至 {{ clock(snapshot.asOf) }}。</p>
+          <section v-if="coverage || coverageError" class="coverage" aria-label="因果覆盖口径">
+            <h3>因果覆盖（窗口口径）</h3>
+            <p v-if="coverageError" class="nt-err">
+              因果覆盖读取失败：{{ coverageError }}（GET /api/ops/trace-coverage）
+            </p>
+            <template v-else-if="coverage">
+              <p v-if="!coverage.available" class="note">因果覆盖仓储未核验。</p>
+              <template v-else>
+                <dl>
+                  <div>
+                    <dt>窗口事件</dt>
+                    <dd>{{ coverage.windowRows ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>有链号</dt>
+                    <dd>{{ coverage.totals.withTrace ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>带因果父</dt>
+                    <dd>{{ coverage.totals.children ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>无链号</dt>
+                    <dd>{{ coverage.totals.withoutTrace ?? '—' }}</dd>
+                  </div>
+                  <div>
+                    <dt>父事件未在窗口</dt>
+                    <dd>{{ coverage.totals.orphanParents ?? '—' }}</dd>
+                  </div>
+                </dl>
+                <table v-if="coverage.bySource.length">
+                  <thead>
+                    <tr><th>来源</th><th>事件</th><th>有链</th><th>无链</th><th>续链</th><th>孤儿父</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="s in coverage.bySource" :key="s.source">
+                      <td>{{ s.source }}</td>
+                      <td>{{ s.total ?? '—' }}</td>
+                      <td>{{ s.withTrace ?? '—' }}</td>
+                      <td>{{ s.withoutTrace ?? '—' }}</td>
+                      <td>{{ s.children ?? '—' }}</td>
+                      <td>{{ s.orphanParents ?? '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p class="note">
+                  {{ coverage.note }} 窗口上限 {{ coverage.windowLimit ?? '未知' }} 条<template v-if="coverage.oldestInWindow"
+                    >，最老一条 {{ clock(coverage.oldestInWindow) }}</template
+                  >；孤儿父≠链路断裂（内存域父事件本就不落盘）。
+                </p>
+              </template>
+            </template>
+          </section>
           <p v-if="snapshot.truncated" class="warn">结果超过200条，当前仅展示部分链路。</p>
           <p v-if="snapshot.missingParents.length" class="warn">
             本次未观测到 {{ snapshot.missingParents.length }} 个直接父事件，关联链条不完整。
@@ -284,6 +349,36 @@ code {
 .receipts h3 {
   margin: 0 8px 6px 0;
   font-size: 12px;
+  color: var(--nt-text-1);
+}
+.coverage {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--nt-bg-1);
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
+}
+.coverage h3 {
+  margin: 0 8px 8px 0;
+  font-size: 12px;
+  color: var(--nt-text-1);
+}
+.coverage table {
+  width: 100%;
+  margin: 8px 0;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.coverage th,
+.coverage td {
+  padding: 4px 8px;
+  text-align: right;
+  color: var(--nt-text-2);
+  border-bottom: 1px dashed var(--nt-border-1);
+}
+.coverage th:first-child,
+.coverage td:first-child {
+  text-align: left;
   color: var(--nt-text-1);
 }
 .receipts ul {
