@@ -222,6 +222,22 @@ func (c *Collector) CollectLhb(ctx context.Context, day time.Time, only string) 
 	return CollectSummary{Domain: DomainLhb, Source: src, Rows: n}, err
 }
 
+// CollectUnlock 滚动采 [day, day+90天] 窗口内的限售解禁计划。
+// 不做非空校验：未来 90 天一张解禁都没有是合法结果，仓储层整窗替换保证推迟/取消的批次同步消失。
+func (c *Collector) CollectUnlock(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
+	day = dateOf(day)
+	to := day.AddDate(0, 0, 90)
+	items, src, err := Run(ctx, c.p, DomainUnlock, RunOptions{Only: only, Timeout: 2 * time.Minute},
+		func(ctx context.Context, s Source) ([]UnlockPlan, error) {
+			return s.(UnlockSource).UnlockPlans(ctx, day, to)
+		}, nil)
+	if err != nil {
+		return CollectSummary{Domain: DomainUnlock}, err
+	}
+	n, err := c.repo.UpsertUnlockPlans(ctx, day, to, items, src, ready(DomainUnlock, day, len(items), src, false))
+	return CollectSummary{Domain: DomainUnlock, Source: src, Rows: n}, err
+}
+
 // CollectMargin 采融资融券。数据次日早上才有，调度在次交易日盘前抓上一交易日。
 func (c *Collector) CollectMargin(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
 	day = dateOf(day)

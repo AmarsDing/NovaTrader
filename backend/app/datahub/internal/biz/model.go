@@ -19,6 +19,7 @@ const (
 	DomainLimitPool    = "limit_pool"
 	DomainMoneyFlow    = "money_flow"
 	DomainLhb          = "lhb"
+	DomainUnlock       = "unlock"
 	DomainMargin       = "margin"
 	DomainHsgtTop10    = "hsgt_top10"
 	DomainSector       = "sector"
@@ -154,6 +155,20 @@ type LhbSeat struct {
 	SeatName   string
 	BuyAmount  float64
 	SellAmount float64
+}
+
+// UnlockPlan 一只股票的一次限售解禁批次（东财数据中心 RPT_LIFT_STAGE）。
+// 源头报表按批次汇总不拆股东；Shares 单位万股，与源头一致。
+// 比例与市值源没给到就留 nil——没取到不等于 0。
+type UnlockPlan struct {
+	Symbol         string
+	FreeDate       time.Time
+	LiftType       string
+	Shares         float64 // 万股
+	BatchHolderNum *int
+	RatioPct       *float64 // 解禁数量占流通股本比例（%）
+	TotalRatioPct  *float64 // 解禁数量占总股本比例（%）
+	MarketValue    *float64 // 元；源报表一般没有
 }
 
 // Margin 融资融券。

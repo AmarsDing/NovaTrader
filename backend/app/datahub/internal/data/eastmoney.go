@@ -539,6 +539,37 @@ func (e *Eastmoney) LhbSeats(ctx context.Context, d time.Time) ([]biz.LhbSeat, e
 	return out, nil
 }
 
+func (e *Eastmoney) UnlockPlans(ctx context.Context, from, to time.Time) ([]biz.UnlockPlan, error) {
+	// RPT_LIFT_STAGE 是全市场解禁批次报表，按 FREE_DATE 窗口过滤；窗口内空是合法结果。
+	filter := fmt.Sprintf("(FREE_DATE>='%s')(FREE_DATE<='%s')", ymd(from), ymd(to))
+	rows, err := e.dc(ctx, "RPT_LIFT_STAGE", filter, "FREE_DATE")
+	if err != nil {
+		return nil, err
+	}
+	items := make([]biz.UnlockPlan, 0, len(rows))
+	for _, r := range rows {
+		sym := secu(r["SECURITY_CODE"])
+		freeDate, ok := dcDate(r["FREE_DATE"])
+		if sym == "" || !ok {
+			continue
+		}
+		p := biz.UnlockPlan{
+			Symbol:        sym,
+			FreeDate:      freeDate,
+			LiftType:      truncate(anyStr(r["FREE_SHARES_TYPE"]), 64),
+			Shares:        anyF(r["ABLE_FREE_SHARES"]), // 万股
+			RatioPct:      anyPtr(r["FREE_RATIO"]),
+			TotalRatioPct: anyPtr(r["TOTAL_RATIO"]),
+		}
+		if v, ok := anyNum(r["BATCH_HOLDER_NUM"]); ok {
+			n := int(v)
+			p.BatchHolderNum = &n
+		}
+		items = append(items, p)
+	}
+	return items, nil
+}
+
 func (e *Eastmoney) Margins(ctx context.Context, d time.Time) ([]biz.Margin, error) {
 	rows, err := e.dc(ctx, "RPTA_WEB_RZRQ_GGMX", fmt.Sprintf("(DATE='%s')", ymd(d)), "")
 	if err != nil {

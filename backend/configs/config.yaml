@@ -208,6 +208,9 @@ datahub:
     lhb:
       enabled: true
       sources: [tushare, eastmoney]
+    unlock:
+      enabled: true
+      sources: [eastmoney]
     margin:
       enabled: true
       sources: [tushare, eastmoney]

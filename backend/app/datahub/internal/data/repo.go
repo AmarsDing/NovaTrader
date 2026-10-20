@@ -13,6 +13,7 @@ import (
 	"server/ent/backfilljob"
 	"server/ent/collectcursor"
 	"server/ent/dataqualityissue"
+	"server/ent/equityunlock"
 	"server/ent/financereport"
 	"server/ent/hotrank"
 	"server/ent/hsgttop10"
@@ -339,6 +340,38 @@ func (r *Repo) UpsertLhbSeats(ctx context.Context, d time.Time, items []biz.LhbS
 				UpdateNewValues().Exec(ctx)
 		})
 		return len(order), err
+	})
+}
+
+func (r *Repo) UpsertUnlockPlans(ctx context.Context, from, to time.Time, items []biz.UnlockPlan, source string, rd biz.Ready) (int, error) {
+	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		// 窗口内整批替换：源头推迟/取消的解禁批次同步消失；空窗只删不写，是真无解禁。
+		if _, err := tx.EquityUnlock.Delete().
+			Where(equityunlock.FreeDateGTE(day(from)), equityunlock.FreeDateLTE(day(to))).
+			Exec(ctx); err != nil {
+			return 0, err
+		}
+		bulk := make([]*ent.EquityUnlockCreate, 0, len(items))
+		for _, p := range items {
+			cr := tx.EquityUnlock.Create().
+				SetSymbol(p.Symbol).
+				SetFreeDate(day(p.FreeDate)).
+				SetLiftType(truncate(p.LiftType, 64)).
+				SetShares(p.Shares).
+				SetNillableBatchHolderNum(p.BatchHolderNum).
+				SetNillableRatioPct(p.RatioPct).
+				SetNillableTotalRatioPct(p.TotalRatioPct).
+				SetNillableMarketValue(p.MarketValue).
+				SetSource(source).
+				SetUpdatedAt(time.Now())
+			bulk = append(bulk, cr)
+		}
+		err := chunks(bulk, func(part []*ent.EquityUnlockCreate) error {
+			return tx.EquityUnlock.CreateBulk(part...).
+				OnConflictColumns(equityunlock.FieldSymbol, equityunlock.FieldFreeDate, equityunlock.FieldLiftType).
+				UpdateNewValues().Exec(ctx)
+		})
+		return len(items), err
 	})
 }
 

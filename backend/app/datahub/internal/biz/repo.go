@@ -25,6 +25,9 @@ type Repo interface {
 	UpsertLimitPool(ctx context.Context, day time.Time, items []LimitEntry, source string, ready Ready) (int, error)
 	UpsertMoneyFlows(ctx context.Context, day time.Time, items []MoneyFlow, source string, ready Ready) (int, error)
 	UpsertLhbSeats(ctx context.Context, day time.Time, items []LhbSeat, ready Ready) (int, error)
+	// UpsertUnlockPlans 整窗替换 [from, to] 内的解禁计划：窗口内旧行先删再按新批写，
+	// 保证源头推迟/取消的批次不再残留。窗口为空时只删不写，视为合法结果。
+	UpsertUnlockPlans(ctx context.Context, from, to time.Time, items []UnlockPlan, source string, ready Ready) (int, error)
 	UpsertMargins(ctx context.Context, day time.Time, items []Margin, source string, ready Ready) (int, error)
 	UpsertHsgtTop10(ctx context.Context, day time.Time, items []HsgtTop, source string, ready Ready) (int, error)
 	SyncSectors(ctx context.Context, day time.Time, items []Sector, source string, ready Ready) (int, error)

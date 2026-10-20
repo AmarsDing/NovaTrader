@@ -69,6 +69,8 @@ func (w *Worker) jobs() []scheduler.Job {
 		{Name: "datahub.margin", Spec: "10 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.marginPrev},
 		{Name: "datahub.overseas", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: time.Minute, Retry: 2, Run: day(biz.DomainOverseas)},
 		{Name: "datahub.finance", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainFinance)},
+		// 解禁窗口赶在 brain 15:50 复盘前滚一次：盘后前、避开收盘忙时；失败也有 T-1 窗口兜底。
+		{Name: "datahub.unlock", Spec: "25 15 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainUnlock)},
 		{Name: "datahub.daily_bar", Spec: "0 16 * * *", TradingDayOnly: true, Timeout: 20 * time.Minute, Retry: 2, Run: day(biz.DomainDailyBar)},
 		{Name: "datahub.adj_factor", Spec: "20 16 * * *", TradingDayOnly: true, DependsOn: []string{"datahub.daily_bar"}, Timeout: 20 * time.Minute, Retry: 2, Run: day(biz.DomainAdjFactor)},
 		{Name: "datahub.money_flow", Spec: "30 16 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: day(biz.DomainMoneyFlow)},

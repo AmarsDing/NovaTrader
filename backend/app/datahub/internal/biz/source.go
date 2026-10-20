@@ -51,6 +51,11 @@ type LhbSource interface {
 	LhbSeats(ctx context.Context, day time.Time) ([]LhbSeat, error)
 }
 
+// UnlockSource 拉 [from, to] 窗口内的限售解禁计划。窗口内一张都没有是合法结果（返回空即可）。
+type UnlockSource interface {
+	UnlockPlans(ctx context.Context, from, to time.Time) ([]UnlockPlan, error)
+}
+
 type MarginSource interface {
 	Margins(ctx context.Context, day time.Time) ([]Margin, error)
 }
@@ -115,6 +120,9 @@ func Supports(domain string, s Source) bool {
 		return a || b
 	case DomainLhb:
 		_, ok := s.(LhbSource)
+		return ok
+	case DomainUnlock:
+		_, ok := s.(UnlockSource)
 		return ok
 	case DomainMargin:
 		_, ok := s.(MarginSource)
