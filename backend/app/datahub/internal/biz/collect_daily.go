@@ -258,6 +258,21 @@ func (c *Collector) CollectMargin(ctx context.Context, day time.Time, only strin
 	return CollectSummary{Domain: DomainMargin, Source: src, Rows: n}, err
 }
 
+// CollectMarginMkt 采全市场两融汇总（交易所维度每交易日数行）。与个股明细同为
+// T+1：次交易日盘前抓上一交易日。行数少是常态（SSE/SZSE/BSE），只查非空。
+func (c *Collector) CollectMarginMkt(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
+	day = dateOf(day)
+	items, src, err := Run(ctx, c.p, DomainMarginMkt, RunOptions{Only: only, Timeout: 3 * time.Minute},
+		func(ctx context.Context, s Source) ([]MarginMkt, error) {
+			return s.(MarginMktSource).MarginMkts(ctx, day)
+		}, nonEmpty[MarginMkt]("全市场两融汇总"))
+	if err != nil {
+		return CollectSummary{Domain: DomainMarginMkt}, err
+	}
+	n, err := c.repo.UpsertMarginMkt(ctx, day, items, src, ready(DomainMarginMkt, day, len(items), src, false))
+	return CollectSummary{Domain: DomainMarginMkt, Source: src, Rows: n}, err
+}
+
 // CollectHsgtTop10 采沪深股通十大成交股。
 func (c *Collector) CollectHsgtTop10(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
 	day = dateOf(day)

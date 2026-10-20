@@ -10,7 +10,7 @@ import (
 // BackfillDomains 是支持补数的数据域。
 var BackfillDomains = map[string]bool{
 	DomainDailyBar: true, DomainAdjFactor: true, DomainMinuteBar: true, DomainMoneyFlow: true,
-	DomainLhb: true, DomainMargin: true, DomainHsgtTop10: true, DomainLimitPool: true,
+	DomainLhb: true, DomainMargin: true, DomainMarginMkt: true, DomainHsgtTop10: true, DomainLimitPool: true,
 	DomainFinance: true, DomainSecurity: true, DomainSector: true,
 }
 
@@ -65,6 +65,8 @@ func (c *Collector) RunBackfill(ctx context.Context, job BackfillJob) BackfillJo
 			return c.CollectLhb(ctx, day, job.Source)
 		case DomainMargin:
 			return c.CollectMargin(ctx, day, job.Source)
+		case DomainMarginMkt:
+			return c.CollectMarginMkt(ctx, day, job.Source)
 		case DomainHsgtTop10:
 			return c.CollectHsgtTop10(ctx, day, job.Source)
 		case DomainLimitPool:

@@ -45,6 +45,8 @@ func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (C
 		return c.CollectUnlock(ctx, day, only)
 	case DomainMargin:
 		return c.CollectMargin(ctx, day, only)
+	case DomainMarginMkt:
+		return c.CollectMarginMkt(ctx, day, only)
 	case DomainHsgtTop10:
 		return c.CollectHsgtTop10(ctx, day, only)
 	case DomainSector:

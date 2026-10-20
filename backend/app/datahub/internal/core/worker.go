@@ -67,6 +67,7 @@ func (w *Worker) jobs() []scheduler.Job {
 		{Name: "datahub.security", Spec: "0 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainSecurity)},
 		{Name: "datahub.sector", Spec: "10 8 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: day(biz.DomainSector)},
 		{Name: "datahub.margin", Spec: "10 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.marginPrev},
+		{Name: "datahub.margin_mkt", Spec: "12 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.marginMktPrev},
 		{Name: "datahub.overseas", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: time.Minute, Retry: 2, Run: day(biz.DomainOverseas)},
 		{Name: "datahub.finance", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainFinance)},
 		// 解禁窗口赶在 brain 15:50 复盘前滚一次：盘后前、避开收盘忙时；失败也有 T-1 窗口兜底。
@@ -103,6 +104,20 @@ func (w *Worker) marginPrev(ctx context.Context) error {
 		return err
 	}
 	_, err = w.col.CollectMargin(ctx, day, "")
+	return err
+}
+
+// marginMktPrev 与 marginPrev 同一 T+1 口径：全市场两融次交易日早上才有。
+func (w *Worker) marginMktPrev(ctx context.Context) error {
+	ctx = biz.OpenRunTrace(ctx)
+	if !w.col.Pipeline().DomainEnabled(biz.DomainMarginMkt) {
+		return nil
+	}
+	day, err := w.col.PreviousOpenDay(time.Now())
+	if err != nil {
+		return err
+	}
+	_, err = w.col.CollectMarginMkt(ctx, day, "")
 	return err
 }
 

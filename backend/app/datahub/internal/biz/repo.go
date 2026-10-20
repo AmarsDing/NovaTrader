@@ -29,6 +29,7 @@ type Repo interface {
 	// 保证源头推迟/取消的批次不再残留。窗口为空时只删不写，视为合法结果。
 	UpsertUnlockPlans(ctx context.Context, from, to time.Time, items []UnlockPlan, source string, ready Ready) (int, error)
 	UpsertMargins(ctx context.Context, day time.Time, items []Margin, source string, ready Ready) (int, error)
+	UpsertMarginMkt(ctx context.Context, day time.Time, items []MarginMkt, source string, ready Ready) (int, error)
 	UpsertHsgtTop10(ctx context.Context, day time.Time, items []HsgtTop, source string, ready Ready) (int, error)
 	SyncSectors(ctx context.Context, day time.Time, items []Sector, source string, ready Ready) (int, error)
 	UpsertFinance(ctx context.Context, items []FinanceItem, source string, ready Ready) (int, error)

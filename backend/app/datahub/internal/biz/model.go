@@ -21,6 +21,7 @@ const (
 	DomainLhb          = "lhb"
 	DomainUnlock       = "unlock"
 	DomainMargin       = "margin"
+	DomainMarginMkt    = "margin_mkt"
 	DomainHsgtTop10    = "hsgt_top10"
 	DomainSector       = "sector"
 	DomainSectorQuote  = "sector_quote"
@@ -180,6 +181,20 @@ type Margin struct {
 	Rqye   float64
 	Rqmcl  int64
 	Rzrqye float64
+}
+
+// MarginMkt 全市场两融汇总，交易所维度（SSE/SZSE/BSE 每交易日一行）。
+// 与 Margin（个股明细）互补：这里答「全市场杠杆水位」。数据次交易日早上才有，
+// 调度在次交易日盘前抓上一交易日（T+1 口径，不算 stale）。
+// 数值全指针：源端某列缺发保持 nil 落 NULL——没取到不等于 0（0.数据纪律 §3）。
+type MarginMkt struct {
+	Exchange string   // SSE/SZSE/BSE
+	Rzye     *float64 // 融资余额，元
+	Rzmre    *float64 // 融资买入额，元
+	Rzche    *float64 // 融资偿还额，元
+	Rqye     *float64 // 融券余额，元
+	Rqmcl    *int64   // 融券卖出量，股
+	Rzrqye   *float64 // 融资融券余额，元
 }
 
 // HsgtTop 沪深股通十大成交股。

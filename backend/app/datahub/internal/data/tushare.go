@@ -254,6 +254,28 @@ func (t *Tushare) Margins(ctx context.Context, d time.Time) ([]biz.Margin, error
 	return items, nil
 }
 
+// MarginMkt 全市场两融汇总（Tushare api_name=margin），交易所维度每交易日
+// SSE/SZSE/BSE 各一行。与 MarginDetail（个股明细）互补：答「全市场杠杆水位」。
+// 列用 anyPtr/anyIPtr 留 nil——源缺列不落 0（0.数据纪律 §3）。
+func (t *Tushare) MarginMkts(ctx context.Context, d time.Time) ([]biz.MarginMkt, error) {
+	rows, err := t.query(ctx, "margin", map[string]any{"trade_date": tsDate(d)},
+		"trade_date,exchange_id,rzye,rzmre,rzche,rqye,rqmcl,rzrqye")
+	if err != nil {
+		return nil, err
+	}
+	items := make([]biz.MarginMkt, 0, len(rows))
+	for _, r := range rows {
+		ex := strings.ToUpper(anyStr(r["exchange_id"]))
+		if ex != "SSE" && ex != "SZSE" && ex != "BSE" {
+			continue
+		}
+		items = append(items, biz.MarginMkt{Exchange: ex,
+			Rzye: anyPtr(r["rzye"]), Rzmre: anyPtr(r["rzmre"]), Rzche: anyPtr(r["rzche"]),
+			Rqye: anyPtr(r["rqye"]), Rqmcl: anyIPtr(r["rqmcl"]), Rzrqye: anyPtr(r["rzrqye"])})
+	}
+	return items, nil
+}
+
 func (t *Tushare) HsgtTop10(ctx context.Context, d time.Time) ([]biz.HsgtTop, error) {
 	rows, err := t.query(ctx, "hsgt_top10", map[string]any{"trade_date": tsDate(d)}, "ts_code,name,close,change,rank,market_type,amount,net_amount")
 	if err != nil {

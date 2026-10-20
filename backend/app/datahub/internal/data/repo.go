@@ -21,6 +21,7 @@ import (
 	"server/ent/limitpool"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marginmarket"
 	"server/ent/marketdata"
 	"server/ent/moneyflow"
 	"server/ent/overseasquote"
@@ -393,6 +394,32 @@ func (r *Repo) UpsertMargins(ctx context.Context, d time.Time, items []biz.Margi
 		err := chunks(bulk, func(part []*ent.MarginDetailCreate) error {
 			return tx.MarginDetail.CreateBulk(part...).
 				OnConflictColumns(margindetail.FieldSymbol, margindetail.FieldTradeDate).
+				UpdateNewValues().Exec(ctx)
+		})
+		return len(items), err
+	})
+}
+
+// UpsertMarginMkt 写全市场两融汇总（trade_date+exchange 幂等）。数值列
+// SetNillable：源缺列保持 NULL，不冒充 0（0.数据纪律 §3）。
+func (r *Repo) UpsertMarginMkt(ctx context.Context, d time.Time, items []biz.MarginMkt, source string, rd biz.Ready) (int, error) {
+	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		bulk := make([]*ent.MarginMarketCreate, 0, len(items))
+		for _, m := range items {
+			bulk = append(bulk, tx.MarginMarket.Create().
+				SetTradeDate(day(d)).
+				SetExchange(m.Exchange).
+				SetNillableRzye(m.Rzye).
+				SetNillableRzmre(m.Rzmre).
+				SetNillableRzche(m.Rzche).
+				SetNillableRqye(m.Rqye).
+				SetNillableRqmcl(m.Rqmcl).
+				SetNillableRzrqye(m.Rzrqye).
+				SetSource(source))
+		}
+		err := chunks(bulk, func(part []*ent.MarginMarketCreate) error {
+			return tx.MarginMarket.CreateBulk(part...).
+				OnConflictColumns(marginmarket.FieldTradeDate, marginmarket.FieldExchange).
 				UpdateNewValues().Exec(ctx)
 		})
 		return len(items), err

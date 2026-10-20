@@ -214,6 +214,11 @@ datahub:
     margin:
       enabled: true
       sources: [tushare, eastmoney]
+    # 全市场两融汇总（交易所维度 T+1）：主源仅 tushare margin 接口；
+    # 东财市场级两融报表（RPTA_WEB_RZRQ_LS）未接，留作备源候补。
+    margin_mkt:
+      enabled: true
+      sources: [tushare]
     hsgt_top10:
       enabled: true
       sources: [tushare, eastmoney]

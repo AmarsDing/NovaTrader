@@ -60,6 +60,11 @@ type MarginSource interface {
 	Margins(ctx context.Context, day time.Time) ([]Margin, error)
 }
 
+// MarginMktSource 拉全市场两融汇总（交易所维度日频，T+1 早可得）。
+type MarginMktSource interface {
+	MarginMkts(ctx context.Context, day time.Time) ([]MarginMkt, error)
+}
+
 type HsgtSource interface {
 	HsgtTop10(ctx context.Context, day time.Time) ([]HsgtTop, error)
 }
@@ -126,6 +131,9 @@ func Supports(domain string, s Source) bool {
 		return ok
 	case DomainMargin:
 		_, ok := s.(MarginSource)
+		return ok
+	case DomainMarginMkt:
+		_, ok := s.(MarginMktSource)
 		return ok
 	case DomainHsgtTop10:
 		_, ok := s.(HsgtSource)

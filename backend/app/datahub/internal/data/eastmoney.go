@@ -478,6 +478,15 @@ func anyPtr(v any) *float64 {
 	return &f
 }
 
+func anyIPtr(v any) *int64 {
+	f, ok := anyNum(v)
+	if !ok {
+		return nil
+	}
+	i := int64(f)
+	return &i
+}
+
 // secu 解析 600519.SH 形式的 SECUCODE，或 6 位代码。
 func secu(v any) string {
 	s := anyStr(v)
