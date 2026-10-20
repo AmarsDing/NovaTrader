@@ -94,6 +94,10 @@ func (f *fakeRepo) SaveSentiment(_ context.Context, s market.Sentiment) error {
 func (f *fakeRepo) SentimentTrail(context.Context, time.Time) ([]market.Sentiment, error) {
 	return nil, nil
 }
+func (f *fakeRepo) SaveIntradayAlerts(context.Context, time.Time, []market.Alert) error { return nil }
+func (f *fakeRepo) IntradayAlertsOn(context.Context, time.Time, float64, []string) ([]IntradayAlertRow, error) {
+	return nil, nil
+}
 func (f *fakeRepo) SaveSectorHeat(context.Context, time.Time, time.Time, []market.SectorHeat) error {
 	f.heat++
 	return nil

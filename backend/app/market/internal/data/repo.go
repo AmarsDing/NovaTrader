@@ -8,6 +8,7 @@ import (
 
 	"server/app/market/internal/biz"
 	"server/ent"
+	"server/ent/intradayalert"
 	"server/ent/lhbseat"
 	"server/ent/limitboard"
 	"server/ent/limitpool"
@@ -352,6 +353,46 @@ func (r *Repo) SentimentTrail(ctx context.Context, day time.Time) ([]market.Sent
 	}
 	return out, nil
 }
+
+// SaveIntradayAlerts 落盘中异动流水。幂等键 (symbol,kind,fired_at) 冲突静默忽略（DoNothing），
+// 重放快照批次、refresh 重启不会重复落行；引擎侧 pct/price 恒为取到的真值（封/开板基准为锁定当日昨收
+// limBase、急拉基准 ref>0，基准缺失不发警——0.数据纪律 §6），故直写；列保持 NULLable 以备将来真缺失写入方。
+func (r *Repo) SaveIntradayAlerts(ctx context.Context, day time.Time, alerts []market.Alert) error {
+	d := pgDay(day)
+	creates := make([]*ent.IntradayAlertCreate, 0, len(alerts))
+	for _, a := range alerts {
+		creates = append(creates, r.db.IntradayAlert.Create().
+			SetTradeDate(d).SetSymbol(a.Symbol).SetKind(a.Kind).
+			SetPct(a.Pct).SetPrice(a.Price).SetName(a.Name).SetFiredAt(a.Time))
+	}
+	return r.db.IntradayAlert.CreateBulk(creates...).
+		OnConflictColumns(intradayalert.FieldSymbol, intradayalert.FieldKind, intradayalert.FieldFiredAt).
+		DoNothing().Exec(ctx)
+}
+
+// IntradayAlertsOn 读某日异动流水（fired_at 倒序，上限 200）；minPct>0 只留 pct ≥ minPct。
+func (r *Repo) IntradayAlertsOn(ctx context.Context, day time.Time, minPct float64, symbols []string) ([]biz.IntradayAlertRow, error) {
+	q := r.db.IntradayAlert.Query().Where(intradayalert.TradeDateEQ(pgDay(day)))
+	if minPct > 0 {
+		q = q.Where(intradayalert.PctGTE(minPct))
+	}
+	if len(symbols) > 0 {
+		q = q.Where(intradayalert.SymbolIn(symbols...))
+	}
+	rows, err := q.Order(ent.Desc(intradayalert.FieldFiredAt)).Limit(200).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.IntradayAlertRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, biz.IntradayAlertRow{
+			Symbol: row.Symbol, Name: row.Name, Kind: row.Kind,
+			Time: row.FiredAt, Pct: row.Pct, Price: row.Price,
+		})
+	}
+	return out, nil
+}
+
 func (r *Repo) SaveSectorHeat(ctx context.Context, day, asOf time.Time, rows []market.SectorHeat) error {
 	d := pgDay(day)
 	return chunks(len(rows), func(lo, hi int) error {

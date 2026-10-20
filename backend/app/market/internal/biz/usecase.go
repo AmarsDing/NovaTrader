@@ -269,6 +269,12 @@ func (u *Usecase) Refresh(ctx context.Context, now time.Time) error {
 			u.log.Errorf("save limit boards: %v", err)
 		}
 	}
+	if len(up.Alerts) > 0 {
+		if err := u.repo.SaveIntradayAlerts(ctx, eng.Day(), up.Alerts); err != nil {
+			mErrors.Inc()
+			u.log.Errorf("save intraday alerts: %v", err)
+		}
+	}
 	u.publish(ctx, eng, up, bars, now)
 	return nil
 }

@@ -37,6 +37,7 @@ type stockState struct {
 	ind      *Indicators
 	agg      *Aggregator
 	lim      *LimitTracker
+	limBase  float64 // 建 tracker 时锁定的当日昨收，封/开板 pct 基准；与 lim 同生同灭，恒 >0
 	last     Snapshot
 	hasLast  bool
 	preMatch *Snapshot
@@ -46,7 +47,7 @@ type stockState struct {
 	closed   bool // 当日日线已提交进指标状态
 	loaded   bool // Static security identity came from the successful stock-basic warmup.
 	recent   ring // 最近几根分钟线收盘，算急拉和指数 5 分钟涨跌
-	surgeAt  time.Time
+	alertAt  map[string]time.Time // 同类异动 5 分钟去重（vibe watch.ts 口径），竞价落定清零
 }
 
 // 异动类别，与 M06 订阅的 market.alert 一致。
@@ -59,12 +60,30 @@ const (
 	AlertSurge   = "surge"
 )
 
-// Alert 是 market.alert 的载荷。
+// Alert 是 market.alert 的载荷。Pct 为急拉窗口涨幅 %（封/开板为相对锁定昨收的当日涨跌幅），Name 供前端免查表。
+// pct/price 恒为取到的真值：封/开板基准 limBase 恒 >0、事件来自 Last>0 的镜头跟踪，急拉基准 ref>0 才发（0.数据纪律 §6）。
 type Alert struct {
 	Symbol string    `json:"symbol"`
 	Kind   string    `json:"kind"`
 	Time   time.Time `json:"time"`
 	Price  float64   `json:"price"`
+	Pct    float64   `json:"pct"`
+	Name   string    `json:"name"`
+}
+
+// alertDedup 同类异动 5 分钟去重窗口（vibe watch.ts 口径）。
+const alertDedup = 5 * time.Minute
+
+// indexMinutes 指数风险度固定在 5 分钟窗口（M08 契约），不随急拉窗口参数变。
+const indexMinutes = 5
+
+// fire 闸住同类异动 5 分钟内的重复上报；放行时登记触发时刻。
+func (st *stockState) fire(kind string, t time.Time) bool {
+	if last, ok := st.alertAt[kind]; ok && t.Sub(last) < alertDedup {
+		return false
+	}
+	st.alertAt[kind] = t
+	return true
 }
 
 // Update 是一轮快照的处理结果。
@@ -105,7 +124,12 @@ func NewEngine(day time.Time, cfg EngineConfig) *Engine {
 }
 
 func (e *Engine) newState(info StockInfo, ind *Indicators) *stockState {
-	return &stockState{info: info, ind: ind, agg: NewAggregator(info.Symbol), recent: newRing(e.cfg.Rules.SurgeMinutes)}
+	// 环形窗口取急拉与指数 5 分钟窗的较大者，保证两种读数都有基准。
+	n := e.cfg.Rules.SurgeMinutes
+	if n < indexMinutes {
+		n = indexMinutes
+	}
+	return &stockState{info: info, ind: ind, agg: NewAggregator(info.Symbol), recent: newRing(n), alertAt: map[string]time.Time{}}
 }
 
 // Day 返回引擎所属交易日。
@@ -175,6 +199,7 @@ func (e *Engine) Process(snaps []Snapshot, now time.Time) Update {
 		e.observeAuction(st, s)
 		if st.lim == nil && s.PreClose > 0 {
 			st.lim = e.newTracker(st.info, s.PreClose)
+			st.limBase = s.PreClose
 		}
 		if st.lim != nil {
 			evs := st.lim.Push(s)
@@ -187,7 +212,11 @@ func (e *Engine) Process(snaps []Snapshot, now time.Time) Update {
 				if ev.Kind == EventBreak {
 					kind = AlertBreak
 				}
-				up.Alerts = append(up.Alerts, Alert{Symbol: s.Symbol, Kind: kind, Time: s.Time, Price: s.Last})
+				if !st.fire(kind, s.Time) {
+					continue
+				}
+				// pct 基准用锁定的当日昨收，不用本帧 PreClose：后续快照昨收缺失（PreClose=0）不得回退成伪 0（「没取到≠0」P3-10）。
+				up.Alerts = append(up.Alerts, Alert{Symbol: s.Symbol, Kind: kind, Time: s.Time, Price: s.Last, Pct: pctOf(s.Last, st.limBase), Name: st.info.Name})
 			}
 		}
 		if a, ok := e.surge(st, s); ok {
@@ -202,21 +231,31 @@ func (e *Engine) Process(snaps []Snapshot, now time.Time) Update {
 	return up
 }
 
-// surge：现价相对 SurgeMinutes 根之前的分钟收盘涨幅达阈值，同一只股票一个窗口内只报一次。
+// pctOf 现价相对基准的涨跌幅 %；基准 ≤0 返回 0，调用方须先保证基准有效——
+// 封/开板基准为建 tracker 时锁定的当日昨收 st.limBase（恒 >0），急拉基准 ref≤0 已拦截不发警。
+// 当日昨收全程缺失时 tracker 不建、不产生封/开板警报：没有判据就不发警，而不是发一条 pct=0 的假警。
+func pctOf(last, base float64) float64 {
+	if base <= 0 {
+		return 0
+	}
+	return (last - base) / base * 100
+}
+
+// surge：现价相对 SurgeMinutes 根之前的分钟收盘涨幅达阈值（默认 3 分钟 1.5%），同只股票同类 5 分钟内只报一次。
 func (e *Engine) surge(st *stockState, s Snapshot) (Alert, bool) {
 	n := e.cfg.Rules.SurgeMinutes
 	if e.cfg.Rules.SurgePct <= 0 || st.recent.n < n || s.Last <= 0 {
 		return Alert{}, false
 	}
 	ref := st.recent.back(n - 1)
-	if ref <= 0 || (s.Last-ref)/ref*100 < e.cfg.Rules.SurgePct {
+	pct := pctOf(s.Last, ref)
+	if ref <= 0 || pct < e.cfg.Rules.SurgePct {
 		return Alert{}, false
 	}
-	if !st.surgeAt.IsZero() && s.Time.Sub(st.surgeAt) < time.Duration(n)*time.Minute {
+	if !st.fire(AlertSurge, s.Time) {
 		return Alert{}, false
 	}
-	st.surgeAt = s.Time
-	return Alert{Symbol: s.Symbol, Kind: AlertSurge, Time: s.Time, Price: s.Last}, true
+	return Alert{Symbol: s.Symbol, Kind: AlertSurge, Time: s.Time, Price: s.Last, Pct: pct, Name: st.info.Name}, true
 }
 
 // State 返回给 M08 的市场状态。
@@ -228,8 +267,9 @@ func (e *Engine) State(asOf time.Time) State {
 	idx := e.index
 	if idx.hasLast && idx.last.PreClose > 0 {
 		pct = (idx.last.Last - idx.last.PreClose) / idx.last.PreClose * 100
-		if n := e.cfg.Rules.SurgeMinutes; idx.recent.n >= n {
-			if ref := idx.recent.back(n - 1); ref > 0 {
+		// 固定 5 根分钟收盘（M08 的指数 5 分钟口径），与急拉窗口参数解耦。
+		if idx.recent.n >= indexMinutes {
+			if ref := idx.recent.back(indexMinutes - 1); ref > 0 {
 				pct5 = (idx.last.Last - ref) / ref * 100
 			}
 		}
@@ -253,6 +293,9 @@ func (e *Engine) observeAuction(st *stockState, s Snapshot) {
 	case m >= 9*60+25 && m < 9*60+30 && st.auction == nil && s.Volume > 0:
 		cp := s
 		st.auction = &cp
+		// 竞价清零窗口（vibe watch.ts）：竞价落定把盘前去重状态清掉，
+		// 开盘后的急拉/封板可以立刻重新上报，不受昨日尾盘或盘前残留压制。
+		st.alertAt = map[string]time.Time{}
 	}
 }
 

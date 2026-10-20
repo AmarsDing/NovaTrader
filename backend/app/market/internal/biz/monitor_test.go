@@ -223,3 +223,50 @@ func TestEmotionPathEmpty(t *testing.T) {
 		t.Fatalf("missing = %v", p.Missing)
 	}
 }
+
+/* ---------- IntradayAlerts：盘中异动流筛选 ---------- */
+
+type alertsRepo struct {
+	fakeRepo
+	gotMinPct  float64
+	gotSymbols []string
+}
+
+func (r *alertsRepo) IntradayAlertsOn(_ context.Context, _ time.Time, minPct float64, symbols []string) ([]IntradayAlertRow, error) {
+	r.gotMinPct, r.gotSymbols = minPct, symbols
+	pct := 5.0
+	return []IntradayAlertRow{{Symbol: "A", Name: "测试", Kind: "surge", Pct: &pct}}, nil
+}
+
+func TestIntradayAlertsWatchOnly(t *testing.T) {
+	repo := &alertsRepo{}
+	uc := NewUsecase(repo, nil, nil, Config{}, log.DefaultLogger)
+	uc.SetWatchlist("web", []string{"A", "B"}, time.Hour)
+	rows, err := uc.IntradayAlerts(context.Background(), time.Date(2026, 10, 13, 0, 0, 0, 0, tradecal.Shanghai()), 1.5, []string{"A"}, true, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v", rows)
+	}
+	if repo.gotMinPct != 1.5 {
+		t.Fatalf("minPct = %v", repo.gotMinPct)
+	}
+	// watch_only 叠加候选池：显式 symbols 与 watch 池并集去重。
+	if len(repo.gotSymbols) != 2 {
+		t.Fatalf("symbols = %v", repo.gotSymbols)
+	}
+}
+
+func TestIntradayAlertsNoWatch(t *testing.T) {
+	repo := &alertsRepo{}
+	uc := NewUsecase(repo, nil, nil, Config{}, log.DefaultLogger)
+	uc.SetWatchlist("web", []string{"A", "B"}, time.Hour)
+	_, err := uc.IntradayAlerts(context.Background(), time.Date(2026, 10, 13, 0, 0, 0, 0, tradecal.Shanghai()), 0, nil, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.gotSymbols) != 0 {
+		t.Fatalf("watchOnly=false 不应并入候选池：%v", repo.gotSymbols)
+	}
+}

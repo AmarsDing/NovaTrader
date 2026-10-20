@@ -63,6 +63,10 @@ type Repo interface {
 	SaveSentiment(ctx context.Context, s market.Sentiment) error
 	// SentimentTrail 返回某日全部情绪截面（as_of 升序），用于盘中情绪路径。没有记录返回空。
 	SentimentTrail(ctx context.Context, day time.Time) ([]market.Sentiment, error)
+	// SaveIntradayAlerts 落盘中异动流水；同 (symbol,kind,fired_at) 幂等，幂等冲突静默忽略。
+	SaveIntradayAlerts(ctx context.Context, day time.Time, alerts []market.Alert) error
+	// IntradayAlertsOn 读某日异动流水（fired_at 倒序，上限 200）。minPct>0 时只留 pct ≥ minPct 的行。
+	IntradayAlertsOn(ctx context.Context, day time.Time, minPct float64, symbols []string) ([]IntradayAlertRow, error)
 	SaveSectorHeat(ctx context.Context, day, asOf time.Time, rows []market.SectorHeat) error
 
 	SectorMembers(ctx context.Context, day time.Time) (map[string][]string, map[string]string, error)

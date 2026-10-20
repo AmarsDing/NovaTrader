@@ -205,6 +205,40 @@ func sealedSymbols(sealed map[string]int) []string {
 func r2x(v float64) float64 {
 	return float64(int(v*100+0.5)) / 100
 }
+
+// IntradayAlertRow 盘中异动流水的一行（intraday_alerts 表）。
+type IntradayAlertRow struct {
+	Symbol string
+	Name   string
+	Kind   string
+	Time   time.Time
+	Pct    *float64
+	Price  *float64
+}
+
+// IntradayAlerts 读某日盘中异动流水。minPct>0 时按触发幅度过滤；symbols 非空按代码过滤；
+// watchOnly 把当前盯盘候选池（watch 租约，含 web 自选与 strategy 池）并入过滤集。
+func (u *Usecase) IntradayAlerts(ctx context.Context, day time.Time, minPct float64, symbols []string, watchOnly bool, now time.Time) ([]IntradayAlertRow, error) {
+	if watchOnly {
+		seen := make(map[string]bool, len(symbols))
+		out := make([]string, 0, len(symbols))
+		for _, s := range symbols {
+			if s != "" && !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+		for _, s := range u.watch.Symbols(now) {
+			if !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+		symbols = out
+	}
+	return u.repo.IntradayAlertsOn(ctx, day, minPct, symbols)
+}
+
 // LadderStep 是一档晋级统计：前一日 N 连板、次日封住 N+1 的比例。
 type LadderStep struct {
 	From      int

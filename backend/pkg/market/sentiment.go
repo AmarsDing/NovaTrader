@@ -129,6 +129,7 @@ type Rules struct {
 	Risk1BrokenRate float64 `json:"risk1_broken_rate"`
 
 	// 急拉异动（给 M06 的 market.alert）：SurgeMinutes 分钟内涨幅 ≥ SurgePct%。
+	// P0-4 起默认 3 分钟 1.5%（vibe watch.ts 口径），同类 5 分钟去重、竞价落定清零。
 	SurgePct     float64 `json:"surge_pct"`
 	SurgeMinutes int     `json:"surge_minutes"`
 }
@@ -155,7 +156,7 @@ func DefaultRules() Rules {
 		Risk3IndexPct: -3, Risk3Index5m: -1.5,
 		Risk2IndexPct: -2, Risk2Index5m: -1.0,
 		Risk1IndexPct: -1, Risk1BrokenRate: 0.4,
-		SurgePct: 3, SurgeMinutes: 5,
+		SurgePct: 1.5, SurgeMinutes: 3,
 	}
 }
 

@@ -609,6 +609,7 @@ var natsRoutes = []natsRoute{
 	{events.SubjectStrategyReview, "alert", "alert", "admin_strategy_review", false},
 	{events.SubjectBriefing, "alert", "alert", "admin_briefing", false},
 	{events.SubjectMarketSnapshot, "market", "market", "", true},
+	{events.SubjectMarketAlert, "alert", "move", "", true},
 	{events.SubjectBrainProgress, "brain", "brain", "", true},
 }
 
