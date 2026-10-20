@@ -65,6 +65,8 @@ type Runner struct {
 	lastExp         time.Time
 	lastSch         time.Time
 	executionCursor int
+	closureCursor   int
+	pairState       map[closurePairKey]*closurePairState // 闭仓归并环的冷却与超配计时（仅 closeLoop 单协程读写）
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -82,6 +84,7 @@ func NewRunner(uc *biz.Usecase, d *data.Data, beat *registry.Beater, bus *events
 		uc: uc, d: d, beater: beat, bus: bus, cal: tradecal.Default,
 		log: log.NewHelper(log.With(logger, "module", "strategy/core")),
 		now: time.Now, addr: addr, id: id, alerted: map[string]struct{}{}, seen: events.NewSeen(10000),
+		pairState: map[closurePairKey]*closurePairState{},
 	}
 	r.sched = scheduler.New(r.cal, d.TaskStore(),
 		scheduler.Job{
@@ -114,11 +117,12 @@ func (r *Runner) Start(ctx context.Context) error {
 	}
 	loopCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	r.wg.Add(4)
+	r.wg.Add(5)
 	go r.loop(loopCtx, r.housekeep)
 	go r.loop(loopCtx, r.step)
 	go r.executionLoop(loopCtx)
 	go r.beatLoop(loopCtx)
+	go r.closeLoop(loopCtx)
 	return nil
 }
 

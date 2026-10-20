@@ -18,6 +18,12 @@ var ErrNotFound = errors.New("strategy: signal not found")
 // ErrBadRequest 表示入参不合法。
 var ErrBadRequest = errors.New("strategy: bad request")
 
+// ErrClosureIdentityGate 标记合同 §1.3 枚举的库存恒等门触发项（账本行脏 /
+// FIFO 卖超 / 窗口内 Σ卖≠Σ买 / fills 读取超限截断）。data 读取超限截断时用
+// %w 包装返回，core 据此对整 pair loud Errorf + 冷却 10 分钟；其余 facts 读
+// 错误（PG 瞬断、页内 5s ctx 超时）是暂态故障，不进门、不冷却。
+var ErrClosureIdentityGate = errors.New("strategy: closure inventory identity gate")
+
 // MarketSource 给出某一时刻可见的快照。实现方不能把 asOf 之后的数据放进来。
 type MarketSource interface {
 	// Universe 返回全市场快照。
@@ -93,6 +99,18 @@ type SignalRepo interface {
 	LastDoneBuy(ctx context.Context, book, symbol string) (*Signal, error)
 	// List 按编号倒序返回。
 	List(ctx context.Context, f SignalFilter) ([]*Signal, error)
+}
+
+// ClosureProjectionRepo 是闭仓归并的只读投影端口（M06 done→closed 设计合同
+// §1.6）：data 层只新增读方法，closed 写入零新增路径——唯一写径仍是
+// SignalRepo.Transition 的 ForUpdate + CAS + signal_events + outbox 三件套。
+type ClosureProjectionRepo interface {
+	// CloseCandidates 返回候选信号编号：status=done ∧ side=buy ∧
+	// executed_volume 非空且 > 0 ∧ book 匹配，按 id 升序 keyset 分页。
+	CloseCandidates(ctx context.Context, book string, afterID, limit int) ([]int, error)
+	// ClosurePairFacts 读取 (book, symbol) 的重放事实：trade_fill 全序账本
+	// （超限显式报错不截断）、该 pair 全部候选形态信号行、每候选的未决意图。
+	ClosurePairFacts(ctx context.Context, book, symbol string) (*ClosureFacts, error)
 }
 
 // SignalFilter 的零值字段不参与过滤。

@@ -91,6 +91,7 @@ var definitions = map[string][]definition{
 		{"expire", "business", "expiry_timer", "signal_expiry_returned_success"},
 		{"outcomes", "business", "scheduler", "outcome_backfill_returned_success"},
 		{"execution_projection", "business", "trade.order_or_trade.fill_or_recovery_timer", "authoritative_order_or_bounded_recovery_page_projection_returned_success_not_broker_ack"},
+		{"closure_projection", "business", "closure_recovery_timer", "ledger_window_attribution_closed_signals_or_skipped_not_manual_closed_writes"},
 	},
 }
 

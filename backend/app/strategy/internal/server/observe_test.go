@@ -30,7 +30,7 @@ func TestHTTPObservationMountedWithClosedStrategyContract(t *testing.T) {
 	if err := observe.ValidateSnapshot("strategy", out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Operations) != 8 || out.Scope != "process_consumer_operations" {
+	if len(out.Operations) != 9 || out.Scope != "process_consumer_operations" {
 		t.Fatalf("bad contract %v", out)
 	}
 }
