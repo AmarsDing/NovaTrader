@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"server/library/dataformat"
 	"server/pkg/market"
 )
 
@@ -106,8 +107,14 @@ func TestCheckBarsAndCompleteness(t *testing.T) {
 		t.Fatalf("clean=%d issues=%d", len(clean), len(issues))
 	}
 	cov, missing := Completeness([]string{"600519.SH"}, []string{"600519.SH", "000001.SZ"})
-	if cov < 0.49 || cov > 0.51 || len(missing) != 1 {
+	v, ok := cov.Value()
+	if !ok || v < 0.49 || v > 0.51 || len(missing) != 1 {
 		t.Fatalf("cov=%v missing=%v", cov, missing)
+	}
+	// 「没取到≠满分」：分母为空时必须返回 Missing，禁止静默 100%。
+	empty, _ := Completeness([]string{"600519.SH"}, nil)
+	if empty.IsOK() || empty.Why() != dataformat.WhyNotRun {
+		t.Fatalf("expect 空应 Missing(not_run)，得到 %v", empty)
 	}
 }
 

@@ -51,7 +51,7 @@ func (c *Collector) RunBackfill(ctx context.Context, job BackfillJob) BackfillJo
 	job.StartedAt = &now
 	_ = c.repo.UpdateBackfill(ctx, job)
 	var errs []string
-	run := func(day time.Time) (Result, error) {
+	run := func(day time.Time) (CollectSummary, error) {
 		switch job.Domain {
 		case DomainDailyBar:
 			return c.CollectDailyBars(ctx, day, job.Symbols, job.Source)
@@ -70,7 +70,7 @@ func (c *Collector) RunBackfill(ctx context.Context, job BackfillJob) BackfillJo
 		case DomainLimitPool:
 			return c.CollectLimitPool(ctx, day, job.Source)
 		}
-		return Result{}, fmt.Errorf("datahub: %s 不支持补数", job.Domain)
+		return CollectSummary{}, fmt.Errorf("datahub: %s 不支持补数", job.Domain)
 	}
 	switch job.Domain {
 	case DomainFinance:
@@ -81,7 +81,7 @@ func (c *Collector) RunBackfill(ctx context.Context, job BackfillJob) BackfillJo
 			errs = append(errs, err.Error())
 		}
 	case DomainSecurity, DomainSector:
-		var r Result
+		var r CollectSummary
 		var err error
 		if job.Domain == DomainSecurity {
 			r, err = c.CollectSecurities(ctx, job.Source)

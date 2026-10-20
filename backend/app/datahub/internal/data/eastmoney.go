@@ -86,8 +86,13 @@ func (v jv) ptr() *float64 {
 type emRow map[string]jv
 
 func (r emRow) str(k string) string { return r[k].s }
-func (r emRow) f(k string) float64  { return r[k].n }
-func (r emRow) has(k string) bool   { return r[k].ok }
+
+// f 哨兵取值：解析失败 → 0。「没取到≠0」纪律下，只容许两类用途：
+//  (a) 字段 0 与缺失同语义（消费方先判 >0，如 PreClose/封单额/连板数/两融余额——0 合法或 0=无）；
+//  (b) 缺失行已被上游 has(k) 跳过的字段。
+// 会把「缺失」与「真 0」混淆的关键字段（如资金流主字段）必须先 has() 判，缺失 skip 行。
+func (r emRow) f(k string) float64 { return r[k].n }
+func (r emRow) has(k string) bool  { return r[k].ok }
 
 // emSymbol 由 f12 代码和 f13 市场得到内部代码。北交所 f13 为 0，按代码段区分。
 func emSymbol(code string, mkt float64) string {
@@ -163,7 +168,10 @@ func (e *Eastmoney) Snapshots(ctx context.Context, symbols []string) (biz.Snapsh
 	items := make([]market.Snapshot, 0, len(rows))
 	for _, r := range rows {
 		sym := emSymbol(r.str("f12"), r.f("f13"))
-		if sym == "" || !r.has("f2") || !r.has("f124") {
+		// 「没取到≠0」：f2 缺失或 0 价的快照行 skip——停牌/解析失败的 Last=0 一旦入库，
+		// 下游涨跌幅按 (0-昨收)/昨收=-100% 会触发假跌停异动；停牌股 Redis 无行情强过一个伪价。
+		// 其余价段（开高低/前收）走 0=缺失哨兵，pkg/market 消费侧先判 >0。
+		if sym == "" || !r.has("f2") || r.f("f2") <= 0 || !r.has("f124") {
 			continue
 		}
 		items = append(items, market.Snapshot{
@@ -250,7 +258,9 @@ func (e *Eastmoney) flows(ctx context.Context) ([]biz.IntradayFlow, error) {
 	return items, nil
 }
 
-func (e *Eastmoney) IntradayFlows(ctx context.Context) ([]biz.IntradayFlow, error) { return e.flows(ctx) }
+func (e *Eastmoney) IntradayFlows(ctx context.Context) ([]biz.IntradayFlow, error) {
+	return e.flows(ctx)
+}
 
 // MoneyFlows 只能取当日：收盘后的实时资金即当日资金流向，历史日期不支持。
 func (e *Eastmoney) MoneyFlows(ctx context.Context, d time.Time) ([]biz.MoneyFlow, error) {
@@ -260,6 +270,8 @@ func (e *Eastmoney) MoneyFlows(ctx context.Context, d time.Time) ([]biz.MoneyFlo
 	flows, err := e.flows(ctx)
 	if err != nil {
 		return nil, err
+		// 「没取到≠0」：主力净流入（f62）是该行的存在理由，缺失整行 skip；
+		// 分项（超大/大/中/小）与主力的分解源一次取齐，缺省按 0=无该项流向处理（哨兵）。
 	}
 	items := make([]biz.MoneyFlow, 0, len(flows))
 	for _, f := range flows {
@@ -491,6 +503,9 @@ func dcDate(v any) (time.Time, bool) {
 	return t, err == nil
 }
 
+// anyF 哨兵取值：解析失败 → 0。纪律同 emRow.f：仅用于 0 与缺失同语义、
+// 或下游校验链（CheckBars/CheckSnapshots 非正拦截）会兜住伪 0 的字段；
+// 情感分、资金流主字段这类 0 有真实含义的禁止用 anyF（用 anyNum/anyPtr）。
 func (e *Eastmoney) LhbSeats(ctx context.Context, d time.Time) ([]biz.LhbSeat, error) {
 	filter := fmt.Sprintf("(TRADE_DATE='%s')", ymd(d))
 	var items []biz.LhbSeat

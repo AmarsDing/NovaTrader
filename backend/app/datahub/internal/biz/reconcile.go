@@ -16,7 +16,7 @@ type ReconcileOptions struct {
 }
 
 // Reconcile 抽样对账某日日线：入库值与另一个源的值比较，不一致写 reconcile 问题并标出两个来源。FR-01-15。
-func (c *Collector) Reconcile(ctx context.Context, day time.Time, opt ReconcileOptions) (Result, error) {
+func (c *Collector) Reconcile(ctx context.Context, day time.Time, opt ReconcileOptions) (CollectSummary, error) {
 	if opt.Sample <= 0 {
 		opt.Sample = 50
 	}
@@ -29,10 +29,10 @@ func (c *Collector) Reconcile(ctx context.Context, day time.Time, opt ReconcileO
 	day = dateOf(day)
 	stored, sources, err := c.repo.DailyBars(ctx, day, nil)
 	if err != nil {
-		return Result{Domain: DomainDailyBar}, err
+		return CollectSummary{Domain: DomainDailyBar}, err
 	}
 	if len(stored) == 0 {
-		return Result{Domain: DomainDailyBar}, fmt.Errorf("%s 没有已入库的日线可对账", day.Format("2006-01-02"))
+		return CollectSummary{Domain: DomainDailyBar}, fmt.Errorf("%s 没有已入库的日线可对账", day.Format("2006-01-02"))
 	}
 	sample := pickSample(stored, opt.Sample)
 	bySource := map[string][]string{}
@@ -96,9 +96,9 @@ func (c *Collector) Reconcile(ctx context.Context, day time.Time, opt ReconcileO
 	}
 	c.saveIssues(ctx, DomainDailyBar, "", day, issues)
 	if checked == 0 && lastErr != nil {
-		return Result{Domain: DomainDailyBar}, lastErr
+		return CollectSummary{Domain: DomainDailyBar}, lastErr
 	}
-	return Result{Domain: DomainDailyBar, Rows: checked, Message: fmt.Sprintf("抽样 %d 只，不一致 %d 只", checked, len(issues))}, nil
+	return CollectSummary{Domain: DomainDailyBar, Rows: checked, Message: fmt.Sprintf("抽样 %d 只，不一致 %d 只", checked, len(issues))}, nil
 }
 
 // pickSample 均匀抽样，结果可复现。

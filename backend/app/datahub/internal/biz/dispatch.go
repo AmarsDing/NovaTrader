@@ -8,7 +8,7 @@ import (
 )
 
 // RunDomain 按数据域名采集一次。date 为空则用最近一个交易日。供 RPC 和调度调用。
-func (c *Collector) RunDomain(ctx context.Context, domain, date, only string) (Result, error) {
+func (c *Collector) RunDomain(ctx context.Context, domain, date, only string) (CollectSummary, error) {
 	ctx = OpenRunTrace(ctx)
 	finish := observe.ForService("datahub").Op("collect_request").Begin()
 	result, err := c.runDomain(ctx, domain, date, only)
@@ -16,15 +16,15 @@ func (c *Collector) RunDomain(ctx context.Context, domain, date, only string) (R
 	return result, err
 }
 
-func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (Result, error) {
+func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (CollectSummary, error) {
 	day, err := c.parseDay(date)
 	if err != nil {
-		return Result{Domain: domain}, err
+		return CollectSummary{Domain: domain}, err
 	}
 	switch domain {
 	case DomainSnapshot:
 		meta, err := c.CollectSnapshot(ctx)
-		return Result{Domain: DomainSnapshot, Source: meta.Source, Rows: meta.Count, Stale: meta.Stale}, err
+		return CollectSummary{Domain: DomainSnapshot, Source: meta.Source, Rows: meta.Count, Stale: meta.Stale}, err
 	case DomainSectorQuote:
 		return c.CollectSectorQuotes(ctx)
 	case DomainSecurity:
@@ -58,7 +58,7 @@ func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (R
 	case DomainFlash, DomainNews, DomainAnnouncement, DomainReport:
 		return c.CollectIntel(ctx, domain)
 	default:
-		return Result{}, fmt.Errorf("datahub: unknown domain %s", domain)
+		return CollectSummary{}, fmt.Errorf("datahub: unknown domain %s", domain)
 	}
 }
 

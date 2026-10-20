@@ -90,8 +90,9 @@ func NewCollector(p *Pipeline, repo Repo, snap SnapshotStore, bus Publisher, cal
 // Pipeline 返回底层流水线，供服务层查询健康和开关源。
 func (c *Collector) Pipeline() *Pipeline { return c.p }
 
-// Result 是一次采集的结果。
-type Result struct {
+// CollectSummary 是一次采集的结果。
+// （原 biz.Result，P3-10 改名：避免与 dataformat.Result[T]「没取到≠0」封装并存时的阅读歧义。）
+type CollectSummary struct {
 	Domain  string
 	Source  string
 	Rows    int
@@ -185,13 +186,13 @@ func InQuoteSession(s tradecal.Session) bool {
 }
 
 // CollectSectorQuotes 采板块实时行情写 Redis snap:sector。
-func (c *Collector) CollectSectorQuotes(ctx context.Context) (Result, error) {
+func (c *Collector) CollectSectorQuotes(ctx context.Context) (CollectSummary, error) {
 	items, src, err := Run(ctx, c.p, DomainSectorQuote, RunOptions{},
 		func(ctx context.Context, s Source) ([]SectorQuote, error) {
 			return s.(SectorQuoteSource).SectorQuotes(ctx)
 		}, nonEmpty[SectorQuote]("板块行情"))
 	if err != nil {
-		return Result{Domain: DomainSectorQuote}, err
+		return CollectSummary{Domain: DomainSectorQuote}, err
 	}
 	now := c.now()
 	for i := range items {
@@ -199,13 +200,13 @@ func (c *Collector) CollectSectorQuotes(ctx context.Context) (Result, error) {
 		items[i].Source = src
 	}
 	if err := c.snap.WriteSectorQuotes(ctx, items); err != nil {
-		return Result{}, err
+		return CollectSummary{}, err
 	}
-	return Result{Domain: DomainSectorQuote, Source: src, Rows: len(items)}, nil
+	return CollectSummary{Domain: DomainSectorQuote, Source: src, Rows: len(items)}, nil
 }
 
 // CollectIntradayFlow 采盘中个股主力资金写 Redis snap:flow。
-func (c *Collector) CollectIntradayFlow(ctx context.Context) (Result, error) {
+func (c *Collector) CollectIntradayFlow(ctx context.Context) (CollectSummary, error) {
 	items, src, err := Run(ctx, c.p, DomainMoneyFlow, RunOptions{},
 		func(ctx context.Context, s Source) ([]IntradayFlow, error) {
 			fs, ok := s.(IntradayFlowSource)
@@ -215,7 +216,7 @@ func (c *Collector) CollectIntradayFlow(ctx context.Context) (Result, error) {
 			return fs.IntradayFlows(ctx)
 		}, nonEmpty[IntradayFlow]("盘中资金"))
 	if err != nil {
-		return Result{Domain: DomainMoneyFlow}, err
+		return CollectSummary{Domain: DomainMoneyFlow}, err
 	}
 	now := c.now()
 	for i := range items {
@@ -223,9 +224,9 @@ func (c *Collector) CollectIntradayFlow(ctx context.Context) (Result, error) {
 		items[i].Source = src
 	}
 	if err := c.snap.WriteIntradayFlows(ctx, items); err != nil {
-		return Result{}, err
+		return CollectSummary{}, err
 	}
-	return Result{Domain: DomainMoneyFlow, Source: src, Rows: len(items)}, nil
+	return CollectSummary{Domain: DomainMoneyFlow, Source: src, Rows: len(items)}, nil
 }
 
 func nonEmpty[T any](what string) func([]T) error {

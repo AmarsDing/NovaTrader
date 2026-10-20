@@ -60,13 +60,13 @@ func IntelKind(domain string) (string, bool) {
 
 // CollectIntel 增量拉取一类情报，逐条发 intel.raw.<kind>（JetStream）。
 // 事件发出后才前移水位；中途失败时水位停在最后一条成功的时间。
-func (c *Collector) CollectIntel(ctx context.Context, domain string) (Result, error) {
+func (c *Collector) CollectIntel(ctx context.Context, domain string) (CollectSummary, error) {
 	kind, ok := IntelKind(domain)
 	if !ok {
-		return Result{}, fmt.Errorf("datahub: %s is not an intel domain", domain)
+		return CollectSummary{}, fmt.Errorf("datahub: %s is not an intel domain", domain)
 	}
 	if c.bus == nil {
-		return Result{Domain: domain}, fmt.Errorf("datahub: no event bus")
+		return CollectSummary{Domain: domain}, fmt.Errorf("datahub: no event bus")
 	}
 	cursorName := "intel:" + domain
 	since := c.now().Add(-24 * time.Hour)
@@ -80,7 +80,7 @@ func (c *Collector) CollectIntel(ctx context.Context, domain string) (Result, er
 			return s.(IntelSource).Intel(ctx, kind, IntelQuery{Since: since.Add(-intelOverlap), Limit: 200})
 		}, nil)
 	if err != nil {
-		return Result{Domain: domain}, err
+		return CollectSummary{Domain: domain}, err
 	}
 	type timed struct {
 		Intel
@@ -128,7 +128,7 @@ func (c *Collector) CollectIntel(ctx context.Context, domain string) (Result, er
 			c.log.Warnf("cursor %s: %v", cursorName, err)
 		}
 	}
-	res := Result{Domain: domain, Source: src, Rows: sent}
+	res := CollectSummary{Domain: domain, Source: src, Rows: sent}
 	if pubErr != nil {
 		return res, fmt.Errorf("datahub: publish %s: %w", kind, pubErr)
 	}

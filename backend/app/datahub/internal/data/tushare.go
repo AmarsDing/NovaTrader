@@ -160,9 +160,11 @@ func (t *Tushare) DailyBars(ctx context.Context, q biz.BarQuery) (biz.BarBatch, 
 		if sym == "" || !ok {
 			continue
 		}
-		pc := anyF(r["pre_close"])
+		pc := anyPtr(r["pre_close"])
+		// 「没取到≠0」（P3-10）：pre_close 解析失败保持 nil，禁止伪 0 前收污染离群检查；
+		// PreClose 为 nil 时 CheckBars 的涨跌幅检查跳过（无法判定就不判，而不是按 0 判）。
 		bars = append(bars, biz.Bar{Symbol: sym, Time: d, Freq: "1d", Open: anyF(r["open"]), High: anyF(r["high"]), Low: anyF(r["low"]),
-			Close: anyF(r["close"]), PreClose: &pc, Volume: int64(anyF(r["vol"])*100 + 0.5), Amount: anyF(r["amount"]) * 1000})
+			Close: anyF(r["close"]), PreClose: pc, Volume: int64(anyF(r["vol"])*100 + 0.5), Amount: anyF(r["amount"]) * 1000})
 		if s := ymd(d); s > last {
 			last = s
 		}
@@ -186,7 +188,13 @@ func (t *Tushare) AdjFactors(ctx context.Context, d time.Time, symbols []string)
 		if sym == "" || !ok || (len(want) > 0 && !want[sym]) {
 			continue
 		}
-		items = append(items, biz.AdjFactor{Symbol: sym, Date: dd, Factor: anyF(r["adj_factor"])})
+		f, fok := anyNum(r["adj_factor"])
+		// 「没取到≠0」（P3-10）：adj_factor 缺失或非正禁止写 0（会把历史复权价清零）；
+		// 跳过该行，等下个交易日同代码有因子时自然补齐。整批缺失由上层空检查兜底。
+		if !fok || f <= 0 {
+			continue
+		}
+		items = append(items, biz.AdjFactor{Symbol: sym, Date: dd, Factor: f})
 	}
 	return items, nil
 }

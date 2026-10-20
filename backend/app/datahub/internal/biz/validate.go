@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"server/library/dataformat"
 	"server/pkg/symbol"
 )
 
@@ -137,10 +138,12 @@ func CheckBars(domain string, bars []Bar, q BarQuery, maxPct float64) ([]Bar, []
 	return out, issues
 }
 
-// Completeness 计算覆盖率：got 里出现的代码占 expect 的比例。expect 为空时返回 1。
-func Completeness(got []string, expect []string) (float64, []string) {
+// Completeness 计算覆盖率：got 里出现的代码占 expect 的比例，以及缺了哪些。
+// 「没取到≠满分」（P3-10）：expect 分母为空（stock_basic 未就绪或 symbols 为空）时返回
+// Missing(WhyNotRun)，调用方必须显式处理，禁止静默按 100% 放行闸门。
+func Completeness(got []string, expect []string) (dataformat.Result[float64], []string) {
 	if len(expect) == 0 {
-		return 1, nil
+		return dataformat.Missing[float64](dataformat.WhyNotRun, "覆盖率分母为空：stock_basic 未就绪或 symbols 为空"), nil
 	}
 	have := make(map[string]struct{}, len(got))
 	for _, s := range got {
@@ -152,7 +155,7 @@ func Completeness(got []string, expect []string) (float64, []string) {
 			missing = append(missing, s)
 		}
 	}
-	return 1 - float64(len(missing))/float64(len(expect)), missing
+	return dataformat.OK(1 - float64(len(missing))/float64(len(expect))), missing
 }
 
 func dateOf(t time.Time) time.Time {
