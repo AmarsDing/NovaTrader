@@ -194,6 +194,8 @@ func (u *Usecase) prepare(raw Raw) (*Item, error) {
 	}
 	it.Hash = ContentHash(it.Title, it.Content)
 	it.SimHash, it.RuneLen = SimHash(it.Title + it.Content)
+	// 研报预测镜像原样透传（不加工）；nil 即源头无披露，缺失不补占位。
+	it.Forecast = raw.Forecast
 	return it, nil
 }
 

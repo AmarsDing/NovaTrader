@@ -43,6 +43,8 @@ func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (C
 		return c.CollectLhb(ctx, day, only)
 	case DomainUnlock:
 		return c.CollectUnlock(ctx, day, only)
+	case DomainBlockTrade:
+		return c.CollectBlockTrades(ctx, day, only)
 	case DomainMargin:
 		return c.CollectMargin(ctx, day, only)
 	case DomainMarginMkt:
@@ -59,7 +61,7 @@ func (c *Collector) runDomain(ctx context.Context, domain, date, only string) (C
 		return c.CollectMacro(ctx)
 	case DomainHotRank:
 		return c.CollectHotRank(ctx)
-	case DomainFlash, DomainNews, DomainAnnouncement, DomainReport:
+	case DomainFlash, DomainNews, DomainAnnouncement, DomainReport, DomainGuba:
 		return c.CollectIntel(ctx, domain)
 	default:
 		return CollectSummary{}, fmt.Errorf("datahub: unknown domain %s", domain)

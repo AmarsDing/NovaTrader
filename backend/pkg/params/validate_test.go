@@ -23,3 +23,81 @@ func TestStrictCatalogueAndRanges(t *testing.T) {
 		t.Fatal("inverted range accepted")
 	}
 }
+
+func TestDatahubKeyFamily(t *testing.T) {
+	good := map[string]string{
+		"app.ds.eastmoney.qps":            "6",
+		"app.ds.tushare.quota":            "500",
+		"app.ds.sina.quota":               "0",
+		"app.ds.tdx_file.timeout_sec":     "45",
+		"app.ds.openbb_fred.on":           "true",
+		"app.ds.openbb_fred.key":          "fred-secret",
+		"app.ds.tdx_http_archive.on":      "false",
+		"app.ds.eastmoney.margin_reports": "RPTA_WEB_RZRQ_GGMX,RPTA_WEB_RZRQ_DETAIL",
+		"app.domain.money_flow.sources":   `["eastmoney","tushare"]`,
+		"app.domain.snapshot.sources":     `["tdx_local","tdx_tcp","eastmoney","sina","tencent"]`,
+		"app.domain.block_trade.sources":  `["eastmoney"]`,
+		"app.domain.guba.sources":         `["eastmoney"]`,
+		"app.domain.flash.sources":        `["eastmoney","sina7x24","tavily","rss"]`,
+	}
+	if _, err := ValidatePatch(nil, good); err != nil {
+		t.Fatal(err)
+	}
+	bads := []map[string]string{
+		{"app.ds.eastmoney.qps": "0"}, {"app.ds.eastmoney.qps": "51"}, {"app.ds.eastmoney.qps": "1.5"},
+		{"app.ds.tushare.quota": "-1"}, {"app.ds.tushare.quota": "100001"},
+		{"app.ds.tdx_file.timeout_sec": "0"}, {"app.ds.tdx_file.timeout_sec": "121"}, {"app.ds.tdx_file.timeout_sec": "abc"},
+		{"app.domain.money_flow.sources": `["sina"]`},
+		{"app.domain.money_flow.sources": `[]`},
+		{"app.domain.money_flow.sources": `["tushare","tushare"]`},
+		{"app.domain.money_flow.sources": `{"a":1}`},
+		{"app.domain.money_flow.sources": `["eastmoney"] trailing`},
+		{"app.domain.money_flow.sources": `["eastmoney","ghost"]`},
+		{"app.domain.ghost.sources": `["eastmoney"]`},
+		{"app.ds.ghost.on": "true"},
+		{"app.domain.money_flow.sources": `["sina7x24","tushare"]`},
+	}
+	for _, v := range bads {
+		if _, e := ValidatePatch(nil, v); e == nil {
+			t.Errorf("accepted invalid patch keys %v", v)
+		}
+	}
+	// 空串=清覆盖回落 yaml，qps、降级链与 text 键都可回收。
+	clears := map[string]string{
+		"app.ds.eastmoney.qps":            "",
+		"app.domain.money_flow.sources":   "",
+		"app.ds.eastmoney.margin_reports": "",
+	}
+	if _, err := ValidatePatch(good, clears); err != nil {
+		t.Fatal(err)
+	}
+	if svc, _ := Target("app.domain.snapshot.sources"); svc != "datahub" {
+		t.Fatal("domain chain key not routed to datahub")
+	}
+	if svc, _ := Target("app.ds.eastmoney.qps"); svc != "datahub" {
+		t.Fatal("source qps key not routed to datahub")
+	}
+	if !Secret("app.ds.openbb_fred.key") {
+		t.Fatal("fred key must be masked by .key suffix")
+	}
+	if !SupportsDataSource("snapshot", "sina") {
+		t.Fatal("sina must support snapshot")
+	}
+	if SupportsDataSource("money_flow", "sina") {
+		t.Fatal("sina must not support money_flow")
+	}
+	// 本批落地能力：block_trade/guba 由 eastmoney 提供，sina7x24 接 intel 域（flash 等），
+	// baostock 接 daily_bar/finance（W5/W9 收口；评审 blocker：能力不补则降级链登记被 422）。
+	if !SupportsDataSource("block_trade", "eastmoney") {
+		t.Fatal("eastmoney must support block_trade")
+	}
+	if !SupportsDataSource("guba", "eastmoney") {
+		t.Fatal("eastmoney must support guba")
+	}
+	if !SupportsDataSource("flash", "sina7x24") {
+		t.Fatal("sina7x24 must support flash")
+	}
+	if !SupportsDataSource("daily_bar", "baostock") || !SupportsDataSource("finance", "baostock") {
+		t.Fatal("baostock must support daily_bar and finance")
+	}
+}

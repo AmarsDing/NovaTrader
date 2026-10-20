@@ -23,12 +23,28 @@ func NewLimiter(qps float64) *Limiter {
 	return l
 }
 
+// SetQPS 运行时改限频：重算间隔。qps<=0 恢复不限。当日已排队的等待点不追溯。
+// gap 有了写路径后，Wait 的读也必须在锁内（见下）。
+func (l *Limiter) SetQPS(qps float64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if qps > 0 {
+		l.gap = time.Duration(float64(time.Second) / qps)
+		return
+	}
+	l.gap = 0
+}
+
 // Wait 阻塞到可以发下一次请求，或 ctx 结束。
 func (l *Limiter) Wait(ctx context.Context) error {
-	if l == nil || l.gap == 0 {
+	if l == nil {
 		return ctx.Err()
 	}
 	l.mu.Lock()
+	if l.gap == 0 {
+		l.mu.Unlock()
+		return ctx.Err()
+	}
 	now := time.Now()
 	at := l.next
 	if at.Before(now) {
@@ -59,6 +75,14 @@ type Quota struct {
 }
 
 func NewQuota(limit int64) *Quota { return &Quota{limit: limit} }
+
+// SetLimit 运行时改当日配额上限：只改上限，不清当日已用计数。limit<=0 不限。
+// 与 yaml daily_quota 同口径（0=不限）；app.ds.<source>.quota 运行时盖写走这里。
+func (q *Quota) SetLimit(limit int64) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.limit = limit
+}
 
 // Seed 用库里当天已用次数恢复计数，避免重启后配额被重置。
 func (q *Quota) Seed(day time.Time, used int64) {

@@ -2,3 +2,5 @@
 mootdx==0.11.7
 akshare>=1.14
 pandas>=2.0
+# 免费免注册，盘后回补/财务三表角色；装包后重启 pyworker（ROLES 含 baostock）生效。
+baostock==0.9.4

@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	stdsql "database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,11 +11,13 @@ import (
 
 	"server/app/intel/internal/biz"
 	"server/ent"
+	"server/ent/datasetrecord"
 	"server/ent/intelcluster"
 	"server/ent/intelfact"
 	"server/ent/intellink"
 	"server/ent/newssentiment"
 	"server/ent/stockalias"
+	"server/pkg/dataset"
 	"server/pkg/outbox"
 
 	"entgo.io/ent/dialect/sql"
@@ -149,6 +152,12 @@ func (r *repo) CreateItem(ctx context.Context, it *biz.Item, status, reason stri
 	}
 	if head {
 		if err := tx.IntelCluster.UpdateOneID(clusterID).SetHeadNewsID(row.ID).Exec(ctx); err != nil {
+			return rollback(tx, err)
+		}
+	}
+	// 研报盈利预测随 news_sentiment 同一事务落 dataset_record；filtered 分支不写。
+	if status == biz.StatusPending && it.Forecast != nil {
+		if err := captureReportForecast(ctx, tx, it); err != nil {
 			return rollback(tx, err)
 		}
 	}
@@ -648,4 +657,86 @@ func (r *repo) HotCounts(ctx context.Context, from, to time.Time) (map[[2]string
 		out[[2]string{"event", c.EventType}]++
 	}
 	return out, nil
+}
+
+// domainReportForecast 是研报盈利预测在 dataset_record 的域。intel 写 M01 表属跨模块例外
+// （W6 设计定论 A，见 M03 设计文档「研报预测字段落点」），以独立域值收敛，
+// 二期可平移到 datahub 直采通道（payload 结构不变，消费端无感）。
+const domainReportForecast = "report_forecast"
+
+// reportForecastPayload 是 report_forecast 域的载荷：预测本体 + 检索键。
+// info_code 即东财研报编号，datahub 发布时填进 source_id。
+type reportForecastPayload struct {
+	biz.ReportForecast
+	InfoCode string   `json:"info_code,omitempty"`
+	Title    string   `json:"title,omitempty"`
+	Codes    []string `json:"codes,omitempty"`
+}
+
+// captureReportForecast 把研报盈利预测写进 dataset_record。
+// business_key 取稳定研报身份（info_code=source_id，缺失降级 url，再缺即不写——缺失显式化）；
+// EPS 双 nil 年度点整条丢弃（与解析层同则，没取到≠0）；全 nil 披露（无 EPS/目标价/评级任一）
+// 只进原文，不写 dataset_record，不冒有。
+func captureReportForecast(ctx context.Context, tx *ent.Tx, it *biz.Item) error {
+	fc := scrubForecast(it.Forecast)
+	if fc == nil {
+		return nil
+	}
+	key := clip(it.SourceID, 128)
+	if key == "" {
+		key = clip(it.URL, 128)
+	}
+	if key == "" {
+		return nil
+	}
+	payload := reportForecastPayload{ReportForecast: *fc, InfoCode: clip(it.SourceID, 128), Title: it.Title, Codes: it.Codes}
+	observed := it.ReceivedAt
+	return insertDatasetRecord(ctx, tx, domainReportForecast, key, clip(it.Source, 64), it.PublishTime,
+		dataset.Availability{ObservedAt: &observed, Evidence: "reportapi.eastmoney.com/report/list publishDate 日级粒度（无时刻证据，available_at=unknown）"}, payload)
+}
+
+// scrubForecast 丢弃双 nil 的年度点；全 nil 披露返回 nil。
+func scrubForecast(fc *biz.ReportForecast) *biz.ReportForecast {
+	if fc == nil {
+		return nil
+	}
+	out := *fc
+	out.EPS = nil
+	for _, p := range fc.EPS {
+		if p.EPS == nil && p.PE == nil {
+			continue
+		}
+		out.EPS = append(out.EPS, p)
+	}
+	if len(out.EPS) == 0 && out.AimPriceLow == nil && out.AimPriceHigh == nil && out.Rating == "" && out.LastRating == "" {
+		return nil
+	}
+	return &out
+}
+
+// insertDatasetRecord 复刻 datahub data/dataset.go captureDataset 的写入模式
+// （该函数 unexported 跨包不可调，此为等价的内联实现）：只有插入，没有改；
+// 重复采集同 revision 靠 revision_hash + DoNothing 幂等吞掉。
+func insertDatasetRecord(ctx context.Context, tx *ent.Tx, domain, key, source string, event time.Time, a dataset.Availability, payload any) error {
+	if source == "" {
+		source = "unknown"
+	}
+	observed := time.Now()
+	if a.ObservedAt != nil {
+		observed = *a.ObservedAt
+	}
+	r, err := dataset.NewRecord(domain, key, source, event, observed, a, payload)
+	if err != nil {
+		return err
+	}
+	err = tx.DatasetRecord.Create().SetDomain(r.Domain).SetBusinessKey(r.BusinessKey).SetSource(r.Source).
+		SetEventTime(r.EventTime).SetNillableAvailableAt(r.AvailableAt).SetAvailability(r.Availability).
+		SetAvailabilityEvidence(r.Evidence).SetObservedAt(r.ObservedAt).SetRawHash(r.RawHash).
+		SetRevisionHash(r.RevisionHash).SetPayload(r.Payload).
+		OnConflictColumns(datasetrecord.FieldRevisionHash).DoNothing().Exec(ctx)
+	// PostgreSQL DO NOTHING returns no ID; ent's single-row create reports sql.ErrNoRows.
+	if errors.Is(err, stdsql.ErrNoRows) {
+		return nil
+	}
+	return err
 }

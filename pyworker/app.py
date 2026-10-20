@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import struct
+import threading
 import traceback
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 
 SHANGHAI = timezone(timedelta(hours=8))
 TDX_DIR = Path(os.environ.get("TDX_DIR", r"D:\new_tdx"))
-ROLES = {x.strip() for x in os.environ.get("PYWORKER_ROLES", "local,file,tcp,akshare").split(",") if x.strip()}
+ROLES = {x.strip() for x in os.environ.get("PYWORKER_ROLES", "local,file,tcp,akshare,baostock").split(",") if x.strip()}
 LISTEN = os.environ.get("PYWORKER_LISTEN", "127.0.0.1:18080")
 
 MARKETS = {"sh": "SH", "sz": "SZ", "bj": "BJ"}
@@ -658,6 +659,257 @@ def _f(v):
         return None
 
 
+# --- Baostock -----------------------------------------------------------------
+# 角色定位：盘后回补冗余（链末兜底）+ 财务三表。生命周期决策＝进程级单登录+全局互斥锁：
+# baostock SDK 是模块级共享 socket，非线程安全，而 ThreadingHTTPServer 每请求新线程，
+# 锁把整个 login-check+query+翻页串行化；否决「线程局部队列」（无关闭钩子、失败显式化
+# 成本高）与「每请求重登」（握手 200-500ms × 全市场回补不可行）。串行吞吐对晚间批量足够。
+# 断线码（-10001/-10002）锁内重登并重试一次；仍失败返回 UnavailableError 契约（503）。
+
+_bs_lock = threading.Lock()
+_bs = {"mod": None, "logged_in": False}
+# baostock 断线/未登录错误码：服务方夜间维护踢线时出现。
+_BS_DISCONNECT_CODES = ("-10001", "-10002")
+
+_BS_FREQS = {"1d": "d", "1w": "w", "1M": "m", "5m": "5", "15m": "15", "30m": "30", "60m": "60"}
+
+
+def bs_module():
+    """惰性 import；未安装时返回 None，由处理器转 503 unavailable（不落 500 兜底）。"""
+    if _bs["mod"] is None:
+        try:
+            import baostock as bs
+        except ImportError:
+            return None
+        _bs["mod"] = bs
+    return _bs["mod"]
+
+
+def _bs_symbol(code: str) -> str | None:
+    """600519.SH → sh.600519（baostock 代码形）。BJ 市场不支持，返回 None。"""
+    s = code.strip().upper()
+    if "." not in s:
+        return None
+    num, mkt = s.split(".", 1)
+    if mkt == "BJ":
+        return None
+    if mkt in ("SH", "SZ") and num.isdigit():
+        return f"{mkt.lower()}.{num}"
+    return None
+
+
+def _bs_rows(rs) -> list[dict]:
+    """把 ResultData 翻页成 list[dict]（fields 顺序即 get_row_data 顺序）。"""
+    rows = []
+    while rs.error_code == "0" and rs.next():
+        rows.append(dict(zip(rs.fields, rs.get_row_data())))
+    return rows
+
+
+def bs_query_locked(fn):
+    """锁内确保登录后执行 fn(bs)；断线码触发一次锁内重登+重试。
+    返回 (result, None)；失败返回 (None, reason)。"""
+    with _bs_lock:
+        bs = bs_module()
+        if bs is None:
+            return None, "未安装 baostock，见 pyworker/requirements.txt"
+        if not _bs["logged_in"]:
+            lg = bs.login()
+            if getattr(lg, "error_code", "-1") != "0":
+                return None, f"baostock 登录失败：{getattr(lg, 'error_msg', '')}"
+            _bs["logged_in"] = True
+        rs = fn(bs)
+        if getattr(rs, "error_code", "-1") in _BS_DISCONNECT_CODES:
+            # 断线：锁内重登并重试一次；仍失败交上层显式化。
+            _bs["logged_in"] = False
+            lg = bs.login()
+            if getattr(lg, "error_code", "-1") != "0":
+                return None, f"baostock 重登失败：{getattr(lg, 'error_msg', '')}"
+            _bs["logged_in"] = True
+            rs = fn(bs)
+        if getattr(rs, "error_code", "-1") != "0":
+            return None, f"baostock 查询失败：{getattr(rs, 'error_code', '')} {getattr(rs, 'error_msg', '')}"
+        return rs, None
+
+
+def bs_bars(body: dict):
+    freq_in = body.get("freq") or "1d"
+    freq = _BS_FREQS.get(freq_in)
+    if freq is None:
+        # 不支持的频率（如 1m/3m）显式 400：显式缺失，不冒充能取。
+        return 400, {"error": "baostock 不支持该频率", "freq": freq_in}
+    start = body.get("start") or ""
+    end = body.get("end") or start
+    expect = body.get("expect") or ""
+    adjustflag = str(body.get("adjustflag") or "3")
+    symbols = body.get("symbols") or []
+    bs = bs_module()
+    if bs is None:
+        return unavailable("未安装 baostock，见 pyworker/requirements.txt")
+    if not symbols:
+        # 空名单补全：对 end 日 query_all_stock 拿当日在市代码。
+        rs, reason = bs_query_locked(lambda m: m.query_all_stock(day=end))
+        if rs is None:
+            return unavailable(reason)
+        symbols = []
+        for row in _bs_rows(rs):
+            code = str(row.get("code", ""))
+            if code.startswith(("sh.", "sz.")):
+                num = code.split(".", 1)[1]
+                symbols.append(f"{num}.{code[:2].upper()}")
+    fields = "date,code,open,high,low,close,preclose,volume,amount"
+    if freq in ("5", "15", "30", "60"):
+        fields = "date,time,code,open,high,low,close,volume,amount"
+    bars: list[dict] = []
+    skipped: list[str] = []
+    for sym in symbols:
+        code = _bs_symbol(sym)
+        if code is None:
+            # BJ/无法转换的代码显式列 skipped——不静默丢、不用烂数据冒充。
+            skipped.append(sym)
+            continue
+
+        def fetch(m, c=code, f=freq):
+            return m.query_history_k_data_plus(
+                c, fields, start_date=start, end_date=end, frequency=f, adjustflag=adjustflag
+            )
+
+        rs, reason = bs_query_locked(fetch)
+        if rs is None:
+            return unavailable(reason)
+        for row in _bs_rows(rs):
+            date_s = str(row.get("date", ""))[:10]
+            if not date_s:
+                continue
+            if freq in ("5", "15", "30", "60"):
+                # baostock 分钟 time 形如 20261016093500000（毫秒尾），取 bar 起始。
+                t_raw = str(row.get("time", ""))
+                try:
+                    t = datetime.strptime(t_raw[:14], "%Y%m%d%H%M%S").replace(tzinfo=SHANGHAI)
+                except ValueError:
+                    continue
+            else:
+                try:
+                    t = datetime.strptime(date_s, "%Y-%m-%d").replace(tzinfo=SHANGHAI)
+                except ValueError:
+                    continue
+            bar = {
+                "symbol": sym,
+                "time": iso(t),
+                "freq": freq_in,
+                "open": _f(row.get("open")),
+                "high": _f(row.get("high")),
+                "low": _f(row.get("low")),
+                "close": _f(row.get("close")),
+                # volume 单位即股，不乘100（与 TDX 文件/TCP 口径不同，注意区分）；
+                # 数值空串/坏值 → null（pre_close 可空），绝不用 0 冒充。
+                "pre_close": _f(row.get("preclose")),
+                "volume": (lambda v: int(v) if v is not None else None)(_f(row.get("volume"))),
+                "amount": _f(row.get("amount")),
+            }
+            bars.append(bar)
+    last = max((b["time"][:10] for b in bars), default="")
+    return 200, {"bars": bars, "last_date": last, "stale": bool(expect) and last < expect, "skipped": skipped}
+
+
+def _bs_quarters(since: str) -> list[tuple[int, int]]:
+    """由 since→今天推出 (year, quarter) 列表（从旧到新）。"""
+    try:
+        d = datetime.strptime(since[:10], "%Y-%m-%d")
+    except (TypeError, ValueError):
+        d = datetime.now(SHANGHAI) - timedelta(days=180)
+    now = datetime.now(SHANGHAI)
+    y, q = d.year, (d.month - 1) // 3 + 1
+    y2, q2 = now.year, (now.month - 1) // 3 + 1
+    out = []
+    while (y, q) <= (y2, q2):
+        out.append((y, q))
+        q += 1
+        if q > 4:
+            y, q = y + 1, 1
+    return out
+
+
+def bs_finance(body: dict):
+    symbols = body.get("symbols") or []
+    if not symbols:
+        # finance 必填名单：全市场逐股×多季度×4 查询在串行锁下不可控，必须显式给。
+        return 400, {"error": "bs_finance 需要 symbols"}
+    since = body.get("since") or ""
+    if not since:
+        return 400, {"error": "bs_finance 需要 since（YYYY-MM-DD）"}
+    periods = int(body.get("periods") or 5)
+    if periods > 10:
+        periods = 10
+    quarters = _bs_quarters(since)[-periods:]
+    bs = bs_module()
+    if bs is None:
+        return unavailable("未安装 baostock，见 pyworker/requirements.txt")
+    items: list[dict] = []
+    for sym in symbols:
+        code = _bs_symbol(sym)
+        if code is None:
+            continue
+        for year, quarter in quarters:
+            merged = {"profit": None, "balance": None, "cashflow": None, "growth": None}
+
+            def fetch_profit(m, c=code, y=year, q=quarter):
+                return m.query_profit_data(code=c, year=y, quarter=q)
+
+            rs, reason = bs_query_locked(fetch_profit)
+            if rs is None:
+                return unavailable(reason)
+            profit = _bs_rows(rs)
+            if not profit:
+                continue
+            merged["profit"] = profit[0]
+            for name, query in (
+                ("balance", "query_balance_data"),
+                ("cashflow", "query_cash_flow_data"),
+                ("growth", "query_growth_data"),
+            ):
+                fn = getattr(bs, query)
+
+                def fetch(m, f=fn, c=code, y=year, q=quarter):
+                    return f(code=c, year=y, quarter=q)
+
+                rs, reason = bs_query_locked(fetch)
+                if rs is None:
+                    return unavailable(reason)
+                rows = _bs_rows(rs)
+                if rows:
+                    merged[name] = rows[0]
+            p = merged["profit"]
+            stat_date = str(p.get("statDate", ""))[:10]
+            # pub_date 优先 profit.pubDate，退化 growth 等行的 pubDate；缺失或早于 since 的行
+            # skip——AnnDate 缺失不可入库（显式缺失纪律）。
+            pub_date = str(p.get("pubDate", ""))[:10]
+            if not pub_date:
+                for name in ("balance", "cashflow", "growth"):
+                    row = merged[name]
+                    if row and str(row.get("pubDate", ""))[:10]:
+                        pub_date = str(row.get("pubDate", ""))[:10]
+                        break
+            if not pub_date or (since and pub_date < since):
+                continue
+            g = merged["growth"] or {}
+            items.append(
+                {
+                    "symbol": sym,
+                    "end_date": stat_date,
+                    "pub_date": pub_date,
+                    "kind": "indicator",
+                    # 金额单位元（baostock 原始口径），坏值 → null。
+                    "net_profit": _f(p.get("netProfit")),
+                    "net_profit_yoy": _f(g.get("YOYPNI")),
+                    "roe": _f(p.get("roeAvg")),
+                    "eps": _f(p.get("epsTTM")),
+                    "data": {k: (v or {}) for k, v in merged.items()},
+                }
+            )
+    return 200, {"items": items}
+
+
 # --- HTTP -------------------------------------------------------------------
 
 def read_json(handler: BaseHTTPRequestHandler) -> dict:
@@ -742,6 +994,10 @@ class Handler(BaseHTTPRequestHandler):
             "/tcp/snapshot": ("tcp", lambda: tcp_snapshots(body.get("symbols") or [])),
             "/tcp/bars": ("tcp", lambda: tcp_bars(body)),
             "/tcp/adj_factor": ("tcp", lambda: tcp_adj(body)),
+            # Baostock 角色（盘后回补冗余 + 财务三表）：未装包走 503 unavailable，
+            # 未启用角色走 need() 的 404 契约（role disabled）。
+            "/bs/bars": ("baostock", lambda: bs_bars(body)),
+            "/bs/finance": ("baostock", lambda: bs_finance(body)),
         }
         if u.path in routes:
             role, fn = routes[u.path]

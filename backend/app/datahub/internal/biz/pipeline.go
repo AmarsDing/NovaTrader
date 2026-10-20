@@ -2,9 +2,11 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -46,18 +48,32 @@ type sourceState struct {
 	cfg     SourceConfig
 	enabled atomic.Bool
 	quota   *Quota
+	// timeout 运行时单次超时盖写（纳秒，0=用 cfg.Timeout）；rate 运行时 Run 粒度节流（nil=不节流）。
+	timeout atomic.Int64
+	rate    atomic.Pointer[Limiter]
 }
 
 type entry struct {
-	state    *sourceState
-	breaker  *Breaker
-	priority int
+	state   *sourceState
+	breaker *Breaker
 }
 
 type domainState struct {
 	enabled bool
-	entries []*entry
 	cfg     DomainConfig
+	// chain 当前生效链（原子快照）；base 是 yaml 基线链副本，清除盖写时回落；
+	// entriesAll 为全部支持该域的注册源各建一份持久 entry，断路器随 entry 跨换链连续。
+	chain      atomic.Pointer[[]*entry]
+	base       []*entry
+	entriesAll map[string]*entry
+}
+
+// activeChain 返回当前生效链快照：未装盖写时是 yaml 基线。
+func (ds *domainState) activeChain() []*entry {
+	if ch := ds.chain.Load(); ch != nil {
+		return *ch
+	}
+	return ds.base
 }
 
 // Pipeline 按 registry → quota → breaker → fetch → validate 的顺序调用源。
@@ -69,6 +85,7 @@ type Pipeline struct {
 	health          *healthBook
 	alert           Alerter
 	now             func() time.Time
+	get             func(context.Context, string) string // 运行时键读取缝：生产为 appcfg.Get，单测注入
 }
 
 // NewPipeline 注册源。配置里写了但没注册、或不支持该域的源会被跳过，并在 warnings 里说明。
@@ -79,6 +96,7 @@ func NewPipeline(cfg Config, srcs []Source, alert Alerter) (*Pipeline, []string)
 		health:  newHealthBook(),
 		alert:   alert,
 		now:     time.Now,
+		get:     appcfg.Get,
 	}
 	p.allowUnofficial.Store(cfg.AllowUnofficial)
 	for _, s := range srcs {
@@ -98,23 +116,33 @@ func NewPipeline(cfg Config, srcs []Source, alert Alerter) (*Pipeline, []string)
 	sort.Strings(names)
 	for _, domain := range names {
 		dc := cfg.Domains[domain]
-		ds := &domainState{enabled: dc.Enabled, cfg: dc}
+		ds := &domainState{enabled: dc.Enabled, cfg: dc, entriesAll: map[string]*entry{}}
+		// 先为支持该域的全部注册源建持久 entry，运行时盖写换链只切快照不清断路器。
+		for name, st := range p.sources {
+			if Supports(domain, st.src) {
+				ds.entriesAll[name] = &entry{state: st, breaker: NewBreaker(cfg.BreakerFailures, cfg.BreakerCooldown)}
+			}
+		}
+		base := make([]*entry, 0, len(dc.Sources))
 		for i, name := range dc.Sources {
 			st, ok := p.sources[name]
 			if !ok {
 				warnings = append(warnings, fmt.Sprintf("%s: source %s is not registered", domain, name))
 				continue
 			}
-			if !Supports(domain, st.src) {
+			e, ok := ds.entriesAll[name]
+			if !ok {
 				warnings = append(warnings, fmt.Sprintf("%s: source %s does not support this domain", domain, name))
 				continue
 			}
-			ds.entries = append(ds.entries, &entry{state: st, breaker: NewBreaker(cfg.BreakerFailures, cfg.BreakerCooldown), priority: i})
+			base = append(base, e)
 			p.health.ensure(domain, name, i, st.cfg.Official)
 			if scope, ok := st.src.(interface{ CoverageUnknown() bool }); ok && scope.CoverageUnknown() {
 				p.health.unknownCoverage(domain, name)
 			}
 		}
+		ds.base = base
+		ds.chain.Store(&ds.base)
 		p.domains[domain] = ds
 	}
 	return p, warnings
@@ -123,7 +151,7 @@ func NewPipeline(cfg Config, srcs []Source, alert Alerter) (*Pipeline, []string)
 // DomainEnabled 判断数据域是否开启且至少有一个源。
 func (p *Pipeline) DomainEnabled(domain string) bool {
 	ds := p.domains[domain]
-	return ds != nil && ds.enabled && len(ds.entries) > 0
+	return ds != nil && ds.enabled && len(ds.activeChain()) > 0
 }
 
 // DomainConfig 返回数据域配置。
@@ -168,10 +196,8 @@ func (p *Pipeline) Health() []Health {
 		}
 		h.Enabled = st.enabled.Load() && ds.enabled
 		h.QuotaUsed, h.QuotaLimit = st.quota.Usage(now)
-		for _, e := range ds.entries {
-			if e.state == st {
-				h.State, h.Failures = e.breaker.State()
-			}
+		if e := ds.entriesAll[h.Source]; e != nil {
+			h.State, h.Failures = e.breaker.State()
 		}
 		if !h.Enabled || (!st.cfg.Official && !p.allowUnofficial.Load()) {
 			h.State = StateDisabled
@@ -215,9 +241,11 @@ func Run[T any](ctx context.Context, p *Pipeline, domain string, opt RunOptions,
 		return zero, "", fmt.Errorf("datahub: domain %s is disabled", domain)
 	}
 	ctx = context.WithValue(ctx, domainKey{}, domain)
-	applySourceSwitches(ctx, p)
+	applySourceSwitches(ctx, p, p.get)
+	applySourceLimits(ctx, p, p.get)
+	applyDomainChains(ctx, p, p.get)
 	failed := map[string]string{}
-	for _, e := range ds.entries {
+	for i, e := range ds.activeChain() {
 		st := e.state
 		name := st.src.Name()
 		if opt.Only != "" && name != opt.Only {
@@ -233,6 +261,12 @@ func Run[T any](ctx context.Context, p *Pipeline, domain string, opt RunOptions,
 		if !e.breaker.Allow(now) {
 			failed[name] = "断路打开"
 			continue
+		}
+		if rate := st.rate.Load(); rate != nil {
+			if werr := rate.Wait(ctx); werr != nil {
+				e.breaker.Release()
+				return zero, "", werr
+			}
 		}
 		if !st.quota.Take(now) {
 			e.breaker.Release()
@@ -255,7 +289,7 @@ func Run[T any](ctx context.Context, p *Pipeline, domain string, opt RunOptions,
 		}
 		p.health.record(domain, name, latency, err, p.now())
 		if tr, changed := e.breaker.Record(err == nil, p.now()); changed {
-			p.notifyTransition(ctx, domain, name, e.priority, tr, err)
+			p.notifyTransition(ctx, domain, name, i, tr, err)
 		}
 		if err == nil {
 			return v, name, nil
@@ -265,12 +299,12 @@ func Run[T any](ctx context.Context, p *Pipeline, domain string, opt RunOptions,
 	return zero, "", &NoSourceError{Domain: domain, Errors: failed}
 }
 
-func applySourceSwitches(ctx context.Context, p *Pipeline) {
-	if p == nil {
+func applySourceSwitches(ctx context.Context, p *Pipeline, get func(context.Context, string) string) {
+	if p == nil || get == nil {
 		return
 	}
 	for name, st := range p.sources {
-		switch strings.TrimSpace(appcfg.Get(ctx, "app.ds."+name+".on")) {
+		switch strings.TrimSpace(get(ctx, "app.ds."+name+".on")) {
 		case "true":
 			st.enabled.Store(true)
 		case "false":
@@ -279,9 +313,121 @@ func applySourceSwitches(ctx context.Context, p *Pipeline) {
 	}
 }
 
+// applySourceLimits 读取运行时源级限频/配额/超时盖写（app.ds.<source>.qps/quota/timeout_sec）。
+// 空串=清盖写回落配置文件；值在 params 层已校验，解析失败防御性保留上次生效值。
+func applySourceLimits(ctx context.Context, p *Pipeline, get func(context.Context, string) string) {
+	if p == nil || get == nil {
+		return
+	}
+	for name, st := range p.sources {
+		if raw := strings.TrimSpace(get(ctx, "app.ds."+name+".qps")); raw != "" {
+			if qps, err := strconv.ParseFloat(raw, 64); err == nil && qps > 0 {
+				rate := st.rate.Load()
+				if rate == nil {
+					rate = &Limiter{}
+					st.rate.Store(rate)
+				}
+				rate.SetQPS(qps)
+			}
+		} else {
+			st.rate.Store(nil)
+		}
+		if raw := strings.TrimSpace(get(ctx, "app.ds."+name+".quota")); raw != "" {
+			if limit, err := strconv.ParseInt(raw, 10, 64); err == nil && limit >= 0 {
+				st.quota.SetLimit(limit)
+			}
+		} else {
+			st.quota.SetLimit(st.cfg.DailyQuota)
+		}
+		if raw := strings.TrimSpace(get(ctx, "app.ds."+name+".timeout_sec")); raw != "" {
+			if sec, err := strconv.ParseInt(raw, 10, 64); err == nil && sec >= 1 && sec <= 120 {
+				st.timeout.Store(int64(time.Duration(sec) * time.Second))
+			}
+		} else {
+			st.timeout.Store(0)
+		}
+	}
+}
+
+// applyDomainChains 读取运行时域降级链盖写（app.domain.<domain>.sources，JSON 字符串数组）。
+// 空串=当前链非基线则回落 yaml 基线；链中任一源未注册或不支持该域时整条不落地、保持现链。
+// 换链只切原子快照：在途 Run 用头部快照走完，断路器随持久 entry 连续。
+func applyDomainChains(ctx context.Context, p *Pipeline, get func(context.Context, string) string) {
+	if p == nil || get == nil {
+		return
+	}
+	for domain, ds := range p.domains {
+		raw := strings.TrimSpace(get(ctx, "app.domain."+domain+".sources"))
+		if raw == "" {
+			if cur := ds.chain.Load(); cur == nil || !sameChain(*cur, ds.base) {
+				ds.chain.Store(&ds.base)
+			}
+			continue
+		}
+		var chain []string
+		if err := json.Unmarshal([]byte(raw), &chain); err != nil || len(chain) == 0 {
+			continue
+		}
+		next := make([]*entry, 0, len(chain))
+		ok := true
+		for _, name := range chain {
+			e, exists := ds.entriesAll[name]
+			if !exists {
+				ok = false
+				break
+			}
+			next = append(next, e)
+		}
+		if !ok {
+			continue
+		}
+		if sameChain(ds.activeChain(), next) {
+			continue
+		}
+		for i, e := range next {
+			p.health.ensure(domain, e.state.src.Name(), i, e.state.cfg.Official)
+		}
+		ds.chain.Store(&next)
+	}
+}
+
+// sameChain 判断两份链快照按源名同序。
+func sameChain(a, b []*entry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].state.src.Name() != b[i].state.src.Name() {
+			return false
+		}
+	}
+	return true
+}
+
+// EachSource 快照遍历已注册源：fn(name, src, enabled, cfg) 锁外调用。
+// sources map 构建后不再写、enabled 是 atomic，无需加锁；cfg 为静态源配置
+//（Official/Timeout 等，供巡检与 Run 门禁同语义判断）。不暴露内部 map。
+func (p *Pipeline) EachSource(fn func(name string, src Source, enabled bool, cfg SourceConfig)) {
+	if fn == nil {
+		return
+	}
+	names := make([]string, 0, len(p.sources))
+	for name := range p.sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		st := p.sources[name]
+		fn(name, st.src, st.enabled.Load(), st.cfg)
+	}
+}
+
 func call[T any](ctx context.Context, st *sourceState, limit time.Duration,
 	fetch func(ctx context.Context, s Source) (T, error)) (v T, err error) {
 	timeout := st.cfg.Timeout
+	if ns := st.timeout.Load(); ns > 0 {
+		timeout = time.Duration(ns)
+	}
 	if timeout <= 0 {
 		timeout = 10 * time.Second
 	}

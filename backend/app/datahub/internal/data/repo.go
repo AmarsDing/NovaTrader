@@ -25,11 +25,13 @@ import (
 	"server/ent/marketdata"
 	"server/ent/moneyflow"
 	"server/ent/overseasquote"
+	"server/ent/position"
 	"server/ent/rawresponse"
 	"server/ent/sector"
 	"server/ent/sectormember"
 	"server/ent/sourcehealth"
 	"server/ent/stockbasic"
+	"server/ent/tradesignal"
 	"server/pkg/dataset"
 	"server/pkg/events"
 	"server/pkg/outbox"
@@ -376,6 +378,22 @@ func (r *Repo) UpsertUnlockPlans(ctx context.Context, from, to time.Time, items 
 	})
 }
 
+// UpsertBlockTrades 落某日大宗交易：PIT append-only 过渡落库（dataset_record，零迁移）。
+// 业务键 symbol/交易日/买卖营业部；同日同对手方同价同量的重复申报与整批重采都靠
+// payload 规范化后的 revision_hash 幂等去重。披露时间未知——available_at 留空记 unknown
+// （没取到≠0，禁止拿采集时钟冒充披露证据）。
+func (r *Repo) UpsertBlockTrades(ctx context.Context, d time.Time, items []biz.BlockTrade, source string, rd biz.Ready) (int, error) {
+	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
+		for _, t := range items {
+			key := t.Symbol + "/" + day(t.TradeDate).Format("2006-01-02") + "/" + truncate(t.Buyer, 64) + "/" + truncate(t.Seller, 64)
+			if err := captureDataset(ctx, tx, "block_trade", key, source, day(t.TradeDate), dataset.Availability{}, t); err != nil {
+				return 0, err
+			}
+		}
+		return len(items), nil
+	})
+}
+
 func (r *Repo) UpsertMargins(ctx context.Context, d time.Time, items []biz.Margin, source string, rd biz.Ready) (int, error) {
 	return r.withReady(ctx, rd, func(tx *ent.Tx) (int, error) {
 		bulk := make([]*ent.MarginDetailCreate, 0, len(items))
@@ -676,6 +694,42 @@ func (r *Repo) ActiveSymbols(ctx context.Context, d time.Time) ([]string, error)
 		q = q.Where(stockbasic.SuspendFlagEQ(false))
 	}
 	return q.Select(stockbasic.FieldStockCode).Strings(ctx)
+}
+
+// gubaWatchCap 股吧观察清单上限：gbapi 每股强制 ≥2s 间隔（gubaInterval），30 只一轮
+// 约 1 分钟出头，与 worker 15 分钟低频节奏配套；超出部分按「持仓优先、信号时间倒序」截断。
+const gubaWatchCap = 30
+
+// GubaWatchSymbols 组装股吧低频扫描清单：当前持仓（quantity>0）∪ 近 3 日信号股，
+// 去重后截断到 cap。空仓且无新信号时空清单合法——guba 侧返回 ErrUnsupported 计跳过
+// 不计失败，刷盘期从零仓起步不会刷红。
+func (r *Repo) GubaWatchSymbols(ctx context.Context, now time.Time) ([]string, error) {
+	pos, err := r.client.Position.Query().
+		Where(position.QuantityGT(0)).
+		Select(position.FieldSymbol).Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sigs, err := r.client.TradeSignal.Query().
+		Where(tradesignal.SignalTimeGTE(day(now).AddDate(0, 0, -3))).
+		Order(ent.Desc(tradesignal.FieldSignalTime)).
+		Select(tradesignal.FieldStockCode).Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(pos))
+	out := make([]string, 0, len(pos))
+	for _, s := range append(pos, sigs...) {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+		if len(out) >= gubaWatchCap {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (r *Repo) DailyBars(ctx context.Context, d time.Time, symbols []string) (map[string]biz.Bar, map[string]string, error) {

@@ -119,6 +119,9 @@ func previewConfig(current params.Snapshot, values map[string]string, replace bo
 	if services["market"] {
 		out.KnownEffects = append(out.KnownEffects, "盘中行情引擎保留当前参数，下一次预热才加载；保存不会触发进程重启。")
 	}
+	if services["datahub"] {
+		out.KnownEffects = append(out.KnownEffects, "数据源开关/降级链/配额在下一次采集读取后生效，最长约5秒；域降级链改动立即影响下一次该域采集。")
+	}
 	return out
 }
 func (g *Gate) config(w http.ResponseWriter, r *http.Request) {

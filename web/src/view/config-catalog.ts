@@ -14,6 +14,8 @@ export interface ConfigField {
   jsonKey?: string
   options?: { value: string; label: string }[]
   wide?: boolean
+  /** 允许清空：保存空串即清除运行时覆盖并回落配置文件。 */
+  clearable?: boolean
 }
 
 export interface ConfigCategory {
@@ -42,6 +44,11 @@ function blob(jsonKey: string, label: string, hint: string, fallback: string, ki
 
 function app(key: string, label: string, hint: string, fallback: string, kind: FieldKind, section?: string): ConfigField {
   return { key, label, hint, kind, fallback, store: 'config', section }
+}
+
+/** 数据源限频/配额/超时运行时覆盖键：留空=清覆盖回落配置文件（int 且 clearable）。 */
+function lim(key: string, label: string, fallback: string, section?: string): ConfigField {
+  return { key, label, hint: `留空跟随配置文件（当前 ${fallback}）`, kind: 'int', fallback, store: 'config', section, clearable: true }
 }
 
 const modelTiers = [
@@ -109,20 +116,47 @@ export const configCategories: ConfigCategory[] = [
     fields: [
       app('app.ds.tushare.on', '启用', '日线、资金、龙虎榜', 'true', 'bool', 'Tushare'),
       app('app.ds.tushare.token', '令牌', '填了就优先于环境变量 TUSHARE_TOKEN', '', 'secret', 'Tushare'),
+      lim('app.ds.tushare.qps', '每秒请求', '2', 'Tushare'),
+      lim('app.ds.tushare.quota', '每日配额', '0', 'Tushare'),
+      lim('app.ds.tushare.timeout_sec', '超时秒数', '15', 'Tushare'),
       app('app.ds.tavily.on', '启用', '新闻搜索', 'true', 'bool', 'Tavily'),
       app('app.ds.tavily.token', '密钥', '填了就优先于环境变量 TAVILY_API_KEY', '', 'secret', 'Tavily'),
       app('app.ds.tavily.feeds', '查询词', '逗号分隔，例如 A股 快讯,证监会', 'A股 快讯,证监会', 'text', 'Tavily'),
+      lim('app.ds.tavily.timeout_sec', '超时秒数', '20', 'Tavily'),
       app('app.ds.pyworker', '边车地址', '通达信和 AkShare 共用这个 pyworker', 'http://127.0.0.1:18080', 'text', '通达信与 AkShare'),
       app('app.ds.tdx_local.on', '通达信官方', '盘中快照', 'true', 'bool', '通达信与 AkShare'),
       app('app.ds.tdx_file.on', '通达信文件', '本机 vipdoc', 'true', 'bool', '通达信与 AkShare'),
       app('app.ds.tdx_tcp.on', '通达信行情', '非官方 TCP', 'true', 'bool', '通达信与 AkShare'),
       app('app.ds.akshare.on', 'AkShare', '分钟线与外围备源', 'true', 'bool', '通达信与 AkShare'),
+      lim('app.ds.tdx_local.timeout_sec', '超时秒数', '3', '通达信与 AkShare'),
+      lim('app.ds.tdx_file.timeout_sec', '超时秒数', '60', '通达信与 AkShare'),
+      lim('app.ds.tdx_tcp.timeout_sec', '超时秒数', '8', '通达信与 AkShare'),
+      lim('app.ds.akshare.timeout_sec', '超时秒数', '30', '通达信与 AkShare'),
       app('app.ds.eastmoney.on', '东方财富', '涨停池、资金备源。公开接口，不用令牌', 'true', 'bool', '公开行情'),
       app('app.ds.sina.on', '新浪', '快照备源。公开接口，不用令牌', 'true', 'bool', '公开行情'),
       app('app.ds.tencent.on', '腾讯', '快照备源。公开接口，不用令牌', 'true', 'bool', '公开行情'),
       app('app.ds.cninfo.on', '巨潮', '公告。公开接口，不用令牌', 'true', 'bool', '公开行情'),
+      lim('app.ds.eastmoney.qps', '每秒请求', '4', '公开行情'),
+      lim('app.ds.eastmoney.quota', '每日配额', '0', '公开行情'),
+      lim('app.ds.eastmoney.timeout_sec', '超时秒数', '10', '公开行情'),
+      { ...app('app.ds.eastmoney.margin_reports', '两融报表名', '两份名单逗号分隔，报表轮换时应急换名；留空用内置默认 RPTA_WEB_RZRQ_GGMX 等', '', 'text', '公开行情'), clearable: true, wide: true },
+      lim('app.ds.sina.qps', '每秒请求', '8', '公开行情'),
+      lim('app.ds.sina.quota', '每日配额', '0', '公开行情'),
+      lim('app.ds.sina.timeout_sec', '超时秒数', '5', '公开行情'),
+      lim('app.ds.tencent.qps', '每秒请求', '8', '公开行情'),
+      lim('app.ds.tencent.quota', '每日配额', '0', '公开行情'),
+      lim('app.ds.tencent.timeout_sec', '超时秒数', '5', '公开行情'),
+      lim('app.ds.cninfo.qps', '每秒请求', '2', '公开行情'),
+      lim('app.ds.cninfo.quota', '每日配额', '0', '公开行情'),
+      lim('app.ds.cninfo.timeout_sec', '超时秒数', '15', '公开行情'),
       app('app.ds.rss.on', '启用', '打开后按订阅地址拉取', 'false', 'bool', 'RSS'),
       { ...app('app.ds.rss.feeds', '订阅地址', '一行一个，或用逗号分隔', '', 'text', 'RSS'), wide: true },
+      app('app.ds.sina7x24.on', '新浪 7×24 快讯', '快讯副线，与东财快讯互备；需 Referer', 'true', 'bool', '快讯与回补'),
+      lim('app.ds.sina7x24.timeout_sec', '超时秒数', '10', '快讯与回补'),
+      app('app.ds.baostock.on', 'Baostock 回补', '盘后日线/财务三表备源。pyworker 装好 baostock 前保持关闭', 'false', 'bool', '快讯与回补'),
+      app('app.ds.openbb_fred.on', 'OpenBB FRED', '宏观备源。装配后生效', 'false', 'bool', '备用源（随版本装配，默认关）'),
+      app('app.ds.openbb_fred.key', 'FRED 密钥', '留空跟随配置文件', '', 'secret', '备用源（随版本装配，默认关）'),
+      app('app.ds.tdx_http_archive.on', '通达信历史存档', '盘后日线备源。装配后生效', 'false', 'bool', '备用源（随版本装配，默认关）'),
     ],
   },
   {

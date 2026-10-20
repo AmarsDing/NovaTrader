@@ -44,6 +44,8 @@ func NewHTTPServer(c *conf.Datahub, svc *service.DatahubService, logger log.Logg
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_ = metrics.Write(w)
 	})
+	// 源目录（管理面只读直写，理由见 service/catalog.go）：经 gateway 反代出网为 /api/datahub/source-catalog
+	srv.HandleFunc("/v1/datahub/source-catalog", svc.CatalogHTTP(c))
 	v1.RegisterDatahubHTTPServer(srv, svc)
 	observe.RegisterHTTP(srv, observe.ForService("datahub"))
 	return srv

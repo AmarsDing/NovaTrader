@@ -54,6 +54,8 @@ func IntelKind(domain string) (string, bool) {
 		return KindAnnouncement, true
 	case DomainReport:
 		return KindReport, true
+	case DomainGuba:
+		return KindSocial, true
 	}
 	return "", false
 }

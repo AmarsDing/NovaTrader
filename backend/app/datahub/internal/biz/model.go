@@ -20,6 +20,7 @@ const (
 	DomainMoneyFlow    = "money_flow"
 	DomainLhb          = "lhb"
 	DomainUnlock       = "unlock"
+	DomainBlockTrade   = "block_trade"
 	DomainMargin       = "margin"
 	DomainMarginMkt    = "margin_mkt"
 	DomainHsgtTop10    = "hsgt_top10"
@@ -30,6 +31,7 @@ const (
 	DomainNews         = "news"
 	DomainAnnouncement = "announcement"
 	DomainReport       = "report"
+	DomainGuba         = "guba"
 	DomainOverseas     = "overseas"
 	DomainMacro        = "macro"
 	DomainHotRank      = "hot_rank"
@@ -50,6 +52,10 @@ const (
 	SourceRSS        = "rss"
 	SourceTdxArchive = "tdx_http_archive"
 	SourceOpenBBFred = "openbb_fred"
+	// 新浪 7×24 快讯副源：与行情快照源 "sina" 分名，避免断路/健康/配额状态互覆。
+	SourceSina7x24 = "sina7x24"
+	// Baostock 盘后回补与财务三表（pyworker baostock 角色适配）。
+	SourceBaostock = "baostock"
 )
 
 // Snapshot 与 M02 共用 pkg/market 的定义，写进 Redis snap:latest。
@@ -170,6 +176,22 @@ type UnlockPlan struct {
 	RatioPct       *float64 // 解禁数量占流通股本比例（%）
 	TotalRatioPct  *float64 // 解禁数量占总股本比例（%）
 	MarketValue    *float64 // 元；源报表一般没有
+}
+
+// BlockTrade 一笔大宗交易（东财数据中心 RPT_DATA_BLOCKTRADE，盘后披露）。
+// 过渡期落 dataset_record 的 PIT payload（零迁移；ent 窗口开放后再补 current 表），
+// 消费方只能按 PIT 口径查，禁止假设存在 block_trade 当前表。
+// Volume 万股、Amount 元（源头 TURNOVER 万元×1e4 归一）；溢价率等源可能不给的字段留 nil——没取到≠0。
+type BlockTrade struct {
+	Symbol       string
+	TradeDate    time.Time
+	TradePrice   float64
+	Volume       float64  // 万股
+	Amount       float64  // 元
+	Buyer        string   // 买方营业部
+	Seller       string   // 卖方营业部
+	PremiumRatio *float64 // 溢价率（%）；源缺列保持 nil
+	ClosePrice   *float64 // 当日收盘价（算溢价参考）；源缺列保持 nil
 }
 
 // Margin 融资融券。
@@ -319,6 +341,7 @@ const (
 	KindNews         = "news"
 	KindAnnouncement = "announcement"
 	KindReport       = "report"
+	KindSocial       = "social"
 )
 
 // IntelQuery 增量拉取情报。Since 为上次水位，源头早于它的条目可以不返回。

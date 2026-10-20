@@ -146,6 +146,12 @@ datahub:
       url: http://127.0.0.1:18080
       timeout: 30s
       concurrency: 2
+    baostock:
+      enabled: false    # 依赖装好（pip install baostock==0.9.4，pyworker 重启带 baostock 角色）后再改 true
+      official: true    # Baostock 官方免费接口（非爬虫逆向），口径与 akshare 现标一致
+      url: http://127.0.0.1:18080
+      timeout: 120s     # 单批 200 只回补耗时分钟级
+      concurrency: 2    # pyworker 侧会话全局互斥串行，>2 无收益
     eastmoney:
       enabled: true
       official: false
@@ -181,13 +187,19 @@ datahub:
       official: true
       feeds: []
       timeout: 15s
+    sina7x24:
+      enabled: true
+      official: false
+      qps: 1
+      timeout: 10s
+      concurrency: 2
   domains:
     security:
       enabled: true
       sources: [tushare, tdx_tcp, eastmoney]
     daily_bar:
       enabled: true
-      sources: [tushare, tdx_file, eastmoney]
+      sources: [tushare, tdx_file, eastmoney, baostock]
     adj_factor:
       enabled: true
       sources: [tushare, tdx_tcp]
@@ -211,6 +223,9 @@ datahub:
     unlock:
       enabled: true
       sources: [eastmoney]
+    block_trade:
+      enabled: true
+      sources: [eastmoney]
     margin:
       enabled: true
       sources: [tushare, eastmoney]
@@ -219,6 +234,8 @@ datahub:
     margin_mkt:
       enabled: true
       sources: [tushare]
+    # 北向资金：2024-05 停实时、2024-08 停每日净买入（交易所联合改制），本域口径=季度十大成交活跃股；
+    # 因子侧按「2024-08 后断更」处理，不接任何第三方「实时净流入」推算。
     hsgt_top10:
       enabled: true
       sources: [tushare, eastmoney]
@@ -231,10 +248,10 @@ datahub:
       interval: 10s
     finance:
       enabled: true
-      sources: [tushare, eastmoney]
+      sources: [tushare, eastmoney, baostock]
     flash:
       enabled: true
-      sources: [eastmoney, tavily, rss]
+      sources: [eastmoney, sina7x24, tavily, rss]
       interval: 60s
     news:
       enabled: true
@@ -248,6 +265,11 @@ datahub:
       enabled: true
       sources: [eastmoney]
       interval: 600s
+    # 股吧舆情：仅持仓+近 3 日信号股低频扫（cap 30）；gbapi 高频会触发验证码封禁，interval 勿低于 900s
+    guba:
+      enabled: true
+      sources: [eastmoney]
+      interval: 900s
     overseas:
       enabled: true
       sources: [akshare]
@@ -255,7 +277,7 @@ datahub:
       enabled: true
       sources: [akshare]
     hot_rank:
-      enabled: false
+      enabled: true
       sources: [eastmoney]
       interval: 300s
 # 服务：market（M02 行情与因子）。口径见 doc/开发文档/M02-行情与因子/设计文档.md

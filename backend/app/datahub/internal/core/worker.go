@@ -66,6 +66,9 @@ func (w *Worker) jobs() []scheduler.Job {
 		{Name: "datahub.macro", Spec: "50 7 * * *", Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainMacro)},
 		{Name: "datahub.security", Spec: "0 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainSecurity)},
 		{Name: "datahub.sector", Spec: "10 8 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: day(biz.DomainSector)},
+		// 报表轮换烟雾探测赶在 08:10 两融采集前；网页系报表名会轮换（两融汇总旧表 9501 是活例），当日可见。
+		// 每日都跑（不限交易日）：周末轮换周一 08:05 首轮即报，日期过滤用 LastOpenDay 保证非交易日也有数据基线。
+		{Name: "datahub.probe_report", Spec: "5 8 * * *", Timeout: 3 * time.Minute, Retry: 1, Run: w.probeReports},
 		{Name: "datahub.margin", Spec: "10 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.marginPrev},
 		{Name: "datahub.margin_mkt", Spec: "12 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.marginMktPrev},
 		{Name: "datahub.overseas", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: time.Minute, Retry: 2, Run: day(biz.DomainOverseas)},
@@ -78,6 +81,8 @@ func (w *Worker) jobs() []scheduler.Job {
 		{Name: "datahub.minute_bar", Spec: "40 16 * * *", TradingDayOnly: true, Timeout: 40 * time.Minute, Retry: 1, Run: day(biz.DomainMinuteBar)},
 		{Name: "datahub.hsgt", Spec: "50 16 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainHsgtTop10)},
 		{Name: "datahub.lhb", Spec: "30 17 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: day(biz.DomainLhb)},
+		// 大宗交易为盘后披露（东财 RPT_DATA_BLOCKTRADE 收盘后陆续出齐），排在龙虎榜之后入库。
+		{Name: "datahub.block_trade", Spec: "40 17 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainBlockTrade)},
 		{Name: "datahub.reconcile", Spec: "0 18 * * *", TradingDayOnly: true, DependsOn: []string{"datahub.daily_bar"}, Timeout: 10 * time.Minute, Retry: 1, Run: w.reconcile},
 		{Name: "datahub.purge_raw", Spec: "0 3 * * *", Timeout: time.Minute, Retry: 1, Run: w.purgeRaw},
 	}
@@ -128,6 +133,16 @@ func (w *Worker) reconcile(ctx context.Context) error {
 		return err
 	}
 	_, err = w.col.Reconcile(ctx, day, biz.ReconcileOptions{})
+	return err
+}
+
+// probeReports 每日报表烟雾探测（巡检编排见 biz.ProbeReports）。
+func (w *Worker) probeReports(ctx context.Context) error {
+	ctx = biz.OpenRunTrace(ctx)
+	_, err := w.col.ProbeReports(ctx)
+	if err != nil && ctx.Err() == nil {
+		w.log.Errorf("probe_reports: %v", err)
+	}
 	return err
 }
 
@@ -292,6 +307,11 @@ func (w *Worker) intelLoop(ctx context.Context) {
 			})
 			w.maybe(ctx, biz.DomainHotRank, 5*time.Minute, last, func(ctx context.Context) error {
 				_, err := w.col.CollectHotRank(ctx)
+				return err
+			})
+			// 股吧舆情：仅持仓+近 3 日信号股低频扫；gbapi 高频会触发验证码封禁，interval 勿低于 900s。
+			w.maybe(ctx, biz.DomainGuba, 15*time.Minute, last, func(ctx context.Context) error {
+				_, err := w.col.CollectIntel(ctx, biz.DomainGuba)
 				return err
 			})
 		}

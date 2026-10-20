@@ -23,7 +23,7 @@ func Target(key string) (service, effective string) {
 		return "strategy", "下一次扫描加载"
 	case strings.HasPrefix(key, "market."):
 		return "market", "下一次行情预热；盘中保留已加载版本"
-	case strings.HasPrefix(key, "app.ds."):
+	case strings.HasPrefix(key, "app.ds."), strings.HasPrefix(key, "app.domain."):
 		return "datahub", "下一次采集读取；配置缓存最长5秒"
 	case strings.HasPrefix(key, "app.brain.") || strings.HasPrefix(key, "app.agent."):
 		return "brain", "下一次研判读取；配置缓存最长5秒"
@@ -35,6 +35,74 @@ func Target(key string) (service, effective string) {
 		return "unknown", "加载点未登记"
 	}
 }
+
+// --- 数据源自助配置键族（运行期盖写） ----------------------------------------
+// 同步纪律：以下三张静态表与 app/datahub/internal/biz/model.go 的 Source*/Domain*
+// 常量及 source.go 的 Supports 真值表同源；params 不能 import biz（biz→appcfg→params
+// 成环），故在此静态登记。新增源/域时 model.go、本表、一致性测试三处必须同改；
+// app/datahub/internal/data/params_conformance_test.go 是唯一的漂移哨兵。
+
+// dsSourceNames 数据源白名单：13 个既有源 + 本批装配落地的 sina7x24、baostock（W5/W9）。
+var dsSourceNames = []string{
+	"tdx_local", "tdx_file", "tdx_tcp", "akshare", "tushare", "eastmoney", "sina", "tencent",
+	"cninfo", "tavily", "rss", "tdx_http_archive", "openbb_fred",
+	"sina7x24", "baostock",
+}
+
+// dsDomainNames 数据域白名单：biz/model.go 的 24 个 Domain* 常量（含本批落地的
+// block_trade、guba）。params 不能 import biz（见头部环注解），故保持字符串字面量；
+// app/datahub/internal/data/params_conformance_test.go 已收紧为与 biz 常量纯等值比对。
+var dsDomainNames = []string{
+	"security", "daily_bar", "adj_factor", "minute_bar", "snapshot", "limit_pool", "money_flow",
+	"lhb", "unlock", "margin", "margin_mkt", "hsgt_top10", "sector", "sector_quote", "finance",
+	"flash", "news", "announcement", "report", "overseas", "macro", "hot_rank",
+	"block_trade", "guba",
+}
+
+// dsCapability 源 → 声明支持的数据域，按接口实现逐源对齐 biz.Supports：
+// money_flow 取 MoneyFlowSource 或 IntradayFlowSource；guba 与其余 intel 四域同取
+// IntelSource（接口能力口径，不代表源对每类 kind 都有真实内容）。
+var dsCapability = map[string][]string{
+	"tdx_local":        {"security", "daily_bar", "minute_bar", "snapshot"},
+	"tdx_file":         {"daily_bar", "minute_bar", "sector"},
+	"tdx_tcp":          {"adj_factor", "daily_bar", "minute_bar", "security", "snapshot"},
+	"akshare":          {"limit_pool", "macro", "minute_bar", "overseas"},
+	"tushare":          {"adj_factor", "daily_bar", "finance", "hsgt_top10", "lhb", "margin", "margin_mkt", "money_flow", "security"},
+	"eastmoney":        {"announcement", "block_trade", "daily_bar", "finance", "flash", "guba", "hot_rank", "hsgt_top10", "lhb", "limit_pool", "margin", "money_flow", "news", "report", "sector", "sector_quote", "security", "snapshot", "unlock"},
+	"sina":             {"snapshot"},
+	"tencent":          {"snapshot"},
+	"cninfo":           {"announcement", "flash", "guba", "news", "report"},
+	"tavily":           {"announcement", "flash", "guba", "news", "report"},
+	"rss":              {"announcement", "flash", "guba", "news", "report"},
+	"tdx_http_archive": {"daily_bar"},
+	"openbb_fred":      {"macro"},
+	"sina7x24":         {"announcement", "flash", "guba", "news", "report"},
+	"baostock":         {"daily_bar", "finance"},
+}
+
+var dsSourceSet = func() map[string]bool {
+	m := make(map[string]bool, len(dsSourceNames))
+	for _, s := range dsSourceNames {
+		m[s] = true
+	}
+	return m
+}()
+
+// SupportsDataSource 判断 source 是否声明支持 domain，供降级链校验与一致性测试使用。
+func SupportsDataSource(domain, source string) bool {
+	for _, d := range dsCapability[source] {
+		if d == domain {
+			return true
+		}
+	}
+	return false
+}
+
+// DataSourceNames 返回数据源白名单副本，供跨包一致性测试比对。
+func DataSourceNames() []string { return append([]string(nil), dsSourceNames...) }
+
+// DataDomainNames 返回数据域白名单副本，供跨包一致性测试比对。
+func DataDomainNames() []string { return append([]string(nil), dsDomainNames...) }
 
 type numberRule struct {
 	min, max float64
@@ -65,12 +133,21 @@ var appAllowed = func() map[string]string {
 			m["app."+k] = kind
 		}
 	}
-	add("bool", "ds.tushare.on ds.tavily.on ds.tdx_local.on ds.tdx_file.on ds.tdx_tcp.on ds.akshare.on ds.eastmoney.on ds.sina.on ds.tencent.on ds.cninfo.on ds.rss.on intel.enabled")
-	add("text", "ds.tushare.token ds.tavily.token ds.tavily.feeds ds.rss.feeds brain.large.model brain.large.key brain.small.model brain.small.key intel.key intel.small intel.large kb.model kb.key notify.webhook notify.secret")
+	add("bool", "ds.tushare.on ds.tavily.on ds.tdx_local.on ds.tdx_file.on ds.tdx_tcp.on ds.akshare.on ds.eastmoney.on ds.sina.on ds.tencent.on ds.cninfo.on ds.rss.on intel.enabled ds.openbb_fred.on ds.tdx_http_archive.on ds.sina7x24.on ds.baostock.on")
+	add("text", "ds.tushare.token ds.tavily.token ds.tavily.feeds ds.rss.feeds ds.eastmoney.margin_reports ds.openbb_fred.key brain.large.model brain.large.key brain.small.model brain.small.key intel.key intel.small intel.large kb.model kb.key notify.webhook notify.secret")
 	add("url", "ds.pyworker brain.large.url brain.small.url intel.url kb.endpoint")
 	add("tier", "agent.technical agent.capital agent.news agent.external agent.synthesis agent.briefing agent.explain agent.ask")
 	add("weight", "agent.w.technical agent.w.news agent.w.capital agent.w.external")
 	add("provider", "kb.provider")
+	// 数据源键族：源级 qps/quota(0=不限)/timeout_sec 与域级降级链 sources。
+	for _, s := range dsSourceNames {
+		m["app.ds."+s+".qps"] = "qps"
+		m["app.ds."+s+".quota"] = "quota"
+		m["app.ds."+s+".timeout_sec"] = "timeout_sec"
+	}
+	for _, d := range dsDomainNames {
+		m["app.domain."+d+".sources"] = "sourcesjson"
+	}
 	return m
 }()
 
@@ -168,6 +245,25 @@ func ValidatePatch(current, patch map[string]string) (map[string]string, error) 
 				if e != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 10 {
 					return nil, fmt.Errorf("权重需在0到10")
 				}
+			case "qps":
+				n, e := strconv.ParseFloat(value, 64)
+				if e != nil || math.Trunc(n) != n || n < 1 || n > 50 {
+					return nil, fmt.Errorf("%s: 每秒请求需在1到50的整数", key)
+				}
+			case "quota":
+				n, e := strconv.ParseFloat(value, 64)
+				if e != nil || math.Trunc(n) != n || n < 0 || n > 100000 {
+					return nil, fmt.Errorf("%s: 每日配额需在0到100000的整数（0表示不限）", key)
+				}
+			case "timeout_sec":
+				n, e := strconv.ParseFloat(value, 64)
+				if e != nil || math.Trunc(n) != n || n < 1 || n > 120 {
+					return nil, fmt.Errorf("%s: 超时需在1到120秒的整数", key)
+				}
+			case "sourcesjson":
+				if err := checkSourceChain(key, value); err != nil {
+					return nil, err
+				}
 			case "url":
 				if value != "" {
 					u, e := url.Parse(value)
@@ -207,6 +303,43 @@ func strictObject(raw string, v any) error {
 	var trailing any
 	if err := d.Decode(&trailing); err != io.EOF {
 		return fmt.Errorf("JSON必须是单个对象")
+	}
+	return nil
+}
+
+// checkSourceChain 校验 app.domain.<domain>.sources：严格 JSON 字符串数组（拒绝尾随垃圾），
+// 长度 1..6、去重、元素在源白名单且都声明支持该域。错误文案不携带提交值。
+// 空串清除覆盖走 appAllowed 既有空值分支，不经这里。
+func checkSourceChain(key, raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "[") {
+		return fmt.Errorf("%s: 降级链需为JSON字符串数组", key)
+	}
+	var names []string
+	d := json.NewDecoder(strings.NewReader(trimmed))
+	if err := d.Decode(&names); err != nil {
+		return fmt.Errorf("%s: 降级链需为JSON字符串数组", key)
+	}
+	var trailing any
+	if err := d.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("%s: 降级链必须是单个JSON数组", key)
+	}
+	domain := strings.TrimSuffix(strings.TrimPrefix(key, "app.domain."), ".sources")
+	if len(names) < 1 || len(names) > 6 {
+		return fmt.Errorf("%s: 降级链长度需在1到6", key)
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if !dsSourceSet[n] {
+			return fmt.Errorf("%s: 存在未登记的数据源", key)
+		}
+		if seen[n] {
+			return fmt.Errorf("%s: 降级链不得重复", key)
+		}
+		seen[n] = true
+		if !SupportsDataSource(domain, n) {
+			return fmt.Errorf("%s: 存在不支持该域的数据源", key)
+		}
 	}
 	return nil
 }

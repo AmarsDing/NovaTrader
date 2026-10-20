@@ -56,6 +56,12 @@ type UnlockSource interface {
 	UnlockPlans(ctx context.Context, from, to time.Time) ([]UnlockPlan, error)
 }
 
+// BlockTradeSource 拉某个交易日的大宗交易明细。当日一笔都没有是合法结果
+// （口径同 UnlockSource，不用 nonEmpty 校验；「每日必有」的怀疑应走 data_quality_issue 显式记录）。
+type BlockTradeSource interface {
+	BlockTrades(ctx context.Context, day time.Time) ([]BlockTrade, error)
+}
+
 type MarginSource interface {
 	Margins(ctx context.Context, day time.Time) ([]Margin, error)
 }
@@ -129,6 +135,9 @@ func Supports(domain string, s Source) bool {
 	case DomainUnlock:
 		_, ok := s.(UnlockSource)
 		return ok
+	case DomainBlockTrade:
+		_, ok := s.(BlockTradeSource)
+		return ok
 	case DomainMargin:
 		_, ok := s.(MarginSource)
 		return ok
@@ -147,7 +156,7 @@ func Supports(domain string, s Source) bool {
 	case DomainFinance:
 		_, ok := s.(FinanceSource)
 		return ok
-	case DomainFlash, DomainNews, DomainAnnouncement, DomainReport:
+	case DomainFlash, DomainNews, DomainAnnouncement, DomainReport, DomainGuba:
 		_, ok := s.(IntelSource)
 		return ok
 	case DomainOverseas:

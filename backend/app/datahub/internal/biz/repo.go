@@ -28,6 +28,9 @@ type Repo interface {
 	// UpsertUnlockPlans 整窗替换 [from, to] 内的解禁计划：窗口内旧行先删再按新批写，
 	// 保证源头推迟/取消的批次不再残留。窗口为空时只删不写，视为合法结果。
 	UpsertUnlockPlans(ctx context.Context, from, to time.Time, items []UnlockPlan, source string, ready Ready) (int, error)
+	// UpsertBlockTrades 落某日大宗交易：PIT append-only 过渡落库（dataset_record，
+	// 零迁移；ent 窗口后再补 current 表），同批重采靠 revision_hash 幂等。
+	UpsertBlockTrades(ctx context.Context, day time.Time, items []BlockTrade, source string, ready Ready) (int, error)
 	UpsertMargins(ctx context.Context, day time.Time, items []Margin, source string, ready Ready) (int, error)
 	UpsertMarginMkt(ctx context.Context, day time.Time, items []MarginMkt, source string, ready Ready) (int, error)
 	// UpsertReportEstimates 写 report_estimate（info_code+est_year 幂等，PIT 多券商分歧各自成行；

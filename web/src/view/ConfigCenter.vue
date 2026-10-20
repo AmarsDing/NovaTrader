@@ -268,6 +268,7 @@ function currentValues(): Record<string, string> {
     if (clearSecrets.value.includes(field.key)) { values[field.key] = ''; continue }
     if (draft.value[id] === baseline.value[id]) continue
     if (category.blobKey) patch[field.jsonKey || field.key] = coerceField(field.kind, draft.value[id] || '')
+    else if (field.clearable && !(draft.value[id] || '').trim()) values[field.key] = ''
     else values[field.key] = payloadOf(field, draft.value[id] || '')
   }
   if (category.blobKey && Object.keys(patch).length) values[category.blobKey] = mergeBlob(stored.value[category.blobKey] || '', patch)

@@ -3,7 +3,9 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"server/app/datahub/internal/biz"
+	"server/pkg/appcfg"
 	"server/pkg/market"
 	"server/pkg/symbol"
 )
@@ -30,7 +33,13 @@ const (
 // push2 短时间请求过密会封 IP（实测 3 秒约 190 次即被重置连接），QPS 默认 4。
 type Eastmoney struct {
 	hc *httpc
+	// gubaWatch 返回股吧低频扫描清单（持仓∪近 3 日信号股），装配处注入（对齐 Sina/Tencent
+	// 的 universe 注入先例）；nil 或空清单时 guba 返回 ErrUnsupported 计跳过不计失败。
+	gubaWatch func(ctx context.Context) ([]string, error)
 }
+
+// SetGubaWatch 注入股吧观察清单（装配处一行设置，见 data/sources.go build()）。
+func (e *Eastmoney) SetGubaWatch(fn func(ctx context.Context) ([]string, error)) { e.gubaWatch = fn }
 
 func NewEastmoney(opt HTTPOptions) *Eastmoney {
 	if opt.Concurrency <= 0 {
@@ -408,7 +417,22 @@ func hhmmss(d time.Time, v jv) *time.Time {
 	return &t
 }
 
+// ReportGoneError 是 datacenter 报表失效/轮换专用错误：对端 HTTP 无恙，是报表目录面
+// 变化（实测 code=9501「报表配置不存在」）。行首带「【报表轮换】」标签，沿用 httpc.go
+// 「【疑似限流/封禁】」惯例，经 healthBook.record 截 err.Error() 落 source_health.last_error，
+// 健康面板红显可辨。错误码白名单先窄后宽：只 9501 换名，新增码需在 dc 分支显式扩展。
+type ReportGoneError struct {
+	Report  string
+	Code    int
+	Message string
+}
+
+func (e *ReportGoneError) Error() string {
+	return fmt.Sprintf("【报表轮换】eastmoney %s: %d %s", e.Report, e.Code, e.Message)
+}
+
 // dc 分页读东财数据中心。返回数据为空时源头报 9201，按空结果处理。
+// 9501（实测「报表配置不存在」）折成 ReportGoneError 上抛，供采集回退链换名、探测红显。
 func (e *Eastmoney) dc(ctx context.Context, report, filter, sortCol string) ([]map[string]any, error) {
 	var all []map[string]any
 	for pn := 1; pn <= 200; pn++ {
@@ -431,6 +455,9 @@ func (e *Eastmoney) dc(ctx context.Context, report, filter, sortCol string) ([]m
 			return nil, err
 		}
 		if out.Result == nil {
+			if out.Code == 9501 {
+				return nil, &ReportGoneError{Report: report, Code: out.Code, Message: out.Message}
+			}
 			if out.Code == 9201 || out.Success {
 				return all, nil
 			}
@@ -579,10 +606,62 @@ func (e *Eastmoney) UnlockPlans(ctx context.Context, from, to time.Time) ([]biz.
 	return items, nil
 }
 
+// emMarginReportDefault 两融个股明细默认报表名。事实钉死：2026-10-19 实测有效；
+// 汇总旧表 RPTA_WEB_RZRQ_LSHJ 同日实测 9501 已下线，不入默认链。
+const emMarginReportDefault = "RPTA_WEB_RZRQ_GGMX"
+
+// emMarginReportsKey 两融报表名回退链的运行时键（strategy_config 下发、appcfg 5s 缓存）。
+// 逗号分隔、首个为主；误填全灭名单时采集+探测双双红显可自纠，ValidatePatch 有意不验名。
+const emMarginReportsKey = "app.ds.eastmoney.margin_reports"
+
+// parseReportChain 解析逗号分隔的报表名链：trim、去重、去空；空串返回 nil（调用方回退默认）。
+func parseReportChain(s string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, part := range strings.Split(s, ",") {
+		name := strings.TrimSpace(part)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
+}
+
+// marginReports 返回两融明细报表名回退链：运行时键优先，空值回退默认。
+// 每次采集读取（appcfg 5s 缓存内复用）；探测的 GGMX 条目不读该键——探测测的是
+// 默认链实际在跑的名，与采集同源同生命周期，避免键改了探测还在测旧名。
+func (e *Eastmoney) marginReports(ctx context.Context) []string {
+	if names := parseReportChain(appcfg.Get(ctx, emMarginReportsKey)); len(names) > 0 {
+		return names
+	}
+	return []string{emMarginReportDefault}
+}
+
 func (e *Eastmoney) Margins(ctx context.Context, d time.Time) ([]biz.Margin, error) {
-	rows, err := e.dc(ctx, "RPTA_WEB_RZRQ_GGMX", fmt.Sprintf("(DATE='%s')", ymd(d)), "")
-	if err != nil {
+	// 回退链：仅 ReportGoneError（9501 报表轮换）换下一个名；限流/网络/校验错误
+	// 立即返回不换名，避免把「在的请求失败」误当轮换导致雪崩式探名。
+	var firstGone *ReportGoneError
+	var rows []map[string]any
+	var err error
+	for _, report := range e.marginReports(ctx) {
+		rows, err = e.dc(ctx, report, fmt.Sprintf("(DATE='%s')", ymd(d)), "")
+		if err == nil {
+			break
+		}
+		var gone *ReportGoneError
+		if errors.As(err, &gone) {
+			if firstGone == nil {
+				firstGone = gone
+			}
+			continue
+		}
 		return nil, err
+	}
+	if err != nil {
+		// 全链皆灭：返回首个轮换错误（行首【报表轮换】标签入健康面板），tushare 备源按 Run 链接管。
+		return nil, firstGone
 	}
 	items := make([]biz.Margin, 0, len(rows))
 	for _, r := range rows {
@@ -697,6 +776,8 @@ func (e *Eastmoney) Intel(ctx context.Context, kind string, q biz.IntelQuery) ([
 		return e.announcements(ctx, q)
 	case biz.KindReport:
 		return e.reports(ctx, q)
+	case biz.KindSocial:
+		return e.guba(ctx, q)
 	}
 	return nil, biz.ErrUnsupported
 }
@@ -988,4 +1069,205 @@ func (e *Eastmoney) reports(ctx context.Context, q biz.IntelQuery) ([]biz.Intel,
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].PublishTime > items[j].PublishTime })
 	return items, nil
+}
+
+// BlockTrades 拉某个交易日的大宗交易明细（RPT_DATA_BLOCKTRADE，盘后披露）。
+// 当日一笔都没有是合法结果；解析哨兵沿用 secu/dcDate/anyF/anyPtr 公约，
+// 缺列留 nil——没取到≠0。实际列名以首日 columns=ALL 实测为准，字段漂移照哨兵留 nil。
+func (e *Eastmoney) BlockTrades(ctx context.Context, day time.Time) ([]biz.BlockTrade, error) {
+	rows, err := e.dc(ctx, "RPT_DATA_BLOCKTRADE", fmt.Sprintf("(TRADE_DATE='%s')", ymd(day)), "TRADE_DATE")
+	if err != nil {
+		return nil, err
+	}
+	items := make([]biz.BlockTrade, 0, len(rows))
+	for _, r := range rows {
+		sym := secu(r["SECUCODE"])
+		tradeDate, ok := dcDate(r["TRADE_DATE"])
+		if sym == "" || !ok {
+			continue // 证券代码空行、交易日解析失败行 skip
+		}
+		items = append(items, biz.BlockTrade{
+			Symbol:       sym,
+			TradeDate:    tradeDate,
+			TradePrice:   anyF(r["TRADE_PRICE"]),
+			Volume:       anyF(r["VOLUME"]),         // 万股，与源头一致
+			Amount:       anyF(r["TURNOVER"]) * 1e4, // 源头万元 ×1e4 归一为元
+			Buyer:        truncate(anyStr(r["BUYER_NAME"]), 128),
+			Seller:       truncate(anyStr(r["SELLER_NAME"]), 128),
+			PremiumRatio: anyPtr(r["PREMIUM_RATIO"]),
+			ClosePrice:   anyPtr(r["CLOSE_PRICE"]),
+		})
+	}
+	return items, nil
+}
+
+// gubaInterval 股吧每股请求间隔：gbapi 高频会触发验证码封禁，每股间强制 ≥2s。
+// 测试可调 0 免真睡（同 httpc.backoff 先例）。
+var gubaInterval = 2 * time.Second
+
+// guba 低频拉观察清单内各股的股吧主贴（gbapi 一页 30 条，sorttype=1 按最新）。
+// 实测 sorttype=2 时 code 过滤失效会混入跨吧帖，故即使过滤生效也保留 stockbar_code
+// 客户端校验作双保险；无发布时间行 skip（没取到≠0，不冒充）。
+func (e *Eastmoney) guba(ctx context.Context, _ biz.IntelQuery) ([]biz.Intel, error) {
+	if e.gubaWatch == nil {
+		return nil, biz.ErrUnsupported
+	}
+	watch, err := e.gubaWatch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(watch) == 0 {
+		return nil, biz.ErrUnsupported
+	}
+	var items []biz.Intel
+	for i, sym := range watch {
+		if i > 0 {
+			// ctx 感知间隔睡眠内联版：原用 httpc.sleepCtx（P3-9 节流批未落 HEAD、归属未定），
+			// 本批不自持外批符号故内联等价实现；P3-9 若后落可换回调用。
+			timer := time.NewTimer(gubaInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return items, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		code := strings.TrimSuffix(strings.ToUpper(sym), ".SH")
+		code = strings.TrimSuffix(code, ".SZ")
+		code = strings.TrimSuffix(code, ".BJ")
+		if len(code) != 6 {
+			continue
+		}
+		u := "https://gbapi.eastmoney.com/webarticlelist/api/Article/Articlelist?" + url.Values{
+			"code": {code}, "ps": {"30"}, "pageindex": {"1"}, "sorttype": {"1"},
+		}.Encode()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Referer", "https://guba.eastmoney.com/list,"+code+".html")
+		body, err := e.hc.do(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		var out struct {
+			Rc int `json:"rc"`
+			Re []struct {
+				PostID       string `json:"post_id"`
+				Title        string `json:"post_title"`
+				ClickCount   int64  `json:"post_click_count"`
+				CommentCount int64  `json:"post_comment_count"`
+				PublishTime  string `json:"post_publish_time"`
+				StockbarCode string `json:"stockbar_code"`
+			} `json:"re"`
+		}
+		// 验证码/HTML 页走 decodeJSON 解析失败计入错误路径（断路器与【疑似限流/封禁】链条观测）。
+		if err := decodeJSON(biz.SourceEastmoney, body, &out); err != nil {
+			return nil, err
+		}
+		if out.Rc != 0 {
+			return nil, fmt.Errorf("eastmoney guba %s: rc=%d", code, out.Rc)
+		}
+		for _, p := range out.Re {
+			if p.StockbarCode != "" && p.StockbarCode != code {
+				continue // 跨吧帖防守
+			}
+			if p.PostID == "" || p.Title == "" {
+				continue
+			}
+			pt := shTime(p.PublishTime)
+			if pt == "" {
+				continue // 无发布时间行 skip，不冒充
+			}
+			items = append(items, biz.Intel{
+				Source: biz.SourceEastmoney, SourceID: p.PostID, Kind: biz.KindSocial,
+				Title:       p.Title,
+				Content:     fmt.Sprintf("%s｜点击%d｜评论%d", p.Title, p.ClickCount, p.CommentCount),
+				URL:         fmt.Sprintf("https://guba.eastmoney.com/news,%s,%s.html", code, p.PostID),
+				PublishTime: pt,
+				Codes:       []string{sym},
+			})
+		}
+	}
+	return items, nil
+}
+
+// emDCProbe 一张在用 datacenter 报表的探测定义：单页 pageSize=1 请求，轮换错误
+// 或（预期非空而 0 行）记为失败。7 张报表约 2-3 秒（QPS4+抖动）。
+type emDCProbe struct {
+	report     string
+	domain     string
+	filter     func(day time.Time) string
+	allowEmpty bool // 窗口内合法为空的报表（解禁窗口、近 7 日预告）
+}
+
+// emDCProbes 探测的是「默认链实际在跑的名」，与采集同源同生命周期：GGMX 条目不读
+// app.ds.eastmoney.margin_reports 运行时键（避免键改了探测还在测旧名）。
+var emDCProbes = []emDCProbe{
+	{report: emMarginReportDefault, domain: biz.DomainMargin,
+		filter: func(day time.Time) string { return fmt.Sprintf("(DATE='%s')", ymd(day)) }},
+	{report: "RPT_LIFT_STAGE", domain: biz.DomainUnlock, allowEmpty: true,
+		filter: func(day time.Time) string {
+			return fmt.Sprintf("(FREE_DATE>='%s')(FREE_DATE<='%s')", ymd(day), ymd(day.AddDate(0, 0, 90)))
+		}},
+	{report: "RPT_MUTUAL_TOP10DEAL", domain: biz.DomainHsgtTop10,
+		filter: func(day time.Time) string {
+			return fmt.Sprintf(`(TRADE_DATE='%s')(MUTUAL_TYPE in ("001","003"))`, ymd(day))
+		}},
+	{report: "RPT_PUBLIC_OP_NEWPREDICT", domain: biz.DomainFinance, allowEmpty: true,
+		filter: func(day time.Time) string { return fmt.Sprintf("(NOTICE_DATE>='%s')", ymd(day.AddDate(0, 0, -7))) }},
+	{report: "RPT_FCI_PERFORMANCEE", domain: biz.DomainFinance, allowEmpty: true,
+		filter: func(day time.Time) string { return fmt.Sprintf("(NOTICE_DATE>='%s')", ymd(day.AddDate(0, 0, -7))) }},
+	{report: "RPT_BILLBOARD_DAILYDETAILSBUY", domain: biz.DomainLhb,
+		filter: func(day time.Time) string { return fmt.Sprintf("(TRADE_DATE='%s')", ymd(day)) }},
+	{report: "RPT_BILLBOARD_DAILYDETAILSSELL", domain: biz.DomainLhb,
+		filter: func(day time.Time) string { return fmt.Sprintf("(TRADE_DATE='%s')", ymd(day)) }},
+}
+
+// ProbeReports 实现 biz.ReportProber：逐张报表一次 pageSize=1 单页请求（走既有 dc 解析，
+// 不翻页），轮换错误或预期非空而 0 行记入 ProbeResult.Err。
+func (e *Eastmoney) ProbeReports(ctx context.Context, day time.Time) []biz.ProbeResult {
+	out := make([]biz.ProbeResult, 0, len(emDCProbes))
+	for _, p := range emDCProbes {
+		res := biz.ProbeResult{Domain: p.domain, Report: p.report}
+		rows, err := e.dcPage(ctx, p.report, p.filter(day))
+		if err != nil {
+			res.Err = err
+		} else {
+			res.Rows = len(rows)
+			if len(rows) == 0 && !p.allowEmpty {
+				res.Err = fmt.Errorf("报表 %s 预期非空而 0 行", p.report)
+			}
+		}
+		out = append(out, res)
+	}
+	return out
+}
+
+// dcPage 只取报表首页一行（探测用），复用 dc 的响应解析与 9501/9201 语义。
+func (e *Eastmoney) dcPage(ctx context.Context, report, filter string) ([]map[string]any, error) {
+	q := url.Values{"reportName": {report}, "columns": {"ALL"}, "source": {"WEB"}, "client": {"WEB"},
+		"pageSize": {"1"}, "pageNumber": {"1"}, "filter": {filter}}
+	var out struct {
+		Success bool   `json:"success"`
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Result  *struct {
+			Pages int              `json:"pages"`
+			Data  []map[string]any `json:"data"`
+		} `json:"result"`
+	}
+	if err := e.hc.getJSON(ctx, emDC+"?"+q.Encode(), &out); err != nil {
+		return nil, err
+	}
+	if out.Result == nil {
+		if out.Code == 9501 {
+			return nil, &ReportGoneError{Report: report, Code: out.Code, Message: out.Message}
+		}
+		if out.Code == 9201 || out.Success {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("eastmoney %s: %d %s", report, out.Code, out.Message)
+	}
+	return out.Result.Data, nil
 }

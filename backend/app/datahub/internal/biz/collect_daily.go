@@ -238,6 +238,21 @@ func (c *Collector) CollectUnlock(ctx context.Context, day time.Time, only strin
 	return CollectSummary{Domain: DomainUnlock, Source: src, Rows: n}, err
 }
 
+// CollectBlockTrades 采某个交易日的大宗交易明细（东财 RPT_DATA_BLOCKTRADE，盘后披露）。
+// 不做非空校验：当日零成交是合法结果（口径同 CollectUnlock）；过渡期 PIT 落 dataset_record。
+func (c *Collector) CollectBlockTrades(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
+	day = dateOf(day)
+	items, src, err := Run(ctx, c.p, DomainBlockTrade, RunOptions{Only: only, Timeout: 2 * time.Minute},
+		func(ctx context.Context, s Source) ([]BlockTrade, error) {
+			return s.(BlockTradeSource).BlockTrades(ctx, day)
+		}, nil)
+	if err != nil {
+		return CollectSummary{Domain: DomainBlockTrade}, err
+	}
+	n, err := c.repo.UpsertBlockTrades(ctx, day, items, src, ready(DomainBlockTrade, day, len(items), src, false))
+	return CollectSummary{Domain: DomainBlockTrade, Source: src, Rows: n}, err
+}
+
 // CollectMargin 采融资融券。数据次日早上才有，调度在次交易日盘前抓上一交易日。
 func (c *Collector) CollectMargin(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
 	day = dateOf(day)

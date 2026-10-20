@@ -104,6 +104,15 @@ func (o sourceOpts) feeds(name string) []string {
 	return nil
 }
 
+// eastmoney 装配东方财富源并注入股吧观察清单（持仓∪近 3 日信号股，见 Eastmoney.SetGubaWatch）。
+func (o sourceOpts) eastmoney() *Eastmoney {
+	em := NewEastmoney(o.httpOpt(biz.SourceEastmoney))
+	em.SetGubaWatch(func(ctx context.Context) ([]string, error) {
+		return o.repo.GubaWatchSymbols(ctx, time.Now())
+	})
+	return em
+}
+
 func (o sourceOpts) build() ([]biz.Source, error) {
 	universe := func(ctx context.Context) ([]string, error) {
 		return o.repo.ActiveSymbols(ctx, time.Now())
@@ -114,12 +123,14 @@ func (o sourceOpts) build() ([]biz.Source, error) {
 		NewTdxFile(o.url(biz.SourceTdxFile), o.httpOpt(biz.SourceTdxFile)),
 		NewTdxTCP(o.url(biz.SourceTdxTCP), o.httpOpt(biz.SourceTdxTCP)),
 		NewAkshare(o.url(biz.SourceAkshare), o.httpOpt(biz.SourceAkshare)),
-		NewEastmoney(o.httpOpt(biz.SourceEastmoney)),
+		NewBaostock(o.url(biz.SourceBaostock), universe, o.httpOpt(biz.SourceBaostock)),
+		o.eastmoney(),
 		NewSina(o.httpOpt(biz.SourceSina), universe),
 		NewTencent(o.httpOpt(biz.SourceTencent), universe),
 		NewCninfo(o.httpOpt(biz.SourceCninfo)),
 		NewTavily(o.token(biz.SourceTavily), o.feeds(biz.SourceTavily), o.httpOpt(biz.SourceTavily)),
 		NewRSS(o.feeds(biz.SourceRSS), o.httpOpt(biz.SourceRSS)),
+		NewSina7x24(o.feeds(biz.SourceSina7x24), o.httpOpt(biz.SourceSina7x24)),
 	}
 	// No default config or snapshot registration. Both service and source must be explicitly enabled.
 	if cfg := o.src(biz.SourceTdxArchive); cfg != nil && cfg.GetEnabled() {

@@ -45,6 +45,76 @@ export async function getQuality(query: Record<string, unknown> = {}): Promise<Q
   }))
 }
 
+/**
+ * 源目录（GET /api/datahub/source-catalog）：「每个源能提供什么数据」的单一事实源。
+ * 费用档/凭证枚举缺失留 ''（前端显「—」），不用默认值冒充（没取到≠0）。
+ */
+export interface SourceManifest {
+  id: string
+  /** false = 已登记键位/已建未启用（静态表 declared 域透传，源墙可见可配）。 */
+  registered: boolean
+  domains: string[]
+  feeTier: 'free' | 'freemium' | 'paid' | ''
+  feeNote: string
+  official: boolean
+  requires: 'none' | 'token' | 'key' | 'sidecar' | ''
+  via: string
+  notes: string
+  riskNote: string
+}
+
+/** 域降级链画像：yaml 默认链（运行态覆盖由 /api/config 兜出）+ 全部可挂该域的候选源。 */
+export interface DomainChainInfo {
+  name: string
+  defaultChain: string[]
+  candidates: string[]
+}
+
+export interface SourceCatalog {
+  version: number | null
+  generatedAt: string
+  servicesNote: string
+  sources: SourceManifest[]
+  domains: DomainChainInfo[]
+}
+
+function strList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []
+}
+
+function normalizeManifest(raw: RawRecord): SourceManifest {
+  const feeTier = pick<string>(raw, 'fee_tier', 'feeTier') || ''
+  const requires = pick<string>(raw, 'requires') || ''
+  return {
+    id: pick<string>(raw, 'name', 'id') || '',
+    registered: raw.registered === true,
+    domains: strList(pick(raw, 'domains')),
+    feeTier: feeTier === 'free' || feeTier === 'freemium' || feeTier === 'paid' ? feeTier : '',
+    feeNote: pick<string>(raw, 'fee_note', 'feeNote') || '',
+    official: raw.official === true,
+    requires: requires === 'none' || requires === 'token' || requires === 'key' || requires === 'sidecar' ? requires : '',
+    via: pick<string>(raw, 'via') || '',
+    notes: pick<string>(raw, 'notes') || '',
+    riskNote: pick<string>(raw, 'risk_note', 'riskNote') || '',
+  }
+}
+
+export async function getSourceCatalog(): Promise<SourceCatalog> {
+  const data = await request('/api/datahub/source-catalog')
+  const raw = (data && typeof data === 'object' ? data : {}) as RawRecord
+  return {
+    version: num(pick(raw, 'version')),
+    generatedAt: pick<string>(raw, 'generated_at', 'generatedAt') || '',
+    servicesNote: pick<string>(raw, 'services_note', 'servicesNote') || '',
+    sources: asList(raw, 'sources').map(normalizeManifest),
+    domains: asList(raw, 'domains').map((entry) => ({
+      name: pick<string>(entry, 'name') || '',
+      defaultChain: strList(pick(entry, 'default_chain', 'defaultChain')),
+      candidates: strList(pick(entry, 'candidates')),
+    })),
+  }
+}
+
 function optionalNum(raw: RawRecord, ...keys: string[]): number | null {
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(raw, key) && raw[key] != null && raw[key] !== '') return num(raw[key])
