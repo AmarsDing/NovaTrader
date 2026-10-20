@@ -103,6 +103,10 @@ type Repo interface {
 	SaveSeatStats(ctx context.Context, rows []SeatStatRow) error
 	// SeatStatsRows 读某基准日全部 seat_stats 行。
 	SeatStatsRows(ctx context.Context, day time.Time) ([]SeatStatRow, error)
+
+	// ReportEstimateRows 读 symbol 发布日在 [since, asOf] 的研报预测行（目录册增补 B4，
+	// publish_date 倒序、org_sname 次之；披露列缺披露保持 nil，消费侧不得改写为 0）。
+	ReportEstimateRows(ctx context.Context, symbol string, since, asOf time.Time) ([]ReportEstimateItem, error)
 }
 
 // SnapshotSource 读 Redis snap:latest。

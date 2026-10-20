@@ -40,6 +40,11 @@ type fakeRepo struct {
 	seatRange []SeatRecord
 	seatRows  []SeatStatRow
 	seatSaved []SeatStatRow
+	// B4 研报预测桩数据（estSym/estSince/estAsOf 记录调用参，钉参数序防写反）
+	estRows  []ReportEstimateItem
+	estSym   string
+	estSince time.Time
+	estAsOf  time.Time
 }
 
 func (f *fakeRepo) LoadStocks(context.Context) ([]market.StockInfo, error) { return f.stocks, nil }
@@ -139,6 +144,11 @@ func (f *fakeRepo) SaveSeatStats(_ context.Context, rows []SeatStatRow) error {
 }
 func (f *fakeRepo) SeatStatsRows(context.Context, time.Time) ([]SeatStatRow, error) {
 	return f.seatRows, nil
+}
+// B4 研报预测读出口：默认空（estRows 可由用例覆写）。记录三参供参数管道断言。
+func (f *fakeRepo) ReportEstimateRows(_ context.Context, symbol string, since, asOf time.Time) ([]ReportEstimateItem, error) {
+	f.estSym, f.estSince, f.estAsOf = symbol, since, asOf
+	return f.estRows, nil
 }
 /* ---------- P2 测试桩 ---------- */
 
