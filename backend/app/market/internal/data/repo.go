@@ -66,6 +66,9 @@ func chunks(n int, fn func(lo, hi int) error) error {
 	return nil
 }
 
+// f64 ← 哨兵转换：库 NULL → 0。「没取到≠0」纪律（doc/开发文档/0.数据纪律.md §3）：
+// 只允许用在消费方已把 0 当缺失处理的字段——PreClose（pkg/market indicator「0 时用上一根收盘」）、
+// Volume/Amount/股本/估值类（biz 消费侧均先判 >0）。OHLC 四价严禁走这里：0 价会污染指标序列，必须整行跳过（barOK）。
 func f64(p *float64) float64 {
 	if p == nil {
 		return 0
@@ -73,11 +76,19 @@ func f64(p *float64) float64 {
 	return *p
 }
 
+// i64 同 f64：仅容许 0=缺失语义的字段（股本类消费侧先判 >0）。
 func i64(p *int64) int64 {
 	if p == nil {
 		return 0
 	}
 	return *p
+}
+
+// barOK 报告一行是不是完整 K 线：OHLC 缺一即不完整。
+// 写入侧（datahub CheckBars）已拦非正价，所以库里 NULL 价 = 写入不完整，而不是「价是 0」；
+// 不完整行不得伪装成 0 价混进指标序列，读取时整行跳过。
+func barOK(row *ent.MarketData) bool {
+	return row.Open != nil && row.High != nil && row.Low != nil && row.Close != nil
 }
 
 // clean 去掉 NaN 和无穷大，JSON 无法编码它们。
@@ -164,7 +175,7 @@ func (r *Repo) DailyHistory(ctx context.Context, before time.Time, n int) (map[s
 			return nil, err
 		}
 		for _, row := range rows {
-			if row.Close == nil {
+			if !barOK(row) {
 				continue
 			}
 			out[row.Symbol] = append(out[row.Symbol], toDayBar(row))
@@ -483,7 +494,10 @@ func (r *Repo) DayAmounts(ctx context.Context, day time.Time) (map[string]float6
 	}
 	out := make(map[string]float64, len(rows))
 	for _, row := range rows {
-		out[row.Symbol] = f64(row.Amount)
+		// 「没取到≠0」：Amount 缺失不产键（查询方按缺键=没取到处理），不落 0 冒充真无成交。
+		if row.Amount != nil {
+			out[row.Symbol] = f64(row.Amount)
+		}
 	}
 	return out, nil
 }
@@ -552,7 +566,7 @@ func (r *Repo) Bars(ctx context.Context, symbol, freq string, start, end time.Ti
 	out := make([]biz.BarRow, 0, len(rows))
 	for i := len(rows) - 1; i >= 0; i-- {
 		row := rows[i]
-		if row.Close == nil {
+		if !barOK(row) {
 			continue
 		}
 		out = append(out, biz.BarRow{
