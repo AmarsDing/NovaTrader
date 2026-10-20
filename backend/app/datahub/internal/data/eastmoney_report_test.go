@@ -59,11 +59,12 @@ func (t *seqTransport) reportNames() []string {
 	return out
 }
 
-func newSeqEastmoney(serve func(string) (int, string)) (*Eastmoney, *seqTransport) {
+func newSeqEastmoney(serve func(string) (int, string), retries int) (*Eastmoney, *seqTransport) {
 	tt := &seqTransport{serve: serve}
-	// HTTPOptions 不带 P3-9 的 Retries（其批未落 HEAD）：零值即不重试，429 一次即错，
-	// 仍足以钉「限流不换名」；退避计数/标签断言随 P3-9 落地后回补（本批挂账第 8 条）。
-	hc := newHTTPC(biz.SourceEastmoney, HTTPOptions{QPS: 10000, Concurrency: 1}, nil)
+	// P3-9 落地（挂账第 8 条）：retries 显式贯通——0 保持零重试钉「限流不换名/限速语义」，
+	// 2 激活退避重试钉 429 三连发；backoff 调小避免真睡。
+	hc := newHTTPC(biz.SourceEastmoney, HTTPOptions{QPS: 10000, Concurrency: 1, Retries: retries}, nil)
+	hc.backoff = time.Millisecond
 	hc.hc = &http.Client{Transport: tt}
 	return &Eastmoney{hc: hc}, tt
 }
@@ -76,7 +77,7 @@ func TestDCReportGone(t *testing.T) {
 	t.Run("9501 折成 ReportGoneError", func(t *testing.T) {
 		em, _ := newSeqEastmoney(func(string) (int, string) {
 			return 200, `{"success":false,"code":9501,"message":"报表配置不存在","result":null}`
-		})
+		}, 0)
 		_, err := em.dc(ctx, "RPT_X", "", "")
 		if err == nil {
 			t.Fatal("want error")
@@ -98,7 +99,7 @@ func TestDCReportGone(t *testing.T) {
 			`{"success":false,"code":9201,"message":"查询成功","result":null}`,
 			`{"success":true,"result":null}`,
 		} {
-			em, _ := newSeqEastmoney(func(string) (int, string) { return 200, body })
+			em, _ := newSeqEastmoney(func(string) (int, string) { return 200, body }, 0)
 			rows, err := em.dc(ctx, "RPT_X", "", "")
 			if err != nil || len(rows) != 0 {
 				t.Fatalf("body=%s → rows=%v err=%v，想空成功", body, rows, err)
@@ -109,7 +110,7 @@ func TestDCReportGone(t *testing.T) {
 	t.Run("其他非 9501 业务码是普通 error 不换名", func(t *testing.T) {
 		em, _ := newSeqEastmoney(func(string) (int, string) {
 			return 200, `{"success":false,"code":9502,"message":"查询参数错误","result":null}`
-		})
+		}, 0)
 		_, err := em.dc(ctx, "RPT_X", "", "")
 		if err == nil {
 			t.Fatal("want error")
@@ -141,7 +142,7 @@ func TestMarginReportChain(t *testing.T) {
 				]}}`
 			}
 			return 200, `{"success":false,"code":9501,"message":"报表配置不存在","result":null}`
-		})
+		}, 0)
 		items, err := em.Margins(ctx, day)
 		if err != nil {
 			t.Fatalf("Margins: %v", err)
@@ -162,7 +163,7 @@ func TestMarginReportChain(t *testing.T) {
 	t.Run("默认名单 9501 全链灭返回首个轮换错误", func(t *testing.T) {
 		em, tt := newSeqEastmoney(func(string) (int, string) {
 			return 200, `{"success":false,"code":9501,"message":"报表配置不存在","result":null}`
-		})
+		}, 0)
 		_, err := em.Margins(ctx, day)
 		var gone *ReportGoneError
 		if !errors.As(err, &gone) {
@@ -180,7 +181,7 @@ func TestMarginReportChain(t *testing.T) {
 	})
 
 	t.Run("首名 429 限流不换名立即错", func(t *testing.T) {
-		em, tt := newSeqEastmoney(func(string) (int, string) { return 429, `{}` })
+		em, tt := newSeqEastmoney(func(string) (int, string) { return 429, `{}` }, 2)
 		_, err := em.Margins(ctx, day)
 		if err == nil {
 			t.Fatal("want throttled error")
@@ -189,14 +190,17 @@ func TestMarginReportChain(t *testing.T) {
 		if errors.As(err, &gone) {
 			t.Fatalf("限流不得误判轮换（防雪崩式探名）: %v", err)
 		}
-		// 【疑似限流/封禁】标签断言随 P3-9 落地回补（其批给 403/429 打标，HEAD 尚无）。
+		// P3-9 落地：403/429 打【疑似限流/封禁】标签（健康面板可辨），退避重试两次后仍错——但不换名。
+		if !strings.Contains(err.Error(), "【疑似限流/封禁】") {
+			t.Fatalf("限流错误须带【疑似限流/封禁】标签: %v", err)
+		}
 		for _, name := range tt.reportNames() {
 			if name != emMarginReportDefault {
 				t.Fatalf("限流时链不得换名，请求了 %s", name)
 			}
 		}
-		if n := len(tt.reportNames()); n != 1 {
-			t.Fatalf("限流应停在首名即错（零重试配置下 1 次），calls=%d", n)
+		if n := len(tt.reportNames()); n != 3 {
+			t.Fatalf("Retries:2 限流应退避重试两次共 3 次，calls=%d", n)
 		}
 	})
 
@@ -214,7 +218,7 @@ func TestMarginReportChain(t *testing.T) {
 				t.Fatalf("parseReportChain(%q)=%v，想 nil（调用方回退默认）", key, got)
 			}
 		}
-		em, _ := newSeqEastmoney(nil)
+		em, _ := newSeqEastmoney(nil, 0)
 		got := em.marginReports(ctx)
 		if len(got) != 1 || got[0] != emMarginReportDefault {
 			t.Fatalf("未绑定时 marginReports=%v，想 [%s]", got, emMarginReportDefault)
@@ -264,7 +268,7 @@ func TestReportParsing(t *testing.T) {
 				]}`
 			}
 			return 200, `{"data":[]}`
-		})
+		}, 0)
 		items, err := em.reports(ctx, biz.IntelQuery{Since: time.Date(2026, 10, 19, 0, 0, 0, 0, time.Local)})
 		if err != nil {
 			t.Fatalf("reports: %v", err)
@@ -339,7 +343,7 @@ func TestReportParsing(t *testing.T) {
 				]}`
 			}
 			return 200, `{"data":[]}`
-		})
+		}, 0)
 		items, err := em.reports(ctx, biz.IntelQuery{Since: time.Date(2026, 10, 19, 0, 0, 0, 0, time.Local)})
 		if err != nil {
 			t.Fatalf("reports: %v", err)
@@ -372,7 +376,7 @@ func TestReportParsing(t *testing.T) {
 				]}`
 			}
 			return 200, `{"data":[]}`
-		})
+		}, 0)
 		items, err := em.reports(ctx, biz.IntelQuery{Since: time.Date(2026, 10, 19, 0, 0, 0, 0, time.Local)})
 		if err != nil {
 			t.Fatalf("reports: %v", err)
@@ -398,7 +402,7 @@ func TestReportParsing(t *testing.T) {
 				]}`
 			}
 			return 200, `{"data":[]}`
-		})
+		}, 0)
 		items, err := em.reports(ctx, biz.IntelQuery{Since: time.Date(2027, 1, 1, 0, 0, 0, 0, time.Local)})
 		if err != nil {
 			t.Fatalf("reports: %v", err)

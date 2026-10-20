@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
@@ -34,18 +35,33 @@ type httpc struct {
 	sem     chan struct{}
 	limit   *biz.Limiter
 	raw     RawSink
+	// P3-9（东财 _em_get 同款）：随机抖动把固定节奏打散、退避重试 throttled。
+	// JitterGap 用并发上限前的最后间隔估计；Retries 仅对可退避错误生效。
+	jitter  time.Duration
+	retries int
+	// backoff 是退避基准时长（默认 1s，实际序列 1s/2s/4s，throttled 再乘 4）。
+	// 测试里可调小避免真睡。
+	backoff time.Duration
 }
 
 // HTTPOptions 是一个源的请求级限制。QPS 按单个 HTTP 请求计，分页接口每页算一次。
+// P3-9 两个可选件只在真正需要节流的源上打开（当前只东财）：
+// JitterGap>0 时在 Limiter 之后加 [0, JitterGap) 随机延迟打散节奏；Retries>0 时对
+// 「限流/封禁」（HTTP 403/429/连接重置/超时）重试最多 Retries 次，间隔指数退避。
 type HTTPOptions struct {
 	Concurrency int
 	QPS         float64
 	Raw         RawSink
+	JitterGap   time.Duration
+	Retries     int
 }
 
 func newHTTPC(source string, opt HTTPOptions, headers map[string]string) *httpc {
 	if opt.Concurrency <= 0 {
 		opt.Concurrency = 4
+	}
+	if opt.Retries < 0 {
+		opt.Retries = 0
 	}
 	return &httpc{
 		source:  source,
@@ -54,6 +70,9 @@ func newHTTPC(source string, opt HTTPOptions, headers map[string]string) *httpc 
 		sem:     make(chan struct{}, opt.Concurrency),
 		limit:   biz.NewLimiter(opt.QPS),
 		raw:     opt.Raw,
+		jitter:  opt.JitterGap,
+		retries: opt.Retries,
+		backoff: time.Second,
 	}
 }
 
@@ -87,6 +106,8 @@ func (c *httpc) postForm(ctx context.Context, rawURL string, form url.Values) ([
 	return c.do(ctx, req)
 }
 
+// do 执行一次请求：并发上限 + 节流 + 抖动（如有）+ 可退避错误的退避重试（如有）。
+// sem 在整次调用（含重试）期间持有；limit/jitter 按每次实际发出计，重试也消耗令牌。
 func (c *httpc) do(ctx context.Context, req *http.Request) ([]byte, error) {
 	select {
 	case c.sem <- struct{}{}:
@@ -94,8 +115,37 @@ func (c *httpc) do(ctx context.Context, req *http.Request) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 	defer func() { <-c.sem }()
+
+	maxAttempts := 1 + c.retries
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			// 退避等待：1s/2s/4s…；疑似限流/封禁（403/429）乘 4 让对端冷却。
+			if err := sleepCtx(ctx, backoffFor(lastErr, c.backoff, attempt)); err != nil {
+				return nil, err
+			}
+		}
+		body, err := c.attempt(ctx, req)
+		if err == nil {
+			return body, nil
+		}
+		lastErr = err
+		if !retryable(err) || attempt == maxAttempts {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+// attempt 发出单次 HTTP 请求（节流 + 抖动 + 头部 + 原始留存 + 非 2xx 归 httpError）。
+func (c *httpc) attempt(ctx context.Context, req *http.Request) ([]byte, error) {
 	if err := c.limit.Wait(ctx); err != nil {
 		return nil, err
+	}
+	if c.jitter > 0 {
+		if err := sleepCtx(ctx, time.Duration(rand.Int63n(int64(c.jitter)))); err != nil {
+			return nil, err
+		}
 	}
 	for k, v := range c.headers {
 		if req.Header.Get(k) == "" {
@@ -126,6 +176,43 @@ func (c *httpc) do(ctx context.Context, req *http.Request) ([]byte, error) {
 	return body, nil
 }
 
+// retryable 判定一次失败是否值得退避重试：HTTP 403/429（疑似限流/封禁）、
+// 5xx（服务端瞬断）与网络层错误（连接重置/EOF 等）重试；ctx 取消/超时与 4xx 不重试。
+func retryable(err error) bool {
+	var he *httpError
+	if errors.As(err, &he) {
+		return he.Throttled() || he.Status >= 500
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return true
+}
+
+// backoffFor 第 attempt 次（>=2）发出前的等待：base*2^(attempt-2)；throttled 乘 4。
+func backoffFor(lastErr error, base time.Duration, attempt int) time.Duration {
+	d := base << (attempt - 2)
+	var he *httpError
+	if errors.As(lastErr, &he) && he.Throttled() {
+		d *= 4
+	}
+	return d
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // httpError 是非 2xx 响应。
 type httpError struct {
 	Source string
@@ -134,7 +221,15 @@ type httpError struct {
 	Body   []byte
 }
 
+// Throttled 表示疑似被对端限流/封禁（403/429）。数据源健康面板的
+// LastError 直接展示该标签（healthBook.record 截 err.Error() 入库）。
+func (e *httpError) Throttled() bool { return e.Status == 403 || e.Status == 429 }
+
 func (e *httpError) Error() string {
+	if e.Throttled() {
+		// 标签放行首：数据源面板「说明」列 nowrap 且横向滚动，行首一眼可辨。
+		return fmt.Sprintf("【疑似限流/封禁】%s %s: HTTP %d: %s", e.Source, e.Where, e.Status, snippet(e.Body))
+	}
 	return fmt.Sprintf("%s %s: HTTP %d: %s", e.Source, e.Where, e.Status, snippet(e.Body))
 }
 

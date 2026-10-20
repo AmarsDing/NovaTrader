@@ -31,8 +31,9 @@ func (t *routeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func newRouteEastmoney(routes map[string]string) *Eastmoney {
 	tt := &routeTransport{routes: routes}
-	// HTTPOptions 不带 P3-9 的 Retries（其批未落 HEAD，零值即不重试）。
-	hc := newHTTPC("", HTTPOptions{QPS: 10000, Concurrency: 1}, nil)
+	// P3-9 落地：测试侧 Retries 置 0 保持零重试语义，backoff 调小避免真睡。
+	hc := newHTTPC("", HTTPOptions{QPS: 10000, Concurrency: 1, Retries: 0}, nil)
+	hc.backoff = time.Millisecond
 	hc.hc = &http.Client{Transport: tt}
 	return &Eastmoney{hc: hc}
 }

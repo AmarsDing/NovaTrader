@@ -31,6 +31,11 @@ const (
 
 // Eastmoney 是东方财富网页公开接口，非官方，official=false。
 // push2 短时间请求过密会封 IP（实测 3 秒约 190 次即被重置连接），QPS 默认 4。
+// P3-9（_em_get 同款收口）：固定节奏仍会有同步连发，Limiter 令牌后加 [0, gap/2)
+// 随机抖动打散；403/429（疑似限流/封禁）与 5xx、网络错误退避重试至多 2 次
+// （基准 1s/2s，throttled 乘 4 即 4s/8s）；失败消息带行首「【疑似限流/封禁】」
+// 标签，经 healthBook.record 入 source_health.last_error，数据源面板可见。长连接
+// 复用由 httpc Transport（MaxIdleConnsPerHost、IdleConnTimeout 90s）承担。
 type Eastmoney struct {
 	hc *httpc
 	// gubaWatch 返回股吧低频扫描清单（持仓∪近 3 日信号股），装配处注入（对齐 Sina/Tencent
@@ -47,6 +52,12 @@ func NewEastmoney(opt HTTPOptions) *Eastmoney {
 	}
 	if opt.QPS <= 0 {
 		opt.QPS = 4
+	}
+	if opt.JitterGap <= 0 {
+		opt.JitterGap = time.Duration(float64(time.Second) / opt.QPS / 2)
+	}
+	if opt.Retries <= 0 {
+		opt.Retries = 2
 	}
 	return &Eastmoney{hc: newHTTPC(biz.SourceEastmoney, opt, map[string]string{
 		"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
@@ -1122,14 +1133,9 @@ func (e *Eastmoney) guba(ctx context.Context, _ biz.IntelQuery) ([]biz.Intel, er
 	var items []biz.Intel
 	for i, sym := range watch {
 		if i > 0 {
-			// ctx 感知间隔睡眠内联版：原用 httpc.sleepCtx（P3-9 节流批未落 HEAD、归属未定），
-			// 本批不自持外批符号故内联等价实现；P3-9 若后落可换回调用。
-			timer := time.NewTimer(gubaInterval)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return items, ctx.Err()
-			case <-timer.C:
+			// ctx 感知间隔睡眠：P3-9 节流批落地后换回 httpc.sleepCtx 单点调用（挂账第 8 条）。
+			if err := sleepCtx(ctx, gubaInterval); err != nil {
+				return items, err
 			}
 		}
 		code := strings.TrimSuffix(strings.ToUpper(sym), ".SH")
