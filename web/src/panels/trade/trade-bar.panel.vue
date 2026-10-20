@@ -22,8 +22,10 @@ import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
 import NtTabs from '@/ui/NtTabs.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import { amount, clock, compactAmount, messageOf, orderStatusLabel, pnlClass, price, sideLabel, canCancelOrder } from '@/utils/format'
 import { deskNotify } from '@/utils/notify'
+import { serverNow } from '@/utils/server-clock'
 import { useToast } from '@/ui/useToast'
 import { isLive } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
@@ -265,9 +267,14 @@ const badge = computed(() => {
 const REFRESH_MS = 10_000
 let refreshTimer: ReturnType<typeof setInterval> | undefined
 
+/** §7.3 首批挂载：自助拉取模型的真实新鲜度证据 = 最近一次账本刷新成功落笔的时刻（服务端钟；全失败保留上一刻，由年龄自然变旧，不拿旧数据冒充新读数）。 */
+const bookFreshAt = ref<number | null>(null)
+
 function refreshBook() {
-  void accountStore.refresh()
-  void trade.refresh(book.value)
+  void Promise.allSettled([accountStore.refresh(), trade.refresh(book.value)]).then((settled) => {
+    if (disposed) return
+    if (settled.some((s) => s.status === 'fulfilled')) bookFreshAt.value = serverNow()
+  })
 }
 
 function openTradePanel() {
@@ -410,6 +417,7 @@ onBeforeUnmount(() => {
       <div class="hold">
         <div>
           <h2 class="nt-panel__title">持仓</h2>
+          <NtFreshness label="账本" :at="bookFreshAt" />
           <p v-if="!accountStore.positionsOk" class="nt-empty">持仓未读到，不能按账面为空处理；点「刷新」重试。</p>
           <p v-else-if="!trade.ready && !accountStore.positions.length" class="nt-empty">读取中……</p>
           <table v-else-if="accountStore.positions.length" class="sheet">

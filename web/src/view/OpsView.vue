@@ -6,6 +6,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import { linkStatus } from '@/ui/status-map'
 import { messageOf } from '@/utils/format'
 
 interface OpsModelRow extends OpsNode {
@@ -38,6 +39,11 @@ function dotStatus(status: string): 'live' | 'off' | 'down' {
   if (['ok', 'up', 'running', 'healthy', 'online'].includes(text)) return 'live'
   if (!text) return 'off'
   return 'down'
+}
+
+/** 节点状态词只从链路五态册取（§7.1/§10-8，一字锁定）；裸色点禁单显（§7.2-1）。 */
+function nodeStatusText(status: string): string {
+  return linkStatus(dotStatus(status)).text
 }
 
 async function load() {
@@ -145,8 +151,15 @@ async function doBackup() {
         empty="暂无"
       >
         <template #cell-name="{ value, row }">
-          <span class="cell-name"><NtStatusDot :status="dotStatus(row.status)" />{{ value }}</span>
+          <span class="cell-name">
+            <NtStatusDot
+              :status="dotStatus(row.status)"
+              :label="nodeStatusText(row.status)"
+              :title="row.status || '状态未返回'"
+            />{{ value }}
+          </span>
         </template>
+        <!-- 状态列保留网关原始字面值（数据原样直读，非自封文案）；状态判定词已随点名册化。 -->
         <template #cell-status="{ value }">{{ value || '—' }}</template>
         <template #cell-latency="{ value }">{{ value || '—' }}</template>
         <template #cell-detail="{ value }">{{ value || '—' }}</template>

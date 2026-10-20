@@ -11,6 +11,8 @@ import NtInput from '@/ui/NtInput.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
+import SymbolName from '@/display/SymbolName.vue'
+import { linkStatus } from '@/ui/status-map'
 import { clock, intText, messageOf, num } from '@/utils/format'
 import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
 
@@ -70,6 +72,12 @@ const rows = computed<TierRow[]>(() =>
 )
 
 const lastScore = computed(() => (result.value?.score == null ? '—' : String(Math.round(result.value.score))))
+
+/** §10-15：四维得分→链路状态键（无分 off / <60 stale / 其余 ok），tone 由 NtStatusDot 承接，文案走 linkStatus 册。 */
+function dimStatus(dim: { score: number | null }): 'off' | 'stale' | 'ok' {
+  if (dim.score == null) return 'off'
+  return dim.score >= 60 ? 'ok' : 'stale'
+}
 
 function onPushMessage(msg: WsPushMessage) {
   if (msg.topic !== 'brain') return
@@ -151,14 +159,19 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-if="result" class="nt-panel">
-      <h2 class="nt-panel__title">最近结果 · {{ result.symbol }} {{ result.name }}</h2>
+      <h2 class="nt-panel__title result__title">
+        <!-- §10-15：自制「代码+名称」双件统一 SymbolName(inline)，缺名显「名称未返回」 -->
+        最近结果 · <SymbolName :code="result.symbol" mode="inline" />
+      </h2>
       <p class="nt-note">
         模型 {{ result.model || '—' }}<template v-if="result.generatedAt"> · 生成于 {{ clock(result.generatedAt) }}</template>
       </p>
       <ul class="dims">
         <li v-for="dim in result.dimensions" :key="dim.name">
-          <NtStatusDot :status="(dim.score ?? 0) >= 60 ? 'ok' : 'stale'" :label="dim.name" />
+          <NtStatusDot :status="dimStatus(dim)" :label="dim.name" />
           <b>{{ intText(dim.score) }}</b>
+          <!-- 四维状态文案走 status-map 链路册（正常/陈旧/关闭），tone 仍由 NtStatusDot 键承担 -->
+          <span class="dim-state">{{ linkStatus(dimStatus(dim)).text }}</span>
           <span>{{ dim.comment }}</span>
         </li>
       </ul>
@@ -179,6 +192,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* SymbolName 嵌进 h2：跟随标题字号、基线对齐。 */
+.result__title :deep(.sn) {
+  font-size: inherit;
+}
+
 .run {
   display: flex;
   align-items: center;
@@ -220,6 +238,12 @@ onBeforeUnmount(() => {
   font-family: var(--nt-font-mono);
   min-width: 2.2em;
   color: var(--nt-text-1);
+}
+
+.dim-state {
+  font-size: 11px;
+  color: var(--nt-text-3);
+  white-space: nowrap;
 }
 
 .prog {

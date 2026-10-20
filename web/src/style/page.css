@@ -17,7 +17,7 @@
 
 .nt-title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--nt-fs-title);
   font-weight: 600;
   color: var(--nt-text-1);
   border-left: 3px solid var(--nt-accent);
@@ -88,7 +88,7 @@
 
 .nt-panel__title {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: var(--nt-fs-panel);
   font-weight: 600;
   color: var(--nt-text-1);
 }

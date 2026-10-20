@@ -10,6 +10,7 @@
  */
 import { dimVotes, ticketRisk } from '@/view/decision-desk'
 import type { BreadthSummary, PremiumSummary } from '@/api/market'
+import { useSecurityStore } from '@/stores/security'
 import {
   amount,
   clock,
@@ -116,6 +117,20 @@ export const GAP_NATS = '未接入：需要 GET /api/ops/nats（NATS 积压与 l
 export const GAP_DAY_PNL = '未返回：trade Account 没有当日盈亏字段（需要 GET /v1/trade/account 补 day_pnl）'
 
 /* ---------- 入口 ---------- */
+/** §10-27 名称列：证券名只认 stores/security 名称字典（resolve），不用行内别的字段冒充。
+ * - 无代码显「—」（该行本就没有标的，不是取数缺失）；有代码无名显「名称未返回」（§6.1 缺名回退，
+ *   数据纪律：缺失非空串冒充），并 ensure 让字典后台补——渲染期反复调用经字典四重去重 +
+ *   300ms 批量窗 + 失败冷却 5min，安全；fetcher 未注册静默 noop，下帧字典命中自然刷新。 */
+function nameCell(symbol: string): string {
+  const raw = symbol.trim()
+  if (!raw) return '—'
+  const sec = useSecurityStore()
+  const found = sec.resolve(raw)
+  if (found.hasName) return found.name
+  sec.ensure([found.code])
+  return '名称未返回'
+}
+
 
 /** 这张牌的深化类型；返回 null 表示该 id 没有六张深化牌，详情窗退回原有卡片网格 */
 export function detailKindFor(input: MonitorInput, id: string): Exclude<DetailPanel['kind'], 'edge'> | null {
@@ -336,6 +351,8 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
     }
     posRows.push([
       row.symbol,
+      /* §10-27：名称列为首列（字典缺名显「名称未返回」并后台补）、代码列随其后 */
+      nameCell(row.symbol),
       intText(row.quantity),
       amount(row.avgCost),
       amount(row.lastPrice),
@@ -355,7 +372,7 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
     title: '持仓',
     table: {
       key: 'pos',
-      columns: ['代码', '数量', '成本', '现价', '浮盈', '浮盈%', '仓位占比', '持有天数', '距止损', '距止盈', '今日高/低'],
+      columns: ['名称', '代码', '数量', '成本', '现价', '浮盈', '浮盈%', '仓位占比', '持有天数', '距止损', '距止盈', '今日高/低'],
       rows: posRows,
       flags: posFlags,
       empty: account.positionsOk === false ? '持仓未返回：GET /api/trade/positions 无应答' : '没有持仓',
@@ -372,6 +389,7 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
       const bp = slippageBp(order.side, order.price, vwap)
       orderRows.push([
         order.symbol,
+        nameCell(order.symbol),
         order.side || '—',
         order.status || '—',
         amount(order.price),
@@ -385,19 +403,19 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
     key: 'orders',
     title: '委托',
     table: input.orders?.ok
-      ? { key: 'ord', columns: ['代码', '方向', '状态', '委托价', '成交量', '成交均价', '滑点'], rows: orderRows, empty: '没有委托' }
+      ? { key: 'ord', columns: ['名称', '代码', '方向', '状态', '委托价', '成交量', '成交均价', '滑点'], rows: orderRows, empty: '没有委托' }
       : undefined,
     rows: input.orders?.ok ? undefined : [{ key: 'ord', label: '委托', value: '委托未返回', note: 'GET /api/trade/orders 无应答' }],
     foot: '滑点 = (成交均价−委托价)/委托价×10000，买入正为劣、卖出正也为劣（卖单取反后同口径）。没成交的委托没有滑点。',
   }
 
   /* 成交：最近 20 条 */
-  const fillRows = fills.slice(-20).reverse().map((fill) => [fill.time || '—', fill.symbol, fill.side || '—', amount(fill.price), intText(fill.qty)])
+  const fillRows = fills.slice(-20).reverse().map((fill) => [nameCell(fill.symbol), fill.symbol, fill.time || '—', fill.side || '—', amount(fill.price), intText(fill.qty)])
   const fillSection: DetailSection = {
     key: 'fills',
     title: '成交',
     table: input.fills?.ok
-      ? { key: 'fill', columns: ['时间', '代码', '方向', '价', '量'], rows: fillRows, empty: '没有成交' }
+      ? { key: 'fill', columns: ['名称', '代码', '时间', '方向', '价', '量'], rows: fillRows, empty: '没有成交' }
       : undefined,
     rows: input.fills?.ok ? undefined : [{ key: 'fill', label: '成交', value: '成交未返回', note: 'GET /api/trade/fills 无应答' }],
     foot: '最近 20 条。',
@@ -873,7 +891,8 @@ function sourcePanel(input: MonitorInput, id: string, now: number): DetailPanel 
   const missingHits = issues.filter((issue) => /missing|gap|缺/.test(issue.checkName)).reduce((sum, issue) => sum + (issue.hits ?? 0), 0)
   const staleHits = issues.filter((issue) => /stale|expired|过期/.test(issue.checkName)).reduce((sum, issue) => sum + (issue.hits ?? 0), 0)
   const qualityRows = issues.map((issue) => [
-    issue.checkName || '—',
+    /* §10-27：名称列为首列（无代码行显「—」）、代码列随其后 */
+    nameCell(issue.symbol),
     issue.symbol || '—',
     issue.tradeDate || '—',
     issue.severity || '—',
@@ -892,7 +911,7 @@ function sourcePanel(input: MonitorInput, id: string, now: number): DetailPanel 
           { key: 'cal', label: '交易日是否对齐', value: '未接入', note: '质量问题只给逐条 trade_date，没有全市场交易日历比对' },
         ]
       : [{ key: 'q', label: '质量', value: '质量未返回', note: 'GET /api/datahub/quality 无应答' }],
-    table: input.quality?.ok && issues.length > 0 ? { key: 'qi', columns: ['检查项', '代码', '交易日', '严重度', '条数', '最近出现', '说明'], rows: qualityRows, flags: qualityFlags, empty: '' } : undefined,
+    table: input.quality?.ok && issues.length > 0 ? { key: 'qi', columns: ['名称', '代码', '检查项', '交易日', '严重度', '条数', '最近出现', '说明'], rows: qualityRows, flags: qualityFlags, empty: '' } : undefined,
   }
 
   return {
@@ -1279,12 +1298,14 @@ function scanSections(input: MonitorInput): DetailSection[] {
           ],
           table: {
             key: 'rush',
-            columns: ['代码', '竞价涨幅', '竞价金额', '竞价量比', '竞价换手'],
+            /* §10-27：名称列为首列、代码列随其后（接名称字典） */
+            columns: ['名称', '代码', '竞价涨幅', '竞价金额', '竞价量比', '竞价换手'],
             rows: auction.topRush.map((row) => [
               row.symbol,
               pctText(row.auctionPct, 2),
               compactAmount(row.auctionAmount),
               row.auctionVolRatio.toFixed(1),
+              nameCell(row.symbol),
               pctText(row.auctionTurnover, 2),
             ]),
             empty: '当日没有竞价截面行',

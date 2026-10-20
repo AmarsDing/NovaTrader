@@ -14,9 +14,11 @@ import {
 } from '@/api/datahub'
 import { useAuthStore } from '@/stores/auth'
 import NtButton from '@/ui/NtButton.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import { linkStatus } from '@/ui/status-map'
 import { clock, messageOf, ratioPct } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -44,6 +46,22 @@ function statusOf(s: DataSource): 'live' | 'ok' | 'stale' | 'down' | 'off' {
 
 type SourceRow = DataSource & Record<string, unknown>
 const sourceColumns: NtTableColumn<SourceRow>[] = [
+/** 状态点双编码（§7.2-1）：dot 带字，状态词取自链路五态册（§7.1，一字锁定）。 */
+function dotLabel(s: DataSource): string {
+  return `${s.name || s.id} · ${linkStatus(statusOf(s)).text}`
+}
+
+/** 面板头徽注（§7.2-2/§7.3）：时间证据取各源最近一次成功采集的最大值；全缺传 null 显「时点未知」。 */
+const latestFreshAt = computed<number | null>(() => {
+  let best = 0
+  for (const s of sources.value) {
+    if (!s.lastAt) continue
+    const t = new Date(s.lastAt).getTime()
+    if (Number.isFinite(t) && t > best) best = t
+  }
+  return best > 0 ? best : null
+})
+
   { key: 'name', title: '数据源' },
   { key: 'kind', title: '域', mono: true },
   { key: 'successRate', title: '成功率', align: 'right' },
@@ -60,7 +78,7 @@ type QualityRow = QualityIssue & Record<string, unknown>
 const qualityColumns: NtTableColumn<QualityRow>[] = [
   { key: 'domain', title: '域', mono: true },
   { key: 'checkName', title: '检查项' },
-  { key: 'symbol', title: '代码', mono: true },
+  { key: 'symbol', title: '证券', mono: true },
   { key: 'tradeDate', title: '交易日', mono: true },
   { key: 'severity', title: '严重度' },
   { key: 'source', title: '来源', mono: true },
@@ -125,7 +143,10 @@ onMounted(load)
         <h1 class="nt-title">数据源治理</h1>
         <p class="nt-note">状态灯按 enabled + 最近成功时间判定；启停与手动采集仅 owner。</p>
       </div>
-      <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+      <div class="nt-head__actions">
+        <NtFreshness label="数据源" :at="latestFreshAt" :stale-after-ms="STALE_MS" />
+        <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+      </div>
     </header>
 
     <p v-if="error" class="nt-err">{{ error }}</p>
@@ -135,7 +156,7 @@ onMounted(load)
       <h2 class="nt-panel__title">数据源</h2>
       <NtTable :columns="sourceColumns" :rows="sourceRows" row-key="id" dense empty="还没有数据源">
         <template #cell-name="{ row }">
-          <NtStatusDot :status="statusOf(row)" :label="row.name || row.id" />
+          <NtStatusDot :status="statusOf(row)" :label="dotLabel(row)" />
         </template>
         <template #cell-successRate="{ row }">
           <span :class="{ warn: (row.successRate ?? 1) < 0.9 }">{{ row.successRate != null ? ratioPct(row.successRate, 0) : '—' }}</span>
@@ -183,6 +204,12 @@ onMounted(load)
   font-weight: 600;
 }
 .mid {
+.nt-head__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
   color: var(--nt-text-2);
 }
 </style>

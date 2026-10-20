@@ -5,6 +5,7 @@ import OverviewView from '../OverviewView.vue'
 import LimitLadder from '@/panels/market/limit-ladder.panel.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import { request, type RequestOptions } from '@/api/http'
 
 vi.mock('@/api/http', () => ({ request: vi.fn() }))
@@ -52,6 +53,10 @@ async function refresh(wrapper: VueWrapper) {
 function stat(wrapper: VueWrapper, label: string) {
   return wrapper.findAllComponents(NtStatCard).find((card) => card.props('label') === label)!
 }
+/** 梯队/决策台的证券行现在统一走 SymbolName（浅挂载下为桩）：按其 code 断言，顶替旧裸文本断言。 */
+function symbolCodes(wrapper: VueWrapper): string[] {
+  return wrapper.findAllComponents(SymbolName).map((item) => String(item.props('code')))
+}
 
 describe('决策台读取真实性', () => {
   it('首次离线将信号与候选计数显示为未知', async () => {
@@ -76,12 +81,13 @@ describe('决策台读取真实性', () => {
     populated = true
     const wrapper = mountOverview()
     await flushPromises()
-    expect(wrapper.text()).toContain('600111.SH')
-    expect(wrapper.text()).toContain('600222.SH')
+    // lane 已改 SymbolName(inline)：桩不渲染 code 文本，按组件 prop 断言（旧裸文本断言取消的原因）
+    expect(symbolCodes(wrapper)).toContain('600111.SH')
+    expect(symbolCodes(wrapper)).toContain('600222.SH')
     offline = true
     await refresh(wrapper)
-    expect(wrapper.text()).not.toContain('600111.SH')
-    expect(wrapper.text()).not.toContain('600222.SH')
+    expect(symbolCodes(wrapper)).not.toContain('600111.SH')
+    expect(symbolCodes(wrapper)).not.toContain('600222.SH')
     expect(wrapper.findAll('.lane h3').every((row) => row.text().includes('—'))).toBe(true)
   })
 })
@@ -110,11 +116,11 @@ describe('涨停梯队读取真实性', () => {
     populated = true
     const wrapper = mountLadder()
     await flushPromises()
-    expect(wrapper.text()).toContain('600333.SH')
+    expect(symbolCodes(wrapper)).toContain('600333.SH')
     expect(stat(wrapper, '连板高度').props('value')).toBe('3 板')
     offline = true
     await refresh(wrapper)
-    expect(wrapper.text()).not.toContain('600333.SH')
+    expect(symbolCodes(wrapper)).not.toContain('600333.SH')
     expect(stat(wrapper, '涨停').props('value')).toBe('—')
     expect(stat(wrapper, '连板高度').props('value')).toBe('—')
   })

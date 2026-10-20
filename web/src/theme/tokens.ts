@@ -8,6 +8,7 @@ const TOKEN_NAMES = {
   bg3: '--nt-bg-3',
   border1: '--nt-border-1',
   border2: '--nt-border-2',
+  text0: '--nt-text-0',
   text1: '--nt-text-1',
   text2: '--nt-text-2',
   text3: '--nt-text-3',

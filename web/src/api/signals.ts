@@ -1,5 +1,6 @@
 import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
+import { useSecurityStore } from '@/stores/security'
 import type { SignalItem } from './types/strategy'
 
 export type { SignalItem }
@@ -25,14 +26,18 @@ export function normalizeSignal(raw: RawRecord): SignalItem {
     typeof pnlFlag === 'boolean'
       ? pnlFlag
       : String(raw.status || '').toLowerCase() === 'closed' && pnlPct !== null && pnlPct !== 0
+  const symbol = pick<string>(raw, 'symbol') || ''
+  const name = pick<string>(raw, 'name') || ''
+  // 附录 B-5 回填：信号行的 symbol/name 顺手进名称字典（put 判空码、null 名不覆盖旧名）。
+  useSecurityStore().put([{ code: symbol, name: name || null }])
   return {
     id: String(pick(raw, 'id') ?? ''),
     executedPrice: executedPrice != null && executedPrice > 0 ? executedPrice : null,
     executedVolume: executedVolume != null && Number.isSafeInteger(executedVolume) && executedVolume >= 0 ? executedVolume : null,
     book: String(pick(raw, 'book') ?? ''),
     strategyVersionId: String(pick(raw, 'strategyVersionId', 'strategy_version_id') ?? ''),
-    symbol: pick<string>(raw, 'symbol') || '',
-    name: pick<string>(raw, 'name') || '',
+    symbol,
+    name,
     side: pick<string>(raw, 'side') || '',
     strategy: pick<string>(raw, 'strategy') || '',
     entry: num(pick(raw, 'entry')),
@@ -44,7 +49,9 @@ export function normalizeSignal(raw: RawRecord): SignalItem {
     ruleScore: num(pick(raw, 'ruleScore', 'rule_score')),
     aiScore: num(pick(raw, 'aiScore', 'ai_score')),
     degraded: !!(raw.aiDegraded || raw.ai_degraded),
-    highValue: !!(raw.highValue || raw.high_value) || (finalScore ?? 0) >= 85,
+    // high_value 以后端扫描期落库为唯一权威（模型降级→HighValue=false，biz_test.go 钉死）；
+    // 不得用 finalScore>=85 前端回退复活降级高分信号（P3-10c，原回退与降级口径冲突已删）。
+    highValue: !!(raw.highValue || raw.high_value),
     evidence: Array.isArray(raw.evidence) ? raw.evidence.map(String) : [],
     reason: pick<string>(raw, 'reason') || '',
     status: pick<string>(raw, 'status') || '',

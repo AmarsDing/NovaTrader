@@ -2,13 +2,14 @@
 import { computed } from 'vue'
 
 const props = withDefaults(
-  defineProps<{ value?: number | null; size?: number; hot?: boolean; label?: string; tone?: 'ok' | 'warn' | 'danger' }>(),
+  defineProps<{ value?: number | null; size?: number; hot?: boolean; label?: string; tone?: 'ok' | 'warn' | 'danger'; hero?: boolean }>(),
   {
     value: null,
     size: 56,
     hot: false,
     label: '',
     tone: 'ok',
+    hero: false,
   },
 )
 
@@ -26,7 +27,7 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 <template>
   <span
     class="nt-ring"
-    :class="{ 'nt-ring--hot': hot, 'nt-ring--warn': tone === 'warn', 'nt-ring--danger': tone === 'danger' }"
+    :class="{ 'nt-ring--hot': hot, 'nt-ring--warn': tone === 'warn', 'nt-ring--danger': tone === 'danger', 'nt-ring--hero': hero }"
     :style="{ width: `${size}px`, height: `${size}px` }"
   >
     <svg viewBox="0 0 48 48" aria-hidden="true">
@@ -66,6 +67,12 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
   transition: stroke-dasharray 0.4s ease;
 }
 
+/* hero 档（方案 §5.1/§5.2-4 第 3 处：SignalView 评分环中央数字）；排在 hot/warn/danger
+   色规则之前，等优先级下后写者胜，≥85 发光 accent 与用量色阶仍压过 hero 档。 */
+.nt-ring--hero .nt-ring__value {
+  color: var(--nt-text-0, var(--nt-text-1));
+}
+
 /* 高价值（>=85）发光：发光预算允许的三处之一。 */
 .nt-ring--hot .nt-ring__bar {
   stroke: var(--nt-accent);
@@ -96,7 +103,7 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 
 .nt-ring__value {
   font-family: var(--nt-font-mono);
-  font-size: 15px;
+  font-size: var(--nt-fs-num-lg); /* 收编自 15px 裸值（§5.3 num-lg 档，17px）；hero 档随动仅色走 text-0 */
   font-weight: 700;
   color: var(--nt-text-1);
 }

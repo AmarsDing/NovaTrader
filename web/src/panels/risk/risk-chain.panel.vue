@@ -79,6 +79,9 @@ onMounted(() => {
         <h1 class="nt-title">风控链 R01–R15</h1>
         <p class="nt-note">
           当前模式 <b>{{ risk.mode || '—' }}</b>
+          <!-- §10-19 册消费研判：Kill Switch 为 L4 风险（§8.1），chapter 须 danger；
+               册 alert.triggered「已触发」tone=warn 会降语义等级，audit.* 词义不符，
+               故保持「Kill Switch 已触发」原文案待入册评审；熔断章带动态器名，册内无对应键，同保原文案。 -->
           <NtBadge v-if="risk.killActive" tone="danger" dot>Kill Switch 已触发</NtBadge>
           <NtBadge v-if="risk.marketBreaker" tone="warn">行情熔断 {{ risk.marketBreaker }}</NtBadge>
           <span v-if="risk.buysToday != null" class="meta">今日已买入 {{ risk.buysToday }}/5</span>
@@ -124,6 +127,8 @@ onMounted(() => {
     <section v-if="result" class="nt-panel">
       <h2 class="nt-panel__title">
         结果
+        <!-- §10-19 册消费研判：预检「通过/拦截」是规则放行语义，册 audit.success/failure（成功/失败）
+             词义不等价，保持原文案待入册评审。 -->
         <NtBadge :tone="result.pass ? 'success' : 'danger'">{{ result.pass ? '通过' : '拦截' }}</NtBadge>
       </h2>
       <p class="nt-note">

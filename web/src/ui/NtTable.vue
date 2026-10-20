@@ -1,10 +1,16 @@
 <script setup lang="ts" generic="T extends Record<string, unknown>">
+import SymbolName, { type SymbolNameMode } from '@/display/SymbolName.vue'
+
 export interface NtTableColumn<T> {
   key: keyof T & string
   title: string
   align?: 'left' | 'right' | 'center'
   width?: string
   mono?: boolean
+  /** 证券标识列（方案 §6.1）：cell 值作证券代码交给 SymbolName 渲染；具名槽仍优先可覆盖。 */
+  kind?: 'symbol'
+  /** SymbolName 渲染模式，缺省 'inline'；仅 kind='symbol' 时生效。 */
+  symbolMode?: SymbolNameMode
 }
 
 const props = withDefaults(
@@ -64,7 +70,12 @@ function onRow(row: T) {
             :class="{ mono: col.mono || col.align === 'right' }"
           >
             <slot :name="`cell-${col.key}`" :row="row" :value="row[col.key]">
-              {{ row[col.key] == null || row[col.key] === '' ? '—' : row[col.key] }}
+              <SymbolName
+                v-if="col.kind === 'symbol'"
+                :code="row[col.key] == null ? '' : String(row[col.key])"
+                :mode="col.symbolMode"
+              />
+              <template v-else>{{ row[col.key] == null || row[col.key] === '' ? '—' : row[col.key] }}</template>
             </slot>
           </td>
         </tr>

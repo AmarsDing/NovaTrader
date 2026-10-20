@@ -15,7 +15,8 @@
   --nt-border-1: #213e53;
   --nt-border-2: #365e78;
 
-  --nt-text-1: #e7f6ff;
+  --nt-text-0: #eef6fa; /* hero 焦点大数字档（方案 §5.1）：单面板 ≤1 组，禁用于段落/表格正文 */
+  --nt-text-1: #d3dee6;
   --nt-text-2: #adc8da;
   --nt-text-3: #85a5bc;
 
@@ -79,6 +80,17 @@
   --nt-font-sans: 'Segoe UI', system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --nt-font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'Cascadia Code', Consolas, monospace;
 
+  /* 字号阶梯（方案 §5.3，治 P-10）：normal 根字号 12.5px 基准；compact 密度按 12/12.5 等比缩小，见下方密度块。
+     用途：hero=现价/权益（text-0 搭配）；num-lg=卡片大字数值；title=面板页头标题；panel=面板内小节标题；
+     body=正文/表格（现根字号）；caption=次信息/徽标；micro=时间戳/单位/脚注（最小值，低于此不设档）。 */
+  --nt-fs-hero: 24px;
+  --nt-fs-num-lg: 17px;
+  --nt-fs-title: 15px;
+  --nt-fs-panel: 13px;
+  --nt-fs-body: 12.5px;
+  --nt-fs-caption: 11.5px;
+  --nt-fs-micro: 10.5px;
+
   --nt-transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* 滚动条（中性色，hover 才显青） */
@@ -99,6 +111,7 @@
   --nt-border-1: #b6cddb;
   --nt-border-2: #6f8ea1;
 
+  --nt-text-0: #0a2136; /* 亮主题 hero 档（方案 §5.1）：比 text-1 更深一档，与暗色 hero 镜像 */
   --nt-text-1: #102c41;
   --nt-text-2: #3d5c72;
   --nt-text-3: #496579;
@@ -169,6 +182,14 @@
   --nt-cell-pad: 2px 6px;
   --nt-pad-panel: 8px 10px;
   font-size: 12px;
+  /* 字号阶梯按 12/12.5 等比缩小（方案 §5.3），四舍五入到 0.5px */
+  --nt-fs-hero: 23px;
+  --nt-fs-num-lg: 16.5px;
+  --nt-fs-title: 14.5px;
+  --nt-fs-panel: 12.5px;
+  --nt-fs-body: 12px;
+  --nt-fs-caption: 11px;
+  --nt-fs-micro: 10px;
 }
 
 /* 节能保留结构/文字/告警，去除多层合成与光晕。系统减少动态由运行时写入 data-motion。 */

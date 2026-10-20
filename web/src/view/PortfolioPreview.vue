@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { previewPortfolio, type AllocationPreview } from '@/api/allocation'
 import { amount, clock, messageOf, price, ratioPct } from '@/utils/format'
 import NtButton from '@/ui/NtButton.vue'
+import SymbolName from '@/display/SymbolName.vue'
 const props = defineProps<{ runId: string }>()
 const preview = ref<AllocationPreview | null>(null),
   busy = ref(false),
@@ -98,7 +99,8 @@ onBeforeUnmount(() => {
           <tbody>
             <tr v-for="r in preview.rows" :key="r.symbol">
               <td>
-                {{ r.symbol }}<small>{{ ratioPct(r.target_weight) }}</small>
+                <!-- P-08 预览表代码位：SymbolName(inline) 名称+代码 -->
+                <SymbolName :code="r.symbol" /><small>{{ ratioPct(r.target_weight) }}</small>
               </td>
               <td>{{ r.current_quantity }} / {{ r.target_quantity ?? '—' }}</td>
               <td>{{ r.available_to_sell }} / {{ r.t1_locked }} / {{ r.frozen_sell }}</td>

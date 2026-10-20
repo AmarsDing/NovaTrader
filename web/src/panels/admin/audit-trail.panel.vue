@@ -5,10 +5,12 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { listAudit, type AuditRow } from '@/api/audit'
+import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
 
 const rows = ref<AuditRow[]>([])
@@ -54,6 +56,12 @@ const columns: NtTableColumn<Row>[] = [
 ]
 const tableRows = computed(() => rows.value as unknown as Row[])
 
+/** §10-26：审计目标凡是「代码+市场后缀」形如 000001.SZ 的统一 SymbolName，其余目标（面板/参数键等）保持原文。 */
+const SYMBOL_RE = /^\d{6}\.(SH|SZ|BJ)$/i
+function isSymbol(value: unknown): value is string {
+  return typeof value === 'string' && SYMBOL_RE.test(value)
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -95,10 +103,17 @@ onMounted(load)
         <template #cell-role="{ row }">
           <NtBadge :tone="row.role === 'owner' ? 'accent' : 'neutral'">{{ row.role || '—' }}</NtBadge>
         </template>
-        <template #cell-target="{ row }">{{ row.target || '—' }}</template>
+        <template #cell-target="{ row }">
+          <!-- §10-26：目标带代码象征字段统一 SymbolName inline；非证券目标（action/键名等）按原文，缺省「—」 -->
+          <SymbolName v-if="isSymbol(row.target)" :code="row.target" mode="inline" />
+          <template v-else>{{ row.target || '—' }}</template>
+        </template>
         <template #cell-detail="{ row }">{{ row.detail || '—' }}</template>
         <template #cell-ok="{ row }">
-          <NtBadge :tone="row.ok ? 'success' : 'danger'" dot>{{ row.ok ? '成功' : '失败' }}</NtBadge>
+          <!-- §7.1 册 audit.success/audit.failure：文案与 tone 唯一出处 -->
+          <NtBadge :tone="statusOf(row.ok ? 'audit.success' : 'audit.failure').tone" dot>{{
+            statusOf(row.ok ? 'audit.success' : 'audit.failure').text
+          }}</NtBadge>
         </template>
       </NtTable>
     </section>

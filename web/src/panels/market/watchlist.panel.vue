@@ -5,13 +5,19 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { scan, type ScanReply } from '@/api/strategy'
+import { listSignals } from '@/api/signals'
+import { getQuote } from '@/api/market'
 import NtButton from '@/ui/NtButton.vue'
+import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
-import { clock, messageOf, missLabel } from '@/utils/format'
+import { clock, compactAmount, messageOf, missLabel, pnlClass, price, signed } from '@/utils/format'
 import { request } from '@/api/http'
 
 const auth = useAuthStore()
+const symbolStore = useSymbolStore()
 
 const draft = ref('')
 const saving = ref(false)
@@ -32,6 +38,91 @@ const missRows = computed(() =>
     .map(([rule, count]) => ({ rule, count }))
     .sort((a, b) => b.count - a.count),
 )
+
+/**
+ * 命中票列表（方案 §10-17 R1 盯盘行）：本次扫描产生买卖信号的标的行情行。
+ * 数据链：scan 只回 signalIds/sellSignalIds → listSignals 反查 symbol → GetQuote 补现价/涨跌额·幅/成交额；
+ * 量比 GetQuote 未携带盘中口径（附录 B-2 未上）——列显「—」不冒充（数据纪律，同 quote-sidebar 量额区先例）。
+ */
+interface HitRow {
+  symbol: string
+  last: number | null
+  chg: number | null
+  pctChg: number | null
+  amount: number | null
+  /** GetQuote 无比量字段，恒 null → 列显「—」。 */
+  volRatio: number | null
+  [key: string]: unknown
+}
+const hits = ref<HitRow[]>([])
+/** 命中列表三态：ok=有行/列取数异常逐格「—」；empty=扫描无信号；failed=有信号但未能从信号列表核到标的。 */
+const hitsState = ref<'ok' | 'empty' | 'failed'>('empty')
+/** §7.3 首批挂载：命中行情行逐一来自 GetQuote，新鲜度取各行 asOf 最大者；全无证据显「时点未知」。 */
+const hitsFreshAt = ref<number | null>(null)
+
+const hitColumns: NtTableColumn<HitRow>[] = [
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
+  { key: 'last', title: '现价', align: 'right' },
+  { key: 'pctChg', title: '涨跌额/幅', align: 'right' },
+  { key: 'amount', title: '成交额', align: 'right' },
+  { key: 'volRatio', title: '量比', align: 'right' },
+]
+
+async function loadHits(reply: ScanReply) {
+  hits.value = []
+  hitsFreshAt.value = null
+  hitsState.value = 'empty'
+  const ids = new Set([...reply.signalIds, ...reply.sellSignalIds].map((id) => String(id)))
+  if (!ids.size) return
+  const symbols: string[] = []
+  try {
+    const signals = await listSignals()
+    const seen = new Set<string>()
+    for (const item of signals) {
+      if (!ids.has(String(item.id)) || !item.symbol || seen.has(item.symbol)) continue
+      seen.add(item.symbol)
+      symbols.push(item.symbol)
+    }
+  } catch {
+    hitsState.value = 'failed'
+    return
+  }
+  if (!symbols.length) {
+    hitsState.value = 'failed'
+    return
+  }
+  const hitTimes: number[] = []
+  const settled = await Promise.allSettled(
+    symbols.map(async (symbol): Promise<HitRow> => {
+      const q = await getQuote(symbol)
+      const at = Date.parse(q.asOf || '')
+      if (Number.isFinite(at)) hitTimes.push(at)
+      return {
+        symbol,
+        last: q.last > 0 ? q.last : null,
+        // 昨收缺失时涨跌无口径（P3-10c 契约：prevClose=0 是没取到）——显「—」不显假 0。
+        chg: q.prevClose > 0 ? q.chg : null,
+        pctChg: q.prevClose > 0 ? q.pctChg : null,
+        amount: q.amount > 0 ? q.amount : null,
+        volRatio: null,
+      }
+    }),
+  )
+  hits.value = settled.map((outcome, index) =>
+    outcome.status === 'fulfilled'
+      ? outcome.value
+      : { symbol: symbols[index] ?? '', last: null, chg: null, pctChg: null, amount: null, volRatio: null },
+  )
+  hitsFreshAt.value = hitTimes.length ? Math.max(...hitTimes) : null
+  hitsState.value = hits.value.length ? 'ok' : 'empty'
+}
+
+function openHit(row: HitRow) {
+  if (!row.symbol) return
+  // 与 SymbolName 自身点击合同一致：行点击同样 setSymbol + 打开行情侧栏。
+  symbolStore.setSymbol(row.symbol, 'WL')
+  getWorkbench()?.openPanel('quote-sidebar', { symbol: row.symbol })
+}
 
 const SYMBOL_RE = /^\d{6}\.(SZ|SH|BJ)$/i
 let heartbeat: ReturnType<typeof setInterval> | undefined
@@ -89,6 +180,7 @@ async function runScan() {
   error.value = ''
   try {
     lastScan.value = await scan({})
+    void loadHits(lastScan.value)
   } catch (err) {
     error.value = messageOf(err)
   } finally {
@@ -125,6 +217,29 @@ onBeforeUnmount(stopHeartbeat)
       </div>
       <p v-if="expiresAt" class="nt-note">租约有效至 {{ clock(expiresAt) }}</p>
       <p v-if="error" class="nt-err">{{ error }}</p>
+    </section>
+
+    <section v-if="lastScan" class="nt-panel">
+      <h2 class="nt-panel__title">命中票列表</h2>
+      <NtFreshness label="命中行情" :at="hitsFreshAt" />
+      <!-- TODO(P2 §8.1)：0 命中需落 L2 告警属 P2 范围，本批只留标注不实现。 -->
+      <p v-if="!hits.length" class="nt-empty">
+        {{
+          hitsState === 'failed'
+            ? '有信号产出但没能从信号列表核对到标的——凭下方 trace 到信号中枢核对。'
+            : '本次扫描没有产生买卖信号的票——被规则剔除与漏选的原因见下方计数。'
+        }}
+      </p>
+      <NtTable v-else :columns="hitColumns" :rows="hits" row-key="symbol" dense clickable @row-click="openHit">
+        <template #cell-last="{ row }">{{ row.last != null ? price(row.last) : '—' }}</template>
+        <template #cell-pctChg="{ row }">
+          <!-- R1 涨跌额/幅同格，方向色走 toneOf 唯一出口（红涨绿跌在令牌，class 只有 up/down） -->
+          <span :class="pnlClass(row.pctChg)">{{
+            row.pctChg != null ? `${signed(row.chg)} · ${row.pctChg >= 0 ? '+' : ''}${row.pctChg.toFixed(2)}%` : '—'
+          }}</span>
+        </template>
+        <template #cell-amount="{ row }">{{ row.amount != null ? compactAmount(row.amount) : '—' }}</template>
+      </NtTable>
     </section>
 
     <section v-if="lastScan" class="nt-panel">

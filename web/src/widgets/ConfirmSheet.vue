@@ -8,6 +8,7 @@ import { computed } from 'vue'
 import { acceptConfirm, confirmState, dismissConfirm } from '@/store/confirm'
 import { useAuthStore } from '@/stores/auth'
 import { price } from '@/utils/format'
+import SymbolName from '@/display/SymbolName.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtModal from '@/ui/NtModal.vue'
 
@@ -42,7 +43,7 @@ function sideClass(side: unknown): string {
     <dl class="fields">
       <div>
         <dt>标的</dt>
-        <dd>{{ order.symbol || '—' }}</dd>
+        <dd><SymbolName v-if="order.symbol" :code="String(order.symbol)" mode="inline" :clickable="false" /><template v-else>—</template></dd>
       </div>
       <div>
         <dt>方向</dt>

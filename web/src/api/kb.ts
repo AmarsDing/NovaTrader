@@ -6,6 +6,7 @@
  */
 import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
+import { useSecurityStore } from '@/stores/security'
 import type {
   KbCase,
   KbCaseHit,
@@ -138,12 +139,16 @@ export async function similarCases(params: KbSimilarParams): Promise<KbSimilarCa
 }
 
 function normalizeCase(raw: RawRecord): KbCase {
+  const stockCode = pick<string>(raw, 'stockCode', 'stock_code') || ''
+  const stockName = pick<string>(raw, 'stockName', 'stock_name') || ''
+  // 附录 B-5 回填：案例的 stockCode/stockName 顺手进名称字典（put 判空码、null 名不覆盖旧名）。
+  useSecurityStore().put([{ code: stockCode, name: stockName || null }])
   return {
     id: str(raw, 'id'),
     book: str(raw, 'book'),
     signalId: pick(raw, 'signalId', 'signal_id') != null ? String(pick(raw, 'signalId', 'signal_id')) : '',
-    stockCode: pick<string>(raw, 'stockCode', 'stock_code') || '',
-    stockName: pick<string>(raw, 'stockName', 'stock_name') || '',
+    stockCode,
+    stockName,
     strategy: str(raw, 'strategy'),
     pattern: str(raw, 'pattern'),
     emotionPhase: pick<string>(raw, 'emotionPhase', 'emotion_phase') || '',
@@ -188,6 +193,7 @@ export async function listDocuments(params: KbListDocsParams = {}): Promise<KbDo
   const raw = (data ?? {}) as RawRecord
   return {
     documents: asList<RawRecord>(raw, 'documents').map(normalizeDoc),
+    // 哨兵钉死（P3-10c）：total 是 DB count(*) 真计数，成功响应恒有值（Count 出错直接 5xx 走不到这里）；0=空库真值。
     total: num(pick(raw, 'total')) ?? 0,
   }
 }

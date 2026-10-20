@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { useSecurityStore } from '@/stores/security'
 import { resolveHud } from './hud'
 import { hudCells } from './timeband'
 import { emptyMonitorInput } from './load-input'
 import type { MonitorInput } from './types'
+
+/* §10-27 起 HUD 裸码格改读名称字典（stores/security）：describe 级解析在收集期就执行，
+ * 模块顶层先装 pinia；用例级再逐个换新实例隔离字典。fetcher 未注册时 ensure 静默 noop。 */
+setActivePinia(createPinia())
+beforeEach(() => setActivePinia(createPinia()))
 
 /**
  * HUD 十格解析的测试。fixture 从 emptyMonitorInput 起步逐片覆盖，
@@ -15,7 +22,7 @@ function fixture(): MonitorInput {
     phase: 'FADE',
     up: 812,
     down: 4330,
-    asOf: new Date(2026, 9, 12, 14, 47).toISOString(),
+    asOf: new Date('2026-10-12T14:47:00+08:00').toISOString(),
     stale: false,
     brokenRate: 0.412,
     maxHeight: 7,
@@ -202,7 +209,8 @@ describe('resolveHud · 时段特化格', () => {
   })
 
   it('尾盘：持仓浮盈、距止损最近、距收盘倒计时', () => {
-    const at = new Date(2026, 9, 12, 14, 47).getTime()
+    /* 时刻钉 +08:00：倒计时/时段判定按市场钟读（UTC 机上跑测同结论）。 */
+    const at = new Date('2026-10-12T14:47:00+08:00').getTime()
     const cells = resolveHud(fixture(), hudCells('closing'), at)
     /* 浮盈 = (12.3-12.0)*1000 + (9.2-9.5)*500 = 300 - 150 = +150 */
     expect(cells[0].face).toBe('+150.00')
@@ -244,9 +252,39 @@ describe('resolveHud · P2 口径', () => {
         { symbol: 'SZ300001', name: '漏选甲', strategy: 's', stage: 'ai_scored', missReason: '评分 80 未过线', ruleScore: null, aiScore: null, finalScore: 80 },
       ],
     }
+    /* §10-27：交集行裸码改「名称 代码」双件——字典未命中显「代码 · 名称未返回」
+     *（原期望 'SZ000001 · 涨停 2 家'：接名称字典后的新输出，候选 name 只养字典、不回填行文） */
+    const miss = resolveHud(input, hudCells('preopen'), Date.UTC(2026, 9, 12, 6, 47))[1]
+    expect(miss.face).toBe('1 只')
+    expect(miss.sub).toBe('000001.SZ · 名称未返回 · 涨停 2 家')
+    /* 字典命中：名称超 6 字截断加…（沿用画布截断惯例），拼「名称 代码」 */
+    useSecurityStore().put([{ code: 'SZ000001', name: '固态电池龙头股' }])
     const hit = resolveHud(input, hudCells('preopen'), Date.UTC(2026, 9, 12, 6, 47))[1]
-    expect(hit.face).toBe('1 只')
-    expect(hit.sub).toBe('SZ000001 · 涨停 2 家')
+    expect(hit.sub).toBe('固态电池龙头… 000001.SZ · 涨停 2 家')
+  })
+
+  it('竞价抢筹格 face 显「名称 代码」双件：缺名显「名称未返回」，长名截断', () => {
+    const input = fixture()
+    input.marketP1 = {
+      ok: true,
+      auction: {
+        tradeDate: '2026-10-12',
+        found: true,
+        totalAmount: 120000000,
+        limitUpCount: 3,
+        limitUps: [],
+        topRush: [
+          { symbol: '300750', auctionPct: 5.5, auctionAmount: 32000000, auctionVolRatio: 2.3, auctionTurnover: 1.1, auctionLimitUp: false, auctionUnmatched: 0 },
+        ],
+        asOf: '09:25',
+      },
+    }
+    const at = Date.UTC(2026, 9, 12, 6, 47)
+    /* 字典未命中：face 显「代码 · 名称未返回」，并 ensure 后台补（fetcher 未注册静默 noop） */
+    expect(resolveHud(input, hudCells('auction'), at)[2].face).toBe('300750.SZ · 名称未返回')
+    /* 字典命中：名称超 6 字截断加…，拼「名称 代码」 */
+    useSecurityStore().put([{ code: '300750', name: '宁德时代新能源' }])
+    expect(resolveHud(input, hudCells('auction'), at)[2].face).toBe('宁德时代新能… 300750.SZ')
   })
 
   it('漏选涨停格不拿涨停家数冒充：名单接口没通就点名缺口', () => {
@@ -319,7 +357,7 @@ describe('resolveHud · 空输入降级', () => {
   it('账户在但无持仓：浮盈格说「无持仓」', () => {
     const input = fixture()
     input.account = { ok: true, book: 'SIM', equity: 1, cash: 1, dayPnl: 0, positions: [] }
-    const cells = resolveHud(input, hudCells('closing'), new Date(2026, 9, 12, 14, 47).getTime())
+    const cells = resolveHud(input, hudCells('closing'), new Date('2026-10-12T14:47:00+08:00').getTime())
     expect(cells[0].face).toBe('无持仓')
     expect(cells[1].face).toBe('无持仓')
   })

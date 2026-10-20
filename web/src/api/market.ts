@@ -1,8 +1,58 @@
 import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
+import { useSecurityStore, type SecurityBasicPatch } from '@/stores/security'
 import type { Bar, LimitBoard, MarketIndicator, SectorRow, Sentiment, SentimentView } from './types/market'
 
 export type { Bar, LimitBoard, MarketIndicator, SectorRow, Sentiment, SentimentView }
+
+/* ---------- 名称字典（方案 §6.2 填充路 2/3 + 附录 B-5） ---------- */
+
+// fetcher 注册惰性一次：禁模块顶层 useSecurityStore()（pinia 初始化时序），首次字典相关调用时挂上。
+let basicsFetcherBound = false
+
+function bindBasicsFetcher() {
+  if (basicsFetcherBound) return
+  basicsFetcherBound = true
+  useSecurityStore().registerBasicsFetcher(fetchSecurityBasics)
+}
+
+/** 附录 B-5 回填：各响应里现成的 {code,name,...} 归一化后顺手进字典；
+ * put 内部判空码、null 名不覆盖旧名、updatedAt 只增。 */
+function backfillSecurityBasics(list: SecurityBasicPatch[]): void {
+  if (!list.length) return
+  bindBasicsFetcher()
+  useSecurityStore().put(list)
+}
+
+/** 名称字典批量取数（§6.2 填充路 2）：GET /api/market/security-basics（admin 聚合透传 market 服务）。
+ * codes 省略/为空 = 全量字典（上限 6000 行）；repeated query 逐参重复（?codes=A&codes=B）。
+ * 归一为字典补丁：name 空串→null（缺失非空串）；peTtm/pb/circMv 后端 0=缺失→null（不伪造，§6.2 口径）。 */
+export async function fetchSecurityBasics(codes?: string[]): Promise<SecurityBasicPatch[]> {
+  bindBasicsFetcher()
+  const suffix = codes?.length ? `?${codes.map((c) => `codes=${encodeURIComponent(c)}`).join('&')}` : ''
+  const data = await request(`/api/market/security-basics${suffix}`)
+  const rows = asList<RawRecord>((data ?? {}) as RawRecord, 'list')
+  return rows
+    .map((row): SecurityBasicPatch => {
+      const updatedAt = Date.parse(pick<string>(row, 'updateTime', 'update_time') || '')
+      const peTtm = num(pick(row, 'peTtm', 'pe_ttm'))
+      const pb = num(pick(row, 'pb'))
+      const circMv = num(pick(row, 'circMv', 'circ_mv'))
+      return {
+        code: pick<string>(row, 'code') || '',
+        name: pick<string>(row, 'name') || null,
+        market: pick<string>(row, 'market') || undefined,
+        industry: pick<string>(row, 'industry') || undefined,
+        st: !!(row.stFlag ?? row.st_flag),
+        suspended: !!(row.suspendFlag ?? row.suspend_flag),
+        peTtm: peTtm === 0 ? null : peTtm,
+        pb: pb === 0 ? null : pb,
+        circMv: circMv === 0 ? null : circMv,
+        updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
+      }
+    })
+    .filter((row) => row.code !== '')
+}
 
 export async function getBars(symbol: string, freq: string): Promise<Bar[]> {
   const data = await request('/api/market/bars', {
@@ -431,9 +481,9 @@ export async function getQuote(symbol: string): Promise<QuoteView> {
   const data = await request('/api/market/quote', { query: { symbol } })
   const raw = (data ?? {}) as RawRecord
   return {
-    symbol: pick<string>(raw, 'symbol') || symbol,
-    name: pick<string>(raw, 'name') || '',
-    market: pick<string>(raw, 'market') || '',
+    symbol: quoteSymbol,
+    name: quoteName,
+    market: quoteMarket,
     tradeStatus: pick<string>(raw, 'tradeStatus', 'trade_status') || '',
     last: num(pick(raw, 'last')) ?? 0,
     chg: num(pick(raw, 'chg')) ?? 0,
@@ -467,3 +517,8 @@ export async function getQuote(symbol: string): Promise<QuoteView> {
     found: !!raw.found,
   }
 }
+  const quoteSymbol = pick<string>(raw, 'symbol') || symbol
+  const quoteName = pick<string>(raw, 'name') || ''
+  const quoteMarket = pick<string>(raw, 'market') || ''
+  // 附录 B-5 回填：单券快照的 name/market 顺手进名称字典。
+  backfillSecurityBasics([{ code: quoteSymbol, name: quoteName || null, market: quoteMarket || undefined }])

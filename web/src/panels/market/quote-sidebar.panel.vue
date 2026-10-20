@@ -17,9 +17,11 @@ import { getQuote, type QuoteView } from '@/api/market'
 import { timeline, type IntelItem } from '@/api/intel'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import SymbolName from '@/display/SymbolName.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, compactAmount, messageOf, pctText, price, signed, toneOf } from '@/utils/format'
 import { useSecurityStore } from '@/stores/security'
 import { useSymbolStore } from '@/stores/symbol'
@@ -42,6 +44,13 @@ const loading = ref(false)
 const tab = ref<'intel' | 'flash'>('intel')
 /** 面板生命周期内的连接快照（渲染期用 isLive() 直读，watcher 只负责触发刷新）。 */
 const liveNow = computed(() => isLive())
+/** §7.3 头区新鲜度时点：快照 asOf 解析为 epoch ms；空/非法 → null，NtFreshness 显「时点未知」（数据纪律，不冒充当前时刻）。 */
+const freshAt = computed(() => {
+  const raw = quote.value?.asOf
+  if (!raw) return null
+  const t = Date.parse(raw)
+  return Number.isFinite(t) ? t : null
+})
 
 let loadSeq = 0
 let disposed = false
@@ -140,6 +149,8 @@ watch(code, (next, before) => {
 
 const tone = computed(() => toneOf(quote.value?.pctChg ?? null))
 const priceNow = computed(() => (quote.value && quote.value.last > 0 ? price(quote.value.last) : '未知'))
+/** 价格区状态章为行情口径散值（SUSPEND/无涨跌幅/快照过期），status-map §7.1 册无 quote.* 键——
+ *  维持原文案待评审入册（禁自封，同 trade-bar 委托状态/SignalView 信号章先例）。 */
 const statusBadges = computed(() => {
   const q = quote.value
   const out: { text: string; badge: 'warn' | 'danger' | 'accent' | 'neutral' }[] = []
@@ -164,7 +175,7 @@ const basic = computed(() => (code.value ? security.get(code.value) : undefined)
 /** 行业行：dict industry，缺省「—」（text-3）。 */
 const industryText = computed(() => basic.value?.industry || MISS_FIELD)
 
-/** 价格区块（§6.4）：现价/涨跌在 hero（.last 24px，fs 令牌块的 --nt-fs-hero 未定义，暂保留字面值），
+/** 价格区块（§6.4）：现价/涨跌在 hero（.last 走 --nt-fs-hero 令牌，§5.3 hero 档 24px / 紧凑密度 23px），
  * 「无涨跌幅」票涨跌停价显「无」。 */
 const priceFields = computed<FieldItem[]>(() => {
   const q = quote.value
@@ -273,11 +284,10 @@ onBeforeUnmount(() => {
           <SymbolName :code="code" mode="stacked" />
           <div class="head__tags">
             <!-- 身份徽注（方案 §6.4 身份区块）：市场/行业/ST·停牌全出自 security 字典；
-                 ST/停牌章缺省不显（文案对齐 §7.1 册「ST=warn / 停牌=neutral」；web/src/ui/status-map.ts 未建，
-                 先内联同文案，status-map 批建册后收口为导入）。 -->
+                 ST/停牌章缺省不显，文案/tone 收口走 §7.1 status-map 册（security.st=warn / security.suspended=neutral）。 -->
             <NtBadge v-if="basic?.market" tone="neutral">{{ basic.market }}</NtBadge>
-            <NtBadge v-if="basic?.st" tone="warn">ST</NtBadge>
-            <NtBadge v-if="basic?.suspended" tone="neutral">停牌</NtBadge>
+            <NtBadge v-if="basic?.st" :tone="statusOf('security.st').tone">{{ statusOf('security.st').text }}</NtBadge>
+            <NtBadge v-if="basic?.suspended" :tone="statusOf('security.suspended').tone">{{ statusOf('security.suspended').text }}</NtBadge>
             <span class="head__ind" :class="{ miss: isMiss(industryText) }">{{ industryText }}</span>
           </div>
         </div>
@@ -289,8 +299,9 @@ onBeforeUnmount(() => {
           </span>
         </div>
         <div class="head__meta">
-          <!-- §7.3 NtFreshness 挂载位（组件 web/src/ui/NtFreshness.vue 未建）：建组件后接 quote.asOf / 字典 updatedAt
-               显「行情 12s」年龄口径；现状 .asof 绝对时点兜底，未知时点已显「时间未知」。 -->
+          <!-- §7.3 首批挂载：新鲜度取快照 asOf（缺/非法 → null 显「时点未知」，不冒充 0s），cut=链路断；
+               阈值走组件默认 30s。下方 .asof 绝对时点保留为第二读数。 -->
+          <NtFreshness label="行情" :at="freshAt" :cut="!liveNow" />
           <span v-for="b in statusBadges" :key="b.text"><NtBadge :tone="b.badge">{{ b.text }}</NtBadge></span>
           <NtBadge v-if="!liveNow" tone="warn">非实时</NtBadge>
           <span class="asof">{{ quote.asOf ? clock(quote.asOf) : '时间未知' }}<template v-if="quote.source"> · {{ quote.source === 'snap' ? '盘中快照' : '日线回退' }}</template></span>
@@ -423,7 +434,7 @@ onBeforeUnmount(() => {
 }
 
 .last {
-  font-size: 24px;
+  font-size: var(--nt-fs-hero); /* 收编自 24px 裸值（§5.3 hero 档，等值档映射；紧凑密度 23px 随动） */
   font-weight: 700;
   /* hero 档（方案 §5.1）：单面板唯一 text-0 大数字；± 颜色由 .chg 继承 tone 承担。 */
   color: var(--nt-text-0);

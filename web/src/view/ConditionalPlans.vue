@@ -16,6 +16,7 @@ import { createPageRefresh } from './page-refresh'
 import { amount, clock, messageOf, price } from '@/utils/format'
 import NtButton from '@/ui/NtButton.vue'
 
+import SymbolName from '@/display/SymbolName.vue'
 const props = defineProps<{ signalId?: string }>()
 const account = useAccountStore(),
   auth = useAuthStore()
@@ -157,7 +158,9 @@ onBeforeUnmount(() => {
     </aside>
     <article v-for="r in focused.slice(0, 12)" :key="r.plan.plan_id + ':' + r.plan.revision" class="plan">
       <div class="plan-title">
-        <b>{{ r.plan.symbol }} · v{{ r.plan.revision }}</b
+        <b
+          ><!-- P-08 计划行证券位：SymbolName(inline) 名称+代码 -->
+          <SymbolName :code="r.plan.symbol" /> · v{{ r.plan.revision }}</b
         ><span :class="{ warn: expired(r) }">{{
           expired(r) && r.state === 'authorized' ? '已过期' : label(r.state)
         }}</span>

@@ -14,6 +14,7 @@ import { listCandidates } from '@/api/strategy'
 import type { Candidate } from '@/api/types/strategy'
 import NtSectorBar from '@/viz/NtSectorBar.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import NtButton from '@/ui/NtButton.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
 import { useAccountStore } from '@/stores/account'
@@ -44,7 +45,6 @@ import {
   countBlockedSources,
   hasAvailableSource,
   missLabel,
-  strategyLabel,
   type DeskGap,
   type DeskTicket,
   type DecisionContext,
@@ -166,6 +166,24 @@ function pnlRatio(position: Position): number | null {
 
 function wordClickable(word: HotWord): boolean {
   return word.type === 'stock'
+/** R3 浮盈额：(现价-成本)×数量；任一字段缺/0 隐显「—」（没取到≠0）。 */
+function pnlAmount(position: { quantity: number | null; avgCost: number | null; lastPrice: number | null }): number | null {
+  if (!position.quantity || !position.avgCost || !position.lastPrice) return null
+  return (position.lastPrice - position.avgCost) * position.quantity
+}
+
+/** R3 今日可卖：后端 available 即 T+1 可卖口径（接口无独立 sellableToday 字段，注明）；0 显「T+1 不可卖」。 */
+function sellable(position: { available: number | null }): { text: string; hold: boolean } {
+  if (position.available == null) return { text: '—', hold: false }
+  if (position.available === 0) return { text: 'T+1 不可卖', hold: true }
+  return { text: String(position.available), hold: false }
+}
+
+/** 价格显位：0/缺都显「—」，不把没取到画成 0。 */
+function priceText(value: number | null): string {
+  return value != null && value > 0 ? price(value) : '—'
+}
+
 }
 
 function openPulse() {
@@ -400,6 +418,7 @@ watch(
         :sub="account.accountOk ? `可用 ${amount(account.cash)}${usedPct != null ? ` · 已用 ${(usedPct * 100).toFixed(0)}%` : ''}` : '账户读取未核对'"
       />
       <NtStatCard
+        hero
         label="情绪"
         :value="noTape ? '无快照' : phaseName(market.phase)"
         :sub="
@@ -432,8 +451,8 @@ watch(
               @click="pick(ticket.id)"
             >
               <span class="tm">{{ clock(ticket.time) }}</span>
-              <span class="sym mono">{{ ticket.symbol }}</span>
-              <span class="name">{{ ticket.name || strategyLabel(ticket.strategy) }}</span>
+              <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
+              <SymbolName :code="ticket.symbol" mode="inline" />
               <em v-if="ticket.degraded" class="tag">规则分</em>
               <b :class="{ hot: ticket.highValue }">{{
                 ticket.degraded ? (ticket.ruleScore ?? '—') : (ticket.score ?? '—')
@@ -455,8 +474,8 @@ watch(
               @click="pick(ticket.id)"
             >
               <span class="tm">{{ clock(ticket.time) }}</span>
-              <span class="sym mono">{{ ticket.symbol }}</span>
-              <span class="name">{{ ticket.name || strategyLabel(ticket.strategy) }}</span>
+              <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
+              <SymbolName :code="ticket.symbol" mode="inline" />
               <span class="done">{{ ticket.closedNote || '已执行' }}</span>
             </li>
           </ul>
@@ -470,8 +489,8 @@ watch(
           <p v-else-if="!missed.length" class="nt-empty">没有漏选记录。</p>
           <ul v-else>
             <li v-for="row in missed" :key="row.symbol + row.strategy">
-              <button type="button" class="sym mono link" @click="openMarket(row.symbol)">{{ row.symbol }}</button>
-              <span class="name">{{ row.name || strategyLabel(row.strategy) }}</span>
+              <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
+              <SymbolName :code="row.symbol" mode="inline" />
               <span class="miss">{{ missLabel(row.reason) }}</span>
               <b>规则 {{ row.ruleScore ?? '—' }}</b>
             </li>
@@ -482,10 +501,8 @@ watch(
       <div class="desk__body">
         <template v-if="selected">
           <header class="ticket__head">
-            <button type="button" class="sym mono link big" @click="openMarket(selected.symbol)">
-              {{ selected.symbol }}
-            </button>
-            <strong>{{ selected.name || strategyLabel(selected.strategy) }}</strong>
+            <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
+            <SymbolName :code="selected.symbol" mode="inline" />
             <em :class="selected.side === 'buy' ? 'up' : selected.side === 'sell' ? 'down' : ''">{{
               sideLabel(selected.side)
             }}</em>
@@ -599,18 +616,15 @@ watch(
         <p v-else class="nt-empty">晨报未返回。</p>
         <ul v-if="briefing?.items.length" class="brief-items">
           <li v-for="(item, index) in briefing.items.slice(0, 4)" :key="index">
-            <button v-if="item.symbol" type="button" class="sym" @click="loadFocus(item.symbol)">
-              {{ item.symbol }}
-            </button>
+            <!-- §6.6 证券提及统一 SymbolName；附带的 @click 保留本页「focus 的情报」联动，打开侧栏走组件自身合同 -->
+            <SymbolName v-if="item.symbol" :code="item.symbol" @click="loadFocus(item.symbol)" />
             <span>{{ item.title || item.body }}</span>
           </li>
         </ul>
         <p v-if="!words.length" class="nt-empty">热词未返回。</p>
         <ul v-else class="words">
           <li v-for="word in words" :key="word.type + word.target">
-            <button v-if="wordClickable(word)" type="button" class="sym" @click="loadFocus(word.target)">
-              {{ word.target }}
-            </button>
+            <SymbolName v-if="wordClickable(word)" :code="word.target" @click="loadFocus(word.target)" />
             <span v-else>{{ word.target }}</span>
             <b>{{ word.score ?? word.count ?? '—' }}</b>
           </li>
@@ -633,18 +647,31 @@ watch(
         <p v-else-if="!account.positions.length" class="nt-empty">暂无持仓。</p>
         <div v-else class="pos-table">
           <div class="pos-row pos-row--head">
-            <span>代码</span>
+            <span>证券</span>
+          <!-- §6.3 R3 持仓行列序：证券|数量|可用|成本|现价|浮盈额|浮盈%|今日可卖|权重 -->
             <span>数量</span>
             <span>权重</span>
-            <span>浮盈</span>
+            <span>可用</span>
+            <span>成本</span>
+            <span>现价</span>
+            <span>浮盈额</span>
+            <span>浮盈%</span>
+            <span>今日可卖</span>
           </div>
           <div v-for="item in account.positions" :key="item.symbol" class="pos-row">
-            <button type="button" class="sym" @click="openMarket(item.symbol)">{{ item.symbol }}</button>
+            <!-- §6.3 R3 持仓行：SymbolName(stacked) 名称上行代码下行，缺名走「名称未返回」占位 -->
+            <SymbolName :code="item.symbol" mode="stacked" />
             <b>{{ item.quantity ?? '—' }}</b>
-            <em>{{ weight(item) || '—' }}</em>
+            <b>{{ item.available ?? '—' }}</b>
+            <b>{{ priceText(item.avgCost) }}</b>
+            <b>{{ priceText(item.lastPrice) }}</b>
+            <i :class="pnlClass(pnlAmount(item))">{{ pnlAmount(item) != null ? amount(pnlAmount(item)) : '—' }}</i>
             <i :class="pnlClass(pnlRatio(item))">{{ pnlRatio(item) != null ? ratioPct(pnlRatio(item), 1) : '—' }}</i>
           </div>
         </div>
+            <!-- 今日可卖：available 即 T+1 可卖口径；0 显「T+1 不可卖」text-3，缺显「—」 -->
+            <em class="sellable" :class="{ 'sellable--hold': sellable(item).hold }">{{ sellable(item).text }}</em>
+            <em>{{ weight(item) || '—' }}</em>
         <h3 class="sub">板块涨跌（全市场）</h3>
         <p v-if="!chartRows.length" class="nt-empty">板块快照未返回。</p>
         <NtSectorBar v-else :rows="chartRows" height="220px" />
@@ -719,7 +746,6 @@ watch(
   min-width: 0;
 }
 
-.name,
 .px {
   color: var(--nt-text-2);
 }
@@ -748,7 +774,6 @@ watch(
   color: var(--nt-warn);
 }
 
-.sym,
 .link {
   padding: 0;
   border: none;
@@ -756,10 +781,6 @@ watch(
   color: var(--nt-accent);
   cursor: pointer;
   font: inherit;
-}
-
-.sym {
-  font-family: var(--nt-font-mono);
 }
 
 .rows b,
@@ -785,13 +806,18 @@ watch(
   font-size: 12.5px;
 }
 
+  overflow-x: auto;
 .pos-row {
   display: grid;
-  grid-template-columns: minmax(64px, 1fr) 64px 56px 64px;
+/* R3 持仓表：证券 1.2fr + 8 个数值列；窄屏整体横向滚动，不挤扁证券列。 */
+  grid-template-columns:
+    minmax(96px, 1.2fr) minmax(48px, 0.6fr) minmax(48px, 0.6fr) minmax(56px, 0.7fr) minmax(56px, 0.7fr)
+    minmax(72px, 0.8fr) minmax(56px, 0.6fr) minmax(88px, 0.8fr) minmax(48px, 0.5fr);
   gap: 8px;
   align-items: baseline;
 }
 
+  min-width: 560px;
 .pos-row--head {
   color: var(--nt-text-3);
   font-size: 11px;
@@ -817,6 +843,16 @@ watch(
 
 .brief {
   margin: 0;
+/* R3 今日可卖：数值常态 text-2；0 →「T+1 不可卖」text-3（方案 §6.3 R3）。 */
+.pos-row .sellable {
+  color: var(--nt-text-2);
+  white-space: nowrap;
+}
+
+.pos-row .sellable--hold {
+  color: var(--nt-text-3);
+}
+
   font-size: 13px;
   line-height: 1.5;
   color: var(--nt-text-1);
@@ -892,11 +928,9 @@ watch(
   background: color-mix(in srgb, var(--nt-accent) 8%, transparent);
 }
 
-.lane li .name {
+/* SymbolName 在 lane 里占弹性位，名称过长走组件内省略。 */
+.lane li :deep(.sn) {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
 }
 

@@ -1,5 +1,6 @@
 import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
+import { useSecurityStore } from '@/stores/security'
 import type { Candidate, ScanReply } from './types/strategy'
 
 export type { Candidate, ScanReply } from './types/strategy'
@@ -57,12 +58,16 @@ export function removeBlacklist(symbol: string): Promise<unknown> {
 }
 
 function normalizeCandidate(raw: RawRecord): Candidate {
+  const symbol = pick<string>(raw, 'symbol') || ''
+  const name = pick<string>(raw, 'name') || ''
+  // 附录 B-5 回填：候选行的 symbol/name 顺手进名称字典（put 判空码、null 名不覆盖旧名）。
+  useSecurityStore().put([{ code: symbol, name: name || null }])
   return {
     id: pick<string>(raw, 'id') || '',
     tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
     strategy: pick<string>(raw, 'strategy') || '',
-    symbol: pick<string>(raw, 'symbol') || '',
-    name: pick<string>(raw, 'name') || '',
+    symbol,
+    name,
     pool: pick<string>(raw, 'pool') || '',
     stage: pick<string>(raw, 'stage') || '',
     missReason: pick<string>(raw, 'missReason', 'miss_reason') || '',
@@ -112,6 +117,8 @@ export interface ScoreVsPnl {
 }
 
 export async function getStrategyPerformance(last = 20): Promise<StrategyPerformance> {
+  // 哨兵钉死（P3-10c）：sample 真计数，sample=0 的「无样本」由界面写「样本不足」（monitor detail 消费面口径）；
+  // winRate/plRatio/maxDrawdown/avgReturn 在 sample=0 时无意义但不外显；attributions.count 真计数恒有值。
   const data = await request('/api/strategy/performance', { query: { last } })
   const raw = (data ?? {}) as RawRecord
   return {
@@ -128,6 +135,8 @@ export async function getStrategyPerformance(last = 20): Promise<StrategyPerform
 }
 
 export async function getScoreVsPnl(last = 50): Promise<ScoreVsPnl> {
+  // 哨兵钉死（P3-10c）：入点信号恒有分（阈值 75 才成信号）；actualReturn=0 是「持有到期平收」真值；
+  // pearson 在 sample<2 时无统计意义，sample=0 同样由界面「样本不足」口径表达。
   const data = await request('/api/strategy/score-vs-pnl', { query: { last } })
   const raw = (data ?? {}) as RawRecord
   return {

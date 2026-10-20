@@ -40,13 +40,16 @@ withDefaults(
   margin: 4px 0 0;
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 19px;
+  font-size: var(--nt-fs-num-lg); /* 收编自 19px 裸值（§5.3 num-lg 档，17px） */
   font-weight: 700;
   color: var(--nt-text-1);
 }
 
 .nt-stat--hero .nt-stat__v {
   font-size: 24px;
+  /* hero 档（方案 §5.1/§5.2-4 第 2 处：权益/当日盈亏大数字）；须排在本文件 tone 规则之前，
+     等优先级下后写者胜，涨跌等语义色仍压过 hero 档（红涨绿跌纪律）。 */
+  color: var(--nt-text-0, var(--nt-text-1));
 }
 
 .nt-stat__v.up {

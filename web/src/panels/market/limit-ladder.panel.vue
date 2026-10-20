@@ -8,6 +8,7 @@ import { getSentimentDetail, listLimits, type LimitBoard, type Sentiment } from 
 import NtButton from '@/ui/NtButton.vue'
 import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { clock, compactAmount, intText, messageOf, pctText, ratioPct } from '@/utils/format'
 import { dataFrame } from '@/ws/data-frame'
@@ -50,9 +51,8 @@ const tiers = computed<LadderTier[]>(() => {
           return (b.sealAmount ?? 0) - (a.sealAmount ?? 0)
         })
         .map((row) => ({
-          // 涨跌停表没有名称字段，留空由 NtLadderTiers 只显代码，不再重复两遍。
+          // 名称由梯队内的 SymbolName 从 security 名称字典解析，缺名显「名称未返回」（数据纪律）。
           symbol: row.symbol,
-          name: '',
           sealAmount: row.sealAmount,
           openCount: row.openCount,
           status: row.status,
@@ -74,7 +74,10 @@ const maxHeight = computed(() => {
   if (upReady.value) return tiers.value.reduce((max, tier) => Math.max(max, tier.height), 0)
   return detail.value?.maxHeight ?? null
 })
-/** 全市场封单总额（已封板股票 sealAmount 之和）——情绪指标口径。 */
+/** 全市场封单总额（已封板股票 sealAmount 之和）——情绪指标口径。
+ * 「没取到≠0」（P3-10c 复核）：seal_amount 全链条非指针（东财缺键折叠 0 → DB Default(0) → proto 非 optional），
+ * 后端恒发数值，api 层 num() 无 ?? 0，row.sealAmount == null 是契约漂移防线（当前死分支）；
+ * 缺键股折叠为 0 参与求和不改变总额读数（求和加 0 无影响，仅该股封单未计入）。 */
 const totalSealAmount = computed(() => {
   if (!upReady.value || sealed.value.some((row) => row.sealAmount == null)) return null
   return sealed.value.reduce((acc, row) => acc + row.sealAmount!, 0)
@@ -84,7 +87,7 @@ const topLeader = computed(() => tiers.value[0]?.stocks[0] ?? null)
 const asOf = computed(() => detail.value?.asOf || upBoards.value[0]?.asOf || '')
 
 const brokenColumns: NtTableColumn<LimitBoard & Record<string, unknown>>[] = [
-  { key: 'symbol', title: '代码', mono: true },
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'consecutive', title: '连板', align: 'right', mono: true },
   { key: 'openCount', title: '开板次数', align: 'right', mono: true },
   { key: 'lastSealAt', title: '最后封板', mono: true },
@@ -197,14 +200,18 @@ onBeforeUnmount(() => {
       <h2 class="nt-panel__title">跌停 · {{ downReady ? downBoards.length : '—' }} 只</h2>
       <p v-if="!downReady" class="nt-empty">跌停名单未返回。</p>
       <p v-else-if="!downBoards.length" class="nt-empty">今日没有跌停。</p>
-      <p v-else class="nt-note break">{{ downBoards.map((row) => row.symbol).join(' · ') }}</p>
+      <p v-else class="nt-note break">
+        <template v-for="(row, index) in downBoards" :key="row.symbol">
+          <SymbolName :code="row.symbol" mode="compact" /><template v-if="index + 1 < downBoards.length">，</template>
+        </template>
+      </p>
     </section>
   </div>
 </template>
 
 <style scoped>
+/* 跌停名称串：中文名走在 sans 上，仅保留长串折行。 */
 .break {
   word-break: break-all;
-  font-family: var(--nt-font-mono);
 }
 </style>

@@ -24,6 +24,8 @@ import NtModal from '@/ui/NtModal.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTabs from '@/ui/NtTabs.vue'
+import SymbolName from '@/display/SymbolName.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, messageOf, pctText, phaseName, pnlClass, price } from '@/utils/format'
 import {
   attributionLabel,
@@ -33,7 +35,6 @@ import {
   categoryLabel,
   CATEGORY_OPTIONS,
   EMOTION_OPTIONS,
-  embedTone,
   finalStatusLabel,
   formatSize,
   outcomeLabel,
@@ -81,6 +82,14 @@ async function runSearch() {
 
 function degradedText(): string {
   return '向量路未接入：当前只做关键词检索（DGX 嵌入服务未部署，见 M04 待办）'
+}
+
+/** 嵌入状态章只从 kb 册取文案（§7.1/§10-24，一字锁定）：done 已入库 / pending 待补；
+ *  册外值原样回显（不自封文案），无值显「—」。 */
+function embedEntry(status: string | null | undefined) {
+  if (status === 'done') return statusOf('kb.ingested')
+  if (status === 'pending') return statusOf('kb.pending')
+  return { text: status || '—', tone: 'neutral' as const }
 }
 
 /* ---------- 文档 ---------- */
@@ -387,7 +396,7 @@ onMounted(() => {
           <NtBadge :tone="statusTone(row.doc.status)">{{ row.status }}</NtBadge>
         </template>
         <template #cell-embed="{ row }">
-          <NtBadge :tone="embedTone(row.doc.embedStatus)">{{ row.embed }}</NtBadge>
+          <NtBadge :tone="embedEntry(row.doc.embedStatus).tone">{{ embedEntry(row.doc.embedStatus).text }}</NtBadge>
         </template>
         <template #cell-created="{ row }">{{ clock(row.created) }}</template>
         <template #cell-action="{ row }">
@@ -414,10 +423,20 @@ onMounted(() => {
             <dt>状态</dt>
             <dd>
               <NtBadge :tone="statusTone(detail.document.status)">{{ detail.document.status }}</NtBadge>
-              <NtBadge :tone="embedTone(detail.document.embedStatus)">{{ detail.document.embedStatus }}</NtBadge>
+              <NtBadge :tone="embedEntry(detail.document.embedStatus).tone">
+                {{ embedEntry(detail.document.embedStatus).text }}
+              </NtBadge>
             </dd>
           </div>
-          <div v-if="detail.document.stockCodes.length"><dt>关联股票</dt><dd class="mono">{{ detail.document.stockCodes.join('，') }}</dd></div>
+          <div v-if="detail.document.stockCodes.length">
+            <dt>关联股票</dt>
+            <!-- 结构化代码字段逐只接 SymbolName；正文段落不做文本解析 -->
+            <dd class="mono">
+              <template v-for="(c, i) in detail.document.stockCodes" :key="c"
+                ><SymbolName :code="c" /><span v-if="i < detail.document.stockCodes.length - 1">，</span></template
+              >
+            </dd>
+          </div>
           <div v-if="detail.document.tags.length"><dt>标签</dt><dd>{{ detail.document.tags.join('，') }}</dd></div>
           <div><dt>有效期至</dt><dd>{{ detail.document.expiresAt ? clock(detail.document.expiresAt) : '不过期' }}</dd></div>
           <div><dt>入库时间</dt><dd>{{ clock(detail.document.createdAt) }}</dd></div>
@@ -429,7 +448,9 @@ onMounted(() => {
             <header>
               <span class="mono">#{{ c.seq }}</span>
               <strong>{{ c.heading || '（无题头）' }}</strong>
-              <NtBadge :tone="c.embedded ? 'accent' : 'warn'">{{ c.embedded ? '已向量' : '待补' }}</NtBadge>
+              <NtBadge :tone="embedEntry(c.embedded ? 'done' : 'pending').tone">
+                {{ embedEntry(c.embedded ? 'done' : 'pending').text }}
+              </NtBadge>
               <span class="nt-note">{{ c.tokenCount ?? '—' }} token</span>
             </header>
             <p>{{ c.content }}</p>
@@ -470,8 +491,9 @@ onMounted(() => {
       <ul v-if="csHits.length" class="kb-cases">
         <li v-for="hit in csHits" :key="hit.kbCase.id || hit.chunkId" class="kb-cases__item">
           <header class="kb-cases__head">
-            <strong>{{ hit.kbCase.stockName || '—' }}</strong>
-            <span class="mono">{{ hit.kbCase.stockCode }}</span>
+            <!-- 结构化证券位：SymbolName(inline)，名称取 security 字典（kb API 已回填 stockName） -->
+            <SymbolName v-if="hit.kbCase.stockCode" :code="hit.kbCase.stockCode" />
+            <strong v-else>{{ hit.kbCase.stockName || '—' }}</strong>
             <NtBadge tone="neutral">{{ outcomeLabel(hit.kbCase.outcome) }}</NtBadge>
             <NtBadge tone="neutral">{{ finalStatusLabel(hit.kbCase.finalStatus) }}</NtBadge>
             <span

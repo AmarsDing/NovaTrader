@@ -57,7 +57,7 @@ function rowTone(row: DetailRow): string {
       </div>
 
       <div v-if="section.table" class="nt-deep__tablewrap">
-        <table class="nt-deep__table">
+        <table class="nt-deep__table" :data-key="section.table.key">
           <thead>
             <tr>
               <th v-for="column in section.table.columns" :key="column">{{ column }}</th>
@@ -68,7 +68,11 @@ function rowTone(row: DetailRow): string {
               <td :colspan="section.table.columns.length" class="nt-deep__empty">{{ section.table.empty }}</td>
             </tr>
             <tr v-for="(row, r) in section.table.rows" :key="r" :data-flag="section.table.flags?.[r] || undefined">
-              <td v-for="(cell, c) in row" :key="c">{{ cell }}</td>
+              <td v-for="(cell, c) in row" :key="c">
+                <!-- §10-27：名称列名字套壳——定宽 + 超长 ellipsis，hover title 显全名，不挤爆布局 -->
+                <span v-if="section.table.columns[c] === '名称'" class="nt-deep__namecell" :title="cell">{{ cell }}</span>
+                <template v-else>{{ cell }}</template>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -244,6 +248,38 @@ function rowTone(row: DetailRow): string {
 
 .nt-deep__table td:first-child {
   font-family: inherit;
+}
+
+/* §10-27 名称列定宽：名字套壳裁切（max-width 只在内联块上可靠），超长 ellipsis，
+ * 五表列宽各不相同按 data-key 定额（持仓最宽表最省、成交最宽、质量挤检查项最窄），
+ * 默认 120px 兜底（sig/miss/prem 的次列名称同纪律） */
+.nt-deep__namecell {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.nt-deep__table[data-key='pos'] .nt-deep__namecell {
+  max-width: 92px;
+}
+
+.nt-deep__table[data-key='ord'] .nt-deep__namecell {
+  max-width: 96px;
+}
+
+.nt-deep__table[data-key='fill'] .nt-deep__namecell {
+  max-width: 112px;
+}
+
+.nt-deep__table[data-key='qi'] .nt-deep__namecell {
+  max-width: 88px;
+}
+
+.nt-deep__table[data-key='rush'] .nt-deep__namecell {
+  max-width: 104px;
 }
 
 /* 宽表横滚时第一列（代码/名称）钉在左缘，后列从下面滑过 */

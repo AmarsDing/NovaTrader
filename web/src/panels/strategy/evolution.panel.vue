@@ -27,6 +27,7 @@ import NtStatCard from '@/display/NtStatCard.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, intText, messageOf, pnlClass, ratioPct } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -97,6 +98,15 @@ const proposalColumns: NtTableColumn<ProposalRow>[] = [
   { key: 'createdAt', title: '提出时间', mono: true },
 ]
 const proposalRows = computed(() => proposals.value as unknown as ProposalRow[])
+
+/** 审批章文案/tone 出自 evolution 册（§7.1，一字锁定）：已批准/已拒绝/待审；
+ *  册外值原样回显、tone 取待审同系 warn（不自封文案）。 */
+function proposalStatus(status: string | null | undefined) {
+  if (status === 'approved') return statusOf('evolution.approved')
+  if (status === 'rejected') return statusOf('evolution.rejected')
+  if (status === 'pending' || !status) return statusOf('evolution.pending')
+  return { text: status, tone: 'warn' as const }
+}
 
 async function loadAll() {
   loading.value = true
@@ -174,6 +184,8 @@ onMounted(loadAll)
           模拟盘
           <b>{{ admission?.tradingDays ?? '—' }}</b>
           / {{ admission?.requiredDays ?? 20 }} 交易日
+          <!-- §10-22 册消费研判：「已达准入」是就绪口径，册 evolution 三键（已批准/已拒绝/待审）
+               均审批语义，混用会成自封文案；册内无准入就绪键，保持原文案待入册评审。 -->
           <NtBadge v-if="admission?.ready" tone="success" dot>已达准入</NtBadge>
         </p>
       </div>
@@ -241,9 +253,7 @@ onMounted(loadAll)
       <NtTable :columns="proposalColumns" :rows="proposalRows" row-key="id" dense empty="还没有进化提案">
         <template #cell-createdAt="{ row }">{{ clock(row.createdAt) }}</template>
         <template #cell-status="{ row }">
-          <NtBadge :tone="row.status === 'approved' ? 'success' : row.status === 'rejected' ? 'danger' : 'warn'">
-            {{ row.status || 'pending' }}
-          </NtBadge>
+          <NtBadge :tone="proposalStatus(row.status).tone">{{ proposalStatus(row.status).text }}</NtBadge>
         </template>
       </NtTable>
       <div v-if="!auth.isViewer()" class="actions">

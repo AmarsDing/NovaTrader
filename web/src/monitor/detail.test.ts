@@ -3,7 +3,9 @@
  * 纪律断言：缺口必须点名缺的接口、不出现 0 填充与破折号、红涨绿跌只给金额/涨跌幅、
  * 复盘只做事实陈述不假设收益。
  */
-import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { useSecurityStore } from '@/stores/security'
 import {
   RULES,
   buildDetail,
@@ -17,6 +19,11 @@ import {
 } from './detail'
 import { emptyMonitorInput } from './load-input'
 import type { MonitorInput } from './types'
+
+/* §10-27 起详情五表名称列读名称字典（stores/security）：describe 级面板在收集期就构建，
+ * 模块顶层先装 pinia；用例级再逐个换新实例隔离字典。fetcher 未注册时 ensure 静默 noop。 */
+setActivePinia(createPinia())
+beforeEach(() => setActivePinia(createPinia()))
 
 const NOW = new Date(2026, 9, 13, 10, 30).getTime()
 
@@ -194,12 +201,23 @@ describe('§5.1 账户牌', () => {
   it('持仓表带距止损/距止盈/持有天数，今日高低仍写未接入（不用现价冒充）', () => {
     const table = panel?.sections[2].table
     expect(table?.columns).toContain('距止损')
+    /* §10-27：名称列插为首列（本面板收集期字典为空 → 「名称未返回」），其后各列序号整体 +1 */
+    expect(table?.columns.slice(0, 2)).toEqual(['名称', '代码'])
     const row = table?.rows[0]
+    expect(row?.[0]).toBe('名称未返回')
+    expect(row?.[1]).toBe('600519')
     // (10.5-10.2)/10.5 = 2.857% → 2.9%
-    expect(row?.[8]).toBe('2.9%')
-    expect(row?.[9]).toBe('4.8%')
-    expect(row?.[7]).toBe('3 天')
-    expect(row?.[10]).toContain('未接入')
+    expect(row?.[9]).toBe('2.9%')
+    expect(row?.[10]).toBe('4.8%')
+    expect(row?.[8]).toBe('3 天')
+    expect(row?.[11]).toContain('未接入')
+  })
+  it('名称列接名称字典：命中显真名，缺名显「名称未返回」并 ensure 后台补', () => {
+    /* 字典命中后新构建的面板直接显真名（put 合并纪律已有 security.test.ts 钉） */
+    useSecurityStore().put([{ code: '600519', name: '贵州茅台' }])
+    const named = buildDetail(fixture(), 'book:center', NOW, { equityPoints: [] })?.sections[2].table
+    expect(named?.rows[0][0]).toBe('贵州茅台')
+    expect(named?.rows[1][0]).toBe('名称未返回')
   })
   it('距止损 <2% 整行 warn、已触发 danger', () => {
     const input = fixture()
@@ -212,11 +230,12 @@ describe('§5.1 账户牌', () => {
   })
   it('滑点按 fills 精确配对：买入正为劣、卖出取反同口径', () => {
     const table = panel?.sections[3].table
+    /* §10-27：名称列插为首列，成交均价/滑点列序号 5/6 → 6/7 */
     // o1: vwap=(10.42*60+10.44*40)/100=10.428；bp=(10.428-10.4)/10.4*10000≈26.9
-    expect(table?.rows[0][5]).toBe('10.43')
-    expect(table?.rows[0][6]).toBe('26.9 bp')
+    expect(table?.rows[0][6]).toBe('10.43')
+    expect(table?.rows[0][7]).toBe('26.9 bp')
     // o2: vwap=10.98；bp=(11.0-10.98)/11.0*10000≈18.2
-    expect(table?.rows[1][6]).toBe('18.2 bp')
+    expect(table?.rows[1][7]).toBe('18.2 bp')
   })
   it('绩效缺口点名 strategy/performance，不拿当日数据冒充', () => {
     const perf = panel?.sections[5].rows?.[0]

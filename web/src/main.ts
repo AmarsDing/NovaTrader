@@ -8,6 +8,7 @@ import App from './App.vue'
 import { router } from './router'
 import { setUnauthorizedHandler } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { useSecurityStore } from '@/stores/security'
 import { useSettingsStore } from '@/stores/settings'
 
 import './style/global.css'
@@ -21,6 +22,8 @@ app.use(router)
 
 useSettingsStore().init()
 
+// §6.2 名称字典：启动即恢复本地缓存，fetcher 未注册前 ensure 静默 noop。
+useSecurityStore().hydrate()
 const auth = useAuthStore()
 
 setUnauthorizedHandler(() => {

@@ -17,7 +17,7 @@ withDefaults(defineProps<{ tone?: BadgeTone; dot?: boolean }>(), { tone: 'neutra
   align-items: center;
   gap: 5px;
   padding: 1px 8px;
-  font-size: 11.5px;
+  font-size: var(--nt-fs-caption);
   font-weight: 600;
   line-height: 18px;
   border-radius: 999px;

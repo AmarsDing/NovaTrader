@@ -3,8 +3,23 @@
  * 解析成人读的主词/副行。纯函数，缺口格写明缺哪个接口（监控业务监控方案 §7 纪律）。
  */
 import { amount, compactAmount, pctText, phaseName, ratioPct, signed, toneOf } from '@/utils/format'
+import { useSecurityStore } from '@/stores/security'
 import { bandCountdown, type HudCellDef, type SparkKey } from './timeband'
 import type { MonitorInput } from './types'
+
+/** 「名称 代码」双件（方案 §6.1/§10-27）：字典有名 → 名称（超 6 字截断加…）＋规范全码；
+ * 缺名 → 「{代码} · 名称未返回」（数据纪律：缺名非空串冒充），并 ensure 让字典后台补——
+ * 渲染期反复调用经字典四重去重 + 300ms 批量窗 + 失败冷却，安全；fetcher 未注册静默 noop。 */
+function symbolPair(raw: string): string {
+  const sec = useSecurityStore()
+  const found = sec.resolve(raw)
+  if (!found.hasName) {
+    sec.ensure([found.code])
+    return `${found.code} · 名称未返回`
+  }
+  const name = found.name.length > 6 ? `${found.name.slice(0, 6)}…` : found.name
+  return `${name} ${found.code}`
+}
 
 export interface HudCellView {
   key: string
@@ -156,9 +171,10 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const hit = limits.filter((row) => missed.has(row.symbol))
       return {
         face: `${hit.length} 只`,
+        /* §10-27：裸码改「名称 代码」双件（名称超 6 字截断加…，沿用画布截断惯例）；缺名显「名称未返回」 */
         sub:
           hit.length > 0
-            ? `${hit.slice(0, 3).map((row) => row.symbol).join('、')} · 涨停 ${limits.length} 家`
+            ? `${hit.slice(0, 3).map((row) => symbolPair(row.symbol)).join('、')} · 涨停 ${limits.length} 家`
             : `涨停 ${limits.length} 家都在池内`,
         tone: 'flat',
       }
@@ -185,7 +201,8 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       if (!auction) return { face: '未接入', sub: GAP_AUCTION, tone: 'flat' }
       if (!auction.found || auction.topRush.length === 0) return { face: '无截面', sub: '09:25 竞价因子未落库', tone: 'flat' }
       const top = auction.topRush[0]
-      return { face: top.symbol, sub: `抢筹第一 · ${compactAmount(top.auctionAmount)}`, tone: 'flat' }
+      /* §10-27：face 裸码改「名称 代码」双件（symbolPair 同一截断/缺名纪律） */
+      return { face: symbolPair(top.symbol), sub: `抢筹第一 · ${compactAmount(top.auctionAmount)}`, tone: 'flat' }
     }
     case 'midday:pnl': {
       const pnl = input.account?.ok ? input.account.dayPnl : null

@@ -9,6 +9,7 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { amount, compactAmount, intText, missLabel, pctText, ratioPct, signed, toneOf } from '@/utils/format'
+import { useSecurityStore, type SecurityBasicPatch } from '@/stores/security'
 import { attributionLabel, equityStats } from './detail'
 import { dutyOf, isLoud, statusDot } from './duty'
 import { gpuMemory } from './hud'
@@ -30,6 +31,24 @@ const props = defineProps<{
   equityPoints?: (number | null)[]
 }>()
 const emit = defineEmits<{ select: [id: string]; flash: [id: string] }>()
+
+/* §6.2 字典第三路填充：TAPE 跑马保持仅代码（§6.1 豁免清单），但本组件消费的消息体
+ * （候选/信号快照）凡自带 name 的顺带 put 进名称字典——字典热度随使用增长，
+ * HUD 双件与详情五表的「名称未返回」占位随之收敛。put 合并纪律不覆盖已有名。 */
+watch(
+  () => [props.input.candidates, props.input.signals] as const,
+  ([candidates, signals]) => {
+    const list: SecurityBasicPatch[] = []
+    for (const item of candidates?.ok ? candidates.items : []) {
+      if (item.symbol && item.name) list.push({ code: item.symbol, name: item.name })
+    }
+    for (const item of signals?.ok ? signals.items : []) {
+      if (item.symbol && item.name) list.push({ code: item.symbol, name: item.name })
+    }
+    if (list.length > 0) useSecurityStore().put(list)
+  },
+  { immediate: true },
+)
 
 interface DutyDot {
   id: string

@@ -20,14 +20,17 @@ import {
 } from './decision-desk'
 import NtButton from '@/ui/NtButton.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtProgressRing from '@/ui/NtProgressRing.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtRadar from '@/viz/NtRadar.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import {
   clock,
   dimValue,
   isValidExpired,
   messageOf,
+  pnlClass,
   price,
   pctText,
   ratioPct,
@@ -168,10 +171,6 @@ function actionOf(item: SignalItem) {
   )
 }
 
-function openMarket(symbol: string) {
-  getWorkbench()?.openPanel('market', { symbol })
-}
-
 function openTrade(item: SignalItem) {
   if (
     !buildDecisionAction(
@@ -199,6 +198,12 @@ function dimsOf(item: SignalItem) {
 }
 
 function stateBadge(item: SignalItem): { text: string; cls: string } {
+/** 信号行自带时间戳 → epoch ms；丢给 NtFreshness，无时点证据显「时点未知」（不冒充 0s）。 */
+function timeOf(value: string): number | null {
+  const ts = new Date(value).getTime()
+  return Number.isFinite(ts) ? ts : null
+}
+
   if (isHandled(item) || ['rejected', 'cancelled'].includes(item.status.toLowerCase()))
     return { text: signalStatusLabel(item.status), cls: 'closed' }
   if (isExpired(item)) return { text: '已过期', cls: 'expired' }
@@ -295,13 +300,17 @@ watch(
         }"
       >
         <header>
-          <button type="button" class="sym" @click="openMarket(item.symbol)">{{ item.symbol }}</button>
-          <span>{{ item.name }}</span>
+          <!-- §6.3 R2 信号行：证券位统一 SymbolName；名称取 security 字典（signals API 已回填），不再双数据源 -->
+          <SymbolName :code="item.symbol" mode="stacked" />
           <span class="tm">{{ clock(item.time) }}</span>
           <!-- 红涨绿跌：买入红、卖出绿 -->
           <em :class="item.side === 'buy' ? 'up' : item.side === 'sell' ? 'down' : ''">{{ sideLabel(item.side) }}</em>
           <b class="badge" :class="stateBadge(item).cls">{{ stateBadge(item).text }}</b>
+          <!-- 状态章为信号状态机散值（signalStatusLabel/有效期剩余），status-map §7.1 册无 signal.* 键：
+               本批保持现状待评审入册，禁自封（§7.1 纪律）。 -->
         </header>
+          <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
+          <NtFreshness label="信号" :at="timeOf(item.time)" />
         <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
           <h3>当前动作：{{ actionOf(item).title }}</h3>
           <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
@@ -312,7 +321,8 @@ watch(
           <p class="action-plan__caution"><strong>先看反证</strong>{{ actionOf(item).caution }}</p>
         </section>
         <div class="body">
-          <NtProgressRing :value="item.score" :hot="item.highValue" :size="56" />
+          <!-- hero 档（方案 §5.2-4 第 3 处）：评分环中央大数字走 --nt-text-0，≥85 由 hot 发光预算接管 -->
+          <NtProgressRing :value="item.score" :hot="item.highValue" :size="56" hero />
           <template v-if="!item.degraded">
             <NtRadar :dims="dimsOf(item)" :size="84" />
             <ul>
@@ -343,12 +353,17 @@ watch(
             <dd>{{ item.positionPct != null ? ratioPct(item.positionPct, 0) : '—' }}</dd>
           </div>
           <div>
+          <div>
+            <!-- R2 列位补齐：有效期 text-2；validUntil 缺失显「—」（数据纪律） -->
+            <dt>有效期</dt>
+            <dd class="t2">{{ item.validUntil ? clock(item.validUntil) : '—' }}</dd>
+          </div>
             <dt>ATR</dt>
             <dd>{{ price(item.atr) }}</dd>
           </div>
           <div v-if="item.hasPnl">
             <dt>后验盈亏</dt>
-            <dd :class="(item.pnlPct ?? 0) >= 0 ? 'up' : 'down'">
+            <dd :class="pnlClass(item.pnlPct)">
               {{ pctText(item.pnlPct)
               }}<template v-if="item.holdingDays != null"> · {{ item.holdingDays }} 日</template>
             </dd>
@@ -426,21 +441,6 @@ header {
   gap: 8px;
   align-items: baseline;
   flex-wrap: wrap;
-}
-
-.sym {
-  background: none;
-  border: none;
-  color: var(--nt-accent);
-  padding: 0;
-  min-height: 0;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sym:hover {
-  text-decoration: underline;
 }
 
 .tm {
@@ -523,6 +523,11 @@ dd {
 }
 
 .meta,
+/* R2 有效期位降一档（text-2），不打断 mono 价格列的节奏。 */
+dd.t2 {
+  color: var(--nt-text-2);
+}
+
 .reason {
   margin: 0;
   color: var(--nt-text-2);

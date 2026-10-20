@@ -2,10 +2,14 @@
 /**
  * 涨停梯队（M02 涨停生态核心展示）。
  * tiers: 连板高度分组，每组一列股票；sealed/broken 计数。
+ * 个股一律走 SymbolName stacked（方案 §6.3 R5）：名称出自 security 名称字典，缺名显「名称未返回」。
  */
+import SymbolName from '@/display/SymbolName.vue'
+
 export interface LadderStock {
   symbol: string
-  name: string
+  /** 旧字段：名称已由 SymbolName 从字典解析，调用方无需再传。 */
+  name?: string
   sealAmount?: number | null
   openCount?: number | null
   status?: string
@@ -35,8 +39,7 @@ defineProps<{ tiers: LadderTier[]; empty?: string }>()
             class="nt-ladder__stock"
             :class="{ broken: s.status === 'BROKEN' }"
           >
-            <span class="nt-ladder__name">{{ s.name || s.symbol }}</span>
-            <span v-if="s.name && s.name !== s.symbol" class="nt-ladder__symbol">{{ s.symbol }}</span>
+            <SymbolName :code="s.symbol" mode="stacked" />
           </li>
         </ul>
       </section>
@@ -97,12 +100,6 @@ defineProps<{ tiers: LadderTier[]; empty?: string }>()
 .nt-ladder__stock.broken {
   color: var(--nt-text-3);
   text-decoration: line-through;
-}
-
-.nt-ladder__symbol {
-  font-family: var(--nt-font-mono);
-  color: var(--nt-text-3);
-  font-size: 11px;
 }
 
 .nt-ladder__empty {

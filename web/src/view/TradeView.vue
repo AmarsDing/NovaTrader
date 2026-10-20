@@ -9,6 +9,7 @@ import { getRiskState, previewOrder, type PreviewBody, type PreviewReply, type R
 import { getSignal } from '@/api/signals'
 import { onPush, onResync } from '@/ws/hub'
 import { createPageRefresh } from './page-refresh'
+import SymbolName from '@/display/SymbolName.vue'
 import {
   cancelOrder,
   getChannelStatus,
@@ -42,7 +43,6 @@ import {
 import { formatDateTime } from '@/utils/time'
 import { router } from '@/router'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
-import { getWorkbench } from '@/workspace/inject'
 import { PAPER_DAYS_REQUIRED } from './decision-desk'
 import PaperAdmission from './PaperAdmission.vue'
 import { draftPrice, normalizeBook, pendingTradeKey, readPendingTrade, signalContextOf, signalDraftBlock, type SignalDraftContext } from './trade-draft'
@@ -96,7 +96,7 @@ function settleJournal(clientOrderId: string) {
 }
 
 function rememberSignalOrder(draft: OrderDraft, order: Order) {
-  if (draft.signalId && ((order.filled ?? 0) > 0 || !['rejected', 'cancelled', 'canceled', 'expired'].includes(order.status.toLowerCase()))) {
+  if (draft.signalId && ((order.filled != null && order.filled > 0) || !['rejected', 'cancelled', 'canceled', 'expired'].includes(order.status.toLowerCase()))) {
     acknowledgedSignals.add(`${normalizeBook(draft.account)}:${draft.signalId}`)
   }
 }
@@ -164,7 +164,8 @@ interface FillRow extends Record<string, unknown> {
 }
 
 const posColumns: NtTableColumn<PosRow>[] = [
-  { key: 'symbol', title: '代码' },
+  // P-01 终审补齐：证券列走 SymbolName inline（名称+裸六位、字典缺名显「名称未返回」），顶替裸码按钮
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'quantity', title: '数量', align: 'right' },
   { key: 'available', title: '可卖', align: 'right' },
   { key: 'avgCost', title: '成本', align: 'right' },
@@ -175,7 +176,7 @@ const posColumns: NtTableColumn<PosRow>[] = [
 ]
 const orderColumns: NtTableColumn<OrderRow>[] = [
   { key: 'id', title: '编号' },
-  { key: 'symbol', title: '代码' },
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'side', title: '方向' },
   { key: 'status', title: '状态' },
   { key: 'price', title: '价格', align: 'right' },
@@ -185,7 +186,7 @@ const orderColumns: NtTableColumn<OrderRow>[] = [
 ]
 const fillColumns: NtTableColumn<FillRow>[] = [
   { key: 'time', title: '时间' },
-  { key: 'symbol', title: '代码' },
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'side', title: '方向' },
   { key: 'price', title: '价格', align: 'right' },
   { key: 'qty', title: '数量', align: 'right' },
@@ -229,6 +230,8 @@ const volumeNum = computed(() => Number(form.volume))
 const symbolOk = computed(() => /^\d{6}\.(SZ|SH|BJ)$/i.test(form.symbol.trim()))
 const priceOk = computed(() => Number.isFinite(priceNum.value) && priceNum.value > 0)
 const volumeOk = computed(() => Number.isInteger(volumeNum.value) && volumeNum.value >= 100 && volumeNum.value % 100 === 0)
+/** 输码即查（方案 §10-4）：凑满 6 位即在表单回显名称章；字典缺失时 SymbolName 显「名称未返回」提醒二读代码，不阻断下单。 */
+const echoOk = computed(() => /^\d{6}(?:\.(?:SH|SZ|BJ))?$/i.test(form.symbol.trim()))
 const signalBlock = computed(() => signalDraftBlock(signalContext.value, { account: account.value, symbol: form.symbol, side: form.side }, clockMs.value))
 const signalOrderBlock = computed(() => {
   const context = signalContext.value
@@ -237,7 +240,7 @@ const signalOrderBlock = computed(() => {
   if (acknowledgedSignals.has(key)) return '此信号已有已核实委托，请查看原委托与持仓，不能重复执行'
   const existing = orders.value.find((order) => order.signalId === context.signalId &&
     (!normalizeBook(order.account) || normalizeBook(order.account) === context.book) &&
-    ((order.filled ?? 0) > 0 || !['rejected', 'cancelled', 'canceled', 'expired'].includes(order.status.toLowerCase())))
+    ((order.filled != null && order.filled > 0) || !['rejected', 'cancelled', 'canceled', 'expired'].includes(order.status.toLowerCase())))
   return existing ? `此信号已有关联委托 ${existing.id}（${orderStatusLabel(existing.status)}），请先核对原委托` : ''
 })
 const submissionBlock = computed(() => {
@@ -554,10 +557,6 @@ async function cancelAll() {
   await load()
 }
 
-function openMarket(symbol: string) {
-  getWorkbench()?.openPanel('market', { symbol })
-}
-
 /** 面板参数落表：挂载预填与已挂载时的实时推送共用。只应用 params 里带了的字段。 */
 function applyOrderParams(params: Record<string, unknown>) {
   const symbol = params.symbol
@@ -662,6 +661,10 @@ onBeforeUnmount(() => {
       </label>
       <NtSelect v-model="form.side" label="方向" :options="sideOptions" />
       <label>
+      <div v-if="echoOk" class="symbol-echo" title="名称回显：显「名称未返回」时请人工二读代码，不阻断下单">
+        <!-- 终审走查补齐：下单表单内同名章禁点击跳转（ConfirmSheet 同款纪律），防输码中途误跳侧栏 -->
+        <SymbolName :code="form.symbol" mode="inline" :clickable="false" />
+      </div>
         <span>限价</span>
         <NtInput v-model="form.price" type="number" mono :invalid="touched && !priceOk" />
       </label>
@@ -702,9 +705,6 @@ onBeforeUnmount(() => {
     <section>
       <h2 class="nt-panel__title">持仓</h2>
       <NtTable :columns="posColumns" :rows="posRows" row-key="symbol" :empty="loading ? '读取中…' : positionsOk ? '暂无持仓' : '持仓未返回，不能当作空仓'">
-        <template #cell-symbol="{ value }">
-          <button type="button" class="sym" @click="openMarket(String(value))">{{ value }}</button>
-        </template>
         <template #cell-avgCost="{ value }">{{ price(value as number | null) }}</template>
         <template #cell-lastPrice="{ value }">{{ price(value as number | null) }}</template>
         <template #cell-marketValue="{ value }">{{ amount(value as number | null) }}</template>
@@ -783,6 +783,12 @@ h2 {
 
 .channel-pill {
   margin-left: 8px;
+.symbol-echo {
+  align-self: flex-end;
+  max-width: 240px;
+  padding-bottom: 7px;
+}
+
   padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--nt-border-1);
@@ -795,19 +801,6 @@ h2 {
 .channel-pill.warn { color: var(--nt-warn); border-color: var(--nt-warn); }
 .channel-pill.danger { color: var(--nt-danger); border-color: var(--nt-danger); }
 .channel-pill.dim, .channel-pill.unknown { color: var(--nt-text-3); border-color: var(--nt-border-1); }
-
-.sym {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--nt-accent);
-  font: inherit;
-  cursor: pointer;
-}
-
-.sym:hover {
-  text-decoration: underline;
-}
 
 .cancel-all {
   margin-left: auto;

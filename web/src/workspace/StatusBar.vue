@@ -3,7 +3,8 @@
  * 底栏 chrome（不进 dock）：链路健康、账本、交易模式、Kill Switch、未读通知、WS 主题、上海时段钟。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import NtStatusDot from '@/ui/NtStatusDot.vue'
+import NtStatusDot, { type DotStatus } from '@/ui/NtStatusDot.vue'
+import { linkStatus } from '@/ui/status-map'
 import { useAccountStore } from '@/stores/account'
 import { useNotifyStore } from '@/stores/notify'
 import { useRiskStore } from '@/stores/risk'
@@ -23,6 +24,12 @@ const sessionText = computed(() => SESSION_TEXT[sessionOf(now.value)])
 const clockText = computed(() => formatClock(now.value))
 const recoveryText = computed(() => {
   if (link.sync === 'ready') return '同步已完成'
+/** 链路文案只从链路五态册取（§7.1/§10 全局 chrome，一字锁定）：色调与状态词同源。 */
+const healthStatus = computed<DotStatus>(() => (link.health === 'ok' ? 'ok' : link.health === 'down' ? 'down' : 'off'))
+/** 推送通道全 live（心跳证据齐）取「在线」呼吸态；open/connecting 未就绪记陈旧；idle 记关闭。 */
+const wsStatus = computed<DotStatus>(() =>
+  isLive() ? 'live' : link.ws === 'open' || link.ws === 'connecting' ? 'stale' : link.ws === 'idle' ? 'off' : 'down',
+)
   if (link.sync === 'syncing') return '权威状态同步中'
   if (link.sync === 'required') return '待恢复 · 未完成核对'
   return '尚未同步'
@@ -77,12 +84,12 @@ onBeforeUnmount(() => {
 <template>
   <footer class="bar">
     <div class="cell">
-      <NtStatusDot :status="link.health === 'ok' ? 'ok' : link.health === 'down' ? 'down' : 'off'" />
-      admin 2001 · {{ link.health === 'ok' ? '可达' : link.health === 'down' ? '中断' : '待检测' }}
+      <NtStatusDot :status="healthStatus" />
+      admin 2001 · {{ linkStatus(healthStatus).text }}
     </div>
     <div class="cell">
-      <NtStatusDot :status="isLive() ? 'ok' : link.ws === 'open' || link.ws === 'connecting' ? 'stale' : link.ws === 'idle' ? 'off' : 'down'" />
-      推送通道 2003 · {{ link.ws === 'open' ? '已连接' : link.ws === 'connecting' ? '连接中' : link.ws === 'idle' ? '未连接' : '中断' }}
+      <NtStatusDot :status="wsStatus" />
+      推送通道 2003 · {{ linkStatus(wsStatus).text }}
     </div>
     <div class="cell" :class="{ pending: link.sync !== 'ready' }" :title="link.error || recoveryText">{{ recoveryText }}</div>
     <div class="cell book" :class="{ live: account.book === 'LIVE', pending: !account.accountOk || !isLive() }" :title="accountHint">

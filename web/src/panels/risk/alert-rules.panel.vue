@@ -23,6 +23,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock } from '@/utils/format'
 
 const REFRESH_MS = 15000
@@ -61,7 +62,7 @@ interface RuleRow extends AlertRule, Record<string, unknown> {
 const rows = computed<RuleRow[]>(() => rules.value.map((r) => ({ ...r, ops: r.id })))
 
 const columns: NtTableColumn<RuleRow>[] = [
-  { key: 'symbol', title: '代码', mono: true, width: '110px' },
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'condition', title: '条件', width: '72px' },
   { key: 'targetPrice', title: '目标价', align: 'right', mono: true, width: '90px' },
   { key: 'lastPrice', title: '最近价/基线', align: 'right', mono: true, width: '96px' },
@@ -160,8 +161,14 @@ async function doDelete(rule: AlertRule) {
   }
 }
 
-const STATUS_TONE: Record<string, 'accent' | 'warn' | 'neutral'> = { active: 'accent', triggered: 'warn' }
-const STATUS_TEXT: Record<string, string> = { active: '布防中', triggered: '已触发' }
+/** 状态机文案/tone 出自 alert 册（§7.1，一字锁定）：active 布防中 / triggered 已触发 / released 已解除；
+ *  册外值返回 null，由调用处原样回显（不自封文案、不用 0/空串冒充）。 */
+function statusEntry(status: string | null | undefined) {
+  if (status === 'active') return statusOf('alert.armed')
+  if (status === 'triggered') return statusOf('alert.triggered')
+  if (status === 'released') return statusOf('alert.released')
+  return null
+}
 
 /** 三分态诚呈（同仓 TradeView/audit-trail 约定）：首载中 / 读取失败 / 真空表分说，不把失败误示为「暂无」。 */
 const emptyText = computed(() => {
@@ -219,7 +226,9 @@ onBeforeUnmount(() => {
           {{ CONDITION_TEXT[row.condition] || row.condition || '—' }}
         </template>
         <template #cell-status="{ row }">
-          <NtBadge :tone="STATUS_TONE[row.status] || 'neutral'">{{ STATUS_TEXT[row.status] || row.status || '—' }}</NtBadge>
+          <NtBadge :tone="statusEntry(row.status)?.tone ?? 'neutral'">
+            {{ statusEntry(row.status)?.text ?? (row.status || '—') }}
+          </NtBadge>
         </template>
         <template #cell-armedAt="{ row }">
           {{ row.armedAt ? clock(new Date(row.armedAt)) : '—' }}

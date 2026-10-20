@@ -6,6 +6,7 @@ import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import { clock, messageOf, pctText, pnlClass } from '@/utils/format'
 import { useSymbolStore } from '@/stores/symbol'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
@@ -135,14 +136,9 @@ onBeforeUnmount(() => offPanelParams())
           <p v-if="!words.length" class="nt-empty">热词未返回。</p>
           <ul v-else class="list">
             <li v-for="word in words" :key="word.type + word.target">
-              <button
-                v-if="wordClickable(word)"
-                type="button"
-                class="word-link"
-                @click="loadNews(word.target)"
-              >
-                {{ word.target }}
-              </button>
+              <!-- §10-6：热词为结构化证券目标（type==='stock'）→ SymbolName inline；
+                   保留本页「读该票时间线」联动，打开行情侧栏走组件自身合同；非个股热词纯文本不解析。 -->
+              <SymbolName v-if="wordClickable(word)" :code="word.target" @click="loadNews(word.target)" />
               <span v-else>{{ word.target }}</span>
               <b>{{ word.score ?? word.count }}</b>
             </li>
@@ -158,9 +154,9 @@ onBeforeUnmount(() => offPanelParams())
               <span :class="pnlClass(value)">{{ pctText(value) }}</span>
             </template>
             <template #cell-leader="{ value }">
-              <button v-if="value" type="button" class="word-link" @click="openMarket(String(value))">
-                {{ value }}
-              </button>
+              <!-- §10-6：龙头为结构化证券目标（leaderSymbol）→ SymbolName inline；
+                   保留本页「打开行情」联动，缺代码显「—」。 -->
+              <SymbolName v-if="value" :code="String(value)" @click="openMarket(String(value))" />
               <template v-else>—</template>
             </template>
           </NtTable>
@@ -213,20 +209,5 @@ onBeforeUnmount(() => offPanelParams())
 .kind {
   font-size: 11px;
   color: var(--nt-text-3);
-}
-
-.word-link {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--nt-accent);
-  font: inherit;
-  font-family: var(--nt-font-mono);
-  cursor: pointer;
-  text-align: left;
-}
-
-.word-link:hover {
-  text-decoration: underline;
 }
 </style>
