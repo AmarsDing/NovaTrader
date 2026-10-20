@@ -12,6 +12,7 @@ import (
 	"server/pkg/dbinit"
 	"server/pkg/entclient"
 	"server/pkg/events"
+	"server/pkg/registry"
 	"server/pkg/scheduler"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -19,7 +20,7 @@ import (
 )
 
 var ProviderSet = wire.NewSet(
-	NewEntClient, scheduler.NewEntStore, NewBus, NewRepo, NewSource, NewPublisher,
+	NewEntClient, scheduler.NewEntStore, registry.NewBeater, NewBus, NewRepo, NewSource, NewPublisher,
 	wire.Bind(new(biz.Repo), new(*Repo)),
 	wire.Bind(new(biz.Publisher), new(*Publisher)),
 	wire.Bind(new(backtest.Source), new(*Source)),

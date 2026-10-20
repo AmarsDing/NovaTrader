@@ -16,6 +16,7 @@ import (
 	"server/app/trade/internal/service"
 	"server/conf"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 )
 
 // Injectors from wire.go:
@@ -36,6 +37,7 @@ func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, redis 
 	engine := biz.NewEngine(repo, riskClient, settings, logger)
 	tracker := core.NewChannelTracker()
 	liveChannel := core.NewLiveChannel(trade, logger)
+	beater := registry.NewBeater(client)
 	bus, cleanup3, err := data.NewBus(nats)
 	if err != nil {
 		cleanup2()
@@ -43,7 +45,7 @@ func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, redis 
 		return nil, nil, err
 	}
 	dispatcher := outbox.NewDispatcher(client, bus)
-	runner := core.NewRunner(trade, engine, tracker, liveChannel, bus, dispatcher, logger)
+	runner := core.NewRunner(trade, engine, tracker, liveChannel, beater, bus, dispatcher, logger)
 	tradeService := service.NewTradeService(engine, tracker, liveChannel)
 	admissionService := service.NewAdmissionService(tradeService)
 	navService := service.NewNavService(tradeService)

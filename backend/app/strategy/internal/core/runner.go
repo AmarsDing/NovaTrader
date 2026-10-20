@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"server/conf"
 	"server/pkg/events"
 	"server/pkg/observe"
+	"server/pkg/registry"
 	"server/pkg/scheduler"
 	"server/pkg/tradecal"
 
@@ -27,6 +29,7 @@ const (
 	expireEvery   = 30 * time.Second
 	schedEvery    = 30 * time.Second
 	alertDebounce = 2 * time.Second
+	beatEvery     = 15 * time.Second
 	jobPremarket  = "m06-premarket-scan"
 	jobOutcomes   = "m06-outcomes"
 )
@@ -43,13 +46,16 @@ func NewBus(c *conf.Nats, logger log.Logger) (*events.Bus, func()) {
 
 // Runner 实现 kratos 的 transport.Server，随服务启停。
 type Runner struct {
-	uc    *biz.Usecase
-	d     *data.Data
-	bus   *events.Bus
-	cal   *tradecal.Calendar
-	sched *scheduler.Scheduler
-	log   *log.Helper
-	now   func() time.Time
+	uc     *biz.Usecase
+	d      *data.Data
+	beater *registry.Beater
+	bus    *events.Bus
+	cal    *tradecal.Calendar
+	sched  *scheduler.Scheduler
+	log    *log.Helper
+	now    func() time.Time
+	addr   string
+	id     string
 
 	mu              sync.Mutex
 	alerted         map[string]struct{}
@@ -66,11 +72,16 @@ type Runner struct {
 	seen   *events.Seen
 }
 
-func NewRunner(uc *biz.Usecase, d *data.Data, bus *events.Bus, logger log.Logger) *Runner {
+func NewRunner(uc *biz.Usecase, d *data.Data, beat *registry.Beater, bus *events.Bus, cfg *conf.Strategy, logger log.Logger) *Runner {
+	id, _ := os.Hostname()
+	addr := ":2061" // configs/config.yaml strategy.http.addr
+	if h := cfg.GetHttp(); h != nil && h.GetAddr() != "" {
+		addr = h.GetAddr()
+	}
 	r := &Runner{
-		uc: uc, d: d, bus: bus, cal: tradecal.Default,
+		uc: uc, d: d, beater: beat, bus: bus, cal: tradecal.Default,
 		log: log.NewHelper(log.With(logger, "module", "strategy/core")),
-		now: time.Now, alerted: map[string]struct{}{}, seen: events.NewSeen(10000),
+		now: time.Now, addr: addr, id: id, alerted: map[string]struct{}{}, seen: events.NewSeen(10000),
 	}
 	r.sched = scheduler.New(r.cal, d.TaskStore(),
 		scheduler.Job{
@@ -103,10 +114,11 @@ func (r *Runner) Start(ctx context.Context) error {
 	}
 	loopCtx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	r.wg.Add(3)
+	r.wg.Add(4)
 	go r.loop(loopCtx, r.housekeep)
 	go r.loop(loopCtx, r.step)
 	go r.executionLoop(loopCtx)
+	go r.beatLoop(loopCtx)
 	return nil
 }
 
@@ -137,6 +149,30 @@ func (r *Runner) loop(ctx context.Context, fn func(context.Context, time.Time)) 
 			return
 		case <-t.C:
 			fn(ctx, r.now())
+		}
+	}
+}
+
+func (r *Runner) beat(ctx context.Context) {
+	if err := r.beater.Beat(ctx, "strategy", r.id, r.addr); err != nil && ctx.Err() == nil {
+		r.log.Errorf("heartbeat: %v", err)
+	}
+}
+
+func (r *Runner) beatLoop(ctx context.Context) {
+	defer r.wg.Done()
+	if r.beater == nil {
+		return // 测试装配允许 nil beater
+	}
+	t := time.NewTicker(beatEvery)
+	defer t.Stop()
+	r.beat(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.beat(ctx)
 		}
 	}
 }

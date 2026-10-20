@@ -15,6 +15,7 @@ import (
 	"server/app/backtest/internal/server"
 	"server/app/backtest/internal/service"
 	"server/conf"
+	"server/pkg/registry"
 	"server/pkg/scheduler"
 )
 
@@ -32,7 +33,8 @@ func wireApp(backtest *conf.Backtest, postgres *conf.Postgres, nats *conf.Nats, 
 	settings := biz.NewSettings(backtest)
 	usecase := biz.NewUsecase(repo, source, publisher, settings, logger)
 	store := scheduler.NewEntStore(client)
-	runner := core.NewRunner(usecase, store, logger)
+	beater := registry.NewBeater(client)
+	runner := core.NewRunner(usecase, store, beater, backtest, logger)
 	researchRepo := data.NewResearchRepo(client, bus)
 	researchSettings := biz.NewResearchSettings()
 	researchExecutor := data.NewResearchExecutor(researchSettings)

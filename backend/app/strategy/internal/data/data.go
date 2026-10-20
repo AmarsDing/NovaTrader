@@ -10,6 +10,7 @@ import (
 	"server/pkg/dbinit"
 	"server/pkg/entclient"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 	"server/pkg/scheduler"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -18,13 +19,21 @@ import (
 )
 
 var ProviderSet = wire.NewSet(
-	NewData, NewParamRepo, NewSignalRepo, NewCandidateRepo, NewBlacklistRepo, NewPositionRepo,
-	NewMarketSource, NewAnalyzer, NewFeedbackRepo,
+	NewData, NewEntClient, NewParamRepo, NewSignalRepo, NewCandidateRepo, NewBlacklistRepo, NewPositionRepo,
+	NewMarketSource, NewAnalyzer, NewFeedbackRepo, registry.NewBeater,
 )
 
 type Data struct {
 	client *ent.Client
 	Redis  *redis.Client
+}
+
+// NewEntClient 把 ent 客户端交给横切组件（registry 心跳）；业务读仍走各仓储。
+func NewEntClient(d *Data) *ent.Client {
+	if d == nil {
+		return nil
+	}
+	return d.client
 }
 
 // TaskStore 把 task_run 交给调度器，core 不直接拿 ent 客户端。

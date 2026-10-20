@@ -58,7 +58,7 @@ func TestJetStreamExecutionProjectionFailureRedeliversOriginalIdentity(t *testin
 	t.Cleanup(bus.Close)
 	repo := &redeliveryProjectionRepo{wanted: "execution-" + uuid.NewString(), trace: "original-" + uuid.NewString(), failed: make(chan struct{}), succeeded: make(chan struct{})}
 	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
-	r := NewRunner(uc, &data.Data{}, bus, log.DefaultLogger)
+	r := NewRunner(uc, &data.Data{}, nil, bus, nil, log.DefaultLogger)
 	if err = r.subscribeExecutions(); err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@ import (
 	"server/app/strategy/internal/server"
 	"server/app/strategy/internal/service"
 	"server/conf"
+	"server/pkg/registry"
 )
 
 // Injectors from wire.go:
@@ -41,8 +42,10 @@ func wireApp(strategy *conf.Strategy, postgres *conf.Postgres, redis *conf.Redis
 	strategyService := service.NewStrategyService(usecase)
 	httpServer := server.NewHTTPServer(strategy, strategyService, logger)
 	grpcServer := server.NewGRPCServer(strategy, strategyService, logger)
+	client := data.NewEntClient(dataData)
+	beater := registry.NewBeater(client)
 	bus, cleanup3 := core.NewBus(nats, logger)
-	runner := core.NewRunner(usecase, dataData, bus, logger)
+	runner := core.NewRunner(usecase, dataData, beater, bus, strategy, logger)
 	app := newApp(logger, httpServer, grpcServer, runner)
 	return app, func() {
 		cleanup3()

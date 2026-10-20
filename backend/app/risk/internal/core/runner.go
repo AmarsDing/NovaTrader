@@ -4,15 +4,18 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"server/app/risk/internal/biz"
 	"server/app/risk/internal/data"
+	"server/conf"
 	"server/pkg/events"
 	"server/pkg/observe"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -26,6 +29,7 @@ const (
 	tickEvery     = time.Second
 	pollEvery     = 3 * time.Second
 	dispatchEvery = 500 * time.Millisecond
+	beatEvery     = 15 * time.Second
 
 	consumerKill  = "risk-killswitch"
 	consumerIntel = "risk-intel-alert"
@@ -35,11 +39,14 @@ const (
 type Runner struct {
 	e      *biz.Engine
 	alerts *biz.AlertCenter
+	beater *registry.Beater
 	bus    *events.Bus
 	box    *outbox.Dispatcher
 	audit  *data.Auditor
 	log    *log.Helper
 	seen   *events.Seen
+	addr   string
+	id     string
 
 	lastSnap atomic.Int64
 
@@ -50,9 +57,15 @@ type Runner struct {
 	accountSub  *nats.Subscription
 }
 
-func NewRunner(e *biz.Engine, alerts *biz.AlertCenter, bus *events.Bus, box *outbox.Dispatcher, audit *data.Auditor, logger log.Logger) *Runner {
+func NewRunner(e *biz.Engine, alerts *biz.AlertCenter, beat *registry.Beater, bus *events.Bus, box *outbox.Dispatcher, audit *data.Auditor, cfg *conf.Risk, logger log.Logger) *Runner {
+	id, _ := os.Hostname()
+	addr := ":2081"
+	if h := cfg.GetHttp(); h != nil && h.GetAddr() != "" {
+		addr = h.GetAddr()
+	}
 	return &Runner{
-		e: e, alerts: alerts, bus: bus, box: box, audit: audit,
+		e: e, alerts: alerts, beater: beat, bus: bus, box: box, audit: audit,
+		addr: addr, id: id,
 		log:  log.NewHelper(log.With(logger, "module", "risk/core")),
 		seen: events.NewSeen(4096),
 	}
@@ -135,6 +148,8 @@ func (r *Runner) Start(ctx context.Context) error {
 	r.loop(runCtx, tickEvery, r.e.Tick)
 	r.loop(runCtx, pollEvery, r.poll)
 	r.loop(runCtx, dispatchEvery, r.dispatch)
+	r.wg.Add(1)
+	go r.beatLoop(runCtx)
 	r.log.Infof("risk core started")
 	return nil
 }
@@ -259,6 +274,30 @@ func (r *Runner) dispatch(ctx context.Context) {
 	observe.FinishError(finish, err)
 	if err != nil && ctx.Err() == nil {
 		r.log.Warnf("outbox dispatch: %v", err)
+	}
+}
+
+func (r *Runner) beat(ctx context.Context) {
+	if err := r.beater.Beat(ctx, "risk", r.id, r.addr); err != nil && ctx.Err() == nil {
+		r.log.Errorf("heartbeat: %v", err)
+	}
+}
+
+func (r *Runner) beatLoop(ctx context.Context) {
+	defer r.wg.Done()
+	if r.beater == nil {
+		return
+	}
+	t := time.NewTicker(beatEvery)
+	defer t.Stop()
+	r.beat(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.beat(ctx)
+		}
 	}
 }
 

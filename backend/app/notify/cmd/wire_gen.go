@@ -14,6 +14,7 @@ import (
 	"server/app/notify/internal/server"
 	"server/app/notify/internal/service"
 	"server/conf"
+	"server/pkg/registry"
 )
 
 // Injectors from wire.go:
@@ -32,7 +33,8 @@ func wireApp(notify *conf.Notify, postgres *conf.Postgres, nats *conf.Nats, logg
 	desktop := data.NewDesktop(bus)
 	feishu := data.NewFeishu(notify)
 	pipeline := data.NewPipeline(notify, repo, desktop, feishu)
-	runner := core.NewRunner(pipeline, bus, logger)
+	beater := registry.NewBeater(client)
+	runner := core.NewRunner(pipeline, beater, bus, notify, logger)
 	notifyService := service.NewNotifyService(pipeline)
 	httpServer := server.NewHTTPServer(notify, notifyService, logger)
 	grpcServer := server.NewGRPCServer(notify, notifyService, logger)

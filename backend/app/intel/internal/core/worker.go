@@ -5,14 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"server/app/intel/internal/biz"
+	"server/conf"
 	"server/pkg/events"
 	"server/pkg/observe"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -29,22 +32,31 @@ const (
 	retryDelay      = 5 * time.Second
 	dispatchEvery   = 500 * time.Millisecond
 	dictionaryEvery = 10 * time.Minute
+	beatEvery       = 15 * time.Second
 )
 
 // Worker 实现 kratos 的 transport.Server，随应用启动和停止。
 type Worker struct {
-	uc  *biz.Usecase
-	box *outbox.Dispatcher
-	bus *events.Bus
-	log *log.Helper
+	uc     *biz.Usecase
+	box    *outbox.Dispatcher
+	beater *registry.Beater
+	bus    *events.Bus
+	log    *log.Helper
+	addr   string
+	id     string
 
 	msgs   chan *nats.Msg
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewWorker(uc *biz.Usecase, box *outbox.Dispatcher, bus *events.Bus, logger log.Logger) *Worker {
-	return &Worker{uc: uc, box: box, bus: bus, log: log.NewHelper(log.With(logger, "module", "intel/core"))}
+func NewWorker(uc *biz.Usecase, box *outbox.Dispatcher, beat *registry.Beater, bus *events.Bus, cfg *conf.Intel, logger log.Logger) *Worker {
+	id, _ := os.Hostname()
+	addr := ":2031"
+	if h := cfg.GetHttp(); h != nil && h.GetAddr() != "" {
+		addr = h.GetAddr()
+	}
+	return &Worker{uc: uc, box: box, beater: beat, bus: bus, log: log.NewHelper(log.With(logger, "module", "intel/core")), addr: addr, id: id}
 }
 
 func (w *Worker) Start(ctx context.Context) error {
@@ -83,9 +95,10 @@ func (w *Worker) Start(ctx context.Context) error {
 		cancel()
 		return err
 	}
-	w.wg.Add(2)
+	w.wg.Add(3)
 	go w.loop(runCtx, dispatchEvery, w.dispatch)
 	go w.loop(runCtx, dictionaryEvery, w.reloadDictionary)
+	go w.beatLoop(runCtx)
 	w.log.Infof("subscribed %s as %s", events.SubjectIntelRawAll, consumerName)
 	return nil
 }
@@ -189,5 +202,29 @@ func (w *Worker) reloadDictionary(ctx context.Context) {
 	observe.FinishError(finish, err)
 	if err != nil && ctx.Err() == nil {
 		w.log.Warnf("reload dictionary: %v", err)
+	}
+}
+
+func (w *Worker) beat(ctx context.Context) {
+	if err := w.beater.Beat(ctx, "intel", w.id, w.addr); err != nil && ctx.Err() == nil {
+		w.log.Errorf("heartbeat: %v", err)
+	}
+}
+
+func (w *Worker) beatLoop(ctx context.Context) {
+	defer w.wg.Done()
+	if w.beater == nil {
+		return
+	}
+	t := time.NewTicker(beatEvery)
+	defer t.Stop()
+	w.beat(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			w.beat(ctx)
+		}
 	}
 }

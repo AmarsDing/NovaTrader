@@ -11,13 +11,14 @@ import (
 	"server/pkg/entclient"
 	"server/pkg/events"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 	"server/pkg/scheduler"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
 )
 
-var ProviderSet = wire.NewSet(NewEntClient, scheduler.NewEntStore, outbox.NewDispatcher, NewBus, NewRepo, NewModel)
+var ProviderSet = wire.NewSet(NewEntClient, scheduler.NewEntStore, outbox.NewDispatcher, registry.NewBeater, NewBus, NewRepo, NewModel)
 
 func dbConfig(c *conf.Postgres) dbinit.Config {
 	cfg := dbinit.Config{

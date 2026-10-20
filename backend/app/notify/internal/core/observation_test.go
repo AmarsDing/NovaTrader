@@ -47,7 +47,7 @@ func (failedChannel) Send(context.Context, string) error {
 func TestObservationSeparatesPipelineCompletionFromChannelDelivery(t *testing.T) {
 	st := &observationStore{}
 	p := biz.NewPipeline(biz.Config{RetryMax: 1}, st, failedChannel{}, failedChannel{})
-	r := NewRunner(p, nil, log.NewStdLogger(io.Discard))
+	r := NewRunner(p, nil, nil, nil, log.NewStdLogger(io.Discard))
 	reg := observe.ForService("notify")
 	before := reg.Snapshot()
 	env, err := events.New("risk", events.SubjectRiskAlert, "isolated-trace", map[string]string{"kind": "breaker", "message": "isolated fixture"})

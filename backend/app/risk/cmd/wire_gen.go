@@ -16,6 +16,7 @@ import (
 	"server/app/risk/internal/service"
 	"server/conf"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 )
 
 // Injectors from wire.go:
@@ -43,8 +44,9 @@ func wireApp(risk *conf.Risk, postgres *conf.Postgres, nats *conf.Nats, redis *c
 	engine := biz.NewEngine(repo, quotes, auditor, publisher, logger)
 	alertRuleRepo := data.NewAlertRuleRepo(client, logger)
 	alertCenter := biz.NewAlertCenter(alertRuleRepo, quotes, logger)
+	beater := registry.NewBeater(client)
 	dispatcher := outbox.NewDispatcher(client, bus)
-	runner := core.NewRunner(engine, alertCenter, bus, dispatcher, auditor, logger)
+	runner := core.NewRunner(engine, alertCenter, beater, bus, dispatcher, auditor, risk, logger)
 	riskService := service.NewRiskService(engine, alertCenter)
 	httpServer := server.NewHTTPServer(risk, riskService, logger)
 	grpcServer := server.NewGRPCServer(risk, riskService, logger)

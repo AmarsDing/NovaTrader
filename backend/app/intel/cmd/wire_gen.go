@@ -20,6 +20,7 @@ import (
 	"server/app/intel/internal/service/kbsvc"
 	"server/conf"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 	"server/pkg/scheduler"
 )
 
@@ -50,7 +51,8 @@ func wireApp(intel *conf.Intel, confKb *conf.Kb, postgres *conf.Postgres, nats *
 		return nil, nil, err
 	}
 	dispatcher := outbox.NewDispatcher(client, bus)
-	worker := core.NewWorker(usecase, dispatcher, bus, logger)
+	beater := registry.NewBeater(client)
+	worker := core.NewWorker(usecase, dispatcher, beater, bus, intel, logger)
 	store := scheduler.NewEntStore(client)
 	runner := kbjobs.New(knowledgeUsecase, store, bus, confKb, logger)
 	app := newApp(logger, httpServer, grpcServer, worker, runner)

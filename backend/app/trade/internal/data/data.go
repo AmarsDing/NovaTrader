@@ -13,6 +13,7 @@ import (
 	"server/pkg/entclient"
 	"server/pkg/events"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-redis/redis/v8"
@@ -20,7 +21,7 @@ import (
 )
 
 var ProviderSet = wire.NewSet(
-	NewEntClient, outbox.NewDispatcher, NewBus, NewRedis, NewRepoWithMarket, NewSettings, NewRiskClient,
+	NewEntClient, outbox.NewDispatcher, NewBus, NewRedis, NewRepoWithMarket, NewSettings, NewRiskClient, registry.NewBeater,
 	wire.Bind(new(biz.Store), new(*Repo)),
 	wire.Bind(new(biz.Checker), new(*RiskClient)),
 )

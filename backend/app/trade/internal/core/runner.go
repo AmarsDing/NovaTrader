@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"server/pkg/market"
 	"server/pkg/observe"
 	"server/pkg/outbox"
+	"server/pkg/registry"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
@@ -39,6 +41,9 @@ type Runner struct {
 	track      *brokerif.Tracker
 	obs        *brokerif.Observer
 	live       *LiveChannel
+	beater     *registry.Beater
+	addr       string
+	id         string
 	interval   time.Duration
 	log        *log.Helper
 	sub        *nats.Subscription
@@ -53,7 +58,7 @@ type Runner struct {
 	wg         sync.WaitGroup
 }
 
-func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, live *LiveChannel, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
+func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, live *LiveChannel, beat *registry.Beater, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
 	every := 10 * time.Second
 	if c != nil && c.GetSnapshotInterval() != nil && c.GetSnapshotInterval().AsDuration() > 0 {
 		every = c.GetSnapshotInterval().AsDuration()
@@ -61,7 +66,12 @@ func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, live *LiveCha
 	if ch == nil {
 		ch = NewChannelTracker()
 	}
-	r := &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger), watchOwner: "trade." + uuid.NewString()}
+	id, _ := os.Hostname()
+	addr := ":2091"
+	if h := c.GetHttp(); h != nil && h.GetAddr() != "" {
+		addr = h.GetAddr()
+	}
+	r := &Runner{e: e, bus: bus, box: box, interval: every, log: log.NewHelper(logger), watchOwner: "trade." + uuid.NewString(), beater: beat, addr: addr, id: id}
 	if bus != nil {
 		r.publish = bus.Publish
 	}
@@ -171,7 +181,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		r.beginStop()
 		return context.Canceled
 	}
-	for _, run := range []func(context.Context){r.loop, r.evidenceLoop, r.watchLoop, r.liveProbeLoop} {
+	for _, run := range []func(context.Context){r.loop, r.evidenceLoop, r.watchLoop, r.liveProbeLoop, r.beatLoop} {
 		r.wg.Add(1)
 		go func(run func(context.Context)) {
 			defer r.wg.Done()
@@ -219,6 +229,36 @@ func (r *Runner) liveProbeLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			probe()
+		}
+	}
+}
+
+const beatEvery = 15 * time.Second
+
+// beat 是 serviceinstance 心跳记录纪律：失败只在父 ctx 未取消时记日志，Beat 本身
+// 为 nil 接收者返回错误而不 panic，便于测试里按字面量拼 Runner 时省略 beater。
+func (r *Runner) beat(ctx context.Context) {
+	if err := r.beater.Beat(ctx, "trade", r.id, r.addr); err != nil && ctx.Err() == nil {
+		r.log.Errorf("heartbeat: %v", err)
+	}
+}
+
+// beatLoop 与 loop/evidenceLoop/watchLoop/liveProbeLoop 同一派发纪律：Start 内统一
+// wg.Add(1)+go run(ctx)，defer wg.Done 由外层包装负责。beater 为 nil（测试装配）
+// 时直接返回，不占循环。
+func (r *Runner) beatLoop(ctx context.Context) {
+	if r.beater == nil {
+		return
+	}
+	t := time.NewTicker(beatEvery)
+	defer t.Stop()
+	r.beat(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.beat(ctx)
 		}
 	}
 }

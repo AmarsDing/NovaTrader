@@ -3,12 +3,15 @@ package core
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
 	"server/app/notify/internal/biz"
+	"server/conf"
 	"server/pkg/events"
 	"server/pkg/observe"
+	"server/pkg/registry"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -20,19 +23,28 @@ var ProviderSet = wire.NewSet(NewRunner)
 const (
 	flushEvery = 15 * time.Second
 	ackWait    = 60 * time.Second
+	beatEvery  = 15 * time.Second
 )
 
 // Runner 是常驻消费者。JetStream 订阅在停止时不退订，退订会删掉持久消费者。
 type Runner struct {
 	p      *biz.Pipeline
+	beater *registry.Beater
 	bus    *events.Bus
 	log    *log.Helper
+	addr   string
+	id     string
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewRunner(p *biz.Pipeline, bus *events.Bus, logger log.Logger) *Runner {
-	return &Runner{p: p, bus: bus, log: log.NewHelper(log.With(logger, "module", "notify/core"))}
+func NewRunner(p *biz.Pipeline, beat *registry.Beater, bus *events.Bus, cfg *conf.Notify, logger log.Logger) *Runner {
+	id, _ := os.Hostname()
+	addr := ":2101" // 端口默认值，configs/config.yaml notify.http.addr 可覆盖
+	if h := cfg.GetHttp(); h != nil && h.GetAddr() != "" {
+		addr = h.GetAddr()
+	}
+	return &Runner{p: p, beater: beat, bus: bus, log: log.NewHelper(log.With(logger, "module", "notify/core")), addr: addr, id: id}
 }
 
 func (r *Runner) Start(ctx context.Context) error {
@@ -69,7 +81,7 @@ func (r *Runner) Start(ctx context.Context) error {
 			return err
 		}
 	}
-	r.wg.Add(1)
+	r.wg.Add(2)
 	go func() {
 		defer r.wg.Done()
 		t := time.NewTicker(flushEvery)
@@ -85,6 +97,7 @@ func (r *Runner) Start(ctx context.Context) error {
 			}
 		}
 	}()
+	go r.beatLoop(runCtx)
 	r.log.Info("notify core started")
 	return nil
 }
@@ -138,4 +151,28 @@ func (r *Runner) flush(ctx context.Context) error {
 	err := r.p.Flush(ctx)
 	observe.FinishError(finish, err)
 	return err
+}
+
+func (r *Runner) beat(ctx context.Context) {
+	if err := r.beater.Beat(ctx, "notify", r.id, r.addr); err != nil && ctx.Err() == nil {
+		r.log.Errorf("heartbeat: %v", err)
+	}
+}
+
+func (r *Runner) beatLoop(ctx context.Context) {
+	defer r.wg.Done()
+	if r.beater == nil {
+		return // 测试装配允许 nil beater
+	}
+	t := time.NewTicker(beatEvery)
+	defer t.Stop()
+	r.beat(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.beat(ctx)
+		}
+	}
 }

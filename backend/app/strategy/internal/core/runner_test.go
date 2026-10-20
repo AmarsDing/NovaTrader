@@ -14,7 +14,7 @@ import (
 func newTestRunner(t *testing.T) *Runner {
 	t.Helper()
 	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, log.DefaultLogger)
-	return NewRunner(uc, &data.Data{}, nil, log.DefaultLogger)
+	return NewRunner(uc, &data.Data{}, nil, nil, nil, log.DefaultLogger)
 }
 
 func message(t *testing.T, subject string, payload any) []byte {
