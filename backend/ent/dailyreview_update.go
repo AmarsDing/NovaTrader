@@ -43,6 +43,20 @@ func (_u *DailyReviewUpdate) SetNillableDate(v *time.Time) *DailyReviewUpdate {
 	return _u
 }
 
+// SetKind sets the "kind" field.
+func (_u *DailyReviewUpdate) SetKind(v string) *DailyReviewUpdate {
+	_u.mutation.SetKind(v)
+	return _u
+}
+
+// SetNillableKind sets the "kind" field if the given value is not nil.
+func (_u *DailyReviewUpdate) SetNillableKind(v *string) *DailyReviewUpdate {
+	if v != nil {
+		_u.SetKind(*v)
+	}
+	return _u
+}
+
 // SetReviewContent sets the "review_content" field.
 func (_u *DailyReviewUpdate) SetReviewContent(v string) *DailyReviewUpdate {
 	_u.mutation.SetReviewContent(v)
@@ -93,6 +107,26 @@ func (_u *DailyReviewUpdate) ClearLessonsLearned() *DailyReviewUpdate {
 	return _u
 }
 
+// SetModel sets the "model" field.
+func (_u *DailyReviewUpdate) SetModel(v string) *DailyReviewUpdate {
+	_u.mutation.SetModel(v)
+	return _u
+}
+
+// SetNillableModel sets the "model" field if the given value is not nil.
+func (_u *DailyReviewUpdate) SetNillableModel(v *string) *DailyReviewUpdate {
+	if v != nil {
+		_u.SetModel(*v)
+	}
+	return _u
+}
+
+// ClearModel clears the value of the "model" field.
+func (_u *DailyReviewUpdate) ClearModel() *DailyReviewUpdate {
+	_u.mutation.ClearModel()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *DailyReviewUpdate) SetCreatedAt(v time.Time) *DailyReviewUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -139,7 +173,25 @@ func (_u *DailyReviewUpdate) ExecX(ctx context.Context) {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *DailyReviewUpdate) check() error {
+	if v, ok := _u.mutation.Kind(); ok {
+		if err := dailyreview.KindValidator(v); err != nil {
+			return &ValidationError{Name: "kind", err: fmt.Errorf(`ent: validator failed for field "DailyReview.kind": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Model(); ok {
+		if err := dailyreview.ModelValidator(v); err != nil {
+			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "DailyReview.model": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *DailyReviewUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(dailyreview.Table, dailyreview.Columns, sqlgraph.NewFieldSpec(dailyreview.FieldID, field.TypeInt))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -150,6 +202,9 @@ func (_u *DailyReviewUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.Date(); ok {
 		_spec.SetField(dailyreview.FieldDate, field.TypeTime, value)
+	}
+	if value, ok := _u.mutation.Kind(); ok {
+		_spec.SetField(dailyreview.FieldKind, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ReviewContent(); ok {
 		_spec.SetField(dailyreview.FieldReviewContent, field.TypeString, value)
@@ -173,6 +228,12 @@ func (_u *DailyReviewUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.LessonsLearnedCleared() {
 		_spec.ClearField(dailyreview.FieldLessonsLearned, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Model(); ok {
+		_spec.SetField(dailyreview.FieldModel, field.TypeString, value)
+	}
+	if _u.mutation.ModelCleared() {
+		_spec.ClearField(dailyreview.FieldModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(dailyreview.FieldCreatedAt, field.TypeTime, value)
@@ -207,6 +268,20 @@ func (_u *DailyReviewUpdateOne) SetDate(v time.Time) *DailyReviewUpdateOne {
 func (_u *DailyReviewUpdateOne) SetNillableDate(v *time.Time) *DailyReviewUpdateOne {
 	if v != nil {
 		_u.SetDate(*v)
+	}
+	return _u
+}
+
+// SetKind sets the "kind" field.
+func (_u *DailyReviewUpdateOne) SetKind(v string) *DailyReviewUpdateOne {
+	_u.mutation.SetKind(v)
+	return _u
+}
+
+// SetNillableKind sets the "kind" field if the given value is not nil.
+func (_u *DailyReviewUpdateOne) SetNillableKind(v *string) *DailyReviewUpdateOne {
+	if v != nil {
+		_u.SetKind(*v)
 	}
 	return _u
 }
@@ -258,6 +333,26 @@ func (_u *DailyReviewUpdateOne) AppendLessonsLearned(v []string) *DailyReviewUpd
 // ClearLessonsLearned clears the value of the "lessons_learned" field.
 func (_u *DailyReviewUpdateOne) ClearLessonsLearned() *DailyReviewUpdateOne {
 	_u.mutation.ClearLessonsLearned()
+	return _u
+}
+
+// SetModel sets the "model" field.
+func (_u *DailyReviewUpdateOne) SetModel(v string) *DailyReviewUpdateOne {
+	_u.mutation.SetModel(v)
+	return _u
+}
+
+// SetNillableModel sets the "model" field if the given value is not nil.
+func (_u *DailyReviewUpdateOne) SetNillableModel(v *string) *DailyReviewUpdateOne {
+	if v != nil {
+		_u.SetModel(*v)
+	}
+	return _u
+}
+
+// ClearModel clears the value of the "model" field.
+func (_u *DailyReviewUpdateOne) ClearModel() *DailyReviewUpdateOne {
+	_u.mutation.ClearModel()
 	return _u
 }
 
@@ -320,7 +415,25 @@ func (_u *DailyReviewUpdateOne) ExecX(ctx context.Context) {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *DailyReviewUpdateOne) check() error {
+	if v, ok := _u.mutation.Kind(); ok {
+		if err := dailyreview.KindValidator(v); err != nil {
+			return &ValidationError{Name: "kind", err: fmt.Errorf(`ent: validator failed for field "DailyReview.kind": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.Model(); ok {
+		if err := dailyreview.ModelValidator(v); err != nil {
+			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "DailyReview.model": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *DailyReviewUpdateOne) sqlSave(ctx context.Context) (_node *DailyReview, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(dailyreview.Table, dailyreview.Columns, sqlgraph.NewFieldSpec(dailyreview.FieldID, field.TypeInt))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -349,6 +462,9 @@ func (_u *DailyReviewUpdateOne) sqlSave(ctx context.Context) (_node *DailyReview
 	if value, ok := _u.mutation.Date(); ok {
 		_spec.SetField(dailyreview.FieldDate, field.TypeTime, value)
 	}
+	if value, ok := _u.mutation.Kind(); ok {
+		_spec.SetField(dailyreview.FieldKind, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.ReviewContent(); ok {
 		_spec.SetField(dailyreview.FieldReviewContent, field.TypeString, value)
 	}
@@ -371,6 +487,12 @@ func (_u *DailyReviewUpdateOne) sqlSave(ctx context.Context) (_node *DailyReview
 	}
 	if _u.mutation.LessonsLearnedCleared() {
 		_spec.ClearField(dailyreview.FieldLessonsLearned, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.Model(); ok {
+		_spec.SetField(dailyreview.FieldModel, field.TypeString, value)
+	}
+	if _u.mutation.ModelCleared() {
+		_spec.ClearField(dailyreview.FieldModel, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(dailyreview.FieldCreatedAt, field.TypeTime, value)

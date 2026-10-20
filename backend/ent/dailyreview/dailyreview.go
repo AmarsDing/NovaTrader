@@ -15,12 +15,16 @@ const (
 	FieldID = "id"
 	// FieldDate holds the string denoting the date field in the database.
 	FieldDate = "date"
+	// FieldKind holds the string denoting the kind field in the database.
+	FieldKind = "kind"
 	// FieldReviewContent holds the string denoting the review_content field in the database.
 	FieldReviewContent = "review_content"
 	// FieldAccuracyStats holds the string denoting the accuracy_stats field in the database.
 	FieldAccuracyStats = "accuracy_stats"
 	// FieldLessonsLearned holds the string denoting the lessons_learned field in the database.
 	FieldLessonsLearned = "lessons_learned"
+	// FieldModel holds the string denoting the model field in the database.
+	FieldModel = "model"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the dailyreview in the database.
@@ -31,9 +35,11 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldDate,
+	FieldKind,
 	FieldReviewContent,
 	FieldAccuracyStats,
 	FieldLessonsLearned,
+	FieldModel,
 	FieldCreatedAt,
 }
 
@@ -48,6 +54,14 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultKind holds the default value on creation for the "kind" field.
+	DefaultKind string
+	// KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	KindValidator func(string) error
+	// DefaultModel holds the default value on creation for the "model" field.
+	DefaultModel string
+	// ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	ModelValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
@@ -65,9 +79,19 @@ func ByDate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDate, opts...).ToFunc()
 }
 
+// ByKind orders the results by the kind field.
+func ByKind(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldKind, opts...).ToFunc()
+}
+
 // ByReviewContent orders the results by the review_content field.
 func ByReviewContent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldReviewContent, opts...).ToFunc()
+}
+
+// ByModel orders the results by the model field.
+func ByModel(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModel, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

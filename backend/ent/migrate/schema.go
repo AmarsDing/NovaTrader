@@ -75,6 +75,35 @@ var (
 			},
 		},
 	}
+	// AlertRuleColumns holds the columns for the "alert_rule" table.
+	AlertRuleColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "rule_id", Type: field.TypeString, Unique: true, Size: 48},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "condition", Type: field.TypeString, Size: 12},
+		{Name: "target_price", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "note", Type: field.TypeString, Nullable: true, Size: 200, Default: ""},
+		{Name: "status", Type: field.TypeString, Size: 12, Default: "active"},
+		{Name: "last_price", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "armed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "triggered_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "operator", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// AlertRuleTable holds the schema information for the "alert_rule" table.
+	AlertRuleTable = &schema.Table{
+		Name:       "alert_rule",
+		Columns:    AlertRuleColumns,
+		PrimaryKey: []*schema.Column{AlertRuleColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "alertrule_status_symbol",
+				Unique:  false,
+				Columns: []*schema.Column{AlertRuleColumns[6], AlertRuleColumns[2]},
+			},
+		},
+	}
 	// AuditLogColumns holds the columns for the "audit_log" table.
 	AuditLogColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -309,9 +338,11 @@ var (
 	DailyReviewsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "kind", Type: field.TypeString, Size: 16, Default: "program"},
 		{Name: "review_content", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "accuracy_stats", Type: field.TypeJSON, Nullable: true},
 		{Name: "lessons_learned", Type: field.TypeJSON, Nullable: true},
+		{Name: "model", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// DailyReviewsTable holds the schema information for the "daily_reviews" table.
@@ -321,9 +352,9 @@ var (
 		PrimaryKey: []*schema.Column{DailyReviewsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "dailyreview_date",
-				Unique:  false,
-				Columns: []*schema.Column{DailyReviewsColumns[1]},
+				Name:    "dailyreview_date_kind",
+				Unique:  true,
+				Columns: []*schema.Column{DailyReviewsColumns[1], DailyReviewsColumns[2]},
 			},
 		},
 	}
@@ -451,6 +482,78 @@ var (
 				Name:    "decisionplan_signal_id",
 				Unique:  false,
 				Columns: []*schema.Column{DecisionPlansColumns[4]},
+			},
+		},
+	}
+	// EmotionDayFrozenColumns holds the columns for the "emotion_day_frozen" table.
+	EmotionDayFrozenColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "up_count", Type: field.TypeInt, Nullable: true},
+		{Name: "down_count", Type: field.TypeInt, Nullable: true},
+		{Name: "broken_count", Type: field.TypeInt, Nullable: true},
+		{Name: "seal_rate", Type: field.TypeFloat64, Nullable: true},
+		{Name: "max_height", Type: field.TypeInt, Nullable: true},
+		{Name: "promo_12", Type: field.TypeFloat64, Nullable: true},
+		{Name: "promo_23", Type: field.TypeFloat64, Nullable: true},
+		{Name: "promo_high", Type: field.TypeFloat64, Nullable: true},
+		{Name: "tier_avg", Type: field.TypeFloat64, Nullable: true},
+		{Name: "tier_median", Type: field.TypeFloat64, Nullable: true},
+		{Name: "tier_red_rate", Type: field.TypeFloat64, Nullable: true},
+		{Name: "tier_relimit", Type: field.TypeFloat64, Nullable: true},
+		{Name: "ladder", Type: field.TypeJSON, Nullable: true},
+		{Name: "first_board", Type: field.TypeJSON, Nullable: true},
+		{Name: "theme_tree", Type: field.TypeJSON, Nullable: true},
+		{Name: "prev_tier", Type: field.TypeJSON, Nullable: true},
+		{Name: "seal_quality", Type: field.TypeJSON, Nullable: true},
+		{Name: "structure_gaps", Type: field.TypeJSON, Nullable: true},
+		{Name: "partial", Type: field.TypeBool, Default: false},
+		{Name: "missing", Type: field.TypeJSON, Nullable: true},
+		{Name: "source", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "captured_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// EmotionDayFrozenTable holds the schema information for the "emotion_day_frozen" table.
+	EmotionDayFrozenTable = &schema.Table{
+		Name:       "emotion_day_frozen",
+		Columns:    EmotionDayFrozenColumns,
+		PrimaryKey: []*schema.Column{EmotionDayFrozenColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "emotiondayfrozen_trade_date",
+				Unique:  true,
+				Columns: []*schema.Column{EmotionDayFrozenColumns[1]},
+			},
+		},
+	}
+	// EquityUnlockColumns holds the columns for the "equity_unlock" table.
+	EquityUnlockColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "free_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "lift_type", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "shares", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(24,4)"}},
+		{Name: "batch_holder_num", Type: field.TypeInt, Nullable: true},
+		{Name: "ratio_pct", Type: field.TypeFloat64, Nullable: true},
+		{Name: "total_ratio_pct", Type: field.TypeFloat64, Nullable: true},
+		{Name: "market_value", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EquityUnlockTable holds the schema information for the "equity_unlock" table.
+	EquityUnlockTable = &schema.Table{
+		Name:       "equity_unlock",
+		Columns:    EquityUnlockColumns,
+		PrimaryKey: []*schema.Column{EquityUnlockColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "equityunlock_symbol_free_date_lift_type",
+				Unique:  true,
+				Columns: []*schema.Column{EquityUnlockColumns[1], EquityUnlockColumns[2], EquityUnlockColumns[3]},
+			},
+			{
+				Name:    "equityunlock_free_date",
+				Unique:  false,
+				Columns: []*schema.Column{EquityUnlockColumns[2]},
 			},
 		},
 	}
@@ -694,6 +797,35 @@ var (
 				Name:    "intellink_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{IntelLinkColumns[8]},
+			},
+		},
+	}
+	// IntradayAlertsColumns holds the columns for the "intraday_alerts" table.
+	IntradayAlertsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "kind", Type: field.TypeString, Size: 16},
+		{Name: "pct", Type: field.TypeFloat64, Nullable: true},
+		{Name: "price", Type: field.TypeFloat64, Nullable: true},
+		{Name: "name", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "fired_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// IntradayAlertsTable holds the schema information for the "intraday_alerts" table.
+	IntradayAlertsTable = &schema.Table{
+		Name:       "intraday_alerts",
+		Columns:    IntradayAlertsColumns,
+		PrimaryKey: []*schema.Column{IntradayAlertsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "intradayalert_symbol_kind_fired_at",
+				Unique:  true,
+				Columns: []*schema.Column{IntradayAlertsColumns[2], IntradayAlertsColumns[3], IntradayAlertsColumns[7]},
+			},
+			{
+				Name:    "intradayalert_trade_date_fired_at",
+				Unique:  false,
+				Columns: []*schema.Column{IntradayAlertsColumns[1], IntradayAlertsColumns[7]},
 			},
 		},
 	}
@@ -1127,6 +1259,37 @@ var (
 				Name:    "margindetail_trade_date",
 				Unique:  false,
 				Columns: []*schema.Column{MarginDetailColumns[2]},
+			},
+		},
+	}
+	// MarginMarketColumns holds the columns for the "margin_market" table.
+	MarginMarketColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "exchange", Type: field.TypeString, Size: 8},
+		{Name: "rzye", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,2)"}},
+		{Name: "rzmre", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,2)"}},
+		{Name: "rzche", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,2)"}},
+		{Name: "rqye", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,2)"}},
+		{Name: "rqmcl", Type: field.TypeInt64, Nullable: true},
+		{Name: "rzrqye", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,2)"}},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
+	}
+	// MarginMarketTable holds the schema information for the "margin_market" table.
+	MarginMarketTable = &schema.Table{
+		Name:       "margin_market",
+		Columns:    MarginMarketColumns,
+		PrimaryKey: []*schema.Column{MarginMarketColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "marginmarket_trade_date_exchange",
+				Unique:  true,
+				Columns: []*schema.Column{MarginMarketColumns[1], MarginMarketColumns[2]},
+			},
+			{
+				Name:    "marginmarket_trade_date",
+				Unique:  false,
+				Columns: []*schema.Column{MarginMarketColumns[1]},
 			},
 		},
 	}
@@ -1574,6 +1737,42 @@ var (
 			},
 		},
 	}
+	// PredictionCheckColumns holds the columns for the "prediction_check" table.
+	PredictionCheckColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "signal_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "check_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "source", Type: field.TypeString, Size: 16},
+		{Name: "candidates", Type: field.TypeJSON, Nullable: true},
+		{Name: "results", Type: field.TypeJSON, Nullable: true},
+		{Name: "candidate_count", Type: field.TypeInt, Nullable: true},
+		{Name: "hit_count", Type: field.TypeInt, Nullable: true},
+		{Name: "relimit_count", Type: field.TypeInt, Nullable: true},
+		{Name: "hit_rate", Type: field.TypeFloat64, Nullable: true},
+		{Name: "avg_pct", Type: field.TypeFloat64, Nullable: true},
+		{Name: "max_pct", Type: field.TypeFloat64, Nullable: true},
+		{Name: "partial", Type: field.TypeBool, Default: false},
+		{Name: "missing", Type: field.TypeJSON, Nullable: true},
+		{Name: "computed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// PredictionCheckTable holds the schema information for the "prediction_check" table.
+	PredictionCheckTable = &schema.Table{
+		Name:       "prediction_check",
+		Columns:    PredictionCheckColumns,
+		PrimaryKey: []*schema.Column{PredictionCheckColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "predictioncheck_check_date_source",
+				Unique:  true,
+				Columns: []*schema.Column{PredictionCheckColumns[2], PredictionCheckColumns[3]},
+			},
+			{
+				Name:    "predictioncheck_signal_date",
+				Unique:  false,
+				Columns: []*schema.Column{PredictionCheckColumns[1]},
+			},
+		},
+	}
 	// RawResponseColumns holds the columns for the "raw_response" table.
 	RawResponseColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -1599,6 +1798,50 @@ var (
 				Name:    "rawresponse_source_fetched_at",
 				Unique:  false,
 				Columns: []*schema.Column{RawResponseColumns[1], RawResponseColumns[6]},
+			},
+		},
+	}
+	// ReportEstimateColumns holds the columns for the "report_estimate" table.
+	ReportEstimateColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "publish_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "org_code", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "org_sname", Type: field.TypeString, Size: 32},
+		{Name: "info_code", Type: field.TypeString, Size: 32},
+		{Name: "est_year", Type: field.TypeInt},
+		{Name: "eps", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "pe", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "aim_price_low", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "aim_price_high", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
+		{Name: "rating", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "last_rating", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "rating_change", Type: field.TypeInt, Nullable: true},
+		{Name: "report_type", Type: field.TypeInt, Nullable: true},
+		{Name: "researcher", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "industry", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "source", Type: field.TypeString, Size: 16},
+	}
+	// ReportEstimateTable holds the schema information for the "report_estimate" table.
+	ReportEstimateTable = &schema.Table{
+		Name:       "report_estimate",
+		Columns:    ReportEstimateColumns,
+		PrimaryKey: []*schema.Column{ReportEstimateColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "reportestimate_info_code_est_year",
+				Unique:  true,
+				Columns: []*schema.Column{ReportEstimateColumns[5], ReportEstimateColumns[6]},
+			},
+			{
+				Name:    "reportestimate_symbol_publish_date",
+				Unique:  false,
+				Columns: []*schema.Column{ReportEstimateColumns[1], ReportEstimateColumns[2]},
+			},
+			{
+				Name:    "reportestimate_publish_date",
+				Unique:  false,
+				Columns: []*schema.Column{ReportEstimateColumns[2]},
 			},
 		},
 	}
@@ -1711,6 +1954,40 @@ var (
 				Name:    "riskevent_kind_created_at",
 				Unique:  false,
 				Columns: []*schema.Column{RiskEventColumns[1], RiskEventColumns[8]},
+			},
+		},
+	}
+	// SeatStatsColumns holds the columns for the "seat_stats" table.
+	SeatStatsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "seat_name", Type: field.TypeString, Size: 128},
+		{Name: "as_of", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "lookback", Type: field.TypeInt, Default: 60},
+		{Name: "sample", Type: field.TypeInt, Default: 0},
+		{Name: "sample_t5", Type: field.TypeInt, Default: 0},
+		{Name: "win_rate_t1", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "avg_ret_t1", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "med_ret_t1", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "win_rate_t5", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "avg_ret_t5", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "med_ret_t5", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
+	}
+	// SeatStatsTable holds the schema information for the "seat_stats" table.
+	SeatStatsTable = &schema.Table{
+		Name:       "seat_stats",
+		Columns:    SeatStatsColumns,
+		PrimaryKey: []*schema.Column{SeatStatsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "seatstats_seat_name_as_of",
+				Unique:  true,
+				Columns: []*schema.Column{SeatStatsColumns[1], SeatStatsColumns[2]},
+			},
+			{
+				Name:    "seatstats_as_of",
+				Unique:  false,
+				Columns: []*schema.Column{SeatStatsColumns[2]},
 			},
 		},
 	}
@@ -2464,6 +2741,7 @@ var (
 	Tables = []*schema.Table{
 		AccountSnapshotsTable,
 		AgentDecisionsTable,
+		AlertRuleTable,
 		AuditLogTable,
 		BackfillJobTable,
 		BacktestReportTable,
@@ -2477,6 +2755,8 @@ var (
 		DatasetManifestTable,
 		DatasetRecordTable,
 		DecisionPlansTable,
+		EmotionDayFrozenTable,
+		EquityUnlockTable,
 		EventDispositionsTable,
 		ExecutionIntentsTable,
 		FinanceReportTable,
@@ -2485,6 +2765,7 @@ var (
 		IntelClusterTable,
 		IntelFactTable,
 		IntelLinkTable,
+		IntradayAlertsTable,
 		IntrospectionTable,
 		KBCaseTable,
 		KBChunkTable,
@@ -2496,6 +2777,7 @@ var (
 		LlmCallLogTable,
 		MacroSeriesTable,
 		MarginDetailTable,
+		MarginMarketTable,
 		MarketBreadthTable,
 		MarketDataTable,
 		MarketSentimentTable,
@@ -2510,10 +2792,13 @@ var (
 		PaperRunSampleTable,
 		ParamProposalTable,
 		PositionsTable,
+		PredictionCheckTable,
 		RawResponseTable,
+		ReportEstimateTable,
 		ResearchJobTable,
 		RiskCheckTable,
 		RiskEventTable,
+		SeatStatsTable,
 		SeatTagTable,
 		SectorTable,
 		SectorHeatTable,
@@ -2550,6 +2835,9 @@ func init() {
 	AgentDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "agent_decisions",
 	}
+	AlertRuleTable.Annotation = &entsql.Annotation{
+		Table: "alert_rule",
+	}
 	AuditLogTable.Annotation = &entsql.Annotation{
 		Table: "audit_log",
 	}
@@ -2580,6 +2868,12 @@ func init() {
 	DatasetRecordTable.Annotation = &entsql.Annotation{
 		Table: "dataset_record",
 	}
+	EmotionDayFrozenTable.Annotation = &entsql.Annotation{
+		Table: "emotion_day_frozen",
+	}
+	EquityUnlockTable.Annotation = &entsql.Annotation{
+		Table: "equity_unlock",
+	}
 	FinanceReportTable.Annotation = &entsql.Annotation{
 		Table: "finance_report",
 	}
@@ -2597,6 +2891,9 @@ func init() {
 	}
 	IntelLinkTable.Annotation = &entsql.Annotation{
 		Table: "intel_link",
+	}
+	IntradayAlertsTable.Annotation = &entsql.Annotation{
+		Table: "intraday_alerts",
 	}
 	IntrospectionTable.Annotation = &entsql.Annotation{
 		Table: "introspection",
@@ -2632,6 +2929,9 @@ func init() {
 	}
 	MarginDetailTable.Annotation = &entsql.Annotation{
 		Table: "margin_detail",
+	}
+	MarginMarketTable.Annotation = &entsql.Annotation{
+		Table: "margin_market",
 	}
 	MarketBreadthTable.Annotation = &entsql.Annotation{
 		Table: "market_breadth",
@@ -2675,8 +2975,14 @@ func init() {
 	PositionsTable.Annotation = &entsql.Annotation{
 		Table: "positions",
 	}
+	PredictionCheckTable.Annotation = &entsql.Annotation{
+		Table: "prediction_check",
+	}
 	RawResponseTable.Annotation = &entsql.Annotation{
 		Table: "raw_response",
+	}
+	ReportEstimateTable.Annotation = &entsql.Annotation{
+		Table: "report_estimate",
 	}
 	ResearchJobTable.Annotation = &entsql.Annotation{
 		Table: "research_job",
@@ -2686,6 +2992,9 @@ func init() {
 	}
 	RiskEventTable.Annotation = &entsql.Annotation{
 		Table: "risk_event",
+	}
+	SeatStatsTable.Annotation = &entsql.Annotation{
+		Table: "seat_stats",
 	}
 	SeatTagTable.Annotation = &entsql.Annotation{
 		Table: "seat_tag",

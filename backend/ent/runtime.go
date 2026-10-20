@@ -5,6 +5,7 @@ package ent
 import (
 	"server/ent/accountsnapshot"
 	"server/ent/agentdecision"
+	"server/ent/alertrule"
 	"server/ent/auditlog"
 	"server/ent/backfilljob"
 	"server/ent/backtestreport"
@@ -18,6 +19,8 @@ import (
 	"server/ent/datasetmanifest"
 	"server/ent/datasetrecord"
 	"server/ent/decisionplan"
+	"server/ent/emotiondayfrozen"
+	"server/ent/equityunlock"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -26,6 +29,7 @@ import (
 	"server/ent/intelcluster"
 	"server/ent/intelfact"
 	"server/ent/intellink"
+	"server/ent/intradayalert"
 	"server/ent/introspection"
 	"server/ent/kbcase"
 	"server/ent/kbchunk"
@@ -37,6 +41,7 @@ import (
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marginmarket"
 	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
@@ -51,11 +56,14 @@ import (
 	"server/ent/paperrunsample"
 	"server/ent/paramproposal"
 	"server/ent/position"
+	"server/ent/predictioncheck"
 	"server/ent/rawresponse"
+	"server/ent/reportestimate"
 	"server/ent/researchjob"
 	"server/ent/riskcheck"
 	"server/ent/riskevent"
 	"server/ent/schema"
+	"server/ent/seatstats"
 	"server/ent/seattag"
 	"server/ent/sector"
 	"server/ent/sectorheat"
@@ -151,6 +159,104 @@ func init() {
 	agentdecisionDescLatencyMs := agentdecisionFields[11].Descriptor()
 	// agentdecision.DefaultLatencyMs holds the default value on creation for the latency_ms field.
 	agentdecision.DefaultLatencyMs = agentdecisionDescLatencyMs.Default.(int)
+	alertruleFields := schema.AlertRule{}.Fields()
+	_ = alertruleFields
+	// alertruleDescRuleID is the schema descriptor for rule_id field.
+	alertruleDescRuleID := alertruleFields[0].Descriptor()
+	// alertrule.RuleIDValidator is a validator for the "rule_id" field. It is called by the builders before save.
+	alertrule.RuleIDValidator = func() func(string) error {
+		validators := alertruleDescRuleID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(rule_id string) error {
+			for _, fn := range fns {
+				if err := fn(rule_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// alertruleDescSymbol is the schema descriptor for symbol field.
+	alertruleDescSymbol := alertruleFields[1].Descriptor()
+	// alertrule.SymbolValidator is a validator for the "symbol" field. It is called by the builders before save.
+	alertrule.SymbolValidator = func() func(string) error {
+		validators := alertruleDescSymbol.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(symbol string) error {
+			for _, fn := range fns {
+				if err := fn(symbol); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// alertruleDescCondition is the schema descriptor for condition field.
+	alertruleDescCondition := alertruleFields[2].Descriptor()
+	// alertrule.ConditionValidator is a validator for the "condition" field. It is called by the builders before save.
+	alertrule.ConditionValidator = func() func(string) error {
+		validators := alertruleDescCondition.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(condition string) error {
+			for _, fn := range fns {
+				if err := fn(condition); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// alertruleDescNote is the schema descriptor for note field.
+	alertruleDescNote := alertruleFields[4].Descriptor()
+	// alertrule.DefaultNote holds the default value on creation for the note field.
+	alertrule.DefaultNote = alertruleDescNote.Default.(string)
+	// alertrule.NoteValidator is a validator for the "note" field. It is called by the builders before save.
+	alertrule.NoteValidator = alertruleDescNote.Validators[0].(func(string) error)
+	// alertruleDescStatus is the schema descriptor for status field.
+	alertruleDescStatus := alertruleFields[5].Descriptor()
+	// alertrule.DefaultStatus holds the default value on creation for the status field.
+	alertrule.DefaultStatus = alertruleDescStatus.Default.(string)
+	// alertrule.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	alertrule.StatusValidator = func() func(string) error {
+		validators := alertruleDescStatus.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(status string) error {
+			for _, fn := range fns {
+				if err := fn(status); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// alertruleDescOperator is the schema descriptor for operator field.
+	alertruleDescOperator := alertruleFields[9].Descriptor()
+	// alertrule.DefaultOperator holds the default value on creation for the operator field.
+	alertrule.DefaultOperator = alertruleDescOperator.Default.(string)
+	// alertrule.OperatorValidator is a validator for the "operator" field. It is called by the builders before save.
+	alertrule.OperatorValidator = alertruleDescOperator.Validators[0].(func(string) error)
+	// alertruleDescCreatedAt is the schema descriptor for created_at field.
+	alertruleDescCreatedAt := alertruleFields[10].Descriptor()
+	// alertrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	alertrule.DefaultCreatedAt = alertruleDescCreatedAt.Default.(func() time.Time)
+	// alertruleDescUpdatedAt is the schema descriptor for updated_at field.
+	alertruleDescUpdatedAt := alertruleFields[11].Descriptor()
+	// alertrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	alertrule.DefaultUpdatedAt = alertruleDescUpdatedAt.Default.(func() time.Time)
+	// alertrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	alertrule.UpdateDefaultUpdatedAt = alertruleDescUpdatedAt.UpdateDefault.(func() time.Time)
 	auditlogFields := schema.AuditLog{}.Fields()
 	_ = auditlogFields
 	// auditlogDescActor is the schema descriptor for actor field.
@@ -549,8 +655,20 @@ func init() {
 	configreceipt.DefaultObservedAt = configreceiptDescObservedAt.Default.(func() time.Time)
 	dailyreviewFields := schema.DailyReview{}.Fields()
 	_ = dailyreviewFields
+	// dailyreviewDescKind is the schema descriptor for kind field.
+	dailyreviewDescKind := dailyreviewFields[1].Descriptor()
+	// dailyreview.DefaultKind holds the default value on creation for the kind field.
+	dailyreview.DefaultKind = dailyreviewDescKind.Default.(string)
+	// dailyreview.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	dailyreview.KindValidator = dailyreviewDescKind.Validators[0].(func(string) error)
+	// dailyreviewDescModel is the schema descriptor for model field.
+	dailyreviewDescModel := dailyreviewFields[5].Descriptor()
+	// dailyreview.DefaultModel holds the default value on creation for the model field.
+	dailyreview.DefaultModel = dailyreviewDescModel.Default.(string)
+	// dailyreview.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	dailyreview.ModelValidator = dailyreviewDescModel.Validators[0].(func(string) error)
 	// dailyreviewDescCreatedAt is the schema descriptor for created_at field.
-	dailyreviewDescCreatedAt := dailyreviewFields[4].Descriptor()
+	dailyreviewDescCreatedAt := dailyreviewFields[6].Descriptor()
 	// dailyreview.DefaultCreatedAt holds the default value on creation for the created_at field.
 	dailyreview.DefaultCreatedAt = dailyreviewDescCreatedAt.Default.(func() time.Time)
 	dataqualityissueFields := schema.DataQualityIssue{}.Fields()
@@ -861,6 +979,58 @@ func init() {
 	decisionplan.DefaultUpdatedAt = decisionplanDescUpdatedAt.Default.(func() time.Time)
 	// decisionplan.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	decisionplan.UpdateDefaultUpdatedAt = decisionplanDescUpdatedAt.UpdateDefault.(func() time.Time)
+	emotiondayfrozenFields := schema.EmotionDayFrozen{}.Fields()
+	_ = emotiondayfrozenFields
+	// emotiondayfrozenDescPartial is the schema descriptor for partial field.
+	emotiondayfrozenDescPartial := emotiondayfrozenFields[19].Descriptor()
+	// emotiondayfrozen.DefaultPartial holds the default value on creation for the partial field.
+	emotiondayfrozen.DefaultPartial = emotiondayfrozenDescPartial.Default.(bool)
+	// emotiondayfrozenDescSource is the schema descriptor for source field.
+	emotiondayfrozenDescSource := emotiondayfrozenFields[21].Descriptor()
+	// emotiondayfrozen.DefaultSource holds the default value on creation for the source field.
+	emotiondayfrozen.DefaultSource = emotiondayfrozenDescSource.Default.(string)
+	// emotiondayfrozen.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	emotiondayfrozen.SourceValidator = emotiondayfrozenDescSource.Validators[0].(func(string) error)
+	// emotiondayfrozenDescCapturedAt is the schema descriptor for captured_at field.
+	emotiondayfrozenDescCapturedAt := emotiondayfrozenFields[22].Descriptor()
+	// emotiondayfrozen.DefaultCapturedAt holds the default value on creation for the captured_at field.
+	emotiondayfrozen.DefaultCapturedAt = emotiondayfrozenDescCapturedAt.Default.(func() time.Time)
+	equityunlockFields := schema.EquityUnlock{}.Fields()
+	_ = equityunlockFields
+	// equityunlockDescSymbol is the schema descriptor for symbol field.
+	equityunlockDescSymbol := equityunlockFields[0].Descriptor()
+	// equityunlock.SymbolValidator is a validator for the "symbol" field. It is called by the builders before save.
+	equityunlock.SymbolValidator = func() func(string) error {
+		validators := equityunlockDescSymbol.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(symbol string) error {
+			for _, fn := range fns {
+				if err := fn(symbol); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// equityunlockDescLiftType is the schema descriptor for lift_type field.
+	equityunlockDescLiftType := equityunlockFields[2].Descriptor()
+	// equityunlock.DefaultLiftType holds the default value on creation for the lift_type field.
+	equityunlock.DefaultLiftType = equityunlockDescLiftType.Default.(string)
+	// equityunlock.LiftTypeValidator is a validator for the "lift_type" field. It is called by the builders before save.
+	equityunlock.LiftTypeValidator = equityunlockDescLiftType.Validators[0].(func(string) error)
+	// equityunlockDescShares is the schema descriptor for shares field.
+	equityunlockDescShares := equityunlockFields[3].Descriptor()
+	// equityunlock.DefaultShares holds the default value on creation for the shares field.
+	equityunlock.DefaultShares = equityunlockDescShares.Default.(float64)
+	// equityunlockDescSource is the schema descriptor for source field.
+	equityunlockDescSource := equityunlockFields[8].Descriptor()
+	// equityunlock.DefaultSource holds the default value on creation for the source field.
+	equityunlock.DefaultSource = equityunlockDescSource.Default.(string)
+	// equityunlock.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	equityunlock.SourceValidator = equityunlockDescSource.Validators[0].(func(string) error)
 	eventdispositionFields := schema.EventDisposition{}.Fields()
 	_ = eventdispositionFields
 	// eventdispositionDescEventID is the schema descriptor for event_id field.
@@ -1245,6 +1415,50 @@ func init() {
 	intellinkDescCreatedAt := intellinkFields[7].Descriptor()
 	// intellink.DefaultCreatedAt holds the default value on creation for the created_at field.
 	intellink.DefaultCreatedAt = intellinkDescCreatedAt.Default.(func() time.Time)
+	intradayalertFields := schema.IntradayAlert{}.Fields()
+	_ = intradayalertFields
+	// intradayalertDescSymbol is the schema descriptor for symbol field.
+	intradayalertDescSymbol := intradayalertFields[1].Descriptor()
+	// intradayalert.SymbolValidator is a validator for the "symbol" field. It is called by the builders before save.
+	intradayalert.SymbolValidator = func() func(string) error {
+		validators := intradayalertDescSymbol.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(symbol string) error {
+			for _, fn := range fns {
+				if err := fn(symbol); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// intradayalertDescKind is the schema descriptor for kind field.
+	intradayalertDescKind := intradayalertFields[2].Descriptor()
+	// intradayalert.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	intradayalert.KindValidator = func() func(string) error {
+		validators := intradayalertDescKind.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(kind string) error {
+			for _, fn := range fns {
+				if err := fn(kind); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// intradayalertDescName is the schema descriptor for name field.
+	intradayalertDescName := intradayalertFields[5].Descriptor()
+	// intradayalert.DefaultName holds the default value on creation for the name field.
+	intradayalert.DefaultName = intradayalertDescName.Default.(string)
+	// intradayalert.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	intradayalert.NameValidator = intradayalertDescName.Validators[0].(func(string) error)
 	introspectionFields := schema.Introspection{}.Fields()
 	_ = introspectionFields
 	// introspectionDescBook is the schema descriptor for book field.
@@ -1939,6 +2153,32 @@ func init() {
 	margindetail.DefaultSource = margindetailDescSource.Default.(string)
 	// margindetail.SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	margindetail.SourceValidator = margindetailDescSource.Validators[0].(func(string) error)
+	marginmarketFields := schema.MarginMarket{}.Fields()
+	_ = marginmarketFields
+	// marginmarketDescExchange is the schema descriptor for exchange field.
+	marginmarketDescExchange := marginmarketFields[1].Descriptor()
+	// marginmarket.ExchangeValidator is a validator for the "exchange" field. It is called by the builders before save.
+	marginmarket.ExchangeValidator = func() func(string) error {
+		validators := marginmarketDescExchange.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(exchange string) error {
+			for _, fn := range fns {
+				if err := fn(exchange); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// marginmarketDescSource is the schema descriptor for source field.
+	marginmarketDescSource := marginmarketFields[8].Descriptor()
+	// marginmarket.DefaultSource holds the default value on creation for the source field.
+	marginmarket.DefaultSource = marginmarketDescSource.Default.(string)
+	// marginmarket.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	marginmarket.SourceValidator = marginmarketDescSource.Validators[0].(func(string) error)
 	marketbreadthFields := schema.MarketBreadth{}.Fields()
 	_ = marketbreadthFields
 	// marketbreadthDescWindow is the schema descriptor for window field.
@@ -2739,6 +2979,34 @@ func init() {
 	position.DefaultUpdatedAt = positionDescUpdatedAt.Default.(func() time.Time)
 	// position.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	position.UpdateDefaultUpdatedAt = positionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	predictioncheckFields := schema.PredictionCheck{}.Fields()
+	_ = predictioncheckFields
+	// predictioncheckDescSource is the schema descriptor for source field.
+	predictioncheckDescSource := predictioncheckFields[2].Descriptor()
+	// predictioncheck.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	predictioncheck.SourceValidator = func() func(string) error {
+		validators := predictioncheckDescSource.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(source string) error {
+			for _, fn := range fns {
+				if err := fn(source); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// predictioncheckDescPartial is the schema descriptor for partial field.
+	predictioncheckDescPartial := predictioncheckFields[11].Descriptor()
+	// predictioncheck.DefaultPartial holds the default value on creation for the partial field.
+	predictioncheck.DefaultPartial = predictioncheckDescPartial.Default.(bool)
+	// predictioncheckDescComputedAt is the schema descriptor for computed_at field.
+	predictioncheckDescComputedAt := predictioncheckFields[13].Descriptor()
+	// predictioncheck.DefaultComputedAt holds the default value on creation for the computed_at field.
+	predictioncheck.DefaultComputedAt = predictioncheckDescComputedAt.Default.(func() time.Time)
 	rawresponseFields := schema.RawResponse{}.Fields()
 	_ = rawresponseFields
 	// rawresponseDescSource is the schema descriptor for source field.
@@ -2777,6 +3045,100 @@ func init() {
 	rawresponseDescFetchedAt := rawresponseFields[5].Descriptor()
 	// rawresponse.DefaultFetchedAt holds the default value on creation for the fetched_at field.
 	rawresponse.DefaultFetchedAt = rawresponseDescFetchedAt.Default.(func() time.Time)
+	reportestimateFields := schema.ReportEstimate{}.Fields()
+	_ = reportestimateFields
+	// reportestimateDescSymbol is the schema descriptor for symbol field.
+	reportestimateDescSymbol := reportestimateFields[0].Descriptor()
+	// reportestimate.SymbolValidator is a validator for the "symbol" field. It is called by the builders before save.
+	reportestimate.SymbolValidator = func() func(string) error {
+		validators := reportestimateDescSymbol.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(symbol string) error {
+			for _, fn := range fns {
+				if err := fn(symbol); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// reportestimateDescOrgCode is the schema descriptor for org_code field.
+	reportestimateDescOrgCode := reportestimateFields[2].Descriptor()
+	// reportestimate.OrgCodeValidator is a validator for the "org_code" field. It is called by the builders before save.
+	reportestimate.OrgCodeValidator = reportestimateDescOrgCode.Validators[0].(func(string) error)
+	// reportestimateDescOrgSname is the schema descriptor for org_sname field.
+	reportestimateDescOrgSname := reportestimateFields[3].Descriptor()
+	// reportestimate.OrgSnameValidator is a validator for the "org_sname" field. It is called by the builders before save.
+	reportestimate.OrgSnameValidator = func() func(string) error {
+		validators := reportestimateDescOrgSname.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(org_sname string) error {
+			for _, fn := range fns {
+				if err := fn(org_sname); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// reportestimateDescInfoCode is the schema descriptor for info_code field.
+	reportestimateDescInfoCode := reportestimateFields[4].Descriptor()
+	// reportestimate.InfoCodeValidator is a validator for the "info_code" field. It is called by the builders before save.
+	reportestimate.InfoCodeValidator = func() func(string) error {
+		validators := reportestimateDescInfoCode.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(info_code string) error {
+			for _, fn := range fns {
+				if err := fn(info_code); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// reportestimateDescRating is the schema descriptor for rating field.
+	reportestimateDescRating := reportestimateFields[10].Descriptor()
+	// reportestimate.RatingValidator is a validator for the "rating" field. It is called by the builders before save.
+	reportestimate.RatingValidator = reportestimateDescRating.Validators[0].(func(string) error)
+	// reportestimateDescLastRating is the schema descriptor for last_rating field.
+	reportestimateDescLastRating := reportestimateFields[11].Descriptor()
+	// reportestimate.LastRatingValidator is a validator for the "last_rating" field. It is called by the builders before save.
+	reportestimate.LastRatingValidator = reportestimateDescLastRating.Validators[0].(func(string) error)
+	// reportestimateDescResearcher is the schema descriptor for researcher field.
+	reportestimateDescResearcher := reportestimateFields[14].Descriptor()
+	// reportestimate.ResearcherValidator is a validator for the "researcher" field. It is called by the builders before save.
+	reportestimate.ResearcherValidator = reportestimateDescResearcher.Validators[0].(func(string) error)
+	// reportestimateDescIndustry is the schema descriptor for industry field.
+	reportestimateDescIndustry := reportestimateFields[15].Descriptor()
+	// reportestimate.IndustryValidator is a validator for the "industry" field. It is called by the builders before save.
+	reportestimate.IndustryValidator = reportestimateDescIndustry.Validators[0].(func(string) error)
+	// reportestimateDescSource is the schema descriptor for source field.
+	reportestimateDescSource := reportestimateFields[16].Descriptor()
+	// reportestimate.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	reportestimate.SourceValidator = func() func(string) error {
+		validators := reportestimateDescSource.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(source string) error {
+			for _, fn := range fns {
+				if err := fn(source); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	researchjobFields := schema.ResearchJob{}.Fields()
 	_ = researchjobFields
 	// researchjobDescRunID is the schema descriptor for run_id field.
@@ -3041,6 +3403,44 @@ func init() {
 	riskeventDescCreatedAt := riskeventFields[7].Descriptor()
 	// riskevent.DefaultCreatedAt holds the default value on creation for the created_at field.
 	riskevent.DefaultCreatedAt = riskeventDescCreatedAt.Default.(func() time.Time)
+	seatstatsFields := schema.SeatStats{}.Fields()
+	_ = seatstatsFields
+	// seatstatsDescSeatName is the schema descriptor for seat_name field.
+	seatstatsDescSeatName := seatstatsFields[0].Descriptor()
+	// seatstats.SeatNameValidator is a validator for the "seat_name" field. It is called by the builders before save.
+	seatstats.SeatNameValidator = func() func(string) error {
+		validators := seatstatsDescSeatName.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(seat_name string) error {
+			for _, fn := range fns {
+				if err := fn(seat_name); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// seatstatsDescLookback is the schema descriptor for lookback field.
+	seatstatsDescLookback := seatstatsFields[2].Descriptor()
+	// seatstats.DefaultLookback holds the default value on creation for the lookback field.
+	seatstats.DefaultLookback = seatstatsDescLookback.Default.(int)
+	// seatstatsDescSample is the schema descriptor for sample field.
+	seatstatsDescSample := seatstatsFields[3].Descriptor()
+	// seatstats.DefaultSample holds the default value on creation for the sample field.
+	seatstats.DefaultSample = seatstatsDescSample.Default.(int)
+	// seatstatsDescSampleT5 is the schema descriptor for sample_t5 field.
+	seatstatsDescSampleT5 := seatstatsFields[4].Descriptor()
+	// seatstats.DefaultSampleT5 holds the default value on creation for the sample_t5 field.
+	seatstats.DefaultSampleT5 = seatstatsDescSampleT5.Default.(int)
+	// seatstatsDescSource is the schema descriptor for source field.
+	seatstatsDescSource := seatstatsFields[11].Descriptor()
+	// seatstats.DefaultSource holds the default value on creation for the source field.
+	seatstats.DefaultSource = seatstatsDescSource.Default.(string)
+	// seatstats.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	seatstats.SourceValidator = seatstatsDescSource.Validators[0].(func(string) error)
 	seattagFields := schema.SeatTag{}.Fields()
 	_ = seattagFields
 	// seattagDescSeatName is the schema descriptor for seat_name field.

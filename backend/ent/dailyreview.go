@@ -20,12 +20,16 @@ type DailyReview struct {
 	ID int `json:"id,omitempty"`
 	// Date holds the value of the "date" field.
 	Date time.Time `json:"date,omitempty"`
+	// program 程序版（每日定稿自动生成）/ ai 模型版复盘
+	Kind string `json:"kind,omitempty"`
 	// ReviewContent holds the value of the "review_content" field.
 	ReviewContent *string `json:"review_content,omitempty"`
-	// AccuracyStats holds the value of the "accuracy_stats" field.
+	// 八格读数 JSON：涨跌家数、成交额均值比、封板率、最高板、昨涨停表现、晋级、两融、指数位置
 	AccuracyStats map[string]interface{} `json:"accuracy_stats,omitempty"`
 	// LessonsLearned holds the value of the "lessons_learned" field.
 	LessonsLearned []string `json:"lessons_learned,omitempty"`
+	// ai 版时记录模型名；program 版为空
+	Model string `json:"model,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -40,7 +44,7 @@ func (*DailyReview) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case dailyreview.FieldID:
 			values[i] = new(sql.NullInt64)
-		case dailyreview.FieldReviewContent:
+		case dailyreview.FieldKind, dailyreview.FieldReviewContent, dailyreview.FieldModel:
 			values[i] = new(sql.NullString)
 		case dailyreview.FieldDate, dailyreview.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -71,6 +75,12 @@ func (_m *DailyReview) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Date = value.Time
 			}
+		case dailyreview.FieldKind:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field kind", values[i])
+			} else if value.Valid {
+				_m.Kind = value.String
+			}
 		case dailyreview.FieldReviewContent:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field review_content", values[i])
@@ -93,6 +103,12 @@ func (_m *DailyReview) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.LessonsLearned); err != nil {
 					return fmt.Errorf("unmarshal field lessons_learned: %w", err)
 				}
+			}
+		case dailyreview.FieldModel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field model", values[i])
+			} else if value.Valid {
+				_m.Model = value.String
 			}
 		case dailyreview.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -139,6 +155,9 @@ func (_m *DailyReview) String() string {
 	builder.WriteString("date=")
 	builder.WriteString(_m.Date.Format(time.ANSIC))
 	builder.WriteString(", ")
+	builder.WriteString("kind=")
+	builder.WriteString(_m.Kind)
+	builder.WriteString(", ")
 	if v := _m.ReviewContent; v != nil {
 		builder.WriteString("review_content=")
 		builder.WriteString(*v)
@@ -149,6 +168,9 @@ func (_m *DailyReview) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("lessons_learned=")
 	builder.WriteString(fmt.Sprintf("%v", _m.LessonsLearned))
+	builder.WriteString(", ")
+	builder.WriteString("model=")
+	builder.WriteString(_m.Model)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

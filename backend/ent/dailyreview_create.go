@@ -28,6 +28,20 @@ func (_c *DailyReviewCreate) SetDate(v time.Time) *DailyReviewCreate {
 	return _c
 }
 
+// SetKind sets the "kind" field.
+func (_c *DailyReviewCreate) SetKind(v string) *DailyReviewCreate {
+	_c.mutation.SetKind(v)
+	return _c
+}
+
+// SetNillableKind sets the "kind" field if the given value is not nil.
+func (_c *DailyReviewCreate) SetNillableKind(v *string) *DailyReviewCreate {
+	if v != nil {
+		_c.SetKind(*v)
+	}
+	return _c
+}
+
 // SetReviewContent sets the "review_content" field.
 func (_c *DailyReviewCreate) SetReviewContent(v string) *DailyReviewCreate {
 	_c.mutation.SetReviewContent(v)
@@ -51,6 +65,20 @@ func (_c *DailyReviewCreate) SetAccuracyStats(v map[string]interface{}) *DailyRe
 // SetLessonsLearned sets the "lessons_learned" field.
 func (_c *DailyReviewCreate) SetLessonsLearned(v []string) *DailyReviewCreate {
 	_c.mutation.SetLessonsLearned(v)
+	return _c
+}
+
+// SetModel sets the "model" field.
+func (_c *DailyReviewCreate) SetModel(v string) *DailyReviewCreate {
+	_c.mutation.SetModel(v)
+	return _c
+}
+
+// SetNillableModel sets the "model" field if the given value is not nil.
+func (_c *DailyReviewCreate) SetNillableModel(v *string) *DailyReviewCreate {
+	if v != nil {
+		_c.SetModel(*v)
+	}
 	return _c
 }
 
@@ -103,6 +131,14 @@ func (_c *DailyReviewCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *DailyReviewCreate) defaults() {
+	if _, ok := _c.mutation.Kind(); !ok {
+		v := dailyreview.DefaultKind
+		_c.mutation.SetKind(v)
+	}
+	if _, ok := _c.mutation.Model(); !ok {
+		v := dailyreview.DefaultModel
+		_c.mutation.SetModel(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := dailyreview.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -113,6 +149,19 @@ func (_c *DailyReviewCreate) defaults() {
 func (_c *DailyReviewCreate) check() error {
 	if _, ok := _c.mutation.Date(); !ok {
 		return &ValidationError{Name: "date", err: errors.New(`ent: missing required field "DailyReview.date"`)}
+	}
+	if _, ok := _c.mutation.Kind(); !ok {
+		return &ValidationError{Name: "kind", err: errors.New(`ent: missing required field "DailyReview.kind"`)}
+	}
+	if v, ok := _c.mutation.Kind(); ok {
+		if err := dailyreview.KindValidator(v); err != nil {
+			return &ValidationError{Name: "kind", err: fmt.Errorf(`ent: validator failed for field "DailyReview.kind": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.Model(); ok {
+		if err := dailyreview.ModelValidator(v); err != nil {
+			return &ValidationError{Name: "model", err: fmt.Errorf(`ent: validator failed for field "DailyReview.model": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "DailyReview.created_at"`)}
@@ -148,6 +197,10 @@ func (_c *DailyReviewCreate) createSpec() (*DailyReview, *sqlgraph.CreateSpec) {
 		_spec.SetField(dailyreview.FieldDate, field.TypeTime, value)
 		_node.Date = value
 	}
+	if value, ok := _c.mutation.Kind(); ok {
+		_spec.SetField(dailyreview.FieldKind, field.TypeString, value)
+		_node.Kind = value
+	}
 	if value, ok := _c.mutation.ReviewContent(); ok {
 		_spec.SetField(dailyreview.FieldReviewContent, field.TypeString, value)
 		_node.ReviewContent = &value
@@ -159,6 +212,10 @@ func (_c *DailyReviewCreate) createSpec() (*DailyReview, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LessonsLearned(); ok {
 		_spec.SetField(dailyreview.FieldLessonsLearned, field.TypeJSON, value)
 		_node.LessonsLearned = value
+	}
+	if value, ok := _c.mutation.Model(); ok {
+		_spec.SetField(dailyreview.FieldModel, field.TypeString, value)
+		_node.Model = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(dailyreview.FieldCreatedAt, field.TypeTime, value)
@@ -228,6 +285,18 @@ func (u *DailyReviewUpsert) UpdateDate() *DailyReviewUpsert {
 	return u
 }
 
+// SetKind sets the "kind" field.
+func (u *DailyReviewUpsert) SetKind(v string) *DailyReviewUpsert {
+	u.Set(dailyreview.FieldKind, v)
+	return u
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *DailyReviewUpsert) UpdateKind() *DailyReviewUpsert {
+	u.SetExcluded(dailyreview.FieldKind)
+	return u
+}
+
 // SetReviewContent sets the "review_content" field.
 func (u *DailyReviewUpsert) SetReviewContent(v string) *DailyReviewUpsert {
 	u.Set(dailyreview.FieldReviewContent, v)
@@ -279,6 +348,24 @@ func (u *DailyReviewUpsert) UpdateLessonsLearned() *DailyReviewUpsert {
 // ClearLessonsLearned clears the value of the "lessons_learned" field.
 func (u *DailyReviewUpsert) ClearLessonsLearned() *DailyReviewUpsert {
 	u.SetNull(dailyreview.FieldLessonsLearned)
+	return u
+}
+
+// SetModel sets the "model" field.
+func (u *DailyReviewUpsert) SetModel(v string) *DailyReviewUpsert {
+	u.Set(dailyreview.FieldModel, v)
+	return u
+}
+
+// UpdateModel sets the "model" field to the value that was provided on create.
+func (u *DailyReviewUpsert) UpdateModel() *DailyReviewUpsert {
+	u.SetExcluded(dailyreview.FieldModel)
+	return u
+}
+
+// ClearModel clears the value of the "model" field.
+func (u *DailyReviewUpsert) ClearModel() *DailyReviewUpsert {
+	u.SetNull(dailyreview.FieldModel)
 	return u
 }
 
@@ -348,6 +435,20 @@ func (u *DailyReviewUpsertOne) UpdateDate() *DailyReviewUpsertOne {
 	})
 }
 
+// SetKind sets the "kind" field.
+func (u *DailyReviewUpsertOne) SetKind(v string) *DailyReviewUpsertOne {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.SetKind(v)
+	})
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *DailyReviewUpsertOne) UpdateKind() *DailyReviewUpsertOne {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.UpdateKind()
+	})
+}
+
 // SetReviewContent sets the "review_content" field.
 func (u *DailyReviewUpsertOne) SetReviewContent(v string) *DailyReviewUpsertOne {
 	return u.Update(func(s *DailyReviewUpsert) {
@@ -408,6 +509,27 @@ func (u *DailyReviewUpsertOne) UpdateLessonsLearned() *DailyReviewUpsertOne {
 func (u *DailyReviewUpsertOne) ClearLessonsLearned() *DailyReviewUpsertOne {
 	return u.Update(func(s *DailyReviewUpsert) {
 		s.ClearLessonsLearned()
+	})
+}
+
+// SetModel sets the "model" field.
+func (u *DailyReviewUpsertOne) SetModel(v string) *DailyReviewUpsertOne {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.SetModel(v)
+	})
+}
+
+// UpdateModel sets the "model" field to the value that was provided on create.
+func (u *DailyReviewUpsertOne) UpdateModel() *DailyReviewUpsertOne {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.UpdateModel()
+	})
+}
+
+// ClearModel clears the value of the "model" field.
+func (u *DailyReviewUpsertOne) ClearModel() *DailyReviewUpsertOne {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.ClearModel()
 	})
 }
 
@@ -643,6 +765,20 @@ func (u *DailyReviewUpsertBulk) UpdateDate() *DailyReviewUpsertBulk {
 	})
 }
 
+// SetKind sets the "kind" field.
+func (u *DailyReviewUpsertBulk) SetKind(v string) *DailyReviewUpsertBulk {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.SetKind(v)
+	})
+}
+
+// UpdateKind sets the "kind" field to the value that was provided on create.
+func (u *DailyReviewUpsertBulk) UpdateKind() *DailyReviewUpsertBulk {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.UpdateKind()
+	})
+}
+
 // SetReviewContent sets the "review_content" field.
 func (u *DailyReviewUpsertBulk) SetReviewContent(v string) *DailyReviewUpsertBulk {
 	return u.Update(func(s *DailyReviewUpsert) {
@@ -703,6 +839,27 @@ func (u *DailyReviewUpsertBulk) UpdateLessonsLearned() *DailyReviewUpsertBulk {
 func (u *DailyReviewUpsertBulk) ClearLessonsLearned() *DailyReviewUpsertBulk {
 	return u.Update(func(s *DailyReviewUpsert) {
 		s.ClearLessonsLearned()
+	})
+}
+
+// SetModel sets the "model" field.
+func (u *DailyReviewUpsertBulk) SetModel(v string) *DailyReviewUpsertBulk {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.SetModel(v)
+	})
+}
+
+// UpdateModel sets the "model" field to the value that was provided on create.
+func (u *DailyReviewUpsertBulk) UpdateModel() *DailyReviewUpsertBulk {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.UpdateModel()
+	})
+}
+
+// ClearModel clears the value of the "model" field.
+func (u *DailyReviewUpsertBulk) ClearModel() *DailyReviewUpsertBulk {
+	return u.Update(func(s *DailyReviewUpsert) {
+		s.ClearModel()
 	})
 }
 

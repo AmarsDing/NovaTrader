@@ -16,6 +16,8 @@ type Tx struct {
 	AccountSnapshot *AccountSnapshotClient
 	// AgentDecision is the client for interacting with the AgentDecision builders.
 	AgentDecision *AgentDecisionClient
+	// AlertRule is the client for interacting with the AlertRule builders.
+	AlertRule *AlertRuleClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
 	// BackfillJob is the client for interacting with the BackfillJob builders.
@@ -42,6 +44,10 @@ type Tx struct {
 	DatasetRecord *DatasetRecordClient
 	// DecisionPlan is the client for interacting with the DecisionPlan builders.
 	DecisionPlan *DecisionPlanClient
+	// EmotionDayFrozen is the client for interacting with the EmotionDayFrozen builders.
+	EmotionDayFrozen *EmotionDayFrozenClient
+	// EquityUnlock is the client for interacting with the EquityUnlock builders.
+	EquityUnlock *EquityUnlockClient
 	// EventDisposition is the client for interacting with the EventDisposition builders.
 	EventDisposition *EventDispositionClient
 	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
@@ -58,6 +64,8 @@ type Tx struct {
 	IntelFact *IntelFactClient
 	// IntelLink is the client for interacting with the IntelLink builders.
 	IntelLink *IntelLinkClient
+	// IntradayAlert is the client for interacting with the IntradayAlert builders.
+	IntradayAlert *IntradayAlertClient
 	// Introspection is the client for interacting with the Introspection builders.
 	Introspection *IntrospectionClient
 	// KbCase is the client for interacting with the KbCase builders.
@@ -80,6 +88,8 @@ type Tx struct {
 	MacroSeries *MacroSeriesClient
 	// MarginDetail is the client for interacting with the MarginDetail builders.
 	MarginDetail *MarginDetailClient
+	// MarginMarket is the client for interacting with the MarginMarket builders.
+	MarginMarket *MarginMarketClient
 	// MarketBreadth is the client for interacting with the MarketBreadth builders.
 	MarketBreadth *MarketBreadthClient
 	// MarketData is the client for interacting with the MarketData builders.
@@ -108,14 +118,20 @@ type Tx struct {
 	ParamProposal *ParamProposalClient
 	// Position is the client for interacting with the Position builders.
 	Position *PositionClient
+	// PredictionCheck is the client for interacting with the PredictionCheck builders.
+	PredictionCheck *PredictionCheckClient
 	// RawResponse is the client for interacting with the RawResponse builders.
 	RawResponse *RawResponseClient
+	// ReportEstimate is the client for interacting with the ReportEstimate builders.
+	ReportEstimate *ReportEstimateClient
 	// ResearchJob is the client for interacting with the ResearchJob builders.
 	ResearchJob *ResearchJobClient
 	// RiskCheck is the client for interacting with the RiskCheck builders.
 	RiskCheck *RiskCheckClient
 	// RiskEvent is the client for interacting with the RiskEvent builders.
 	RiskEvent *RiskEventClient
+	// SeatStats is the client for interacting with the SeatStats builders.
+	SeatStats *SeatStatsClient
 	// SeatTag is the client for interacting with the SeatTag builders.
 	SeatTag *SeatTagClient
 	// Sector is the client for interacting with the Sector builders.
@@ -301,6 +317,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.AccountSnapshot = NewAccountSnapshotClient(tx.config)
 	tx.AgentDecision = NewAgentDecisionClient(tx.config)
+	tx.AlertRule = NewAlertRuleClient(tx.config)
 	tx.AuditLog = NewAuditLogClient(tx.config)
 	tx.BackfillJob = NewBackfillJobClient(tx.config)
 	tx.BacktestReport = NewBacktestReportClient(tx.config)
@@ -314,6 +331,8 @@ func (tx *Tx) init() {
 	tx.DatasetManifest = NewDatasetManifestClient(tx.config)
 	tx.DatasetRecord = NewDatasetRecordClient(tx.config)
 	tx.DecisionPlan = NewDecisionPlanClient(tx.config)
+	tx.EmotionDayFrozen = NewEmotionDayFrozenClient(tx.config)
+	tx.EquityUnlock = NewEquityUnlockClient(tx.config)
 	tx.EventDisposition = NewEventDispositionClient(tx.config)
 	tx.ExecutionIntent = NewExecutionIntentClient(tx.config)
 	tx.FinanceReport = NewFinanceReportClient(tx.config)
@@ -322,6 +341,7 @@ func (tx *Tx) init() {
 	tx.IntelCluster = NewIntelClusterClient(tx.config)
 	tx.IntelFact = NewIntelFactClient(tx.config)
 	tx.IntelLink = NewIntelLinkClient(tx.config)
+	tx.IntradayAlert = NewIntradayAlertClient(tx.config)
 	tx.Introspection = NewIntrospectionClient(tx.config)
 	tx.KbCase = NewKbCaseClient(tx.config)
 	tx.KbChunk = NewKbChunkClient(tx.config)
@@ -333,6 +353,7 @@ func (tx *Tx) init() {
 	tx.LlmCallLog = NewLlmCallLogClient(tx.config)
 	tx.MacroSeries = NewMacroSeriesClient(tx.config)
 	tx.MarginDetail = NewMarginDetailClient(tx.config)
+	tx.MarginMarket = NewMarginMarketClient(tx.config)
 	tx.MarketBreadth = NewMarketBreadthClient(tx.config)
 	tx.MarketData = NewMarketDataClient(tx.config)
 	tx.MarketSentiment = NewMarketSentimentClient(tx.config)
@@ -347,10 +368,13 @@ func (tx *Tx) init() {
 	tx.PaperRunSample = NewPaperRunSampleClient(tx.config)
 	tx.ParamProposal = NewParamProposalClient(tx.config)
 	tx.Position = NewPositionClient(tx.config)
+	tx.PredictionCheck = NewPredictionCheckClient(tx.config)
 	tx.RawResponse = NewRawResponseClient(tx.config)
+	tx.ReportEstimate = NewReportEstimateClient(tx.config)
 	tx.ResearchJob = NewResearchJobClient(tx.config)
 	tx.RiskCheck = NewRiskCheckClient(tx.config)
 	tx.RiskEvent = NewRiskEventClient(tx.config)
+	tx.SeatStats = NewSeatStatsClient(tx.config)
 	tx.SeatTag = NewSeatTagClient(tx.config)
 	tx.Sector = NewSectorClient(tx.config)
 	tx.SectorHeat = NewSectorHeatClient(tx.config)

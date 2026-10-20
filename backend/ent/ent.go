@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"server/ent/accountsnapshot"
 	"server/ent/agentdecision"
+	"server/ent/alertrule"
 	"server/ent/auditlog"
 	"server/ent/backfilljob"
 	"server/ent/backtestreport"
@@ -22,6 +23,8 @@ import (
 	"server/ent/datasetmanifest"
 	"server/ent/datasetrecord"
 	"server/ent/decisionplan"
+	"server/ent/emotiondayfrozen"
+	"server/ent/equityunlock"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -30,6 +33,7 @@ import (
 	"server/ent/intelcluster"
 	"server/ent/intelfact"
 	"server/ent/intellink"
+	"server/ent/intradayalert"
 	"server/ent/introspection"
 	"server/ent/kbcase"
 	"server/ent/kbchunk"
@@ -41,6 +45,7 @@ import (
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marginmarket"
 	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
@@ -55,10 +60,13 @@ import (
 	"server/ent/paperrunsample"
 	"server/ent/paramproposal"
 	"server/ent/position"
+	"server/ent/predictioncheck"
 	"server/ent/rawresponse"
+	"server/ent/reportestimate"
 	"server/ent/researchjob"
 	"server/ent/riskcheck"
 	"server/ent/riskevent"
+	"server/ent/seatstats"
 	"server/ent/seattag"
 	"server/ent/sector"
 	"server/ent/sectorheat"
@@ -152,6 +160,7 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			accountsnapshot.Table:   accountsnapshot.ValidColumn,
 			agentdecision.Table:     agentdecision.ValidColumn,
+			alertrule.Table:         alertrule.ValidColumn,
 			auditlog.Table:          auditlog.ValidColumn,
 			backfilljob.Table:       backfilljob.ValidColumn,
 			backtestreport.Table:    backtestreport.ValidColumn,
@@ -165,6 +174,8 @@ func checkColumn(t, c string) error {
 			datasetmanifest.Table:   datasetmanifest.ValidColumn,
 			datasetrecord.Table:     datasetrecord.ValidColumn,
 			decisionplan.Table:      decisionplan.ValidColumn,
+			emotiondayfrozen.Table:  emotiondayfrozen.ValidColumn,
+			equityunlock.Table:      equityunlock.ValidColumn,
 			eventdisposition.Table:  eventdisposition.ValidColumn,
 			executionintent.Table:   executionintent.ValidColumn,
 			financereport.Table:     financereport.ValidColumn,
@@ -173,6 +184,7 @@ func checkColumn(t, c string) error {
 			intelcluster.Table:      intelcluster.ValidColumn,
 			intelfact.Table:         intelfact.ValidColumn,
 			intellink.Table:         intellink.ValidColumn,
+			intradayalert.Table:     intradayalert.ValidColumn,
 			introspection.Table:     introspection.ValidColumn,
 			kbcase.Table:            kbcase.ValidColumn,
 			kbchunk.Table:           kbchunk.ValidColumn,
@@ -184,6 +196,7 @@ func checkColumn(t, c string) error {
 			llmcalllog.Table:        llmcalllog.ValidColumn,
 			macroseries.Table:       macroseries.ValidColumn,
 			margindetail.Table:      margindetail.ValidColumn,
+			marginmarket.Table:      marginmarket.ValidColumn,
 			marketbreadth.Table:     marketbreadth.ValidColumn,
 			marketdata.Table:        marketdata.ValidColumn,
 			marketsentiment.Table:   marketsentiment.ValidColumn,
@@ -198,10 +211,13 @@ func checkColumn(t, c string) error {
 			paperrunsample.Table:    paperrunsample.ValidColumn,
 			paramproposal.Table:     paramproposal.ValidColumn,
 			position.Table:          position.ValidColumn,
+			predictioncheck.Table:   predictioncheck.ValidColumn,
 			rawresponse.Table:       rawresponse.ValidColumn,
+			reportestimate.Table:    reportestimate.ValidColumn,
 			researchjob.Table:       researchjob.ValidColumn,
 			riskcheck.Table:         riskcheck.ValidColumn,
 			riskevent.Table:         riskevent.ValidColumn,
+			seatstats.Table:         seatstats.ValidColumn,
 			seattag.Table:           seattag.ValidColumn,
 			sector.Table:            sector.ValidColumn,
 			sectorheat.Table:        sectorheat.ValidColumn,

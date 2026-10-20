@@ -13,6 +13,7 @@ import (
 
 	"server/ent/accountsnapshot"
 	"server/ent/agentdecision"
+	"server/ent/alertrule"
 	"server/ent/auditlog"
 	"server/ent/backfilljob"
 	"server/ent/backtestreport"
@@ -26,6 +27,8 @@ import (
 	"server/ent/datasetmanifest"
 	"server/ent/datasetrecord"
 	"server/ent/decisionplan"
+	"server/ent/emotiondayfrozen"
+	"server/ent/equityunlock"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -34,6 +37,7 @@ import (
 	"server/ent/intelcluster"
 	"server/ent/intelfact"
 	"server/ent/intellink"
+	"server/ent/intradayalert"
 	"server/ent/introspection"
 	"server/ent/kbcase"
 	"server/ent/kbchunk"
@@ -45,6 +49,7 @@ import (
 	"server/ent/llmcalllog"
 	"server/ent/macroseries"
 	"server/ent/margindetail"
+	"server/ent/marginmarket"
 	"server/ent/marketbreadth"
 	"server/ent/marketdata"
 	"server/ent/marketsentiment"
@@ -59,10 +64,13 @@ import (
 	"server/ent/paperrunsample"
 	"server/ent/paramproposal"
 	"server/ent/position"
+	"server/ent/predictioncheck"
 	"server/ent/rawresponse"
+	"server/ent/reportestimate"
 	"server/ent/researchjob"
 	"server/ent/riskcheck"
 	"server/ent/riskevent"
+	"server/ent/seatstats"
 	"server/ent/seattag"
 	"server/ent/sector"
 	"server/ent/sectorheat"
@@ -105,6 +113,8 @@ type Client struct {
 	AccountSnapshot *AccountSnapshotClient
 	// AgentDecision is the client for interacting with the AgentDecision builders.
 	AgentDecision *AgentDecisionClient
+	// AlertRule is the client for interacting with the AlertRule builders.
+	AlertRule *AlertRuleClient
 	// AuditLog is the client for interacting with the AuditLog builders.
 	AuditLog *AuditLogClient
 	// BackfillJob is the client for interacting with the BackfillJob builders.
@@ -131,6 +141,10 @@ type Client struct {
 	DatasetRecord *DatasetRecordClient
 	// DecisionPlan is the client for interacting with the DecisionPlan builders.
 	DecisionPlan *DecisionPlanClient
+	// EmotionDayFrozen is the client for interacting with the EmotionDayFrozen builders.
+	EmotionDayFrozen *EmotionDayFrozenClient
+	// EquityUnlock is the client for interacting with the EquityUnlock builders.
+	EquityUnlock *EquityUnlockClient
 	// EventDisposition is the client for interacting with the EventDisposition builders.
 	EventDisposition *EventDispositionClient
 	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
@@ -147,6 +161,8 @@ type Client struct {
 	IntelFact *IntelFactClient
 	// IntelLink is the client for interacting with the IntelLink builders.
 	IntelLink *IntelLinkClient
+	// IntradayAlert is the client for interacting with the IntradayAlert builders.
+	IntradayAlert *IntradayAlertClient
 	// Introspection is the client for interacting with the Introspection builders.
 	Introspection *IntrospectionClient
 	// KbCase is the client for interacting with the KbCase builders.
@@ -169,6 +185,8 @@ type Client struct {
 	MacroSeries *MacroSeriesClient
 	// MarginDetail is the client for interacting with the MarginDetail builders.
 	MarginDetail *MarginDetailClient
+	// MarginMarket is the client for interacting with the MarginMarket builders.
+	MarginMarket *MarginMarketClient
 	// MarketBreadth is the client for interacting with the MarketBreadth builders.
 	MarketBreadth *MarketBreadthClient
 	// MarketData is the client for interacting with the MarketData builders.
@@ -197,14 +215,20 @@ type Client struct {
 	ParamProposal *ParamProposalClient
 	// Position is the client for interacting with the Position builders.
 	Position *PositionClient
+	// PredictionCheck is the client for interacting with the PredictionCheck builders.
+	PredictionCheck *PredictionCheckClient
 	// RawResponse is the client for interacting with the RawResponse builders.
 	RawResponse *RawResponseClient
+	// ReportEstimate is the client for interacting with the ReportEstimate builders.
+	ReportEstimate *ReportEstimateClient
 	// ResearchJob is the client for interacting with the ResearchJob builders.
 	ResearchJob *ResearchJobClient
 	// RiskCheck is the client for interacting with the RiskCheck builders.
 	RiskCheck *RiskCheckClient
 	// RiskEvent is the client for interacting with the RiskEvent builders.
 	RiskEvent *RiskEventClient
+	// SeatStats is the client for interacting with the SeatStats builders.
+	SeatStats *SeatStatsClient
 	// SeatTag is the client for interacting with the SeatTag builders.
 	SeatTag *SeatTagClient
 	// Sector is the client for interacting with the Sector builders.
@@ -270,6 +294,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.AccountSnapshot = NewAccountSnapshotClient(c.config)
 	c.AgentDecision = NewAgentDecisionClient(c.config)
+	c.AlertRule = NewAlertRuleClient(c.config)
 	c.AuditLog = NewAuditLogClient(c.config)
 	c.BackfillJob = NewBackfillJobClient(c.config)
 	c.BacktestReport = NewBacktestReportClient(c.config)
@@ -283,6 +308,8 @@ func (c *Client) init() {
 	c.DatasetManifest = NewDatasetManifestClient(c.config)
 	c.DatasetRecord = NewDatasetRecordClient(c.config)
 	c.DecisionPlan = NewDecisionPlanClient(c.config)
+	c.EmotionDayFrozen = NewEmotionDayFrozenClient(c.config)
+	c.EquityUnlock = NewEquityUnlockClient(c.config)
 	c.EventDisposition = NewEventDispositionClient(c.config)
 	c.ExecutionIntent = NewExecutionIntentClient(c.config)
 	c.FinanceReport = NewFinanceReportClient(c.config)
@@ -291,6 +318,7 @@ func (c *Client) init() {
 	c.IntelCluster = NewIntelClusterClient(c.config)
 	c.IntelFact = NewIntelFactClient(c.config)
 	c.IntelLink = NewIntelLinkClient(c.config)
+	c.IntradayAlert = NewIntradayAlertClient(c.config)
 	c.Introspection = NewIntrospectionClient(c.config)
 	c.KbCase = NewKbCaseClient(c.config)
 	c.KbChunk = NewKbChunkClient(c.config)
@@ -302,6 +330,7 @@ func (c *Client) init() {
 	c.LlmCallLog = NewLlmCallLogClient(c.config)
 	c.MacroSeries = NewMacroSeriesClient(c.config)
 	c.MarginDetail = NewMarginDetailClient(c.config)
+	c.MarginMarket = NewMarginMarketClient(c.config)
 	c.MarketBreadth = NewMarketBreadthClient(c.config)
 	c.MarketData = NewMarketDataClient(c.config)
 	c.MarketSentiment = NewMarketSentimentClient(c.config)
@@ -316,10 +345,13 @@ func (c *Client) init() {
 	c.PaperRunSample = NewPaperRunSampleClient(c.config)
 	c.ParamProposal = NewParamProposalClient(c.config)
 	c.Position = NewPositionClient(c.config)
+	c.PredictionCheck = NewPredictionCheckClient(c.config)
 	c.RawResponse = NewRawResponseClient(c.config)
+	c.ReportEstimate = NewReportEstimateClient(c.config)
 	c.ResearchJob = NewResearchJobClient(c.config)
 	c.RiskCheck = NewRiskCheckClient(c.config)
 	c.RiskEvent = NewRiskEventClient(c.config)
+	c.SeatStats = NewSeatStatsClient(c.config)
 	c.SeatTag = NewSeatTagClient(c.config)
 	c.Sector = NewSectorClient(c.config)
 	c.SectorHeat = NewSectorHeatClient(c.config)
@@ -440,6 +472,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:            cfg,
 		AccountSnapshot:   NewAccountSnapshotClient(cfg),
 		AgentDecision:     NewAgentDecisionClient(cfg),
+		AlertRule:         NewAlertRuleClient(cfg),
 		AuditLog:          NewAuditLogClient(cfg),
 		BackfillJob:       NewBackfillJobClient(cfg),
 		BacktestReport:    NewBacktestReportClient(cfg),
@@ -453,6 +486,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		DatasetManifest:   NewDatasetManifestClient(cfg),
 		DatasetRecord:     NewDatasetRecordClient(cfg),
 		DecisionPlan:      NewDecisionPlanClient(cfg),
+		EmotionDayFrozen:  NewEmotionDayFrozenClient(cfg),
+		EquityUnlock:      NewEquityUnlockClient(cfg),
 		EventDisposition:  NewEventDispositionClient(cfg),
 		ExecutionIntent:   NewExecutionIntentClient(cfg),
 		FinanceReport:     NewFinanceReportClient(cfg),
@@ -461,6 +496,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		IntelCluster:      NewIntelClusterClient(cfg),
 		IntelFact:         NewIntelFactClient(cfg),
 		IntelLink:         NewIntelLinkClient(cfg),
+		IntradayAlert:     NewIntradayAlertClient(cfg),
 		Introspection:     NewIntrospectionClient(cfg),
 		KbCase:            NewKbCaseClient(cfg),
 		KbChunk:           NewKbChunkClient(cfg),
@@ -472,6 +508,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		LlmCallLog:        NewLlmCallLogClient(cfg),
 		MacroSeries:       NewMacroSeriesClient(cfg),
 		MarginDetail:      NewMarginDetailClient(cfg),
+		MarginMarket:      NewMarginMarketClient(cfg),
 		MarketBreadth:     NewMarketBreadthClient(cfg),
 		MarketData:        NewMarketDataClient(cfg),
 		MarketSentiment:   NewMarketSentimentClient(cfg),
@@ -486,10 +523,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		PaperRunSample:    NewPaperRunSampleClient(cfg),
 		ParamProposal:     NewParamProposalClient(cfg),
 		Position:          NewPositionClient(cfg),
+		PredictionCheck:   NewPredictionCheckClient(cfg),
 		RawResponse:       NewRawResponseClient(cfg),
+		ReportEstimate:    NewReportEstimateClient(cfg),
 		ResearchJob:       NewResearchJobClient(cfg),
 		RiskCheck:         NewRiskCheckClient(cfg),
 		RiskEvent:         NewRiskEventClient(cfg),
+		SeatStats:         NewSeatStatsClient(cfg),
 		SeatTag:           NewSeatTagClient(cfg),
 		Sector:            NewSectorClient(cfg),
 		SectorHeat:        NewSectorHeatClient(cfg),
@@ -537,6 +577,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:            cfg,
 		AccountSnapshot:   NewAccountSnapshotClient(cfg),
 		AgentDecision:     NewAgentDecisionClient(cfg),
+		AlertRule:         NewAlertRuleClient(cfg),
 		AuditLog:          NewAuditLogClient(cfg),
 		BackfillJob:       NewBackfillJobClient(cfg),
 		BacktestReport:    NewBacktestReportClient(cfg),
@@ -550,6 +591,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		DatasetManifest:   NewDatasetManifestClient(cfg),
 		DatasetRecord:     NewDatasetRecordClient(cfg),
 		DecisionPlan:      NewDecisionPlanClient(cfg),
+		EmotionDayFrozen:  NewEmotionDayFrozenClient(cfg),
+		EquityUnlock:      NewEquityUnlockClient(cfg),
 		EventDisposition:  NewEventDispositionClient(cfg),
 		ExecutionIntent:   NewExecutionIntentClient(cfg),
 		FinanceReport:     NewFinanceReportClient(cfg),
@@ -558,6 +601,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		IntelCluster:      NewIntelClusterClient(cfg),
 		IntelFact:         NewIntelFactClient(cfg),
 		IntelLink:         NewIntelLinkClient(cfg),
+		IntradayAlert:     NewIntradayAlertClient(cfg),
 		Introspection:     NewIntrospectionClient(cfg),
 		KbCase:            NewKbCaseClient(cfg),
 		KbChunk:           NewKbChunkClient(cfg),
@@ -569,6 +613,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		LlmCallLog:        NewLlmCallLogClient(cfg),
 		MacroSeries:       NewMacroSeriesClient(cfg),
 		MarginDetail:      NewMarginDetailClient(cfg),
+		MarginMarket:      NewMarginMarketClient(cfg),
 		MarketBreadth:     NewMarketBreadthClient(cfg),
 		MarketData:        NewMarketDataClient(cfg),
 		MarketSentiment:   NewMarketSentimentClient(cfg),
@@ -583,10 +628,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		PaperRunSample:    NewPaperRunSampleClient(cfg),
 		ParamProposal:     NewParamProposalClient(cfg),
 		Position:          NewPositionClient(cfg),
+		PredictionCheck:   NewPredictionCheckClient(cfg),
 		RawResponse:       NewRawResponseClient(cfg),
+		ReportEstimate:    NewReportEstimateClient(cfg),
 		ResearchJob:       NewResearchJobClient(cfg),
 		RiskCheck:         NewRiskCheckClient(cfg),
 		RiskEvent:         NewRiskEventClient(cfg),
+		SeatStats:         NewSeatStatsClient(cfg),
 		SeatTag:           NewSeatTagClient(cfg),
 		Sector:            NewSectorClient(cfg),
 		SectorHeat:        NewSectorHeatClient(cfg),
@@ -642,23 +690,25 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.AccountSnapshot, c.AgentDecision, c.AuditLog, c.BackfillJob, c.BacktestReport,
-		c.BacktestTask, c.BacktestTrade, c.CollectCursor, c.ConfigHead,
-		c.ConfigReceipt, c.DailyReview, c.DataQualityIssue, c.DatasetManifest,
-		c.DatasetRecord, c.DecisionPlan, c.EventDisposition, c.ExecutionIntent,
-		c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact,
-		c.IntelLink, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
+		c.AccountSnapshot, c.AgentDecision, c.AlertRule, c.AuditLog, c.BackfillJob,
+		c.BacktestReport, c.BacktestTask, c.BacktestTrade, c.CollectCursor,
+		c.ConfigHead, c.ConfigReceipt, c.DailyReview, c.DataQualityIssue,
+		c.DatasetManifest, c.DatasetRecord, c.DecisionPlan, c.EmotionDayFrozen,
+		c.EquityUnlock, c.EventDisposition, c.ExecutionIntent, c.FinanceReport,
+		c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact, c.IntelLink,
+		c.IntradayAlert, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
 		c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog, c.MacroSeries,
-		c.MarginDetail, c.MarketBreadth, c.MarketData, c.MarketSentiment, c.MoneyFlow,
-		c.MorningBriefing, c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox,
-		c.OverseasMapping, c.OverseasQuote, c.PaperRunSample, c.ParamProposal,
-		c.Position, c.RawResponse, c.ResearchJob, c.RiskCheck, c.RiskEvent, c.SeatTag,
-		c.Sector, c.SectorHeat, c.SectorMember, c.ServiceInstance, c.ShadowSignal,
-		c.SignalEvent, c.SimBarCursor, c.SourceHealth, c.StockAlias, c.StockBasic,
-		c.StockBlacklist, c.StockFactor, c.StockNameHistory, c.StrategyCandidate,
-		c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion,
-		c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeLedgerLock,
-		c.TradeOrder, c.TradeSignal,
+		c.MarginDetail, c.MarginMarket, c.MarketBreadth, c.MarketData,
+		c.MarketSentiment, c.MoneyFlow, c.MorningBriefing, c.NewsSentiment,
+		c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping, c.OverseasQuote,
+		c.PaperRunSample, c.ParamProposal, c.Position, c.PredictionCheck,
+		c.RawResponse, c.ReportEstimate, c.ResearchJob, c.RiskCheck, c.RiskEvent,
+		c.SeatStats, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
+		c.ServiceInstance, c.ShadowSignal, c.SignalEvent, c.SimBarCursor,
+		c.SourceHealth, c.StockAlias, c.StockBasic, c.StockBlacklist, c.StockFactor,
+		c.StockNameHistory, c.StrategyCandidate, c.StrategyConfig, c.StrategyFeedback,
+		c.StrategyLibrary, c.StrategyVersion, c.TaskRun, c.TradeCalendar, c.TradeCash,
+		c.TradeFill, c.TradeLedgerLock, c.TradeOrder, c.TradeSignal,
 	} {
 		n.Use(hooks...)
 	}
@@ -668,23 +718,25 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.AccountSnapshot, c.AgentDecision, c.AuditLog, c.BackfillJob, c.BacktestReport,
-		c.BacktestTask, c.BacktestTrade, c.CollectCursor, c.ConfigHead,
-		c.ConfigReceipt, c.DailyReview, c.DataQualityIssue, c.DatasetManifest,
-		c.DatasetRecord, c.DecisionPlan, c.EventDisposition, c.ExecutionIntent,
-		c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact,
-		c.IntelLink, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
+		c.AccountSnapshot, c.AgentDecision, c.AlertRule, c.AuditLog, c.BackfillJob,
+		c.BacktestReport, c.BacktestTask, c.BacktestTrade, c.CollectCursor,
+		c.ConfigHead, c.ConfigReceipt, c.DailyReview, c.DataQualityIssue,
+		c.DatasetManifest, c.DatasetRecord, c.DecisionPlan, c.EmotionDayFrozen,
+		c.EquityUnlock, c.EventDisposition, c.ExecutionIntent, c.FinanceReport,
+		c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact, c.IntelLink,
+		c.IntradayAlert, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
 		c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog, c.MacroSeries,
-		c.MarginDetail, c.MarketBreadth, c.MarketData, c.MarketSentiment, c.MoneyFlow,
-		c.MorningBriefing, c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox,
-		c.OverseasMapping, c.OverseasQuote, c.PaperRunSample, c.ParamProposal,
-		c.Position, c.RawResponse, c.ResearchJob, c.RiskCheck, c.RiskEvent, c.SeatTag,
-		c.Sector, c.SectorHeat, c.SectorMember, c.ServiceInstance, c.ShadowSignal,
-		c.SignalEvent, c.SimBarCursor, c.SourceHealth, c.StockAlias, c.StockBasic,
-		c.StockBlacklist, c.StockFactor, c.StockNameHistory, c.StrategyCandidate,
-		c.StrategyConfig, c.StrategyFeedback, c.StrategyLibrary, c.StrategyVersion,
-		c.TaskRun, c.TradeCalendar, c.TradeCash, c.TradeFill, c.TradeLedgerLock,
-		c.TradeOrder, c.TradeSignal,
+		c.MarginDetail, c.MarginMarket, c.MarketBreadth, c.MarketData,
+		c.MarketSentiment, c.MoneyFlow, c.MorningBriefing, c.NewsSentiment,
+		c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping, c.OverseasQuote,
+		c.PaperRunSample, c.ParamProposal, c.Position, c.PredictionCheck,
+		c.RawResponse, c.ReportEstimate, c.ResearchJob, c.RiskCheck, c.RiskEvent,
+		c.SeatStats, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
+		c.ServiceInstance, c.ShadowSignal, c.SignalEvent, c.SimBarCursor,
+		c.SourceHealth, c.StockAlias, c.StockBasic, c.StockBlacklist, c.StockFactor,
+		c.StockNameHistory, c.StrategyCandidate, c.StrategyConfig, c.StrategyFeedback,
+		c.StrategyLibrary, c.StrategyVersion, c.TaskRun, c.TradeCalendar, c.TradeCash,
+		c.TradeFill, c.TradeLedgerLock, c.TradeOrder, c.TradeSignal,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -697,6 +749,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.AccountSnapshot.mutate(ctx, m)
 	case *AgentDecisionMutation:
 		return c.AgentDecision.mutate(ctx, m)
+	case *AlertRuleMutation:
+		return c.AlertRule.mutate(ctx, m)
 	case *AuditLogMutation:
 		return c.AuditLog.mutate(ctx, m)
 	case *BackfillJobMutation:
@@ -723,6 +777,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.DatasetRecord.mutate(ctx, m)
 	case *DecisionPlanMutation:
 		return c.DecisionPlan.mutate(ctx, m)
+	case *EmotionDayFrozenMutation:
+		return c.EmotionDayFrozen.mutate(ctx, m)
+	case *EquityUnlockMutation:
+		return c.EquityUnlock.mutate(ctx, m)
 	case *EventDispositionMutation:
 		return c.EventDisposition.mutate(ctx, m)
 	case *ExecutionIntentMutation:
@@ -739,6 +797,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IntelFact.mutate(ctx, m)
 	case *IntelLinkMutation:
 		return c.IntelLink.mutate(ctx, m)
+	case *IntradayAlertMutation:
+		return c.IntradayAlert.mutate(ctx, m)
 	case *IntrospectionMutation:
 		return c.Introspection.mutate(ctx, m)
 	case *KbCaseMutation:
@@ -761,6 +821,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.MacroSeries.mutate(ctx, m)
 	case *MarginDetailMutation:
 		return c.MarginDetail.mutate(ctx, m)
+	case *MarginMarketMutation:
+		return c.MarginMarket.mutate(ctx, m)
 	case *MarketBreadthMutation:
 		return c.MarketBreadth.mutate(ctx, m)
 	case *MarketDataMutation:
@@ -789,14 +851,20 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ParamProposal.mutate(ctx, m)
 	case *PositionMutation:
 		return c.Position.mutate(ctx, m)
+	case *PredictionCheckMutation:
+		return c.PredictionCheck.mutate(ctx, m)
 	case *RawResponseMutation:
 		return c.RawResponse.mutate(ctx, m)
+	case *ReportEstimateMutation:
+		return c.ReportEstimate.mutate(ctx, m)
 	case *ResearchJobMutation:
 		return c.ResearchJob.mutate(ctx, m)
 	case *RiskCheckMutation:
 		return c.RiskCheck.mutate(ctx, m)
 	case *RiskEventMutation:
 		return c.RiskEvent.mutate(ctx, m)
+	case *SeatStatsMutation:
+		return c.SeatStats.mutate(ctx, m)
 	case *SeatTagMutation:
 		return c.SeatTag.mutate(ctx, m)
 	case *SectorMutation:
@@ -1117,6 +1185,139 @@ func (c *AgentDecisionClient) mutate(ctx context.Context, m *AgentDecisionMutati
 		return (&AgentDecisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown AgentDecision mutation op: %q", m.Op())
+	}
+}
+
+// AlertRuleClient is a client for the AlertRule schema.
+type AlertRuleClient struct {
+	config
+}
+
+// NewAlertRuleClient returns a client for the AlertRule from the given config.
+func NewAlertRuleClient(c config) *AlertRuleClient {
+	return &AlertRuleClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `alertrule.Hooks(f(g(h())))`.
+func (c *AlertRuleClient) Use(hooks ...Hook) {
+	c.hooks.AlertRule = append(c.hooks.AlertRule, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `alertrule.Intercept(f(g(h())))`.
+func (c *AlertRuleClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AlertRule = append(c.inters.AlertRule, interceptors...)
+}
+
+// Create returns a builder for creating a AlertRule entity.
+func (c *AlertRuleClient) Create() *AlertRuleCreate {
+	mutation := newAlertRuleMutation(c.config, OpCreate)
+	return &AlertRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AlertRule entities.
+func (c *AlertRuleClient) CreateBulk(builders ...*AlertRuleCreate) *AlertRuleCreateBulk {
+	return &AlertRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AlertRuleClient) MapCreateBulk(slice any, setFunc func(*AlertRuleCreate, int)) *AlertRuleCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AlertRuleCreateBulk{err: fmt.Errorf("calling to AlertRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AlertRuleCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AlertRuleCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AlertRule.
+func (c *AlertRuleClient) Update() *AlertRuleUpdate {
+	mutation := newAlertRuleMutation(c.config, OpUpdate)
+	return &AlertRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AlertRuleClient) UpdateOne(_m *AlertRule) *AlertRuleUpdateOne {
+	mutation := newAlertRuleMutation(c.config, OpUpdateOne, withAlertRule(_m))
+	return &AlertRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AlertRuleClient) UpdateOneID(id int) *AlertRuleUpdateOne {
+	mutation := newAlertRuleMutation(c.config, OpUpdateOne, withAlertRuleID(id))
+	return &AlertRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AlertRule.
+func (c *AlertRuleClient) Delete() *AlertRuleDelete {
+	mutation := newAlertRuleMutation(c.config, OpDelete)
+	return &AlertRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AlertRuleClient) DeleteOne(_m *AlertRule) *AlertRuleDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AlertRuleClient) DeleteOneID(id int) *AlertRuleDeleteOne {
+	builder := c.Delete().Where(alertrule.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AlertRuleDeleteOne{builder}
+}
+
+// Query returns a query builder for AlertRule.
+func (c *AlertRuleClient) Query() *AlertRuleQuery {
+	return &AlertRuleQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAlertRule},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AlertRule entity by its id.
+func (c *AlertRuleClient) Get(ctx context.Context, id int) (*AlertRule, error) {
+	return c.Query().Where(alertrule.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AlertRuleClient) GetX(ctx context.Context, id int) *AlertRule {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AlertRuleClient) Hooks() []Hook {
+	return c.hooks.AlertRule
+}
+
+// Interceptors returns the client interceptors.
+func (c *AlertRuleClient) Interceptors() []Interceptor {
+	return c.inters.AlertRule
+}
+
+func (c *AlertRuleClient) mutate(ctx context.Context, m *AlertRuleMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AlertRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AlertRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AlertRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AlertRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AlertRule mutation op: %q", m.Op())
 	}
 }
 
@@ -2849,6 +3050,272 @@ func (c *DecisionPlanClient) mutate(ctx context.Context, m *DecisionPlanMutation
 	}
 }
 
+// EmotionDayFrozenClient is a client for the EmotionDayFrozen schema.
+type EmotionDayFrozenClient struct {
+	config
+}
+
+// NewEmotionDayFrozenClient returns a client for the EmotionDayFrozen from the given config.
+func NewEmotionDayFrozenClient(c config) *EmotionDayFrozenClient {
+	return &EmotionDayFrozenClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `emotiondayfrozen.Hooks(f(g(h())))`.
+func (c *EmotionDayFrozenClient) Use(hooks ...Hook) {
+	c.hooks.EmotionDayFrozen = append(c.hooks.EmotionDayFrozen, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `emotiondayfrozen.Intercept(f(g(h())))`.
+func (c *EmotionDayFrozenClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EmotionDayFrozen = append(c.inters.EmotionDayFrozen, interceptors...)
+}
+
+// Create returns a builder for creating a EmotionDayFrozen entity.
+func (c *EmotionDayFrozenClient) Create() *EmotionDayFrozenCreate {
+	mutation := newEmotionDayFrozenMutation(c.config, OpCreate)
+	return &EmotionDayFrozenCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EmotionDayFrozen entities.
+func (c *EmotionDayFrozenClient) CreateBulk(builders ...*EmotionDayFrozenCreate) *EmotionDayFrozenCreateBulk {
+	return &EmotionDayFrozenCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EmotionDayFrozenClient) MapCreateBulk(slice any, setFunc func(*EmotionDayFrozenCreate, int)) *EmotionDayFrozenCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EmotionDayFrozenCreateBulk{err: fmt.Errorf("calling to EmotionDayFrozenClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EmotionDayFrozenCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EmotionDayFrozenCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EmotionDayFrozen.
+func (c *EmotionDayFrozenClient) Update() *EmotionDayFrozenUpdate {
+	mutation := newEmotionDayFrozenMutation(c.config, OpUpdate)
+	return &EmotionDayFrozenUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EmotionDayFrozenClient) UpdateOne(_m *EmotionDayFrozen) *EmotionDayFrozenUpdateOne {
+	mutation := newEmotionDayFrozenMutation(c.config, OpUpdateOne, withEmotionDayFrozen(_m))
+	return &EmotionDayFrozenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EmotionDayFrozenClient) UpdateOneID(id int) *EmotionDayFrozenUpdateOne {
+	mutation := newEmotionDayFrozenMutation(c.config, OpUpdateOne, withEmotionDayFrozenID(id))
+	return &EmotionDayFrozenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EmotionDayFrozen.
+func (c *EmotionDayFrozenClient) Delete() *EmotionDayFrozenDelete {
+	mutation := newEmotionDayFrozenMutation(c.config, OpDelete)
+	return &EmotionDayFrozenDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EmotionDayFrozenClient) DeleteOne(_m *EmotionDayFrozen) *EmotionDayFrozenDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EmotionDayFrozenClient) DeleteOneID(id int) *EmotionDayFrozenDeleteOne {
+	builder := c.Delete().Where(emotiondayfrozen.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EmotionDayFrozenDeleteOne{builder}
+}
+
+// Query returns a query builder for EmotionDayFrozen.
+func (c *EmotionDayFrozenClient) Query() *EmotionDayFrozenQuery {
+	return &EmotionDayFrozenQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEmotionDayFrozen},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EmotionDayFrozen entity by its id.
+func (c *EmotionDayFrozenClient) Get(ctx context.Context, id int) (*EmotionDayFrozen, error) {
+	return c.Query().Where(emotiondayfrozen.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EmotionDayFrozenClient) GetX(ctx context.Context, id int) *EmotionDayFrozen {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EmotionDayFrozenClient) Hooks() []Hook {
+	return c.hooks.EmotionDayFrozen
+}
+
+// Interceptors returns the client interceptors.
+func (c *EmotionDayFrozenClient) Interceptors() []Interceptor {
+	return c.inters.EmotionDayFrozen
+}
+
+func (c *EmotionDayFrozenClient) mutate(ctx context.Context, m *EmotionDayFrozenMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EmotionDayFrozenCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EmotionDayFrozenUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EmotionDayFrozenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EmotionDayFrozenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EmotionDayFrozen mutation op: %q", m.Op())
+	}
+}
+
+// EquityUnlockClient is a client for the EquityUnlock schema.
+type EquityUnlockClient struct {
+	config
+}
+
+// NewEquityUnlockClient returns a client for the EquityUnlock from the given config.
+func NewEquityUnlockClient(c config) *EquityUnlockClient {
+	return &EquityUnlockClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `equityunlock.Hooks(f(g(h())))`.
+func (c *EquityUnlockClient) Use(hooks ...Hook) {
+	c.hooks.EquityUnlock = append(c.hooks.EquityUnlock, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `equityunlock.Intercept(f(g(h())))`.
+func (c *EquityUnlockClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EquityUnlock = append(c.inters.EquityUnlock, interceptors...)
+}
+
+// Create returns a builder for creating a EquityUnlock entity.
+func (c *EquityUnlockClient) Create() *EquityUnlockCreate {
+	mutation := newEquityUnlockMutation(c.config, OpCreate)
+	return &EquityUnlockCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EquityUnlock entities.
+func (c *EquityUnlockClient) CreateBulk(builders ...*EquityUnlockCreate) *EquityUnlockCreateBulk {
+	return &EquityUnlockCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EquityUnlockClient) MapCreateBulk(slice any, setFunc func(*EquityUnlockCreate, int)) *EquityUnlockCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EquityUnlockCreateBulk{err: fmt.Errorf("calling to EquityUnlockClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EquityUnlockCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EquityUnlockCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EquityUnlock.
+func (c *EquityUnlockClient) Update() *EquityUnlockUpdate {
+	mutation := newEquityUnlockMutation(c.config, OpUpdate)
+	return &EquityUnlockUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EquityUnlockClient) UpdateOne(_m *EquityUnlock) *EquityUnlockUpdateOne {
+	mutation := newEquityUnlockMutation(c.config, OpUpdateOne, withEquityUnlock(_m))
+	return &EquityUnlockUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EquityUnlockClient) UpdateOneID(id int) *EquityUnlockUpdateOne {
+	mutation := newEquityUnlockMutation(c.config, OpUpdateOne, withEquityUnlockID(id))
+	return &EquityUnlockUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EquityUnlock.
+func (c *EquityUnlockClient) Delete() *EquityUnlockDelete {
+	mutation := newEquityUnlockMutation(c.config, OpDelete)
+	return &EquityUnlockDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EquityUnlockClient) DeleteOne(_m *EquityUnlock) *EquityUnlockDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EquityUnlockClient) DeleteOneID(id int) *EquityUnlockDeleteOne {
+	builder := c.Delete().Where(equityunlock.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EquityUnlockDeleteOne{builder}
+}
+
+// Query returns a query builder for EquityUnlock.
+func (c *EquityUnlockClient) Query() *EquityUnlockQuery {
+	return &EquityUnlockQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEquityUnlock},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EquityUnlock entity by its id.
+func (c *EquityUnlockClient) Get(ctx context.Context, id int) (*EquityUnlock, error) {
+	return c.Query().Where(equityunlock.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EquityUnlockClient) GetX(ctx context.Context, id int) *EquityUnlock {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EquityUnlockClient) Hooks() []Hook {
+	return c.hooks.EquityUnlock
+}
+
+// Interceptors returns the client interceptors.
+func (c *EquityUnlockClient) Interceptors() []Interceptor {
+	return c.inters.EquityUnlock
+}
+
+func (c *EquityUnlockClient) mutate(ctx context.Context, m *EquityUnlockMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EquityUnlockCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EquityUnlockUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EquityUnlockUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EquityUnlockDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EquityUnlock mutation op: %q", m.Op())
+	}
+}
+
 // EventDispositionClient is a client for the EventDisposition schema.
 type EventDispositionClient struct {
 	config
@@ -3910,6 +4377,139 @@ func (c *IntelLinkClient) mutate(ctx context.Context, m *IntelLinkMutation) (Val
 		return (&IntelLinkDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown IntelLink mutation op: %q", m.Op())
+	}
+}
+
+// IntradayAlertClient is a client for the IntradayAlert schema.
+type IntradayAlertClient struct {
+	config
+}
+
+// NewIntradayAlertClient returns a client for the IntradayAlert from the given config.
+func NewIntradayAlertClient(c config) *IntradayAlertClient {
+	return &IntradayAlertClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `intradayalert.Hooks(f(g(h())))`.
+func (c *IntradayAlertClient) Use(hooks ...Hook) {
+	c.hooks.IntradayAlert = append(c.hooks.IntradayAlert, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `intradayalert.Intercept(f(g(h())))`.
+func (c *IntradayAlertClient) Intercept(interceptors ...Interceptor) {
+	c.inters.IntradayAlert = append(c.inters.IntradayAlert, interceptors...)
+}
+
+// Create returns a builder for creating a IntradayAlert entity.
+func (c *IntradayAlertClient) Create() *IntradayAlertCreate {
+	mutation := newIntradayAlertMutation(c.config, OpCreate)
+	return &IntradayAlertCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of IntradayAlert entities.
+func (c *IntradayAlertClient) CreateBulk(builders ...*IntradayAlertCreate) *IntradayAlertCreateBulk {
+	return &IntradayAlertCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *IntradayAlertClient) MapCreateBulk(slice any, setFunc func(*IntradayAlertCreate, int)) *IntradayAlertCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &IntradayAlertCreateBulk{err: fmt.Errorf("calling to IntradayAlertClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*IntradayAlertCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &IntradayAlertCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for IntradayAlert.
+func (c *IntradayAlertClient) Update() *IntradayAlertUpdate {
+	mutation := newIntradayAlertMutation(c.config, OpUpdate)
+	return &IntradayAlertUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *IntradayAlertClient) UpdateOne(_m *IntradayAlert) *IntradayAlertUpdateOne {
+	mutation := newIntradayAlertMutation(c.config, OpUpdateOne, withIntradayAlert(_m))
+	return &IntradayAlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *IntradayAlertClient) UpdateOneID(id int) *IntradayAlertUpdateOne {
+	mutation := newIntradayAlertMutation(c.config, OpUpdateOne, withIntradayAlertID(id))
+	return &IntradayAlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for IntradayAlert.
+func (c *IntradayAlertClient) Delete() *IntradayAlertDelete {
+	mutation := newIntradayAlertMutation(c.config, OpDelete)
+	return &IntradayAlertDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *IntradayAlertClient) DeleteOne(_m *IntradayAlert) *IntradayAlertDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *IntradayAlertClient) DeleteOneID(id int) *IntradayAlertDeleteOne {
+	builder := c.Delete().Where(intradayalert.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &IntradayAlertDeleteOne{builder}
+}
+
+// Query returns a query builder for IntradayAlert.
+func (c *IntradayAlertClient) Query() *IntradayAlertQuery {
+	return &IntradayAlertQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeIntradayAlert},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a IntradayAlert entity by its id.
+func (c *IntradayAlertClient) Get(ctx context.Context, id int) (*IntradayAlert, error) {
+	return c.Query().Where(intradayalert.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *IntradayAlertClient) GetX(ctx context.Context, id int) *IntradayAlert {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *IntradayAlertClient) Hooks() []Hook {
+	return c.hooks.IntradayAlert
+}
+
+// Interceptors returns the client interceptors.
+func (c *IntradayAlertClient) Interceptors() []Interceptor {
+	return c.inters.IntradayAlert
+}
+
+func (c *IntradayAlertClient) mutate(ctx context.Context, m *IntradayAlertMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&IntradayAlertCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&IntradayAlertUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&IntradayAlertUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&IntradayAlertDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown IntradayAlert mutation op: %q", m.Op())
 	}
 }
 
@@ -5437,6 +6037,139 @@ func (c *MarginDetailClient) mutate(ctx context.Context, m *MarginDetailMutation
 		return (&MarginDetailDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown MarginDetail mutation op: %q", m.Op())
+	}
+}
+
+// MarginMarketClient is a client for the MarginMarket schema.
+type MarginMarketClient struct {
+	config
+}
+
+// NewMarginMarketClient returns a client for the MarginMarket from the given config.
+func NewMarginMarketClient(c config) *MarginMarketClient {
+	return &MarginMarketClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `marginmarket.Hooks(f(g(h())))`.
+func (c *MarginMarketClient) Use(hooks ...Hook) {
+	c.hooks.MarginMarket = append(c.hooks.MarginMarket, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `marginmarket.Intercept(f(g(h())))`.
+func (c *MarginMarketClient) Intercept(interceptors ...Interceptor) {
+	c.inters.MarginMarket = append(c.inters.MarginMarket, interceptors...)
+}
+
+// Create returns a builder for creating a MarginMarket entity.
+func (c *MarginMarketClient) Create() *MarginMarketCreate {
+	mutation := newMarginMarketMutation(c.config, OpCreate)
+	return &MarginMarketCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of MarginMarket entities.
+func (c *MarginMarketClient) CreateBulk(builders ...*MarginMarketCreate) *MarginMarketCreateBulk {
+	return &MarginMarketCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *MarginMarketClient) MapCreateBulk(slice any, setFunc func(*MarginMarketCreate, int)) *MarginMarketCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &MarginMarketCreateBulk{err: fmt.Errorf("calling to MarginMarketClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*MarginMarketCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &MarginMarketCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for MarginMarket.
+func (c *MarginMarketClient) Update() *MarginMarketUpdate {
+	mutation := newMarginMarketMutation(c.config, OpUpdate)
+	return &MarginMarketUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *MarginMarketClient) UpdateOne(_m *MarginMarket) *MarginMarketUpdateOne {
+	mutation := newMarginMarketMutation(c.config, OpUpdateOne, withMarginMarket(_m))
+	return &MarginMarketUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *MarginMarketClient) UpdateOneID(id int) *MarginMarketUpdateOne {
+	mutation := newMarginMarketMutation(c.config, OpUpdateOne, withMarginMarketID(id))
+	return &MarginMarketUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for MarginMarket.
+func (c *MarginMarketClient) Delete() *MarginMarketDelete {
+	mutation := newMarginMarketMutation(c.config, OpDelete)
+	return &MarginMarketDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *MarginMarketClient) DeleteOne(_m *MarginMarket) *MarginMarketDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *MarginMarketClient) DeleteOneID(id int) *MarginMarketDeleteOne {
+	builder := c.Delete().Where(marginmarket.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &MarginMarketDeleteOne{builder}
+}
+
+// Query returns a query builder for MarginMarket.
+func (c *MarginMarketClient) Query() *MarginMarketQuery {
+	return &MarginMarketQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeMarginMarket},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a MarginMarket entity by its id.
+func (c *MarginMarketClient) Get(ctx context.Context, id int) (*MarginMarket, error) {
+	return c.Query().Where(marginmarket.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *MarginMarketClient) GetX(ctx context.Context, id int) *MarginMarket {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *MarginMarketClient) Hooks() []Hook {
+	return c.hooks.MarginMarket
+}
+
+// Interceptors returns the client interceptors.
+func (c *MarginMarketClient) Interceptors() []Interceptor {
+	return c.inters.MarginMarket
+}
+
+func (c *MarginMarketClient) mutate(ctx context.Context, m *MarginMarketMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&MarginMarketCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&MarginMarketUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&MarginMarketUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&MarginMarketDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown MarginMarket mutation op: %q", m.Op())
 	}
 }
 
@@ -7302,6 +8035,139 @@ func (c *PositionClient) mutate(ctx context.Context, m *PositionMutation) (Value
 	}
 }
 
+// PredictionCheckClient is a client for the PredictionCheck schema.
+type PredictionCheckClient struct {
+	config
+}
+
+// NewPredictionCheckClient returns a client for the PredictionCheck from the given config.
+func NewPredictionCheckClient(c config) *PredictionCheckClient {
+	return &PredictionCheckClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `predictioncheck.Hooks(f(g(h())))`.
+func (c *PredictionCheckClient) Use(hooks ...Hook) {
+	c.hooks.PredictionCheck = append(c.hooks.PredictionCheck, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `predictioncheck.Intercept(f(g(h())))`.
+func (c *PredictionCheckClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PredictionCheck = append(c.inters.PredictionCheck, interceptors...)
+}
+
+// Create returns a builder for creating a PredictionCheck entity.
+func (c *PredictionCheckClient) Create() *PredictionCheckCreate {
+	mutation := newPredictionCheckMutation(c.config, OpCreate)
+	return &PredictionCheckCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PredictionCheck entities.
+func (c *PredictionCheckClient) CreateBulk(builders ...*PredictionCheckCreate) *PredictionCheckCreateBulk {
+	return &PredictionCheckCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PredictionCheckClient) MapCreateBulk(slice any, setFunc func(*PredictionCheckCreate, int)) *PredictionCheckCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PredictionCheckCreateBulk{err: fmt.Errorf("calling to PredictionCheckClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PredictionCheckCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PredictionCheckCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PredictionCheck.
+func (c *PredictionCheckClient) Update() *PredictionCheckUpdate {
+	mutation := newPredictionCheckMutation(c.config, OpUpdate)
+	return &PredictionCheckUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PredictionCheckClient) UpdateOne(_m *PredictionCheck) *PredictionCheckUpdateOne {
+	mutation := newPredictionCheckMutation(c.config, OpUpdateOne, withPredictionCheck(_m))
+	return &PredictionCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PredictionCheckClient) UpdateOneID(id int) *PredictionCheckUpdateOne {
+	mutation := newPredictionCheckMutation(c.config, OpUpdateOne, withPredictionCheckID(id))
+	return &PredictionCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PredictionCheck.
+func (c *PredictionCheckClient) Delete() *PredictionCheckDelete {
+	mutation := newPredictionCheckMutation(c.config, OpDelete)
+	return &PredictionCheckDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PredictionCheckClient) DeleteOne(_m *PredictionCheck) *PredictionCheckDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PredictionCheckClient) DeleteOneID(id int) *PredictionCheckDeleteOne {
+	builder := c.Delete().Where(predictioncheck.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PredictionCheckDeleteOne{builder}
+}
+
+// Query returns a query builder for PredictionCheck.
+func (c *PredictionCheckClient) Query() *PredictionCheckQuery {
+	return &PredictionCheckQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePredictionCheck},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PredictionCheck entity by its id.
+func (c *PredictionCheckClient) Get(ctx context.Context, id int) (*PredictionCheck, error) {
+	return c.Query().Where(predictioncheck.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PredictionCheckClient) GetX(ctx context.Context, id int) *PredictionCheck {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PredictionCheckClient) Hooks() []Hook {
+	return c.hooks.PredictionCheck
+}
+
+// Interceptors returns the client interceptors.
+func (c *PredictionCheckClient) Interceptors() []Interceptor {
+	return c.inters.PredictionCheck
+}
+
+func (c *PredictionCheckClient) mutate(ctx context.Context, m *PredictionCheckMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PredictionCheckCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PredictionCheckUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PredictionCheckUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PredictionCheckDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PredictionCheck mutation op: %q", m.Op())
+	}
+}
+
 // RawResponseClient is a client for the RawResponse schema.
 type RawResponseClient struct {
 	config
@@ -7432,6 +8298,139 @@ func (c *RawResponseClient) mutate(ctx context.Context, m *RawResponseMutation) 
 		return (&RawResponseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown RawResponse mutation op: %q", m.Op())
+	}
+}
+
+// ReportEstimateClient is a client for the ReportEstimate schema.
+type ReportEstimateClient struct {
+	config
+}
+
+// NewReportEstimateClient returns a client for the ReportEstimate from the given config.
+func NewReportEstimateClient(c config) *ReportEstimateClient {
+	return &ReportEstimateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `reportestimate.Hooks(f(g(h())))`.
+func (c *ReportEstimateClient) Use(hooks ...Hook) {
+	c.hooks.ReportEstimate = append(c.hooks.ReportEstimate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `reportestimate.Intercept(f(g(h())))`.
+func (c *ReportEstimateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ReportEstimate = append(c.inters.ReportEstimate, interceptors...)
+}
+
+// Create returns a builder for creating a ReportEstimate entity.
+func (c *ReportEstimateClient) Create() *ReportEstimateCreate {
+	mutation := newReportEstimateMutation(c.config, OpCreate)
+	return &ReportEstimateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ReportEstimate entities.
+func (c *ReportEstimateClient) CreateBulk(builders ...*ReportEstimateCreate) *ReportEstimateCreateBulk {
+	return &ReportEstimateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ReportEstimateClient) MapCreateBulk(slice any, setFunc func(*ReportEstimateCreate, int)) *ReportEstimateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ReportEstimateCreateBulk{err: fmt.Errorf("calling to ReportEstimateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ReportEstimateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ReportEstimateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ReportEstimate.
+func (c *ReportEstimateClient) Update() *ReportEstimateUpdate {
+	mutation := newReportEstimateMutation(c.config, OpUpdate)
+	return &ReportEstimateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ReportEstimateClient) UpdateOne(_m *ReportEstimate) *ReportEstimateUpdateOne {
+	mutation := newReportEstimateMutation(c.config, OpUpdateOne, withReportEstimate(_m))
+	return &ReportEstimateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ReportEstimateClient) UpdateOneID(id int) *ReportEstimateUpdateOne {
+	mutation := newReportEstimateMutation(c.config, OpUpdateOne, withReportEstimateID(id))
+	return &ReportEstimateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ReportEstimate.
+func (c *ReportEstimateClient) Delete() *ReportEstimateDelete {
+	mutation := newReportEstimateMutation(c.config, OpDelete)
+	return &ReportEstimateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ReportEstimateClient) DeleteOne(_m *ReportEstimate) *ReportEstimateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ReportEstimateClient) DeleteOneID(id int) *ReportEstimateDeleteOne {
+	builder := c.Delete().Where(reportestimate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ReportEstimateDeleteOne{builder}
+}
+
+// Query returns a query builder for ReportEstimate.
+func (c *ReportEstimateClient) Query() *ReportEstimateQuery {
+	return &ReportEstimateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeReportEstimate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ReportEstimate entity by its id.
+func (c *ReportEstimateClient) Get(ctx context.Context, id int) (*ReportEstimate, error) {
+	return c.Query().Where(reportestimate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ReportEstimateClient) GetX(ctx context.Context, id int) *ReportEstimate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ReportEstimateClient) Hooks() []Hook {
+	return c.hooks.ReportEstimate
+}
+
+// Interceptors returns the client interceptors.
+func (c *ReportEstimateClient) Interceptors() []Interceptor {
+	return c.inters.ReportEstimate
+}
+
+func (c *ReportEstimateClient) mutate(ctx context.Context, m *ReportEstimateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ReportEstimateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ReportEstimateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ReportEstimateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ReportEstimateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ReportEstimate mutation op: %q", m.Op())
 	}
 }
 
@@ -7831,6 +8830,139 @@ func (c *RiskEventClient) mutate(ctx context.Context, m *RiskEventMutation) (Val
 		return (&RiskEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown RiskEvent mutation op: %q", m.Op())
+	}
+}
+
+// SeatStatsClient is a client for the SeatStats schema.
+type SeatStatsClient struct {
+	config
+}
+
+// NewSeatStatsClient returns a client for the SeatStats from the given config.
+func NewSeatStatsClient(c config) *SeatStatsClient {
+	return &SeatStatsClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `seatstats.Hooks(f(g(h())))`.
+func (c *SeatStatsClient) Use(hooks ...Hook) {
+	c.hooks.SeatStats = append(c.hooks.SeatStats, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `seatstats.Intercept(f(g(h())))`.
+func (c *SeatStatsClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SeatStats = append(c.inters.SeatStats, interceptors...)
+}
+
+// Create returns a builder for creating a SeatStats entity.
+func (c *SeatStatsClient) Create() *SeatStatsCreate {
+	mutation := newSeatStatsMutation(c.config, OpCreate)
+	return &SeatStatsCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SeatStats entities.
+func (c *SeatStatsClient) CreateBulk(builders ...*SeatStatsCreate) *SeatStatsCreateBulk {
+	return &SeatStatsCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SeatStatsClient) MapCreateBulk(slice any, setFunc func(*SeatStatsCreate, int)) *SeatStatsCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SeatStatsCreateBulk{err: fmt.Errorf("calling to SeatStatsClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SeatStatsCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SeatStatsCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SeatStats.
+func (c *SeatStatsClient) Update() *SeatStatsUpdate {
+	mutation := newSeatStatsMutation(c.config, OpUpdate)
+	return &SeatStatsUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SeatStatsClient) UpdateOne(_m *SeatStats) *SeatStatsUpdateOne {
+	mutation := newSeatStatsMutation(c.config, OpUpdateOne, withSeatStats(_m))
+	return &SeatStatsUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SeatStatsClient) UpdateOneID(id int) *SeatStatsUpdateOne {
+	mutation := newSeatStatsMutation(c.config, OpUpdateOne, withSeatStatsID(id))
+	return &SeatStatsUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SeatStats.
+func (c *SeatStatsClient) Delete() *SeatStatsDelete {
+	mutation := newSeatStatsMutation(c.config, OpDelete)
+	return &SeatStatsDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SeatStatsClient) DeleteOne(_m *SeatStats) *SeatStatsDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SeatStatsClient) DeleteOneID(id int) *SeatStatsDeleteOne {
+	builder := c.Delete().Where(seatstats.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SeatStatsDeleteOne{builder}
+}
+
+// Query returns a query builder for SeatStats.
+func (c *SeatStatsClient) Query() *SeatStatsQuery {
+	return &SeatStatsQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSeatStats},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SeatStats entity by its id.
+func (c *SeatStatsClient) Get(ctx context.Context, id int) (*SeatStats, error) {
+	return c.Query().Where(seatstats.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SeatStatsClient) GetX(ctx context.Context, id int) *SeatStats {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SeatStatsClient) Hooks() []Hook {
+	return c.hooks.SeatStats
+}
+
+// Interceptors returns the client interceptors.
+func (c *SeatStatsClient) Interceptors() []Interceptor {
+	return c.inters.SeatStats
+}
+
+func (c *SeatStatsClient) mutate(ctx context.Context, m *SeatStatsMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SeatStatsCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SeatStatsUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SeatStatsUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SeatStatsDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SeatStats mutation op: %q", m.Op())
 	}
 }
 
@@ -11295,37 +12427,41 @@ func (c *TradeSignalClient) mutate(ctx context.Context, m *TradeSignalMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AccountSnapshot, AgentDecision, AuditLog, BackfillJob, BacktestReport,
-		BacktestTask, BacktestTrade, CollectCursor, ConfigHead, ConfigReceipt,
-		DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord, DecisionPlan,
-		EventDisposition, ExecutionIntent, FinanceReport, HotRank, HsgtTop10,
-		IntelCluster, IntelFact, IntelLink, Introspection, KbCase, KbChunk, KbDocument,
-		LhbSeat, LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries,
-		MarginDetail, MarketBreadth, MarketData, MarketSentiment, MoneyFlow,
+		AccountSnapshot, AgentDecision, AlertRule, AuditLog, BackfillJob,
+		BacktestReport, BacktestTask, BacktestTrade, CollectCursor, ConfigHead,
+		ConfigReceipt, DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord,
+		DecisionPlan, EmotionDayFrozen, EquityUnlock, EventDisposition,
+		ExecutionIntent, FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact,
+		IntelLink, IntradayAlert, Introspection, KbCase, KbChunk, KbDocument, LhbSeat,
+		LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries, MarginDetail,
+		MarginMarket, MarketBreadth, MarketData, MarketSentiment, MoneyFlow,
 		MorningBriefing, NewsSentiment, NotifyMessage, OrderTrail, Outbox,
 		OverseasMapping, OverseasQuote, PaperRunSample, ParamProposal, Position,
-		RawResponse, ResearchJob, RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat,
-		SectorMember, ServiceInstance, ShadowSignal, SignalEvent, SimBarCursor,
-		SourceHealth, StockAlias, StockBasic, StockBlacklist, StockFactor,
-		StockNameHistory, StrategyCandidate, StrategyConfig, StrategyFeedback,
-		StrategyLibrary, StrategyVersion, TaskRun, TradeCalendar, TradeCash, TradeFill,
-		TradeLedgerLock, TradeOrder, TradeSignal []ent.Hook
+		PredictionCheck, RawResponse, ReportEstimate, ResearchJob, RiskCheck,
+		RiskEvent, SeatStats, SeatTag, Sector, SectorHeat, SectorMember,
+		ServiceInstance, ShadowSignal, SignalEvent, SimBarCursor, SourceHealth,
+		StockAlias, StockBasic, StockBlacklist, StockFactor, StockNameHistory,
+		StrategyCandidate, StrategyConfig, StrategyFeedback, StrategyLibrary,
+		StrategyVersion, TaskRun, TradeCalendar, TradeCash, TradeFill, TradeLedgerLock,
+		TradeOrder, TradeSignal []ent.Hook
 	}
 	inters struct {
-		AccountSnapshot, AgentDecision, AuditLog, BackfillJob, BacktestReport,
-		BacktestTask, BacktestTrade, CollectCursor, ConfigHead, ConfigReceipt,
-		DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord, DecisionPlan,
-		EventDisposition, ExecutionIntent, FinanceReport, HotRank, HsgtTop10,
-		IntelCluster, IntelFact, IntelLink, Introspection, KbCase, KbChunk, KbDocument,
-		LhbSeat, LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries,
-		MarginDetail, MarketBreadth, MarketData, MarketSentiment, MoneyFlow,
+		AccountSnapshot, AgentDecision, AlertRule, AuditLog, BackfillJob,
+		BacktestReport, BacktestTask, BacktestTrade, CollectCursor, ConfigHead,
+		ConfigReceipt, DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord,
+		DecisionPlan, EmotionDayFrozen, EquityUnlock, EventDisposition,
+		ExecutionIntent, FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact,
+		IntelLink, IntradayAlert, Introspection, KbCase, KbChunk, KbDocument, LhbSeat,
+		LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries, MarginDetail,
+		MarginMarket, MarketBreadth, MarketData, MarketSentiment, MoneyFlow,
 		MorningBriefing, NewsSentiment, NotifyMessage, OrderTrail, Outbox,
 		OverseasMapping, OverseasQuote, PaperRunSample, ParamProposal, Position,
-		RawResponse, ResearchJob, RiskCheck, RiskEvent, SeatTag, Sector, SectorHeat,
-		SectorMember, ServiceInstance, ShadowSignal, SignalEvent, SimBarCursor,
-		SourceHealth, StockAlias, StockBasic, StockBlacklist, StockFactor,
-		StockNameHistory, StrategyCandidate, StrategyConfig, StrategyFeedback,
-		StrategyLibrary, StrategyVersion, TaskRun, TradeCalendar, TradeCash, TradeFill,
-		TradeLedgerLock, TradeOrder, TradeSignal []ent.Interceptor
+		PredictionCheck, RawResponse, ReportEstimate, ResearchJob, RiskCheck,
+		RiskEvent, SeatStats, SeatTag, Sector, SectorHeat, SectorMember,
+		ServiceInstance, ShadowSignal, SignalEvent, SimBarCursor, SourceHealth,
+		StockAlias, StockBasic, StockBlacklist, StockFactor, StockNameHistory,
+		StrategyCandidate, StrategyConfig, StrategyFeedback, StrategyLibrary,
+		StrategyVersion, TaskRun, TradeCalendar, TradeCash, TradeFill, TradeLedgerLock,
+		TradeOrder, TradeSignal []ent.Interceptor
 	}
 )

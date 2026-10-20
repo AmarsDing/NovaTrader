@@ -59,9 +59,19 @@ func Date(v time.Time) predicate.DailyReview {
 	return predicate.DailyReview(sql.FieldEQ(FieldDate, v))
 }
 
+// Kind applies equality check predicate on the "kind" field. It's identical to KindEQ.
+func Kind(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldEQ(FieldKind, v))
+}
+
 // ReviewContent applies equality check predicate on the "review_content" field. It's identical to ReviewContentEQ.
 func ReviewContent(v string) predicate.DailyReview {
 	return predicate.DailyReview(sql.FieldEQ(FieldReviewContent, v))
+}
+
+// Model applies equality check predicate on the "model" field. It's identical to ModelEQ.
+func Model(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldEQ(FieldModel, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -107,6 +117,71 @@ func DateLT(v time.Time) predicate.DailyReview {
 // DateLTE applies the LTE predicate on the "date" field.
 func DateLTE(v time.Time) predicate.DailyReview {
 	return predicate.DailyReview(sql.FieldLTE(FieldDate, v))
+}
+
+// KindEQ applies the EQ predicate on the "kind" field.
+func KindEQ(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldEQ(FieldKind, v))
+}
+
+// KindNEQ applies the NEQ predicate on the "kind" field.
+func KindNEQ(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldNEQ(FieldKind, v))
+}
+
+// KindIn applies the In predicate on the "kind" field.
+func KindIn(vs ...string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldIn(FieldKind, vs...))
+}
+
+// KindNotIn applies the NotIn predicate on the "kind" field.
+func KindNotIn(vs ...string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldNotIn(FieldKind, vs...))
+}
+
+// KindGT applies the GT predicate on the "kind" field.
+func KindGT(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldGT(FieldKind, v))
+}
+
+// KindGTE applies the GTE predicate on the "kind" field.
+func KindGTE(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldGTE(FieldKind, v))
+}
+
+// KindLT applies the LT predicate on the "kind" field.
+func KindLT(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldLT(FieldKind, v))
+}
+
+// KindLTE applies the LTE predicate on the "kind" field.
+func KindLTE(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldLTE(FieldKind, v))
+}
+
+// KindContains applies the Contains predicate on the "kind" field.
+func KindContains(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldContains(FieldKind, v))
+}
+
+// KindHasPrefix applies the HasPrefix predicate on the "kind" field.
+func KindHasPrefix(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldHasPrefix(FieldKind, v))
+}
+
+// KindHasSuffix applies the HasSuffix predicate on the "kind" field.
+func KindHasSuffix(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldHasSuffix(FieldKind, v))
+}
+
+// KindEqualFold applies the EqualFold predicate on the "kind" field.
+func KindEqualFold(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldEqualFold(FieldKind, v))
+}
+
+// KindContainsFold applies the ContainsFold predicate on the "kind" field.
+func KindContainsFold(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldContainsFold(FieldKind, v))
 }
 
 // ReviewContentEQ applies the EQ predicate on the "review_content" field.
@@ -202,6 +277,81 @@ func LessonsLearnedIsNil() predicate.DailyReview {
 // LessonsLearnedNotNil applies the NotNil predicate on the "lessons_learned" field.
 func LessonsLearnedNotNil() predicate.DailyReview {
 	return predicate.DailyReview(sql.FieldNotNull(FieldLessonsLearned))
+}
+
+// ModelEQ applies the EQ predicate on the "model" field.
+func ModelEQ(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldEQ(FieldModel, v))
+}
+
+// ModelNEQ applies the NEQ predicate on the "model" field.
+func ModelNEQ(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldNEQ(FieldModel, v))
+}
+
+// ModelIn applies the In predicate on the "model" field.
+func ModelIn(vs ...string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldIn(FieldModel, vs...))
+}
+
+// ModelNotIn applies the NotIn predicate on the "model" field.
+func ModelNotIn(vs ...string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldNotIn(FieldModel, vs...))
+}
+
+// ModelGT applies the GT predicate on the "model" field.
+func ModelGT(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldGT(FieldModel, v))
+}
+
+// ModelGTE applies the GTE predicate on the "model" field.
+func ModelGTE(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldGTE(FieldModel, v))
+}
+
+// ModelLT applies the LT predicate on the "model" field.
+func ModelLT(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldLT(FieldModel, v))
+}
+
+// ModelLTE applies the LTE predicate on the "model" field.
+func ModelLTE(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldLTE(FieldModel, v))
+}
+
+// ModelContains applies the Contains predicate on the "model" field.
+func ModelContains(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldContains(FieldModel, v))
+}
+
+// ModelHasPrefix applies the HasPrefix predicate on the "model" field.
+func ModelHasPrefix(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldHasPrefix(FieldModel, v))
+}
+
+// ModelHasSuffix applies the HasSuffix predicate on the "model" field.
+func ModelHasSuffix(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldHasSuffix(FieldModel, v))
+}
+
+// ModelIsNil applies the IsNil predicate on the "model" field.
+func ModelIsNil() predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldIsNull(FieldModel))
+}
+
+// ModelNotNil applies the NotNil predicate on the "model" field.
+func ModelNotNil() predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldNotNull(FieldModel))
+}
+
+// ModelEqualFold applies the EqualFold predicate on the "model" field.
+func ModelEqualFold(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldEqualFold(FieldModel, v))
+}
+
+// ModelContainsFold applies the ContainsFold predicate on the "model" field.
+func ModelContainsFold(v string) predicate.DailyReview {
+	return predicate.DailyReview(sql.FieldContainsFold(FieldModel, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

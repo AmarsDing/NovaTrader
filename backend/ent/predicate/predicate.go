@@ -12,6 +12,9 @@ type AccountSnapshot func(*sql.Selector)
 // AgentDecision is the predicate function for agentdecision builders.
 type AgentDecision func(*sql.Selector)
 
+// AlertRule is the predicate function for alertrule builders.
+type AlertRule func(*sql.Selector)
+
 // AuditLog is the predicate function for auditlog builders.
 type AuditLog func(*sql.Selector)
 
@@ -51,6 +54,12 @@ type DatasetRecord func(*sql.Selector)
 // DecisionPlan is the predicate function for decisionplan builders.
 type DecisionPlan func(*sql.Selector)
 
+// EmotionDayFrozen is the predicate function for emotiondayfrozen builders.
+type EmotionDayFrozen func(*sql.Selector)
+
+// EquityUnlock is the predicate function for equityunlock builders.
+type EquityUnlock func(*sql.Selector)
+
 // EventDisposition is the predicate function for eventdisposition builders.
 type EventDisposition func(*sql.Selector)
 
@@ -74,6 +83,9 @@ type IntelFact func(*sql.Selector)
 
 // IntelLink is the predicate function for intellink builders.
 type IntelLink func(*sql.Selector)
+
+// IntradayAlert is the predicate function for intradayalert builders.
+type IntradayAlert func(*sql.Selector)
 
 // Introspection is the predicate function for introspection builders.
 type Introspection func(*sql.Selector)
@@ -107,6 +119,9 @@ type MacroSeries func(*sql.Selector)
 
 // MarginDetail is the predicate function for margindetail builders.
 type MarginDetail func(*sql.Selector)
+
+// MarginMarket is the predicate function for marginmarket builders.
+type MarginMarket func(*sql.Selector)
 
 // MarketBreadth is the predicate function for marketbreadth builders.
 type MarketBreadth func(*sql.Selector)
@@ -150,8 +165,14 @@ type ParamProposal func(*sql.Selector)
 // Position is the predicate function for position builders.
 type Position func(*sql.Selector)
 
+// PredictionCheck is the predicate function for predictioncheck builders.
+type PredictionCheck func(*sql.Selector)
+
 // RawResponse is the predicate function for rawresponse builders.
 type RawResponse func(*sql.Selector)
+
+// ReportEstimate is the predicate function for reportestimate builders.
+type ReportEstimate func(*sql.Selector)
 
 // ResearchJob is the predicate function for researchjob builders.
 type ResearchJob func(*sql.Selector)
@@ -161,6 +182,9 @@ type RiskCheck func(*sql.Selector)
 
 // RiskEvent is the predicate function for riskevent builders.
 type RiskEvent func(*sql.Selector)
+
+// SeatStats is the predicate function for seatstats builders.
+type SeatStats func(*sql.Selector)
 
 // SeatTag is the predicate function for seattag builders.
 type SeatTag func(*sql.Selector)

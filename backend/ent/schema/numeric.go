@@ -7,3 +7,6 @@ var numericPrice = map[string]string{dialect.Postgres: "numeric(12,4)"}
 
 // numericMoney 金额列，单位元。
 var numericMoney = map[string]string{dialect.Postgres: "numeric(18,2)"}
+
+// numericShares 股数列，允许小数（股权激励可能有非整手）。
+var numericShares = map[string]string{dialect.Postgres: "numeric(24,4)"}
