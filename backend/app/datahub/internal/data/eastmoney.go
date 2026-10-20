@@ -826,6 +826,71 @@ func (e *Eastmoney) announcements(ctx context.Context, q biz.IntelQuery) ([]biz.
 	return items, nil
 }
 
+// parseReportNum 把东财字符串数字解析为指针：空串=未披露→nil（「没取到≠0」纪律）。
+func parseReportNum(s string) *float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return nil
+	}
+	return &f
+}
+
+// intPtrOf 透传东财整型字段（ratingChange/reportType），非数或缺失留 nil。
+func intPtrOf(v any) *int {
+	f, ok := anyNum(v)
+	if !ok {
+		return nil
+	}
+	i := int(f)
+	return &i
+}
+
+// reportContent 把研报预测组一条可读内容：「东吴证券 增持（前次 增持）｜2026E EPS 0.64 / PE 20.18｜目标价 12.50–14.00 元」。
+// EPS/PE 不带「元/%」单位词，避免 intel ExtractFacts 误抽；目标价带「元」会被抽成
+// amount fact，语义可接受（M03 文档钉死）。
+func reportContent(org string, fc *biz.ReportForecast) string {
+	head := org
+	if fc.Rating != "" {
+		head = strings.TrimSpace(head + " " + fc.Rating)
+		if fc.LastRating != "" && fc.LastRating != fc.Rating {
+			head += "（前次 " + fc.LastRating + "）"
+		}
+	}
+	var parts []string
+	for _, p := range fc.EPS {
+		seg := fmt.Sprintf("%dE", p.Year)
+		if p.EPS != nil {
+			seg += fmt.Sprintf(" EPS %.2f", *p.EPS)
+		}
+		if p.PE != nil {
+			seg += fmt.Sprintf(" / PE %.2f", *p.PE)
+		}
+		parts = append(parts, seg)
+	}
+	aim := ""
+	if fc.AimPriceLow != nil && fc.AimPriceHigh != nil {
+		aim = fmt.Sprintf("目标价 %.2f–%.2f 元", *fc.AimPriceLow, *fc.AimPriceHigh)
+	} else if fc.AimPriceHigh != nil {
+		aim = fmt.Sprintf("目标价 %.2f 元", *fc.AimPriceHigh)
+	} else if fc.AimPriceLow != nil {
+		aim = fmt.Sprintf("目标价 %.2f 元", *fc.AimPriceLow)
+	}
+	if aim != "" {
+		parts = append(parts, aim)
+	}
+	if len(parts) == 0 {
+		return head
+	}
+	if head == "" {
+		return strings.Join(parts, "｜")
+	}
+	return head + "｜" + strings.Join(parts, "｜")
+}
+
 func (e *Eastmoney) reports(ctx context.Context, q biz.IntelQuery) ([]biz.Intel, error) {
 	begin := q.Since
 	if begin.IsZero() {
@@ -844,8 +909,25 @@ func (e *Eastmoney) reports(ctx context.Context, q biz.IntelQuery) ([]biz.Intel,
 				PublishDate  string `json:"publishDate"`
 				InfoCode     string `json:"infoCode"`
 				EmRatingName string `json:"emRatingName"`
+				// W6 预测字段（2026-10-19 当日响应实测拿到字段名）：全部字符串，空串=未披露。
+				Researcher            string `json:"researcher"`
+				IndvInduName          string `json:"indvInduName"`
+				OrgCode               string `json:"orgCode"`
+				OrgName               string `json:"orgName"`
+				PredictThisYearEps    string `json:"predictThisYearEps"`
+				PredictThisYearPe     string `json:"predictThisYearPe"`
+				PredictNextYearEps    string `json:"predictNextYearEps"`
+				PredictNextYearPe     string `json:"predictNextYearPe"`
+				PredictNextTwoYearEps string `json:"predictNextTwoYearEps"`
+				PredictNextTwoYearPe  string `json:"predictNextTwoYearPe"`
+				IndvAimPriceT         string `json:"indvAimPriceT"` // 目标价上限
+				IndvAimPriceL         string `json:"indvAimPriceL"` // 目标价下限
+				LastEmRatingName      string `json:"lastEmRatingName"`
+				RatingChange          any    `json:"ratingChange"`
+				ReportType            any    `json:"reportType"`
 			} `json:"data"`
-			TotalPage int `json:"TotalPage"`
+			TotalPage   int `json:"TotalPage"`
+			CurrentYear int `json:"currentYear"` // 响应级年度映射兜底锚（主锚=item 级 publishDate 年份，见下方 #7）
 		}
 		if err := e.hc.getJSON(ctx, u, &out); err != nil {
 			return nil, err
@@ -855,10 +937,50 @@ func (e *Eastmoney) reports(ctx context.Context, q biz.IntelQuery) ([]biz.Intel,
 			if sym := secu(x.StockCode); sym != "" {
 				codes = []string{sym}
 			}
-			content := strings.TrimSpace(x.OrgSName + " " + x.EmRatingName)
-			items = append(items, biz.Intel{Source: biz.SourceEastmoney, SourceID: x.InfoCode, Kind: biz.KindReport, Title: x.Title,
-				Content: content, URL: "https://data.eastmoney.com/report/info/" + x.InfoCode + ".html",
-				PublishTime: shTime(x.PublishDate), Codes: codes})
+			it := biz.Intel{Source: biz.SourceEastmoney, SourceID: x.InfoCode, Kind: biz.KindReport, Title: x.Title,
+				URL:         "https://data.eastmoney.com/report/info/" + x.InfoCode + ".html",
+				PublishTime: shTime(x.PublishDate), Codes: codes}
+			fc := &biz.ReportForecast{
+				AimPriceLow: parseReportNum(x.IndvAimPriceL), AimPriceHigh: parseReportNum(x.IndvAimPriceT),
+				Rating: x.EmRatingName, LastRating: x.LastEmRatingName,
+				RatingChange: intPtrOf(x.RatingChange), ReportType: intPtrOf(x.ReportType),
+				Researcher: x.Researcher, Industry: x.IndvInduName, OrgCode: x.OrgCode, OrgName: x.OrgName,
+				OrgSName: x.OrgSName,
+			}
+			// 年度映射：以 item 级 publishDate 年份为锚——PIT＝研报成文时刻视角，「今年/明年/
+			// 后年」按发布年展开、不随采集时刻漂移。旧锚序（响应级 currentYear 优先）在跨年
+			// 窗口（12/31 发布的研报被 24h+2min 水位回看在次年 1 月初重采）使 currentYear
+			// （=采集时刻年）漂移 +1：同一 info_code 三年 est_year 整体错 +1——「今年」列
+			// 静默覆盖相邻年正确行、多幽灵 max+1 行、残留孤儿 min 行（对抗复核 #7，对等
+			// 裁决锚序反转）。publishDate 缺失/解析失败时降级 currentYear；都拿不到丢整段 EPS。
+			year := 0
+			if t, err := time.Parse(time.RFC3339, it.PublishTime); err == nil {
+				year = t.Year()
+			}
+			if year <= 0 {
+				year = out.CurrentYear
+			}
+			if year > 0 {
+				for i, p := range [][2]string{
+					{x.PredictThisYearEps, x.PredictThisYearPe},
+					{x.PredictNextYearEps, x.PredictNextYearPe},
+					{x.PredictNextTwoYearEps, x.PredictNextTwoYearPe},
+				} {
+					eps, pe := parseReportNum(p[0]), parseReportNum(p[1])
+					if eps == nil && pe == nil {
+						continue // 双 nil 的年度点整条丢弃——没取到≠0
+					}
+					fc.EPS = append(fc.EPS, biz.EPSPoint{Year: year + i, EPS: eps, PE: pe})
+				}
+			}
+			if len(fc.EPS) > 0 || fc.AimPriceLow != nil || fc.AimPriceHigh != nil || fc.Rating != "" || fc.LastRating != "" {
+				it.Forecast = fc
+				it.Content = reportContent(x.OrgSName, fc)
+			} else {
+				// 全部预测缺失：content 维持旧格式（机构+评级）。
+				it.Content = strings.TrimSpace(x.OrgSName + " " + x.EmRatingName)
+			}
+			items = append(items, it)
 		}
 		if page >= out.TotalPage {
 			break

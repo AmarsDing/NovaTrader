@@ -30,6 +30,9 @@ type Repo interface {
 	UpsertUnlockPlans(ctx context.Context, from, to time.Time, items []UnlockPlan, source string, ready Ready) (int, error)
 	UpsertMargins(ctx context.Context, day time.Time, items []Margin, source string, ready Ready) (int, error)
 	UpsertMarginMkt(ctx context.Context, day time.Time, items []MarginMkt, source string, ready Ready) (int, error)
+	// UpsertReportEstimates 写 report_estimate（info_code+est_year 幂等，PIT 多券商分歧各自成行；
+	// 披露列 SetNillable：缺披露保持 NULL，不冒充 0）。
+	UpsertReportEstimates(ctx context.Context, items []EstimateRow, source string, ready Ready) (int, error)
 	UpsertHsgtTop10(ctx context.Context, day time.Time, items []HsgtTop, source string, ready Ready) (int, error)
 	SyncSectors(ctx context.Context, day time.Time, items []Sector, source string, ready Ready) (int, error)
 	UpsertFinance(ctx context.Context, items []FinanceItem, source string, ready Ready) (int, error)

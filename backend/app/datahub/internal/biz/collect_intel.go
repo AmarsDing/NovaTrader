@@ -82,6 +82,16 @@ func (c *Collector) CollectIntel(ctx context.Context, domain string) (CollectSum
 	if err != nil {
 		return CollectSummary{Domain: domain}, err
 	}
+	// B4：report 域先把盈利预测落 report_estimate（PIT 行级 upsert），再发事件。
+	// 落库失败即整轮失败：事件不发、水位不前移，下一轮重采重试（幂等无重复行）。
+	if domain == DomainReport {
+		if est := EstimateRowsOf(items); len(est) > 0 {
+			rd := ready("report_estimate", time.Time{}, len(est), src, false)
+			if _, err := c.repo.UpsertReportEstimates(ctx, est, src, rd); err != nil {
+				return CollectSummary{Domain: domain}, fmt.Errorf("datahub: upsert report estimates: %w", err)
+			}
+		}
+	}
 	type timed struct {
 		Intel
 		at time.Time
