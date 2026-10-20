@@ -41,9 +41,11 @@ func wireApp(risk *conf.Risk, postgres *conf.Postgres, nats *conf.Nats, redis *c
 	}
 	publisher := data.NewPublisher(bus)
 	engine := biz.NewEngine(repo, quotes, auditor, publisher, logger)
+	alertRuleRepo := data.NewAlertRuleRepo(client, logger)
+	alertCenter := biz.NewAlertCenter(alertRuleRepo, quotes, logger)
 	dispatcher := outbox.NewDispatcher(client, bus)
-	runner := core.NewRunner(engine, bus, dispatcher, auditor, logger)
-	riskService := service.NewRiskService(engine)
+	runner := core.NewRunner(engine, alertCenter, bus, dispatcher, auditor, logger)
+	riskService := service.NewRiskService(engine, alertCenter)
 	httpServer := server.NewHTTPServer(risk, riskService, logger)
 	grpcServer := server.NewGRPCServer(risk, riskService, logger)
 	app := newApp(logger, runner, httpServer, grpcServer)

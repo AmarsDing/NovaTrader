@@ -45,6 +45,8 @@ type Rule struct {
 	Status      Status     `json:"status"`
 	LastPrice   *float64   `json:"last_price,omitempty"`
 	TriggeredAt *time.Time `json:"triggered_at,omitempty"`
+	// UpdatedAt 是持久层的簿记列（落库节拍/重建而前进），规则语义本身不读它。
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
 // ParseCondition 收下划线/大小写不敏感的三态名。

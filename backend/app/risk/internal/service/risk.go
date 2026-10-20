@@ -24,10 +24,13 @@ const checkTimeout = 200 * time.Millisecond
 
 type RiskService struct {
 	v1.UnimplementedRiskServer
-	e *biz.Engine
+	e      *biz.Engine
+	alerts *biz.AlertCenter
 }
 
-func NewRiskService(e *biz.Engine) *RiskService { return &RiskService{e: e} }
+func NewRiskService(e *biz.Engine, alerts *biz.AlertCenter) *RiskService {
+	return &RiskService{e: e, alerts: alerts}
+}
 
 func mapErr(err error) error {
 	if err == nil {

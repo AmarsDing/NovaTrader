@@ -14,7 +14,7 @@ import (
 
 func TestAccountObservationCannotTreatWrongSourceOrInvalidStateAsSuccess(t *testing.T) {
 	logger := log.NewStdLogger(io.Discard)
-	r := NewRunner(biz.NewEngine(nil, nil, nil, nil, logger), nil, nil, nil, logger)
+	r := NewRunner(biz.NewEngine(nil, nil, nil, nil, logger), biz.NewAlertCenter(nil, nil, logger), nil, nil, nil, logger)
 	reg := observe.ForService("risk")
 	var rejected, failed, succeeded uint64
 	for _, op := range reg.Snapshot().Operations {

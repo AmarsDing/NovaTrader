@@ -248,6 +248,8 @@ func (e *Eastmoney) flows(ctx context.Context) ([]biz.IntradayFlow, error) {
 	items := make([]biz.IntradayFlow, 0, len(rows))
 	for _, r := range rows {
 		sym := emSymbol(r.str("f12"), r.f("f13"))
+		// 「没取到≠0」：主力净流入（f62）是该行的存在理由，缺失整行 skip；
+		// 分项（超大/大/中/小）与主力的分解源一次取齐，缺省按 0=无该项流向处理（哨兵）。
 		if sym == "" || !r.has("f62") {
 			continue
 		}
@@ -270,8 +272,6 @@ func (e *Eastmoney) MoneyFlows(ctx context.Context, d time.Time) ([]biz.MoneyFlo
 	flows, err := e.flows(ctx)
 	if err != nil {
 		return nil, err
-		// 「没取到≠0」：主力净流入（f62）是该行的存在理由，缺失整行 skip；
-		// 分项（超大/大/中/小）与主力的分解源一次取齐，缺省按 0=无该项流向处理（哨兵）。
 	}
 	items := make([]biz.MoneyFlow, 0, len(flows))
 	for _, f := range flows {
@@ -465,6 +465,9 @@ func anyNum(v any) (float64, bool) {
 	return 0, false
 }
 
+// anyF 哨兵取值：解析失败 → 0。纪律同 emRow.f：仅用于 0 与缺失同语义、
+// 或下游校验链（CheckBars/CheckSnapshots 非正拦截）会兜住伪 0 的字段；
+// 情感分、资金流主字段这类 0 有真实含义的禁止用 anyF（用 anyNum/anyPtr）。
 func anyF(v any) float64 { f, _ := anyNum(v); return f }
 
 func anyPtr(v any) *float64 {
@@ -503,9 +506,6 @@ func dcDate(v any) (time.Time, bool) {
 	return t, err == nil
 }
 
-// anyF 哨兵取值：解析失败 → 0。纪律同 emRow.f：仅用于 0 与缺失同语义、
-// 或下游校验链（CheckBars/CheckSnapshots 非正拦截）会兜住伪 0 的字段；
-// 情感分、资金流主字段这类 0 有真实含义的禁止用 anyF（用 anyNum/anyPtr）。
 func (e *Eastmoney) LhbSeats(ctx context.Context, d time.Time) ([]biz.LhbSeat, error) {
 	filter := fmt.Sprintf("(TRADE_DATE='%s')", ymd(d))
 	var items []biz.LhbSeat

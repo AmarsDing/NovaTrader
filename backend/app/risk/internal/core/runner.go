@@ -33,12 +33,13 @@ const (
 
 // Runner 实现 kratos transport.Server。
 type Runner struct {
-	e     *biz.Engine
-	bus   *events.Bus
-	box   *outbox.Dispatcher
-	audit *data.Auditor
-	log   *log.Helper
-	seen  *events.Seen
+	e      *biz.Engine
+	alerts *biz.AlertCenter
+	bus    *events.Bus
+	box    *outbox.Dispatcher
+	audit  *data.Auditor
+	log    *log.Helper
+	seen   *events.Seen
 
 	lastSnap atomic.Int64
 
@@ -49,9 +50,9 @@ type Runner struct {
 	accountSub  *nats.Subscription
 }
 
-func NewRunner(e *biz.Engine, bus *events.Bus, box *outbox.Dispatcher, audit *data.Auditor, logger log.Logger) *Runner {
+func NewRunner(e *biz.Engine, alerts *biz.AlertCenter, bus *events.Bus, box *outbox.Dispatcher, audit *data.Auditor, logger log.Logger) *Runner {
 	return &Runner{
-		e: e, bus: bus, box: box, audit: audit,
+		e: e, alerts: alerts, bus: bus, box: box, audit: audit,
 		log:  log.NewHelper(log.With(logger, "module", "risk/core")),
 		seen: events.NewSeen(4096),
 	}
@@ -227,6 +228,7 @@ func (r *Runner) onSnapshot(ctx context.Context, env events.Envelope) {
 	if p, ok := decode[biz.SnapshotMetaPayload](r, env); ok {
 		r.lastSnap.Store(time.Now().UnixNano())
 		r.e.OnSnapshot(ctx, p)
+		r.alerts.Tick(ctx)
 	}
 }
 
@@ -248,6 +250,7 @@ func (r *Runner) poll(ctx context.Context) {
 		return
 	}
 	r.e.OnSnapshot(ctx, biz.SnapshotMetaPayload{})
+	r.alerts.Tick(ctx)
 }
 
 func (r *Runner) dispatch(ctx context.Context) {
