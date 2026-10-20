@@ -19,6 +19,8 @@ import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { isLive, onPush, subscribe, type WsPushMessage } from '@/ws/hub'
+import { dataFrame } from '@/ws/data-frame'
+import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
 
 const symbolStore = useSymbolStore()
 
@@ -35,12 +37,20 @@ const liveNow = computed(() => isLive())
 
 let loadSeq = 0
 let disposed = false
-let debounceTimer: ReturnType<typeof setTimeout> | undefined
 let unsubscribe: (() => void) | undefined
 let offPush: (() => void) | undefined
 let offParams: (() => void) | undefined
 
 const code = computed(() => symbolStore.code)
+
+/** 现价跳变闪动（G1，与行情卡 MarketView 同节律）：REST 快照差分打标——本面板闪动节奏=快照重取节奏。 */
+const flashSample = ref<FlashSample | null>(null)
+const offFlash = quoteFlash.onChange((map) => { flashSample.value = map.get(code.value) ?? null })
+const qFlashClass = computed(() => {
+  const sample = flashSample.value
+  if (!sample || !sample.flashing) return ''
+  return sample.direction === 'up' ? 'q-flash--up' : sample.direction === 'down' ? 'q-flash--down' : ''
+})
 
 async function load(withNews = false) {
   const sym = code.value
@@ -54,6 +64,11 @@ async function load(withNews = false) {
       withNews ? timeline(sym).catch(() => null) : Promise.resolve(null),
     ])
     if (disposed || seq !== loadSeq || sym !== code.value) return
+    // G1：快照差分打跳——同代码、前后两帧都有真值且现价变化才打标（切代码 prev=null 不打）。
+    const prev = quote.value
+    if (prev && q.found && prev.last > 0 && q.last > 0 && q.last !== prev.last) {
+      quoteFlash.mark(sym, q.last > prev.last ? 'up' : 'down')
+    }
     quote.value = q
     if (q.found && q.name) symbolStore.fillName(sym, q.name)
     if (intelRes) {
@@ -69,13 +84,14 @@ async function load(withNews = false) {
   }
 }
 
-/** 推送只当刷新信号：同代码的 bar/快照帧到达 → 800ms 防抖重取快照（推送不背五档/涨跌停）。 */
+/** 推送只当刷新信号：同代码的 bar/快照帧到达 → 统一数据帧至多每 800ms 重取快照（G1 收编手写防抖：
+ *  合帧/隐藏页降频/负载自适应由 dataFrame 兜底；与 limit-ladder 同纪律——固定 key 单节流器，
+ *  任务闭包被 disposed 短路，不随面板实例增生。推送不背五档/涨跌停真值的口径不变。） */
+const PUSH_REFRESH_MIN_INTERVAL_MS = 800
 function scheduleRefresh() {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    debounceTimer = undefined
+  dataFrame.scheduleThrottled('quote-sidebar', PUSH_REFRESH_MIN_INTERVAL_MS, () => {
     if (!disposed && isLive() && code.value) void load()
-  }, 800)
+  })
 }
 
 function resub() {
@@ -177,10 +193,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true
-  if (debounceTimer) clearTimeout(debounceTimer)
   unsubscribe?.()
   offPush?.()
   offParams?.()
+  offFlash()
 })
 </script>
 
@@ -207,7 +223,7 @@ onBeforeUnmount(() => {
     <template v-if="quote">
       <header class="head">
         <div class="head__main" :class="tone">
-          <b class="last">{{ priceNow }}</b>
+          <b class="last" :class="qFlashClass">{{ priceNow }}</b>
           <span class="chg">
             {{ quote.last > 0 ? `${signed(quote.chg)} · ${quote.pctChg >= 0 ? '+' : ''}${quote.pctChg.toFixed(2)}%` : '' }}
           </span>
@@ -305,6 +321,28 @@ onBeforeUnmount(() => {
   font-size: 24px;
   font-weight: 700;
   line-height: 1.05;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border-radius: var(--nt-radius-s);
+}
+
+/* 现价跳变短脉冲：快照差分打标，300ms 内淡出；减少动态档由全局 animation:none 接管（与 MarketView 同节律）。 */
+.q-flash--up {
+  animation: qs-flash-up 0.3s ease-out;
+}
+
+.q-flash--down {
+  animation: qs-flash-down 0.3s ease-out;
+}
+
+@keyframes qs-flash-up {
+  0% { background: color-mix(in srgb, var(--nt-up) 32%, transparent); }
+  100% { background: transparent; }
+}
+
+@keyframes qs-flash-down {
+  0% { background: color-mix(in srgb, var(--nt-down) 32%, transparent); }
+  100% { background: transparent; }
 }
 
 .chg {
