@@ -132,3 +132,94 @@ func TestLadderNoSample(t *testing.T) {
 		t.Fatalf("1进2 = %+v（样本 1 晋级 0）", days[0].Steps[0])
 	}
 }
+/* ---------- EmotionPath：盘中情绪路径 ---------- */
+
+type pathRepo struct {
+	fakeRepo
+	auction []FactorRecord
+	sealed  map[string]int
+	trail   []market.Sentiment
+}
+
+func (r *pathRepo) FactorsAt(_ context.Context, _ time.Time, _ string, _ time.Time, symbols []string) ([]FactorRecord, error) {
+	if len(symbols) == 0 {
+		return r.auction, nil
+	}
+	out := []FactorRecord{}
+	want := map[string]bool{}
+	for _, s := range symbols {
+		want[s] = true
+	}
+	for _, row := range r.auction {
+		if want[row.Symbol] {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+func (r *pathRepo) SealedOn(context.Context, time.Time) (map[string]int, error) { return r.sealed, nil }
+func (r *pathRepo) SentimentTrail(context.Context, time.Time) ([]market.Sentiment, error) {
+	return r.trail, nil
+}
+
+func TestEmotionPath(t *testing.T) {
+	day := time.Date(2026, 10, 13, 0, 0, 0, 0, tradecal.Shanghai())
+	auc925 := day.Add(9*time.Hour + 25*time.Minute)
+	repo := &pathRepo{
+		auction: []FactorRecord{
+			{FactorRow: market.FactorRow{Symbol: "A", AsOf: auc925, Values: market.Values{"auction_pct": 5.003, "auction_amount": 3e7, "auction_limit_up": 1}}, Kind: KindAuction},
+			{FactorRow: market.FactorRow{Symbol: "B", AsOf: auc925, Values: market.Values{"auction_pct": 3.001, "auction_amount": 2e7}}, Kind: KindAuction},
+		},
+		sealed: map[string]int{"A": 1, "B": 1, "C": 1},
+		trail: []market.Sentiment{
+			{TradeDate: day, AsOf: day.Add(10 * time.Hour), UpCount: 20, DownCount: 3, BrokenCount: 5, Phase: "WARM"},
+			{TradeDate: day, AsOf: day.Add(15 * time.Hour), UpCount: 45, DownCount: 5, BrokenCount: 9, Phase: "HOT"},
+		},
+	}
+	uc := NewUsecase(repo, nil, nil, Config{}, log.DefaultLogger)
+	p, err := uc.EmotionPath(context.Background(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.AuctionFound || p.AuctionLimitUpCount != 1 {
+		t.Fatalf("auction = %+v", p)
+	}
+	// 昨涨停 3 只，今日竞价覆盖 A/B 两只：(5.003+3.001)/2 = 4.002
+	if p.PrevTierAuctionPct == nil || *p.PrevTierAuctionPct != 4.0 {
+		t.Fatalf("prevTierPct = %v", p.PrevTierAuctionPct)
+	}
+	if p.PrevTierSample != 2 {
+		t.Fatalf("sample = %d", p.PrevTierSample)
+	}
+	if p.Missing == nil || p.Missing[0] != "auction_prev_tier_partial" {
+		t.Fatalf("missing = %v", p.Missing)
+	}
+	if !p.Partial {
+		t.Fatalf("partial expected（竞价只覆盖部分昨涨停）")
+	}
+	if len(p.Points) != 3 || !p.Points[0].Auction || p.Points[0].Time != "09:25" {
+		t.Fatalf("points = %+v", p.Points)
+	}
+	if p.Points[1].Up != 20 || p.Points[2].Phase != "HOT" {
+		t.Fatalf("trail points wrong: %+v", p.Points[1:])
+	}
+}
+
+func TestEmotionPathEmpty(t *testing.T) {
+	day := time.Date(2026, 10, 13, 0, 0, 0, 0, tradecal.Shanghai())
+	uc := NewUsecase(&pathRepo{}, nil, nil, Config{}, log.DefaultLogger)
+	p, err := uc.EmotionPath(context.Background(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Partial || len(p.Points) != 0 || p.PrevTierAuctionPct != nil {
+		t.Fatalf("empty day path = %+v", p)
+	}
+	seen := map[string]bool{}
+	for _, m := range p.Missing {
+		seen[m] = true
+	}
+	if !seen["auction"] || !seen["market_sentiment"] {
+		t.Fatalf("missing = %v", p.Missing)
+	}
+}

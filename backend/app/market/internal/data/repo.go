@@ -330,6 +330,28 @@ func (r *Repo) SaveSentiment(ctx context.Context, s market.Sentiment) error {
 		UpdateNewValues().Exec(ctx)
 }
 
+// SentimentTrail 返回某日全部情绪截面（as_of 升序），盘中情绪路径数据源。
+func (r *Repo) SentimentTrail(ctx context.Context, day time.Time) ([]market.Sentiment, error) {
+	rows, err := r.db.MarketSentiment.Query().
+		Where(marketsentiment.TradeDateEQ(pgDay(day))).
+		Order(marketsentiment.ByAsOf(entsql.OrderAsc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]market.Sentiment, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, market.Sentiment{
+			TradeDate: row.TradeDate, AsOf: row.AsOf,
+			UpCount: row.UpCount, DownCount: row.DownCount, BrokenCount: row.BrokenCount,
+			BrokenRate: row.BrokenRate, MaxHeight: row.MaxHeight, ProfitEffect: row.ProfitEffect,
+			Advance: row.Advance, Decline: row.Decline, Flat: row.Flat, Amount: row.Amount,
+			Phase: market.Phase(row.Phase), ScoreCoef: row.ScoreCoef, PositionScale: row.PositionScale,
+			Stale: row.Stale,
+		})
+	}
+	return out, nil
+}
 func (r *Repo) SaveSectorHeat(ctx context.Context, day, asOf time.Time, rows []market.SectorHeat) error {
 	d := pgDay(day)
 	return chunks(len(rows), func(lo, hi int) error {

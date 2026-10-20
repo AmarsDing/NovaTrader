@@ -90,6 +90,121 @@ func (u *Usecase) AuctionCross(ctx context.Context, day time.Time, top int) (*Au
 	return summary, nil
 }
 
+// EmotionPoint 盘中情绪路径的一个时点。
+type EmotionPoint struct {
+	Time         string // HH:MM（as_of）
+	Auction      bool   // true 表示 09:25 竞价点（此时只填竞价字段）
+	Up           int
+	Down         int
+	Broken       int
+	BrokenRate   float64
+	MaxHeight    int
+	ProfitEffect float64
+	Advance      int
+	Decline      int
+	Amount       float64
+	Phase        string
+	ScoreCoef    float64
+	Stale        bool
+}
+
+// EmotionPath 一日盘中情绪路径：09:25 竞价头 + 当日全部情绪截面。
+// 竞价强度 = 昨涨停池在今日竞价截面的平均涨幅；没取到为 nil（「没取到 ≠ 0」）。
+type EmotionPath struct {
+	Day                 time.Time
+	AuctionFound        bool
+	AuctionTotalAmount  float64
+	AuctionLimitUpCount int
+	PrevTierAuctionPct  *float64
+	PrevTierSample      int
+	Points              []EmotionPoint
+	Partial             bool
+	Missing             []string
+}
+
+// EmotionPath 汇总某日情绪路径。截面来自 checkpoint/close/auction job 的落库，
+// 没存的时点不会在 points 出现（诚实呈现实际截面，不补零值点）。
+func (u *Usecase) EmotionPath(ctx context.Context, day time.Time) (*EmotionPath, error) {
+	p := &EmotionPath{Day: day}
+	auc, err := u.AuctionCross(ctx, day, 0)
+	if err != nil {
+		return nil, err
+	}
+	if auc.Found {
+		p.AuctionFound = true
+		p.AuctionTotalAmount = auc.TotalAmount
+		p.AuctionLimitUpCount = auc.LimitUpCount
+	} else {
+		p.Missing = append(p.Missing, "auction")
+	}
+	// 昨日涨停竞价强度
+	prev, err := u.cal.PrevOpen(day)
+	if err == nil {
+		sealed, err2 := u.repo.SealedOn(ctx, prev)
+		if err2 != nil {
+			return nil, err2
+		}
+		if len(sealed) > 0 && auc.Found {
+			asOf := time.Date(day.Year(), day.Month(), day.Day(), 9, 26, 0, 0, day.Location())
+			rows, err3 := u.repo.FactorsAt(ctx, day, KindAuction, asOf, sealedSymbols(sealed))
+			if err3 != nil {
+				return nil, err3
+			}
+			sum, n := 0.0, 0
+			for _, r := range rows {
+				// 「没取到≠0」：缺 auction_pct 键（如新股无前收）只能记 partial，
+				// 不得以 0 入均值把昨涨停竞价强度拉低——伪 0 会稀释真实读数
+				if v, ok := r.Values["auction_pct"]; ok {
+					sum += v
+					n++
+				}
+			}
+			if n > 0 {
+				avg := r2x(sum / float64(n))
+				p.PrevTierAuctionPct = &avg
+				p.PrevTierSample = n
+				if n < len(sealed) {
+					p.Missing = append(p.Missing, "auction_prev_tier_partial")
+				}
+			}
+		}
+	}
+	trail, err := u.repo.SentimentTrail(ctx, day)
+	if err != nil {
+		return nil, err
+	}
+	if len(trail) == 0 {
+		p.Missing = append(p.Missing, "market_sentiment")
+	}
+	if auc.Found {
+		p.Points = append(p.Points, EmotionPoint{Time: "09:25", Auction: true})
+	}
+	for _, s := range trail {
+		p.Points = append(p.Points, EmotionPoint{
+			Time: s.AsOf.Format("15:04"),
+			Up:   s.UpCount, Down: s.DownCount, Broken: s.BrokenCount,
+			BrokenRate: r2x(s.BrokenRate), MaxHeight: s.MaxHeight, ProfitEffect: r2x(s.ProfitEffect),
+			Advance: s.Advance, Decline: s.Decline, Amount: s.Amount,
+			Phase: string(s.Phase), ScoreCoef: r2x(s.ScoreCoef), Stale: s.Stale,
+		})
+	}
+	if len(p.Missing) > 0 {
+		p.Partial = true
+	}
+	return p, nil
+}
+
+func sealedSymbols(sealed map[string]int) []string {
+	out := make([]string, 0, len(sealed))
+	for s := range sealed {
+		out = append(out, s)
+	}
+	return out
+}
+
+func r2x(v float64) float64 {
+	return float64(int(v*100+0.5)) / 100
+}
 // LadderStep 是一档晋级统计：前一日 N 连板、次日封住 N+1 的比例。
 type LadderStep struct {
 	From      int

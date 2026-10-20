@@ -61,6 +61,8 @@ type Repo interface {
 	SaveFactors(ctx context.Context, day time.Time, kind string, rows []market.FactorRow) error
 	SaveBoards(ctx context.Context, boards []market.LimitBoard) error
 	SaveSentiment(ctx context.Context, s market.Sentiment) error
+	// SentimentTrail 返回某日全部情绪截面（as_of 升序），用于盘中情绪路径。没有记录返回空。
+	SentimentTrail(ctx context.Context, day time.Time) ([]market.Sentiment, error)
 	SaveSectorHeat(ctx context.Context, day, asOf time.Time, rows []market.SectorHeat) error
 
 	SectorMembers(ctx context.Context, day time.Time) (map[string][]string, map[string]string, error)

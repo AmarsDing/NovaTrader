@@ -91,6 +91,9 @@ func (f *fakeRepo) SaveSentiment(_ context.Context, s market.Sentiment) error {
 	f.sentiment = append(f.sentiment, s)
 	return nil
 }
+func (f *fakeRepo) SentimentTrail(context.Context, time.Time) ([]market.Sentiment, error) {
+	return nil, nil
+}
 func (f *fakeRepo) SaveSectorHeat(context.Context, time.Time, time.Time, []market.SectorHeat) error {
 	f.heat++
 	return nil
@@ -145,6 +148,7 @@ func (f *fakeRepo) SaveSeatStats(_ context.Context, rows []SeatStatRow) error {
 func (f *fakeRepo) SeatStatsRows(context.Context, time.Time) ([]SeatStatRow, error) {
 	return f.seatRows, nil
 }
+
 // B4 研报预测读出口：默认空（estRows 可由用例覆写）。记录三参供参数管道断言。
 func (f *fakeRepo) ReportEstimateRows(_ context.Context, symbol string, since, asOf time.Time) ([]ReportEstimateItem, error) {
 	f.estSym, f.estSince, f.estAsOf = symbol, since, asOf
