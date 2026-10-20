@@ -4,7 +4,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import NtStatusDot, { type DotStatus } from '@/ui/NtStatusDot.vue'
-import { linkStatus } from '@/ui/status-map'
+import { linkStatus, statusOf } from '@/ui/status-map'
 import { useAccountStore } from '@/stores/account'
 import { useNotifyStore } from '@/stores/notify'
 import { useRiskStore } from '@/stores/risk'
@@ -37,8 +37,11 @@ const wsStatus = computed<DotStatus>(() =>
 const accountHint = computed(() => account.checkedAt ? `账户最近读取 ${clock(new Date(account.checkedAt))}` : '账户尚未读取')
 const riskHint = computed(() => risk.checkedAt ? `风控最近读取 ${clock(new Date(risk.checkedAt))}` : '风控尚未读取')
 const riskCurrent = computed(() => risk.ready && isLive())
-const killText = computed(() => riskCurrent.value ? (risk.killActive ? '已触发' : '未触发') :
-  risk.killActive ? '待核对 · 上次已触发' : '状态待核对')
+const killText = computed(() =>
+  riskCurrent.value
+    ? statusOf(risk.killActive ? 'risk.active' : 'risk.standby').text
+    : statusOf(risk.killActive ? 'risk.unverified_active' : 'risk.unverified').text,
+)
 /** 授权级别徽标（N9 阶梯）：SIM 撮合=青；LIVE 逐单确认=琥珀；LIVE 未验收=红且禁提交。 */
 const authzText = computed(() => account.book === 'LIVE' ? 'LIVE · 未授权' : 'SIM 撮合')
 const authzClass = computed(() => account.book === 'LIVE' ? 'danger' : 'accent')

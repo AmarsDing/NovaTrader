@@ -13,12 +13,13 @@ import {
   type QualityIssue,
 } from '@/api/datahub'
 import { useAuthStore } from '@/stores/auth'
+import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
-import { linkStatus } from '@/ui/status-map'
+import { linkStatus, statusOf as statusMapOf } from '@/ui/status-map'
 import { clock, messageOf, ratioPct } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -90,6 +91,15 @@ const qualityRows = computed(() => quality.value as unknown as QualityRow[])
 
 async function load() {
   loading.value = true
+/** 严重度章词/tone 出自 quality 册（§7.1，一字锁定）：high 高 warn / medium 中 neutral / low 低 neutral；
+ *  册外值返回 null，由调用处原样回显（不自封文案）。 */
+function severityEntry(v: string | null | undefined) {
+  if (v === 'high') return statusMapOf('quality.high')
+  if (v === 'medium') return statusMapOf('quality.medium')
+  if (v === 'low') return statusMapOf('quality.low')
+  return null
+}
+
   error.value = ''
   try {
     const [s, q] = await Promise.allSettled([listSources(), getQuality({ limit: 50 })])
@@ -189,7 +199,9 @@ onMounted(load)
       <h2 class="nt-panel__title">质量问题（逐条）</h2>
       <NtTable :columns="qualityColumns" :rows="qualityRows" row-key="id" dense empty="没有质量问题记录">
         <template #cell-severity="{ row }">
-          <span :class="{ warn: row.severity === 'high', mid: row.severity === 'medium' }">{{ row.severity || '—' }}</span>
+          <NtBadge :tone="severityEntry(row.severity)?.tone ?? 'neutral'">
+            {{ severityEntry(row.severity)?.text ?? (row.severity || '—') }}
+          </NtBadge>
         </template>
         <template #cell-hits="{ row }">{{ row.hits != null ? row.hits : '—' }}</template>
         <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) }}</template>
@@ -199,11 +211,6 @@ onMounted(load)
 </template>
 
 <style scoped>
-.warn {
-  color: var(--nt-warn);
-  font-weight: 600;
-}
-.mid {
 .nt-head__actions {
   display: flex;
   gap: 8px;
@@ -213,3 +220,10 @@ onMounted(load)
   color: var(--nt-text-2);
 }
 </style>
+/* G4 棘轮候选（§7.1 lint 候选方向）：scoped 散写状态色 class 待 G4 收编为册导出；
+   severity 章已率先改走册（NtBadge + quality.*），successRate/fails 告警着色仍用 .warn（P3-10c 守卫区不动）。 */
+.warn {
+  color: var(--nt-warn);
+  font-weight: 600;
+}
+.mid {

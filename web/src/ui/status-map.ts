@@ -35,7 +35,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1 首批，全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -57,6 +57,51 @@ export const STATUS_MAP = Object.freeze({
   'audit.failure': { text: '失败', tone: 'danger' },
   'security.suspended': { text: '停牌', tone: 'neutral' },
   'security.st': { text: 'ST', tone: 'warn' },
+  // —— 第二批（§7.1 散值入册，36 键）——
+  // risk 风控域
+  'risk.killswitch': { text: '已触发', tone: 'danger' },
+  'risk.breaker': { text: '行情熔断', tone: 'warn' },
+  'risk.precheck.pass': { text: '预检通过', tone: 'success' },
+  'risk.precheck.blocked': { text: '预检拦截', tone: 'danger' },
+  'risk.active': { text: '生效中', tone: 'danger' },
+  'risk.standby': { text: '未触发', tone: 'neutral' },
+  'risk.unverified': { text: '状态待核对', tone: 'warn' },
+  'risk.unverified_active': { text: '待核对·上次已触发', tone: 'warn' },
+  // evolution 策略演化域
+  'evolution.admitted': { text: '已达准入', tone: 'success' },
+  // doc 文档生命周期域
+  'doc.active': { text: '有效', tone: 'success' },
+  'doc.superseded': { text: '被替换', tone: 'warn' },
+  'doc.expired': { text: '已过期', tone: 'warn' },
+  'doc.deleted': { text: '已删除', tone: 'danger' },
+  // quality 数据质量域
+  'quality.high': { text: '高', tone: 'warn' },
+  'quality.medium': { text: '中', tone: 'neutral' },
+  'quality.low': { text: '低', tone: 'neutral' },
+  // quote 行情域：quote.suspended 与 security.suspended 文案同为「停牌」但分级不同——
+  // quote=行情域（盘中停牌，danger 紧急）；security=档案域（个股属性标注，neutral 中性），两键并存勿合并。
+  'quote.suspended': { text: '停牌', tone: 'danger' },
+  'quote.nolimit': { text: '无涨跌幅', tone: 'accent' },
+  'quote.stale': { text: '已过期', tone: 'warn' },
+  // signal 交易信号域
+  'signal.pending': { text: '待审核', tone: 'warn' },
+  'signal.risk_checking': { text: '风控审核', tone: 'warn' },
+  'signal.approved': { text: '已通过', tone: 'success' },
+  'signal.rejected': { text: '已拦截', tone: 'danger' },
+  'signal.executing': { text: '执行中', tone: 'accent' },
+  'signal.done': { text: '已有成交', tone: 'success' },
+  'signal.closed': { text: '已平仓', tone: 'neutral' },
+  'signal.expired': { text: '已过期', tone: 'warn' },
+  'signal.cancelled': { text: '已取消', tone: 'neutral' },
+  // order 订单域
+  'order.pending': { text: '待报', tone: 'neutral' },
+  'order.submitted': { text: '已报', tone: 'accent' },
+  'order.pending_confirm': { text: '待人工确认', tone: 'warn' },
+  'order.partial': { text: '部成', tone: 'warn' },
+  'order.filled': { text: '已成', tone: 'success' },
+  'order.cancelled': { text: '已撤', tone: 'neutral' },
+  'order.rejected': { text: '已拒绝', tone: 'danger' },
+  'order.expired': { text: '已过期', tone: 'warn' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP

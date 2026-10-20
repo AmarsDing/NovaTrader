@@ -18,6 +18,7 @@ import {
   isPendingStatus,
   type DecisionContext,
 } from './decision-desk'
+import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
@@ -25,6 +26,7 @@ import NtProgressRing from '@/ui/NtProgressRing.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtRadar from '@/viz/NtRadar.vue'
 import SymbolName from '@/display/SymbolName.vue'
+import { statusOf } from '@/ui/status-map'
 import {
   clock,
   dimValue,
@@ -35,7 +37,6 @@ import {
   pctText,
   ratioPct,
   sideLabel,
-  signalStatusLabel,
   strategyLabel,
   validRemainText,
 } from '@/utils/format'
@@ -197,17 +198,27 @@ function dimsOf(item: SignalItem) {
   return labels.map((label) => ({ label, value: dimValue(item.dims, label) }))
 }
 
-function stateBadge(item: SignalItem): { text: string; cls: string } {
 /** 信号行自带时间戳 → epoch ms；丢给 NtFreshness，无时点证据显「时点未知」（不冒充 0s）。 */
 function timeOf(value: string): number | null {
   const ts = new Date(value).getTime()
   return Number.isFinite(ts) ? ts : null
 }
 
-  if (isHandled(item) || ['rejected', 'cancelled'].includes(item.status.toLowerCase()))
-    return { text: signalStatusLabel(item.status), cls: 'closed' }
-  if (isExpired(item)) return { text: '已过期', cls: 'expired' }
-  return { text: validRemainText(item.validUntil, nowTick.value) || signalStatusLabel(item.status), cls: 'active' }
+/** 状态章文案/tone 出自 signal 册（§7.1，一字锁定）：终态优先于过期判定，未终态且 validUntil 已过按「已过期」论；
+ *  remain 仅未终态未过期信号给出（章侧附剩余时效，format 工具函数非自封文案）；册外状态返回 null 文案，模板原样回显。 */
+function stateBadge(item: SignalItem) {
+  const status = item.status.toLowerCase()
+  if (status === 'rejected') return { entry: statusOf('signal.rejected'), remain: '' }
+  if (status === 'cancelled' || status === 'canceled') return { entry: statusOf('signal.cancelled'), remain: '' }
+  if (status === 'executing') return { entry: statusOf('signal.executing'), remain: '' }
+  if (status === 'done') return { entry: statusOf('signal.done'), remain: '' }
+  if (status === 'closed') return { entry: statusOf('signal.closed'), remain: '' }
+  if (isExpired(item)) return { entry: statusOf('signal.expired'), remain: '' }
+  const remain = validRemainText(item.validUntil, nowTick.value)
+  if (status === 'pending') return { entry: statusOf('signal.pending'), remain }
+  if (status === 'risk_checking') return { entry: statusOf('signal.risk_checking'), remain }
+  if (status === 'approved') return { entry: statusOf('signal.approved'), remain }
+  return { entry: null, remain }
 }
 
 let offPush: (() => void) | undefined
@@ -305,13 +316,14 @@ watch(
           <span class="tm">{{ clock(item.time) }}</span>
           <!-- 红涨绿跌：买入红、卖出绿 -->
           <em :class="item.side === 'buy' ? 'up' : item.side === 'sell' ? 'down' : ''">{{ sideLabel(item.side) }}</em>
-          <b class="badge" :class="stateBadge(item).cls">{{ stateBadge(item).text }}</b>
-          <!-- 状态章为信号状态机散值（signalStatusLabel/有效期剩余），status-map §7.1 册无 signal.* 键：
-               本批保持现状待评审入册，禁自封（§7.1 纪律）。 -->
-        </header>
+          <!-- 状态章文案/tone 出自 signal 册（§7.1，一字锁定）；未终态且有效期已过按「已过期」论，
+               册外状态码原样回显（禁自封）；未终态信号章侧附剩余时效（非状态文案）。 -->
+          <NtBadge :tone="stateBadge(item).entry?.tone ?? 'neutral'">{{ stateBadge(item).entry?.text ?? (item.status || '—') }}</NtBadge>
+          <span v-if="stateBadge(item).remain" class="tm">{{ stateBadge(item).remain }}</span>
           <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
           <NtFreshness label="信号" :at="timeOf(item.time)" />
         <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
+        </header>
           <h3>当前动作：{{ actionOf(item).title }}</h3>
           <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
           <p><strong>失效条件</strong>{{ actionOf(item).invalidation }}</p>

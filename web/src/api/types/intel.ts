@@ -8,6 +8,8 @@ export interface IntelItem {
   importance: number | null
   source: string
   kind: string
+  /** 公告/研报原文外链：后端 proto 已下发 url 字段，前端此前丢弃；无链为 undefined，UI 走内链通道。 */
+  url?: string
 }
 
 export interface IntelTimeline {

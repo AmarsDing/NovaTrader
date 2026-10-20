@@ -5,6 +5,7 @@
  */
 import type { KbDocument, KbIngestParams } from '@/api/types/kb'
 import type { BadgeTone } from '@/ui/NtBadge.vue'
+import { statusOf } from '@/ui/status-map'
 import { phaseName } from '@/utils/format'
 
 export const CATEGORY_OPTIONS = [
@@ -44,21 +45,21 @@ export const STATUS_OPTIONS = [
   { value: 'deleted', label: '已删除' },
 ]
 
-const STATUS_LABELS: Record<string, string> = {
-  active: '有效',
-  superseded: '被替换',
-  expired: '已过期',
-  deleted: '已删除',
-}
-
+/** 文档生命周期词/tone 取自 doc 册（§7.1，一字锁定）：active 有效 / superseded 被替换 / expired 已过期 / deleted 已删除；
+ *  册外值原样回显、tone neutral（不自封文案），消费方签名不变。 */
 export function statusLabel(v: string): string {
-  return STATUS_LABELS[v] || v || '—'
+  if (v === 'active') return statusOf('doc.active').text
+  if (v === 'superseded') return statusOf('doc.superseded').text
+  if (v === 'expired') return statusOf('doc.expired').text
+  if (v === 'deleted') return statusOf('doc.deleted').text
+  return v || '—'
 }
 
 export function statusTone(v: string): BadgeTone {
-  if (v === 'active') return 'success'
-  if (v === 'superseded' || v === 'expired') return 'warn'
-  if (v === 'deleted') return 'danger'
+  if (v === 'active') return statusOf('doc.active').tone
+  if (v === 'superseded') return statusOf('doc.superseded').tone
+  if (v === 'expired') return statusOf('doc.expired').tone
+  if (v === 'deleted') return statusOf('doc.deleted').tone
   return 'neutral'
 }
 

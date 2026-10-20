@@ -17,6 +17,7 @@ import FunctionIndexOverlay from './FunctionIndexOverlay.vue'
 import StatusBar from './StatusBar.vue'
 import DockHost from './DockHost.vue'
 import AlertCenter from './AlertCenter.vue'
+import F10Drawer from './F10Drawer.vue'
 import ConfigCenter from '@/view/ConfigCenter.vue'
 import NtToast from '@/ui/NtToast.vue'
 import { startWatchdog } from './connection-watchdog'
@@ -159,6 +160,7 @@ watch(() => route.fullPath, consumeDeepLink)
       <ConfigCenter overlay @close="configOpen = false" />
     </div>
     <AlertCenter />
+    <F10Drawer />
     <NtToast />
   </div>
 </template>

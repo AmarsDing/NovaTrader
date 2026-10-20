@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
 import { listSectors, type SectorRow } from '@/api/market'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import SymbolName from '@/display/SymbolName.vue'
@@ -30,6 +31,18 @@ const sectorColumns: NtTableColumn<SectorRow>[] = [
   { key: 'overseas', title: '外围脉冲', align: 'right' },
   { key: 'leader', title: '龙头' },
 ]
+
+/** §7.3 收编：情报时点取时间线条目 publish_time 最大者（SignalView/watchlist 先例——行自带时间戳直喂，
+ *  取最大者为最新证据）；无条目/全非法 → null 显「时点未知」，不冒充当前时刻。
+ *  本视图无实时链路证据（无 WS 订阅），cut 不挂——不拿无时源判定冒充断流。 */
+const intelFreshAt = computed(() => {
+  let best: number | null = null
+  for (const item of items.value) {
+    const t = Date.parse(item.time)
+    if (Number.isFinite(t) && (best === null || t > best)) best = t
+  }
+  return best
+})
 
 /** 综合情感量纲说明：后端口径 -1（利空）到 +1（利好），0 为中轴。 */
 function sentimentText(value: number | null): string {
@@ -105,6 +118,7 @@ onBeforeUnmount(() => offPanelParams())
         <h1 class="nt-title">情报</h1>
         <p class="nt-note">消息流、热词、板块和外围脉冲。</p>
       </div>
+      <NtFreshness label="情报" :at="intelFreshAt" />
     </header>
     <form class="nt-form" @submit.prevent="loadNews()">
       <label class="grow">

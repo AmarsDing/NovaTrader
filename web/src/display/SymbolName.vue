@@ -6,12 +6,17 @@
  * - 缺名一律显弱化「名称未返回」（text-3），不留空白、禁拿代码冒充名称（数据纪律）；
  * - 点击（缺省可点；code 模式缺省不可点）：setSymbol(规范全码) + openPanel('quote-sidebar')，
  *   工作台不存在时静默跳过；键盘 Enter/Space 可达；
+ * - f10（opt-in 试点，§6.5）：true 且码有效时 hover 600ms 出 F10HoverCard 速览（离开 100ms 宽限、
+ *   卡 enter 保活、Esc 由卡的 useOverlay 关栈顶），点击/Enter/Space 改走 f10.openFor 进抽屉；
+ *   false（缺省）时对外行为与现网全等；
  * - 名称出自 stores/security 名称字典；挂载与换码 ensure 后台补名（fetcher 未注册时 noop）。
  */
-import { computed, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { normalizeCode, useSecurityStore } from '@/stores/security'
 import { useSymbolStore } from '@/stores/symbol'
+import { useF10Store } from '@/stores/f10'
 import { getWorkbench } from '@/workspace/inject'
+import F10HoverCard from './F10HoverCard.vue'
 
 export type SymbolNameMode = 'inline' | 'stacked' | 'compact' | 'code'
 
@@ -22,8 +27,10 @@ const props = withDefaults(
     mode?: SymbolNameMode
     /** 三态：true/false 钉死；缺省（null）时 code 模式不可点、其余模式可点。 */
     clickable?: boolean | null
+    /** F10 试点开关：true 时 hover 出速览卡、点击进 F10 抽屉；false（缺省）与现网全等。 */
+    f10?: boolean
   }>(),
-  { mode: 'inline', clickable: null },
+  { mode: 'inline', clickable: null, f10: false },
 )
 
 const security = useSecurityStore()
@@ -49,6 +56,11 @@ watch(() => props.code, ensureName)
 
 function activate() {
   if (!canClick.value || !fullCode.value) return
+  if (props.f10) {
+    closeHover()
+    useF10Store().openFor(fullCode.value)
+    return
+  }
   symbolStore.setSymbol(fullCode.value, 'SymbolName')
   getWorkbench()?.openPanel('quote-sidebar', { symbol: fullCode.value })
 }
@@ -59,16 +71,78 @@ function onKeydown(event: KeyboardEvent) {
     activate()
   }
 }
+
+/* ---------- F10 悬浮卡宿主（opt-in；延时结构同 NtTooltip） ---------- */
+
+const root = ref<HTMLElement | null>(null)
+const hoverRect = ref<{ x: number; y: number; width: number; height: number } | null>(null)
+const hoverOpen = ref(false)
+let hoverTimer: ReturnType<typeof setTimeout> | null = null
+let leaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function onPointerEnter() {
+  if (!props.f10 || !fullCode.value) return
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
+  if (hoverOpen.value || hoverTimer) return
+  hoverTimer = setTimeout(() => {
+    hoverTimer = null
+    const el = root.value
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    hoverRect.value = { x: r.x, y: r.y, width: r.width, height: r.height }
+    hoverOpen.value = true
+  }, 600)
+}
+
+function onPointerLeave() {
+  if (!props.f10) return
+  if (hoverTimer) {
+    clearTimeout(hoverTimer)
+    hoverTimer = null
+  }
+  // 100ms 宽限：指针移向卡体时卡的 enter 事件会撤掉本定时保活。
+  if (!hoverOpen.value || leaveTimer) return
+  leaveTimer = setTimeout(closeHover, 100)
+}
+
+/** 卡 pointerenter 保活：撤掉离开宽限。 */
+function onCardEnter() {
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
+}
+
+function closeHover() {
+  if (hoverTimer) {
+    clearTimeout(hoverTimer)
+    hoverTimer = null
+  }
+  if (leaveTimer) {
+    clearTimeout(leaveTimer)
+    leaveTimer = null
+  }
+  hoverOpen.value = false
+  hoverRect.value = null
+}
+
+onBeforeUnmount(closeHover)
 </script>
 
 <template>
   <span
+    ref="root"
     class="sn"
     :class="[`sn--${mode}`, { 'sn--click': canClick, 'sn--noname': !resolved.hasName }]"
     :role="canClick ? 'button' : undefined"
     :tabindex="canClick ? 0 : undefined"
     @click="activate"
     @keydown="onKeydown"
+    @pointerenter="onPointerEnter"
+    @pointerleave="onPointerLeave"
   >
     <template v-if="mode === 'code'">
       <span class="sn__code">{{ shortCode }}</span>
@@ -80,6 +154,13 @@ function onKeydown(event: KeyboardEvent) {
       <span class="sn__name">{{ displayName }}</span>
       <span class="sn__code">{{ shortCode }}</span>
     </template>
+    <F10HoverCard
+      v-if="hoverOpen && hoverRect"
+      :code="fullCode"
+      :rect="hoverRect"
+      @close="closeHover"
+      @enter="onCardEnter"
+    />
   </span>
 </template>
 

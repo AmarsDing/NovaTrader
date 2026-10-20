@@ -11,6 +11,7 @@ import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -79,11 +80,10 @@ onMounted(() => {
         <h1 class="nt-title">风控链 R01–R15</h1>
         <p class="nt-note">
           当前模式 <b>{{ risk.mode || '—' }}</b>
-          <!-- §10-19 册消费研判：Kill Switch 为 L4 风险（§8.1），chapter 须 danger；
-               册 alert.triggered「已触发」tone=warn 会降语义等级，audit.* 词义不符，
-               故保持「Kill Switch 已触发」原文案待入册评审；熔断章带动态器名，册内无对应键，同保原文案。 -->
-          <NtBadge v-if="risk.killActive" tone="danger" dot>Kill Switch 已触发</NtBadge>
-          <NtBadge v-if="risk.marketBreaker" tone="warn">行情熔断 {{ risk.marketBreaker }}</NtBadge>
+          <!-- Kill Switch/熔断章词与 tone 取自 risk 册（§7.1，一字锁定）：killswitch 已触发 danger（L4 等级不降）、
+               breaker 行情熔断 warn；「Kill Switch」固定标识与熔断器名动态后缀按原样拼接，原信息不丢。 -->
+          <NtBadge v-if="risk.killActive" :tone="statusOf('risk.killswitch').tone" dot>Kill Switch {{ statusOf('risk.killswitch').text }}</NtBadge>
+          <NtBadge v-if="risk.marketBreaker" :tone="statusOf('risk.breaker').tone">{{ statusOf('risk.breaker').text }} {{ risk.marketBreaker }}</NtBadge>
           <span v-if="risk.buysToday != null" class="meta">今日已买入 {{ risk.buysToday }}/5</span>
         </p>
       </div>
@@ -127,9 +127,10 @@ onMounted(() => {
     <section v-if="result" class="nt-panel">
       <h2 class="nt-panel__title">
         结果
-        <!-- §10-19 册消费研判：预检「通过/拦截」是规则放行语义，册 audit.success/failure（成功/失败）
-             词义不等价，保持原文案待入册评审。 -->
-        <NtBadge :tone="result.pass ? 'success' : 'danger'">{{ result.pass ? '通过' : '拦截' }}</NtBadge>
+        <!-- 预检结果章词/tone 取自 risk.precheck 册二态（§7.1，一字锁定）：通过 success / 拦截 danger。 -->
+        <NtBadge :tone="result.pass ? statusOf('risk.precheck.pass').tone : statusOf('risk.precheck.blocked').tone">
+          {{ result.pass ? statusOf('risk.precheck.pass').text : statusOf('risk.precheck.blocked').text }}
+        </NtBadge>
       </h2>
       <p class="nt-note">
         {{ passedCount }}/{{ hits.length }} 条规则通过 · {{ clock(result.at) }}

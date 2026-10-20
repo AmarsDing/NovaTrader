@@ -23,7 +23,8 @@ import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
-import { amount, clock, compactAmount, messageOf, orderStatusLabel, pnlClass, price, sideLabel, canCancelOrder } from '@/utils/format'
+import { statusOf } from '@/ui/status-map'
+import { amount, clock, compactAmount, messageOf, pnlClass, price, sideLabel, canCancelOrder } from '@/utils/format'
 import { deskNotify } from '@/utils/notify'
 import { serverNow } from '@/utils/server-clock'
 import { useToast } from '@/ui/useToast'
@@ -259,6 +260,21 @@ function sellable(p: { available: number | null }): { text: string; hold: boolea
   return { text: String(p.available), hold: false }
 }
 
+/** 委托状态章文案/tone 出自 order 册（§7.1，一字锁定）：后端别名（new/accepted/canceled）归并同义项；
+ *  册外值返回 null，模板原样回显 status（不自封文案、不用 0/空串冒充）。 */
+function orderStatusEntry(status: string | null | undefined) {
+  const key = String(status || '').toLowerCase()
+  if (key === 'new' || key === 'pending') return statusOf('order.pending')
+  if (key === 'accepted' || key === 'submitted') return statusOf('order.submitted')
+  if (key === 'pending_confirm') return statusOf('order.pending_confirm')
+  if (key === 'partial') return statusOf('order.partial')
+  if (key === 'filled') return statusOf('order.filled')
+  if (key === 'cancelled' || key === 'canceled') return statusOf('order.cancelled')
+  if (key === 'rejected') return statusOf('order.rejected')
+  if (key === 'expired') return statusOf('order.expired')
+  return null
+}
+
 const badge = computed(() => {
   if (book.value === 'LIVE') return { text: 'LIVE · 未授权', tone: 'danger' as const, note: '实盘执行权限未验收，提交保持禁用' }
   return { text: 'SIM 模拟', tone: 'accent' as const, note: '模拟账本撮合，不等同实盘成交' }
@@ -366,7 +382,7 @@ onBeforeUnmount(() => {
 
     <section v-else-if="tab === 'open'">
       <!-- R4（§6.3）：委托行无时间字段（接口 Delivery 未携带），不拿当前时刻冒充；
-           状态文案为订单状态机散值（orderStatusLabel），status-map 册无 order.* 键——维持原文案待评审入册（§7.1 禁自封）。 -->
+           状态章文案/tone 出自 order 册（§7.1，一字锁定），册外状态码原样回显（禁自封）。 -->
       <p v-if="!trade.ready && !trade.orders.length" class="nt-empty">委托未读到，点「刷新」重试。</p>
       <p v-else-if="!openOrders.length" class="nt-empty">当前没有未终态委托。</p>
       <table v-else class="sheet">
@@ -379,7 +395,7 @@ onBeforeUnmount(() => {
             <td class="mono">{{ price(o.price) }}</td>
             <td class="mono">{{ o.volume ?? '—' }}</td>
             <td class="mono">{{ o.filled ?? '—' }}</td>
-            <td>{{ orderStatusLabel(o.status) }}<template v-if="o.reason"> · {{ o.reason }}</template></td>
+            <td><NtBadge :tone="orderStatusEntry(o.status)?.tone ?? 'neutral'">{{ orderStatusEntry(o.status)?.text ?? (o.status || '—') }}</NtBadge><template v-if="o.reason"> · {{ o.reason }}</template></td>
             <td>
               <NtButton
                 v-if="o.status.toLowerCase() === 'pending_confirm'"
@@ -394,7 +410,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else-if="tab === 'all'">
-      <!-- R4（§6.3）：同「当前委托」——时间位缺（接口无时间字段）；状态章维持 orderStatusLabel 原文案待入册评审。 -->
+      <!-- R4（§6.3）：同「当前委托」——时间位缺（接口无时间字段）；状态章同走 order 册（§7.1，一字锁定）。 -->
       <p class="nt-note">后端口径：最近 100 条委托（暂无日期字段，今日/历史暂不拆分）。</p>
       <p v-if="!trade.orders.length" class="nt-empty">{{ trade.ready ? '还没有委托。' : '委托未读到，点「刷新」重试。' }}</p>
       <table v-else class="sheet">
@@ -407,7 +423,7 @@ onBeforeUnmount(() => {
             <td class="mono">{{ price(o.price) }}</td>
             <td class="mono">{{ o.volume ?? '—' }}</td>
             <td class="mono">{{ o.filled ?? '—' }}</td>
-            <td>{{ orderStatusLabel(o.status) }}</td>
+            <td><NtBadge :tone="orderStatusEntry(o.status)?.tone ?? 'neutral'">{{ orderStatusEntry(o.status)?.text ?? (o.status || '—') }}</NtBadge></td>
           </tr>
         </tbody>
       </table>

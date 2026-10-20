@@ -16,6 +16,8 @@ export async function timeline(code: string): Promise<IntelTimeline> {
       importance: num(pick(raw, 'importance')),
       source: pick<string>(raw, 'source') || '',
       kind: pick<string>(raw, 'kind') || '',
+      // 公告/研报外链透传（后端 proto 已下发，缺省 undefined → 前端走内链通道）。
+      url: pick<string>(raw, 'url') || undefined,
     })),
   }
 }

@@ -8,6 +8,7 @@ import { computed, onMounted, ref } from 'vue'
 import { getRiskReport, type RiskReport } from '@/api/risk'
 import NtButton from '@/ui/NtButton.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
 
 const report = ref<RiskReport | null>(null)
@@ -41,7 +42,7 @@ const eventRows = computed<EventRow[]>(() =>
   (report.value?.events ?? []).map((item) => ({
     at: item.at ? clock(item.at) : '时刻未返回',
     kind: KIND_LABEL[item.kind] ?? (item.kind || '未返回'),
-    state: item.active ? '生效中' : '已解除',
+    state: statusOf(item.active ? 'risk.active' : 'alert.released').text,
     detail: [item.mode, item.source, item.operator, item.reason].filter(Boolean).join(' · ') || '没有更多字段',
   })),
 )

@@ -8,6 +8,8 @@ import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtIndicatorChart, { type IndicatorPoint } from '@/viz/NtIndicatorChart.vue'
+import SymbolName from '@/display/SymbolName.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtKline, { type KlineLevel, type KlineMarker } from '@/viz/NtKline.vue'
 import { PALETTE } from '@/theme/tokens'
 import { clock, compactAmount, messageOf, num, pick, pnlClass, price } from '@/utils/format'
@@ -372,6 +374,26 @@ function onPushMessage(msg: WsPushMessage) {
   if (!code) return
   rows.forEach((row) => {
     // bar 帧的 symbol/freq 可能在行内也可能在帧顶层；对不上当前图表的帧直接忽略。
+/** 面板头徽注（§7.2-2/§7.3）：时间证据优先取快照帧 asOf，退到末根 bar 时刻；
+ *  均无则传 null 由组件显「时点未知」（数据纪律：不拿 0s/当前时刻冒充）。 */
+const freshAt = computed<number | null>(() => {
+  const asOf = snapshot.value ? snapshot.value.asOf || snapshot.value.as_of : undefined
+  if (asOf) {
+    const t = Date.parse(String(asOf))
+    if (Number.isFinite(t)) return t
+  }
+  const tail = bars.value[bars.value.length - 1]
+  if (tail?.time) {
+    const t = Date.parse(String(tail.time))
+    if (Number.isFinite(t)) return t
+  }
+  return null
+})
+/** 链路断（健康/推送/同步任一未就绪）显「断 · 最后 HH:mm:ss」，优先于年龄分支。 */
+const freshCut = computed(() => !isLive())
+/** 分钟线推送节拍约一根一分钟（宽限 2 分钟）；日线一根一天（宽限 30h）。 */
+const freshStaleMs = computed(() => (freq.value === '1d' ? 30 * 3600 * 1000 : 120 * 1000))
+
     const rowSymbol = row.symbol ?? pick<string>(data, 'symbol', 'stockCode', 'stock_code', 'code')
     const rowFreq = row.freq ?? pick<string>(data, 'freq')
     if (rowSymbol != null && rowSymbol !== code) return
@@ -456,6 +478,7 @@ onBeforeUnmount(() => {
       <span class="q-item">量 {{ compactAmount(quote.volume) }} 股</span>
       <span class="q-item">额 {{ compactAmount(quote.amount) }} 元</span>
       <span class="q-item q-time">K 线时间 {{ clock(quote.time) }}</span>
+      <NtFreshness label="行情" :at="freshAt" :cut="freshCut" :stale-after-ms="freshStaleMs" />
     </div>
 
     <div class="nt-split">
@@ -482,6 +505,7 @@ onBeforeUnmount(() => {
             :markers="markers"
             :levels="klineLevels"
             :watermark="symbol.trim()"
+      <SymbolName :code="symbol.trim()" mode="stacked" />
             :freq="freq"
             height="100%"
           />

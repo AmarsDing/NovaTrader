@@ -6,7 +6,7 @@
  *   面板只直读直写、不在前端评估，状态行靠手动刷新 + 15s 轻轮询保持不陈旧；
  * - 编辑/重置布防是服务端白名单重建（清触发态、重立基线，防幽灵基线），表单本地仅做形状校验。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   createAlertRule,
   deleteAlertRule,
@@ -22,8 +22,11 @@ import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
+import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { statusOf } from '@/ui/status-map'
+import type { AlertLevel } from '@/ui/alert-levels'
+import { loadQuiet, saveQuiet, type QuietWindow } from '@/utils/alert-quiet'
 import { clock } from '@/utils/format'
 
 const REFRESH_MS = 15000
@@ -177,9 +180,54 @@ const emptyText = computed(() => {
   return '暂无盯盘规则——先在上方新建一条'
 })
 
+/* ---------- 汇聚与静默（§8.3/§8.5） ----------
+ * 读写全走 utils/alert-quiet（localStorage 持久化，读路径全容错，L4 恒直通不在级别选项内）。
+ * 后端字段留账：proto 扩 alert_rule 冷却/静默字段、改服务端持久化，待 e4 ent 落批后接——本区先落本机。 */
+const cooldownMin = ref('')
+const quietWindows = ref<QuietWindow[]>([])
+
+/** 'HH:MM' 校验：半成品窗留在编辑态不入库，feed 侧 quietHours 对坏格式本就判不适用。 */
+const HHMM_RE = /^([01]?\d|2[0-3]):[0-5]\d$/
+
+function syncQuietDraft() {
+  const cfg = loadQuiet()
+  cooldownMin.value = String(cfg.cooldownMs / 60000)
+  quietWindows.value = cfg.windows.map((w) => ({ start: w.start, end: w.end, levels: [...w.levels] }))
+}
+
+watch(cooldownMin, (raw) => {
+  const minutes = Number(raw)
+  if (!raw.trim() || !Number.isFinite(minutes) || minutes < 0) return
+  saveQuiet({ ...loadQuiet(), cooldownMs: minutes * 60000 })
+})
+
+function persistQuietWindows() {
+  saveQuiet({ ...loadQuiet(), windows: quietWindows.value.filter((w) => HHMM_RE.test(w.start) && HHMM_RE.test(w.end)) })
+}
+
+function addQuietWindow() {
+  /* 默认隔夜窗 + L1/L2：L3 重要不默认压，留用户自行抬手。 */
+  quietWindows.value.push({ start: '22:00', end: '07:00', levels: ['L1', 'L2'] })
+  persistQuietWindows()
+}
+
+function removeQuietWindow(index: number) {
+  quietWindows.value.splice(index, 1)
+  persistQuietWindows()
+}
+
+function setQuietLevel(w: QuietWindow, level: AlertLevel, on: boolean) {
+  const next = new Set(w.levels)
+  if (on) next.add(level)
+  else next.delete(level)
+  w.levels = [...next]
+  persistQuietWindows()
+}
+
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void load()
+  syncQuietDraft()
   timer = setInterval(() => {
     if (!saving.value) void load()
   }, REFRESH_MS)
@@ -248,6 +296,46 @@ onBeforeUnmount(() => {
       </NtTable>
       <p v-if="error" class="nt-err">{{ error }}</p>
     </section>
+
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">汇聚与静默</h2>
+      <div class="quiet">
+        <div class="quiet__cooldown">
+          <NtInput v-model="cooldownMin" type="number" label="同因冷却（分钟）" mono class="quiet__cooldown-input" />
+          <p class="nt-note">同一告警原因再次触发时，窗内合并计数、不重复弹 toast。</p>
+        </div>
+        <div class="quiet__list">
+          <div v-for="(w, i) in quietWindows" :key="i" class="quiet__row">
+            <NtInput
+              v-model="w.start"
+              placeholder="22:00"
+              mono
+              class="quiet__time"
+              @update:model-value="persistQuietWindows"
+            />
+            <span class="quiet__sep">至</span>
+            <NtInput
+              v-model="w.end"
+              placeholder="07:00"
+              mono
+              class="quiet__time"
+              @update:model-value="persistQuietWindows"
+            />
+            <div class="quiet__levels">
+              <NtSwitch :model-value="w.levels.includes('L1')" label="L1" @update:model-value="setQuietLevel(w, 'L1', $event)" />
+              <NtSwitch :model-value="w.levels.includes('L2')" label="L2" @update:model-value="setQuietLevel(w, 'L2', $event)" />
+              <NtSwitch :model-value="w.levels.includes('L3')" label="L3" @update:model-value="setQuietLevel(w, 'L3', $event)" />
+            </div>
+            <NtButton size="sm" variant="ghost" @click="removeQuietWindow(i)">删除</NtButton>
+          </div>
+          <p v-if="!quietWindows.length" class="nt-note">暂无静默窗——时段内命中的级别只落账、不弹窗不响铃。</p>
+          <div>
+            <NtButton size="sm" @click="addQuietWindow">添加静默窗</NtButton>
+          </div>
+        </div>
+        <p class="nt-note">L4 风险不受静默与冷却限制，始终全屏直达。</p>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -276,5 +364,49 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+
+.quiet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quiet__cooldown {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.quiet__cooldown-input {
+  width: 160px;
+}
+
+.quiet__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quiet__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quiet__time {
+  width: 96px;
+}
+
+.quiet__sep {
+  color: var(--nt-text-3);
+}
+
+.quiet__levels {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 </style>

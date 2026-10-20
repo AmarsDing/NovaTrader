@@ -85,7 +85,8 @@ const introEntries = computed<TimelineEntry[]>(() =>
     time: r.tradeDate || clock(r.createdAt),
     title: `${r.book || '—'} · 窗口 ${r.windowDays ?? '—'} 日 · 样本 ${r.sampleCount ?? '—'} · 胜率 ${ratioPct(r.winRate)} · 漏选 ${r.missedCount ?? 0}`,
     body: r.note || r.triggerReason || '',
-    tag: r.triggered ? '已触发' : '',
+    /* 触发章词取自 alert 册（§7.1，一字锁定）；tone 走 NtTimeline 自枚举（含 up/down），与册 warn 同值。 */
+    tag: r.triggered ? statusOf('alert.triggered').text : '',
     tone: r.triggered ? 'warn' : 'neutral',
   })),
 )
@@ -184,9 +185,8 @@ onMounted(loadAll)
           模拟盘
           <b>{{ admission?.tradingDays ?? '—' }}</b>
           / {{ admission?.requiredDays ?? 20 }} 交易日
-          <!-- §10-22 册消费研判：「已达准入」是就绪口径，册 evolution 三键（已批准/已拒绝/待审）
-               均审批语义，混用会成自封文案；册内无准入就绪键，保持原文案待入册评审。 -->
-          <NtBadge v-if="admission?.ready" tone="success" dot>已达准入</NtBadge>
+          <!-- 准入就绪章词/tone 取自 evolution.admitted 册（§7.1，一字锁定）：已达准入 success。 -->
+          <NtBadge v-if="admission?.ready" :tone="statusOf('evolution.admitted').tone" dot>{{ statusOf('evolution.admitted').text }}</NtBadge>
         </p>
       </div>
       <NtButton size="sm" :loading="loading" @click="loadAll">刷新</NtButton>

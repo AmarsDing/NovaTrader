@@ -2,7 +2,7 @@
 /**
  * AlertCenter：极端行情全屏模态锁（发光预算允许的第三处玻璃）。
  * - 触发源：risk.killActive（kill switch / 熔断 / 模式切换 10s 轮询）+ WS alert 主题
- *   level=critical 的帧（risk.alert 的 kind=killswitch/breaker/reject_rate 均为 critical）；
+ *   level=critical 的帧（risk.alert 的 kind=killswitch/breaker/reject_rate/order_unknown 均为 critical）；
  * - 模态锁：只许确认（走 useOverlay 栈顶，Esc 不静默关，而是确认）；
  * - 声音：WebAudio 双音循环直到确认（设置面板可关，settings.sound）；
  * - 队列：多来源事件排队展示，确认一条看下一条。
@@ -58,16 +58,15 @@ function onPushMessage(msg: { topic: string; data: unknown }) {
   if (msg.topic !== 'alert' || !msg.data || typeof msg.data !== 'object') return
   const record = msg.data as Record<string, unknown>
   const kind = pick<string>(record, 'kind', 'type') || ''
-  if (kind !== 'killswitch' && kind !== 'breaker' && kind !== 'reject_rate') return
+  if (kind !== 'killswitch' && kind !== 'breaker' && kind !== 'reject_rate' && kind !== 'order_unknown') return
   const level = pick<string>(record, 'level', 'severity') || ''
   if (level && level !== 'critical') return
   // kill_active 帧由 risk store 的 watch 统一接管，避免双份。
   if (kind === 'killswitch') return
   const account = pick<string>(record, 'account_type', 'accountType') || ''
   const source = pick<string>(record, 'source') || 'risk'
-  const message = pick<string>(record, 'message', 'reason') || '触发风控预警'
   const at = pick<string>(record, 'at', 'time') || new Date().toISOString()
-  push(kind, account ? `${source} · ${account}` : source, titleOf(kind), message, at)
+  push(kind, account ? `${source} · ${account}` : source, titleOf(kind), bodyCopy(record, kind, at), at)
 }
 
 function titleOf(kind: string): string {
@@ -78,9 +77,19 @@ function titleOf(kind: string): string {
       return '熔断已锁存'
     case 'reject_rate':
       return '拦截率预警'
+    case 'order_unknown':
+      return '委托状态未知'
     default:
       return '风控预警'
   }
+}
+
+/** §8.2 五段式正文：对象 · 事件 · 条件 · 时点（对象缺省「系统」）。只组文案，模板结构不动。 */
+function bodyCopy(record: Record<string, unknown>, kind: string, at: string): string {
+  const object = pick<string>(record, 'symbol', 'code') || '系统'
+  const event = titleOf(kind)
+  const condition = pick<string>(record, 'message', 'reason') || '触发风控预警'
+  return [object, event, condition, clock(at)].join(' · ')
 }
 
 watch(

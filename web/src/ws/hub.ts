@@ -14,6 +14,7 @@ import { healthz } from '@/api/system'
 import { askConfirm } from '@/store/confirm'
 import { wsUrl } from '@/utils/endpoint'
 import { deskNotify } from '@/utils/notify'
+import type { AlertEventView } from '@/ui/alert-levels'
 import { BASE_TOPICS, type WsEnvelope, type WsPushMessage, type WsResyncContext, type WsTopic } from './topics'
 
 export type { MarketSnapshotMeta, WsPushMessage, WsResyncContext, WsTopic } from './topics'
@@ -23,7 +24,7 @@ export interface HubDeps {
   wsUrl: () => string
   checkHealth: () => Promise<boolean>
   askConfirm: (order: Record<string, unknown>, local: boolean) => Promise<unknown>
-  deskNotify: (title: string, body: string, kind?: string) => Promise<boolean>
+  deskNotify: (title: string, body: string, kind?: string, event?: AlertEventView) => Promise<boolean>
 }
 
 /** market 主题的证券兴趣声明：symbol 必填；省略 freq 表示该证券全部周期。 */
@@ -526,7 +527,20 @@ export function createWsHub(deps: HubDeps): WsHub {
     const body = record.body || record.message || record.reason
     if (title && (topic === 'alert' || kind === 'notify')) {
       const severity = String(record.level || record.severity || kind || '')
-      runPrompt('桌面通知', () => deps.deskNotify(String(title), body ? String(body) : '', severity))
+      runPrompt('桌面通知', () =>
+        deps.deskNotify(String(title), body ? String(body) : '', severity, {
+          topic,
+          event: typeof record.event === 'string' ? record.event : undefined,
+          kind: kind || undefined,
+          level: record.level || record.severity ? String(record.level || record.severity) : undefined,
+          category: typeof record.category === 'string' ? record.category : undefined,
+          symbol: typeof record.symbol === 'string' ? record.symbol : undefined,
+          title: String(title),
+          body: body ? String(body) : undefined,
+          dedupKey: typeof record.dedup_key === 'string' ? record.dedup_key : undefined,
+          at: Date.now(),
+        }),
+      )
     }
   }
 

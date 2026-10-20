@@ -159,8 +159,8 @@ onBeforeUnmount(() => {
     <article v-for="r in focused.slice(0, 12)" :key="r.plan.plan_id + ':' + r.plan.revision" class="plan">
       <div class="plan-title">
         <b
-          ><!-- P-08 计划行证券位：SymbolName(inline) 名称+代码 -->
-          <SymbolName :code="r.plan.symbol" /> · v{{ r.plan.revision }}</b
+          ><!-- P-08 计划行证券位：SymbolName(inline) 名称+代码；f10 试点（§6.5）hover 速览/点击进抽屉 -->
+          <SymbolName :code="r.plan.symbol" f10 /> · v{{ r.plan.revision }}</b
         ><span :class="{ warn: expired(r) }">{{
           expired(r) && r.state === 'authorized' ? '已过期' : label(r.state)
         }}</span>

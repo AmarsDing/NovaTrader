@@ -56,7 +56,7 @@ const taskColumns: NtTableColumn<TaskRow>[] = [
 ]
 const tradeColumns: NtTableColumn<TradeRow>[] = [
   { key: 'time', title: '时间' },
-  { key: 'symbol', title: '代码' },
+  { key: 'symbol', title: '代码', kind: 'symbol' },
   { key: 'side', title: '方向' },
   { key: 'price', title: '价格', align: 'right' },
   { key: 'quantity', title: '数量', align: 'right' },

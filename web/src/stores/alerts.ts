@@ -7,6 +7,7 @@ import { computed, ref } from 'vue'
 import { listMessages, type NotifyMessage } from '@/api/notify'
 import { quiet } from '@/utils/async'
 import { createRefreshQueue } from '@/utils/refresh-queue'
+import { serverNow } from '@/utils/server-clock'
 
 export interface ToastItem {
   id: number
@@ -14,6 +15,8 @@ export interface ToastItem {
   title: string
   body: string
   at: number
+  /** P2：同因连发计数（bumpToast 累加）；首条无该字段，消费侧按 1 读。 */
+  count?: number
 }
 
 let toastSeq = 0
@@ -54,3 +57,20 @@ export const useAlertsStore = defineStore('alerts', () => {
 
   return { messages, loading, ready, toasts, unreadCount, refresh, pushToast, dismissToast }
 })
+
+/**
+ * P2：同因 toast 计数命中（bump）——新帧与前条同因时不新增条目，计数 +1 并刷新时刻；
+ * 返回是否命中。不新增条目、不改 MAX_TOASTS、不改 pushToast 行为，供推送汇聚方在
+ * pushToast 前调用（配合 alert-levels 的 causeKey/createCauseAggregator 判定同因）。
+ * id 取 pushToast 返回值；容忍字符串形入参（帧字段串化场景）。
+ */
+export function bumpToast(id: number | string): boolean {
+  const store = useAlertsStore()
+  const nid = typeof id === 'string' ? Number(id) : id
+  const t = store.toasts.find((x) => x.id === nid)
+  if (!t) return false
+  t.count = (t.count || 1) + 1
+  /* 与 pushToast 同走服务端钟（未校准回退本地），防计数刷新把时刻打回本地漂移。 */
+  t.at = serverNow()
+  return true
+}

@@ -10,10 +10,12 @@ import { getQuote } from '@/api/market'
 import NtButton from '@/ui/NtButton.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
 import { clock, compactAmount, messageOf, missLabel, pnlClass, price, signed } from '@/utils/format'
+import { raiseAlert } from '@/utils/notify'
 import { request } from '@/api/http'
 
 const auth = useAuthStore()
@@ -73,7 +75,10 @@ async function loadHits(reply: ScanReply) {
   hitsFreshAt.value = null
   hitsState.value = 'empty'
   const ids = new Set([...reply.signalIds, ...reply.sellSignalIds].map((id) => String(id)))
-  if (!ids.size) return
+  if (!ids.size) {
+    notifyZeroHit()
+    return
+  }
   const symbols: string[] = []
   try {
     const signals = await listSignals()
@@ -115,6 +120,21 @@ async function loadHits(reply: ScanReply) {
   )
   hitsFreshAt.value = hitTimes.length ? Math.max(...hitTimes) : null
   hitsState.value = hits.value.length ? 'ok' : 'empty'
+}
+
+/**
+ * §8.1 扫描 0 命中落 L2 提醒（走 §8 统一漏斗：warn toast + 通知中心常显，静默/冷却都认账）。
+ * 只在本函数被调用时发——调用方保证扫描本体已成功（runScan 的 try 分支）；
+ * 扫描本身失败 / hitsState='failed'（取数落空）一律不响，「没取到≠0」。
+ */
+function notifyZeroHit() {
+  void raiseAlert({
+    kind: 'scan_zero_hit',
+    level: 'warn',
+    title: '扫描 0 命中',
+    body: '本次扫描 0 命中，剔除原因见计数',
+    at: Date.now(),
+  })
 }
 
 function openHit(row: HitRow) {
@@ -222,7 +242,6 @@ onBeforeUnmount(stopHeartbeat)
     <section v-if="lastScan" class="nt-panel">
       <h2 class="nt-panel__title">命中票列表</h2>
       <NtFreshness label="命中行情" :at="hitsFreshAt" />
-      <!-- TODO(P2 §8.1)：0 命中需落 L2 告警属 P2 范围，本批只留标注不实现。 -->
       <p v-if="!hits.length" class="nt-empty">
         {{
           hitsState === 'failed'
@@ -231,6 +250,11 @@ onBeforeUnmount(stopHeartbeat)
         }}
       </p>
       <NtTable v-else :columns="hitColumns" :rows="hits" row-key="symbol" dense clickable @row-click="openHit">
+        <!-- F10 试点（§6.5）：命中列表证券格 hover 600ms 出速览、点击进 F10 抽屉；
+             拦下冒泡，防触发行点击的 setSymbol + 行情侧栏联动（行其余格仍走 openHit）。 -->
+        <template #cell-symbol="{ row }">
+          <span @click.stop><SymbolName :code="row.symbol" mode="inline" :f10="true" /></span>
+        </template>
         <template #cell-last="{ row }">{{ row.last != null ? price(row.last) : '—' }}</template>
         <template #cell-pctChg="{ row }">
           <!-- R1 涨跌额/幅同格，方向色走 toneOf 唯一出口（红涨绿跌在令牌，class 只有 up/down） -->

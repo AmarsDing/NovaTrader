@@ -21,7 +21,7 @@ import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import SymbolName from '@/display/SymbolName.vue'
-import { statusOf } from '@/ui/status-map'
+import { statusOf, type StatusEntry } from '@/ui/status-map'
 import { clock, compactAmount, messageOf, pctText, price, signed, toneOf } from '@/utils/format'
 import { useSecurityStore } from '@/stores/security'
 import { useSymbolStore } from '@/stores/symbol'
@@ -149,15 +149,15 @@ watch(code, (next, before) => {
 
 const tone = computed(() => toneOf(quote.value?.pctChg ?? null))
 const priceNow = computed(() => (quote.value && quote.value.last > 0 ? price(quote.value.last) : '未知'))
-/** 价格区状态章为行情口径散值（SUSPEND/无涨跌幅/快照过期），status-map §7.1 册无 quote.* 键——
- *  维持原文案待评审入册（禁自封，同 trade-bar 委托状态/SignalView 信号章先例）。 */
-const statusBadges = computed(() => {
+/** 价格区状态章为行情口径散值（SUSPEND/无涨跌幅/快照过期），文案/tone 走 status-map quote.* 册
+ * （§7.1 第二批散值入册）；判定逻辑保持原样，只换文案与色源，禁自封。 */
+const statusBadges = computed<StatusEntry[]>(() => {
   const q = quote.value
-  const out: { text: string; badge: 'warn' | 'danger' | 'accent' | 'neutral' }[] = []
+  const out: StatusEntry[] = []
   if (!q) return out
-  if (q.tradeStatus === 'SUSPEND') out.push({ text: '停牌', badge: 'danger' })
-  if (q.noLimit) out.push({ text: '无涨跌幅', badge: 'accent' })
-  if (q.stale) out.push({ text: '已过期', badge: 'warn' })
+  if (q.tradeStatus === 'SUSPEND') out.push(statusOf('quote.suspended'))
+  if (q.noLimit) out.push(statusOf('quote.nolimit'))
+  if (q.stale) out.push(statusOf('quote.stale'))
   return out
 })
 
@@ -281,7 +281,8 @@ onBeforeUnmount(() => {
     <template v-if="quote">
       <header class="head">
         <div class="head__id">
-          <SymbolName :code="code" mode="stacked" />
+          <!-- f10 试点（§6.5）：hover 出速览卡，点击进 F10 抽屉（覆盖缺省的设码行为）。 -->
+          <SymbolName :code="code" mode="stacked" f10 />
           <div class="head__tags">
             <!-- 身份徽注（方案 §6.4 身份区块）：市场/行业/ST·停牌全出自 security 字典；
                  ST/停牌章缺省不显，文案/tone 收口走 §7.1 status-map 册（security.st=warn / security.suspended=neutral）。 -->
@@ -302,7 +303,7 @@ onBeforeUnmount(() => {
           <!-- §7.3 首批挂载：新鲜度取快照 asOf（缺/非法 → null 显「时点未知」，不冒充 0s），cut=链路断；
                阈值走组件默认 30s。下方 .asof 绝对时点保留为第二读数。 -->
           <NtFreshness label="行情" :at="freshAt" :cut="!liveNow" />
-          <span v-for="b in statusBadges" :key="b.text"><NtBadge :tone="b.badge">{{ b.text }}</NtBadge></span>
+          <span v-for="b in statusBadges" :key="b.text"><NtBadge :tone="b.tone">{{ b.text }}</NtBadge></span>
           <NtBadge v-if="!liveNow" tone="warn">非实时</NtBadge>
           <span class="asof">{{ quote.asOf ? clock(quote.asOf) : '时间未知' }}<template v-if="quote.source"> · {{ quote.source === 'snap' ? '盘中快照' : '日线回退' }}</template></span>
         </div>

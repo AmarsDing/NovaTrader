@@ -49,3 +49,19 @@ export function stopAlarm() {
   if (timer) clearInterval(timer)
   timer = null
 }
+
+/**
+ * L3 预警单响（方案 §8.4 声音预算：单响不循环）：复用既有 beep/burst 原子发一次短音，
+ * 不起 timer、不循环。本函数不读 settings，声音开关由调用方判门（同 startAlarm 的门用法）。
+ * 返回 false 表示当前环境无声（SSR/无 AudioContext）。
+ */
+export function playOnce(): boolean {
+  try {
+    if (!ctx) ctx = new AudioContext()
+    if (ctx.state === 'suspended') void ctx.resume()
+  } catch {
+    return false
+  }
+  burst()
+  return true
+}
