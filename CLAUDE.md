@@ -129,14 +129,14 @@ backend/ent/
 ## 6. 前端与桌面端规范
 
 - `web/` 是标准 Vite + Vue3 + TS 工程：`npm run dev` 开发；`npm run build` = `vue-tsc --noEmit && eslint . && vite build`（**类型与 lint 是构建门槛**，逃生口 `build:fast`）；`npm run test`（vitest）；`npm run analyze` 出包体报告。
-- 组件三层：`ui/`（Nt* 基础控件）/ `viz/`（图表件）/ `display/`（业务展示件），**禁引 store/router**；业务面板在 `panels/<组>/*.panel.vue`（薄壳）+ `workspace/panel-registry.ts`（注册表，21 面板）。组件改动跑 `/dev/gallery`（仅 DEV）走查主题 × 密度矩阵。
+- 组件三层：`ui/`（Nt* 基础控件）/ `viz/`（图表件）/ `display/`（业务展示件），**禁引 store/router**；业务面板在 `panels/<组>/*.panel.vue`（薄壳）+ `workspace/panel-registry.ts`（注册表，2026-10-20 核查共 **27 面板**；`POPOUT_ALLOWED` 弹窗白名单另为 21 项，两数勿混用）。组件改动跑 `/dev/gallery`（仅 DEV）走查主题 × 密度矩阵。
 - Tauri 壳（已建）：
   - `web/src-tauri/`（Rust，Tauri 2），`tauri.conf.json` 的 `frontendDist` 指向 `../dist`，`security.csp` 已收紧（白名单，见 M12 设计文档 §10）；
   - `npm run tauri dev` 联调，`npm run tauri build` 出安装包；本机 Rust 构建配方：`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc CARGO_TARGET_DIR=C:\nt-target`（F:\股票 非 ASCII 路径会损坏 in-tree 产物）；
   - 后端地址运行时可配（设置面板），拼接集中在 `web/src/utils/endpoint.ts`，HTTP 只走 `web/src/api/http.ts`；
   - popout 多屏：`core:webview:allow-create-webview-window` capability + `popout.html` 宿主页 + `POPOUT_ALLOWED` 白名单（trade/settings/ops 禁弹）。
 - 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`：**红涨绿跌**、主题/密度与统一token保持；2026-10-15用户要求更强毛玻璃/半透明/霓虹，使用范围以第七节取代第五节旧限制；材质与完整/节能/减少动态模式已实现，完整视觉/硬件压力仍待验收。保留原监控画布/HUD/终端带与dockview一张票，真实性/对比度/性能共同验收；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
-- CI 三道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test）。
+- CI 四道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、graphics（viz 图形回归 golden 比对，windows，P2-12）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test）。
 
 ## 7. 配置与端口
 
@@ -168,7 +168,7 @@ backend/ent/
   - `backend/api/admin/v1/` 模板 proto 已全部清除：现仅存 config/environment/observability 三个业务 proto，`api/` 按服务分域（trade/risk/market/intel/brain/strategy/datahub/backtest/notify/broker/platform）；新增接口一律 proto-first，业务路由走 `internal/gateway` in-gate 聚合。
   - `go.mod` 无 GORM/mysql/mongo/mssqld：直接 DB 依赖仅 ent + pgx/v5；全仓（含 third_party、app/discovery）零 gorm/mongo/mssqld 导入；go.sum 保留 go-sql-driver/mysql 校验和属 ent 模块图合法要求，不 prune。
   - web 纯 JS 门面清零：router/index.js、store/confirm.js 迁 TS 并删源文件；零引用门面 utils/request.js 已删；src 下无 .js 业务文件（vite/eslint 工程配置按惯例保留 JS）。
-  - admin 服务编译（data.go 模板引用已裁剪）、main.go 头注释、web 登录页+骨架（P1–P6 重构完成，21 面板驾驶舱）。
+  - admin 服务编译（data.go 模板引用已裁剪）、main.go 头注释、web 登录页+骨架（P1–P6 重构完成，27 面板驾驶舱）。
   - admin 模板死链四件套已删（用户批准后执行，2026-10-19）：`app/admin/internal/core/topic.go` 死主题常量、`app/admin/internal/biz/` 死 NatsCase/TopicCase 链（整包）、`app/admin/internal/data/nats.go` 死 NatsCoreRepo、`backend/utils/natserver/` 孤儿包；删除后 admin 限定 build/vet/test 与隔离PG集成仍绿。
 
 ## 10. 一句话总结
