@@ -87,6 +87,9 @@ func (w *Worker) jobs() ([]scheduler.Job, error) {
 		{Name: "market.breadth", Spec: "50 16 * * *", TradingDayOnly: true, Timeout: 10 * time.Minute, Retry: 2, MaxDelay: 2 * time.Hour, Run: now(w.uc.BreadthClose)},
 		// K 线连续性检查（缺口日）：收盘半小时后跑，比 market.close(15:05) 晚，给 M01 日线留缓冲。
 		{Name: "market.kline-check", Spec: "35 15 * * *", TradingDayOnly: true, Timeout: 10 * time.Minute, Retry: 2, MaxDelay: 3 * time.Hour, Run: now(w.uc.KlineCheck)},
+		// 席位胜率时序（目录册增补 B2）：lhb_seat×market_data 内部计算落 seat_stats。
+		// M01 龙虎榜 17:30 入库后 40 分钟余量（比 market.capital 19:30 靠前——席位统计不依赖资金流）。
+		{Name: "market.seat-stats", Spec: "10 18 * * *", TradingDayOnly: true, Timeout: 10 * time.Minute, Retry: 2, MaxDelay: 2 * time.Hour, Run: now(w.uc.SeatStatsClose)},
 	}
 	for _, at := range w.cfg.Checkpoints {
 		spec, err := cronAt(at)

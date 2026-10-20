@@ -96,6 +96,13 @@ type Repo interface {
 	BreadthRange(ctx context.Context, from, to time.Time) ([]BreadthRecord, error)
 	// SaveBreadth upsert market_breadth（trade_date 唯一）。
 	SaveBreadth(ctx context.Context, rec BreadthDay) error
+	// 席位胜率时序（目录册增补 B2）
+	// LhbSeatRange 读 [from,to) 区间内的 lhb_seat 行（symbol+交易日+席位名）。
+	LhbSeatRange(ctx context.Context, from, to time.Time) ([]SeatRecord, error)
+	// SaveSeatStats upsert seat_stats（seat_name+as_of 唯一）。
+	SaveSeatStats(ctx context.Context, rows []SeatStatRow) error
+	// SeatStatsRows 读某基准日全部 seat_stats 行。
+	SeatStatsRows(ctx context.Context, day time.Time) ([]SeatStatRow, error)
 }
 
 // SnapshotSource 读 Redis snap:latest。

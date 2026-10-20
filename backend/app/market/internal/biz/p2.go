@@ -678,6 +678,201 @@ func (u *Usecase) computeBreadth(ctx context.Context, day time.Time) (BreadthDay
 	return out, nil
 }
 
+/* ---------- 席位胜率时序（目录册增补 B2） ---------- */
+
+// seatLookback 席位胜率滚动窗口（交易日）。口径与 premium 的窗口上限一致取 60，
+// 入库 lookback 列随行存，消费侧不必猜口径。
+const seatLookback = 60
+
+// SeatRecord 是 lhb_seat 的一行（内部计算输入）：一只股票某一天的一个席位上榜记录。
+type SeatRecord struct {
+	Symbol string
+	Day    time.Time
+	Seat   string
+}
+
+// SeatStatRow 是 seat_stats 的一行：一个席位一个基准日的滚动窗口胜率统计。
+// T+1/T+5 三列（胜率/均值/中位数）用指针表达「有效样本为 0 即缺失」——不落 0 冒充
+// （数据纪律：样本数是事实列照常落 int，收益率与胜率只能由有效样本算出，样本为零保持 NULL）。
+type SeatStatRow struct {
+	Seat      string
+	AsOf      time.Time
+	Lookback  int
+	Sample    int // 窗口内上榜次数（含 T+5 未发生的）
+	SampleT5  int // 其中 T+5 已发生的子样本数
+	WinRateT1 *float64
+	AvgRetT1  *float64
+	MedRetT1  *float64
+	WinRateT5 *float64
+	AvgRetT5  *float64
+	MedRetT5  *float64
+	Source    string
+}
+
+// statTriple 由有效收益率样本算 胜率/均值/中位数；样本为空三列全 nil。
+func statTriple(rets []float64) (win, avg, med *float64) {
+	if len(rets) == 0 {
+		return nil, nil, nil
+	}
+	s := append([]float64(nil), rets...)
+	sort.Float64s(s)
+	var sum float64
+	var wins int
+	for _, r := range rets {
+		sum += r
+		if r > 0 {
+			wins++
+		}
+	}
+	w := float64(wins) / float64(len(rets))
+	a := sum / float64(len(rets))
+	n := len(s)
+	var m float64
+	if n%2 == 1 {
+		m = s[n/2]
+	} else {
+		m = (s[n/2-1] + s[n/2]) / 2
+	}
+	return &w, &a, &m
+}
+
+// SeatStatsClose 收盘后（M01 龙虎榜 17:30 入库之后）重算 as_of=当日的 60 交易日滚动窗：
+// 每个席位上榜后 T+1 / T+5 的胜率与收益分布，整批 upsert（seat_name+as_of 唯一，幂等重跑覆盖）。
+// 纪律钉死：
+//   - 样本数/sample_t5 是事实列——上榜次数与 T+5 已发生次数不依赖行情，照常落 int；
+//   - 收益有效性只看价格：上榜日收盘 close0 与 t+N 日收盘任一缺失/≤0，该样本该期
+//     不入收益分子分母（停牌/缺行情不造 0 收益）；有效样本=0 的期三列保持 NULL；
+//   - T+5 未发生（t+5 越过窗口末）只计 sample，不计 sample_t5，T+5 三列保持 NULL；
+//   - 窗口内无龙虎榜记录（合法日子）不落行——「没取到」靠 SeatStatsSnapshot.found=false 表达。
+func (u *Usecase) SeatStatsClose(ctx context.Context, now time.Time) error {
+	day := market.DateOf(now)
+	lookback := seatLookback
+	window := u.openDays(ctx, day, lookback) // 倒序：[0] 最新
+	if len(window) == 0 {
+		return nil
+	}
+	asc := make([]time.Time, len(window))
+	for i, d := range window {
+		asc[len(window)-1-i] = d
+	}
+	idx := make(map[string]int, len(asc))
+	for i, d := range asc {
+		idx[keyDay(d)] = i
+	}
+	seats, err := u.repo.LhbSeatRange(ctx, asc[0], day.AddDate(0, 0, 1))
+	if err != nil {
+		return err
+	}
+	if len(seats) == 0 {
+		return nil
+	}
+	hist, err := u.repo.DailyHistory(ctx, day.AddDate(0, 0, 1), lookback)
+	if err != nil {
+		return err
+	}
+	// close[sym][dayKey] = 1d 收盘（≤0 当缺失，不产键）
+	close := make(map[string]map[string]float64, len(hist))
+	for sym, bars := range hist {
+		m := make(map[string]float64, len(bars))
+		for _, b := range bars {
+			if b.Close > 0 {
+				m[keyDay(b.Time)] = b.Close
+			}
+		}
+		close[sym] = m
+	}
+	type acc struct {
+		sample, sampleT5 int
+		r1, r5           []float64
+	}
+	aggs := map[string]*acc{}
+	order := make([]string, 0)
+	for _, rec := range seats {
+		name := rec.Seat
+		if name == "" {
+			continue
+		}
+		a, ok := aggs[name]
+		if !ok {
+			a = &acc{}
+			aggs[name] = a
+			order = append(order, name)
+		}
+		a.sample++
+		i, ok := idx[keyDay(rec.Day)]
+		if !ok {
+			continue // 防御：查询口径外记录本不应出现
+		}
+		c0, ok0 := close[rec.Symbol][keyDay(asc[i])]
+		valid := ok0 && c0 > 0
+		if valid && i+1 < len(asc) {
+			if c1, ok1 := close[rec.Symbol][keyDay(asc[i+1])]; ok1 {
+				a.r1 = append(a.r1, c1/c0-1)
+			}
+		}
+		if i+5 < len(asc) {
+			a.sampleT5++
+			if valid {
+				if c5, ok5 := close[rec.Symbol][keyDay(asc[i+5])]; ok5 {
+					a.r5 = append(a.r5, c5/c0-1)
+				}
+			}
+		}
+	}
+	rows := make([]SeatStatRow, 0, len(order))
+	for _, name := range order {
+		a := aggs[name]
+		w1, g1, m1 := statTriple(a.r1)
+		w5, g5, m5 := statTriple(a.r5)
+		rows = append(rows, SeatStatRow{
+			Seat: name, AsOf: day, Lookback: lookback,
+			Sample: a.sample, SampleT5: a.sampleT5,
+			WinRateT1: w1, AvgRetT1: g1, MedRetT1: m1,
+			WinRateT5: w5, AvgRetT5: g5, MedRetT5: m5,
+			Source: SourceMarketAgg,
+		})
+	}
+	return u.repo.SaveSeatStats(ctx, rows)
+}
+
+// SeatStatsReport 是席位胜率快照读结果。
+type SeatStatsReport struct {
+	Day   time.Time
+	Found bool
+	Rows  []SeatStatRow // 按 Sample 倒序、SampleT5 次之截断
+	AsOf  time.Time
+}
+
+// SeatStatsSnapshot 读某基准日的席位胜率落库行（只读，不实算）。
+func (u *Usecase) SeatStatsSnapshot(ctx context.Context, day time.Time, top int) (*SeatStatsReport, error) {
+	if top <= 0 {
+		top = 50
+	}
+	if top > 200 {
+		top = 200
+	}
+	report := &SeatStatsReport{Day: day, AsOf: u.now()}
+	rows, err := u.repo.SeatStatsRows(ctx, day)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return report, nil
+	}
+	report.Found = true
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Sample != rows[j].Sample {
+			return rows[i].Sample > rows[j].Sample
+		}
+		return rows[i].SampleT5 > rows[j].SampleT5
+	})
+	if len(rows) > top {
+		rows = rows[:top]
+	}
+	report.Rows = rows
+	return report, nil
+}
+
 /* ---------- 公共小件 ---------- */
 
 // openDays 返回 ≤day 的最近 n 个交易日，按倒序（[0] 最新）。

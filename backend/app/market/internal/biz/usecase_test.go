@@ -36,6 +36,10 @@ type fakeRepo struct {
 	premiumRange []PremiumRow
 	breadthRows  []BreadthRecord
 	breadthSaved []BreadthDay
+	// B2 席位胜率桩数据
+	seatRange []SeatRecord
+	seatRows  []SeatStatRow
+	seatSaved []SeatStatRow
 }
 
 func (f *fakeRepo) LoadStocks(context.Context) ([]market.StockInfo, error) { return f.stocks, nil }
@@ -123,6 +127,19 @@ func (f *fakeRepo) SectorHeatAt(context.Context, time.Time, time.Time, int) ([]m
 	return nil, nil
 }
 
+// B2 席位胜率桩
+func (f *fakeRepo) LhbSeatRange(context.Context, time.Time, time.Time) ([]SeatRecord, error) {
+	return f.seatRange, nil
+}
+func (f *fakeRepo) SaveSeatStats(_ context.Context, rows []SeatStatRow) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.seatSaved = append(f.seatSaved[:0], rows...)
+	return nil
+}
+func (f *fakeRepo) SeatStatsRows(context.Context, time.Time) ([]SeatStatRow, error) {
+	return f.seatRows, nil
+}
 /* ---------- P2 测试桩 ---------- */
 
 func (f *fakeRepo) DailyBarDays(context.Context, time.Time, time.Time) ([]DailyBarDay, error) {

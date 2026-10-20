@@ -7,9 +7,11 @@ import (
 	"server/app/market/internal/biz"
 	"server/ent"
 	"server/ent/dataqualityissue"
+	"server/ent/lhbseat"
 	"server/ent/limitpremium"
 	"server/ent/marketbreadth"
 	"server/ent/marketdata"
+	"server/ent/seatstats"
 	"server/pkg/market"
 	"server/pkg/tradecal"
 
@@ -17,7 +19,8 @@ import (
 )
 
 // 本文件是 P2（监控驾驶舱业务监控方案 §7）的仓储：
-// K 线连续性检查（缺口日）、昨涨停今溢价快照、20 日均线上占比。
+// K 线连续性检查（缺口日）、昨涨停今溢价快照、20 日均线上占比，
+// 及目录册增补 B2 的席位胜率时序（lhb_seat × market_data → seat_stats）。
 
 // DailyBarDays 返回 [from,to) 内全部 1d 收盘行的 symbol+日，只取存在性不取价量。
 func (r *Repo) DailyBarDays(ctx context.Context, from, to time.Time) ([]biz.DailyBarDay, error) {
@@ -206,6 +209,71 @@ func (r *Repo) BreadthRange(ctx context.Context, from, to time.Time) ([]biz.Brea
 			Day: fromPgDay(row.TradeDate), AsOf: row.AsOf, Window: row.Window,
 			Above: row.Above, Below: row.Below, Flat: row.Flat, Total: row.Total,
 			Ratio: row.Ratio, Source: row.Source,
+		})
+	}
+	return out, nil
+}
+
+/* ---------- 席位胜率时序（目录册增补 B2） ---------- */
+
+// LhbSeatRange 读 [from,to) 区间内的 lhb_seat 行（symbol+交易日+席位名），供胜率聚合。
+func (r *Repo) LhbSeatRange(ctx context.Context, from, to time.Time) ([]biz.SeatRecord, error) {
+	var rows []struct {
+		Symbol    string    `json:"symbol"`
+		TradeDate time.Time `json:"trade_date"`
+		SeatName  string    `json:"seat_name"`
+	}
+	err := r.db.LhbSeat.Query().
+		Where(lhbseat.TradeDateGTE(market.DateOf(from)), lhbseat.TradeDateLT(market.DateOf(to))).
+		Select(lhbseat.FieldSymbol, lhbseat.FieldTradeDate, lhbseat.FieldSeatName).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.SeatRecord, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, biz.SeatRecord{
+			Symbol: row.Symbol, Day: row.TradeDate.In(tradecal.Shanghai()), Seat: row.SeatName,
+		})
+	}
+	return out, nil
+}
+
+// SaveSeatStats upsert seat_stats（seat_name+as_of 唯一）。空集合不动表。
+// 六收益率列直传指针——负收益是合法值，样本=0 的期保持 NULL（不落 0）。
+func (r *Repo) SaveSeatStats(ctx context.Context, rows []biz.SeatStatRow) error {
+	return chunks(len(rows), func(lo, hi int) error {
+		bulk := make([]*ent.SeatStatsCreate, 0, hi-lo)
+		for _, row := range rows[lo:hi] {
+			bulk = append(bulk, r.db.SeatStats.Create().
+				SetSeatName(row.Seat).SetAsOf(pgDay(row.AsOf)).
+				SetLookback(row.Lookback).SetSample(row.Sample).SetSampleT5(row.SampleT5).
+				SetNillableWinRateT1(row.WinRateT1).SetNillableAvgRetT1(row.AvgRetT1).SetNillableMedRetT1(row.MedRetT1).
+				SetNillableWinRateT5(row.WinRateT5).SetNillableAvgRetT5(row.AvgRetT5).SetNillableMedRetT5(row.MedRetT5).
+				SetSource(row.Source))
+		}
+		return r.db.SeatStats.CreateBulk(bulk...).
+			OnConflictColumns(seatstats.FieldSeatName, seatstats.FieldAsOf).
+			UpdateNewValues().Exec(ctx)
+	})
+}
+
+// SeatStatsRows 读某基准日全部 seat_stats 行。
+func (r *Repo) SeatStatsRows(ctx context.Context, day time.Time) ([]biz.SeatStatRow, error) {
+	rows, err := r.db.SeatStats.Query().
+		Where(seatstats.AsOfEQ(pgDay(day))).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.SeatStatRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, biz.SeatStatRow{
+			Seat: row.SeatName, AsOf: fromPgDay(row.AsOf), Lookback: row.Lookback,
+			Sample: row.Sample, SampleT5: row.SampleT5,
+			WinRateT1: row.WinRateT1, AvgRetT1: row.AvgRetT1, MedRetT1: row.MedRetT1,
+			WinRateT5: row.WinRateT5, AvgRetT5: row.AvgRetT5, MedRetT5: row.MedRetT5,
+			Source: row.Source,
 		})
 	}
 	return out, nil
