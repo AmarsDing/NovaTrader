@@ -12,7 +12,7 @@ import (
 	"github.com/google/wire"
 )
 
-var ProviderSet = wire.NewSet(NewConfig, NewUsecase)
+var ProviderSet = wire.NewSet(NewConfigAH, NewUsecase)
 
 // 因子截面类别，与 stock_factor.kind 一致。
 const (
@@ -127,6 +127,10 @@ type Config struct {
 	WarmupDays      int
 	Checkpoints     []string
 	WatchTTL        time.Duration
+
+	// ah 是 AH 溢价外部报价链路端口（目录册增补 B5，查询时直抓）。由 NewConfigAH
+	// 注入；未注入时 Usecase.AHPremium 返回明确未装配错误，不裸 nil 静默敞口。
+	ah AHSource
 }
 
 func NewConfig(c *conf.Market) Config {
@@ -159,5 +163,17 @@ func NewConfig(c *conf.Market) Config {
 	if d := c.GetWatchTtl(); d != nil && d.AsDuration() > 0 {
 		cfg.WatchTTL = d.AsDuration()
 	}
+	return cfg
+}
+
+/* ---------- AH 溢价读出口（目录册增补 B5） ---------- */
+
+// NewConfigAH 在 NewConfig 之上注入 AH 外部报价链路（查询时直抓寡源）。ah 为 nil
+// 时等价纯 NewConfig——Usecase.AHPremium 返回明确未装配错误。wire 用它取代裸
+// NewConfig 作为 Config 提供方（biz.ProviderSet），data 侧 wire.Bind 把自研
+// *AHQuote 薄 client 绑入本端口。
+func NewConfigAH(c *conf.Market, ah AHSource) Config {
+	cfg := NewConfig(c)
+	cfg.ah = ah
 	return cfg
 }

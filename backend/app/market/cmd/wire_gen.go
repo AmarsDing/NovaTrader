@@ -39,7 +39,8 @@ func wireApp(market *conf.Market, postgres *conf.Postgres, redis *conf.Redis, na
 		return nil, nil, err
 	}
 	publisher := data.NewPublisher(bus)
-	config := biz.NewConfig(market)
+	ahQuote := data.NewAHQuote(logger)
+	config := biz.NewConfigAH(market, ahQuote)
 	usecase := biz.NewUsecase(repo, snapshots, publisher, config, logger)
 	marketService := service.NewMarketService(usecase)
 	httpServer := server.NewHTTPServer(market, marketService, logger)

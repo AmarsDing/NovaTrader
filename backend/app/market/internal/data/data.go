@@ -21,10 +21,11 @@ import (
 )
 
 var ProviderSet = wire.NewSet(
-	NewEntClient, scheduler.NewEntStore, NewRedis, NewBus, NewRepo, NewSnapshots, NewPublisher,
+	NewEntClient, scheduler.NewEntStore, NewRedis, NewBus, NewRepo, NewSnapshots, NewPublisher, NewAHQuote,
 	wire.Bind(new(biz.Repo), new(*Repo)),
 	wire.Bind(new(biz.SnapshotSource), new(*Snapshots)),
 	wire.Bind(new(biz.Publisher), new(*Publisher)),
+	wire.Bind(new(biz.AHSource), new(*AHQuote)),
 )
 
 func dbConfig(c *conf.Postgres) dbinit.Config {
