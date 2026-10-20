@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { useSymbolStore } from '@/stores/symbol'
 import { useTradeStore } from '@/stores/trade'
+import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
@@ -238,6 +239,24 @@ function hintClear() {
 
 const openOrders = computed(() => trade.orders.filter((o) => canCancelOrder(o.status)))
 
+/** R3 浮盈额：缺一输入显「—」，不拿 0 冒充（数据纪律）。 */
+function pnlAmount(p: { quantity: number | null; avgCost: number | null; lastPrice: number | null }): number | null {
+  if (p.quantity == null || p.avgCost == null || p.lastPrice == null) return null
+  return (p.lastPrice - p.avgCost) * p.quantity
+}
+/** R3 浮盈%：成本为 0/缺同样显「—」。 */
+function pnlRatioText(p: { avgCost: number | null; lastPrice: number | null }): { text: string; value: number | null } {
+  if (p.avgCost == null || p.avgCost === 0 || p.lastPrice == null) return { text: '—', value: null }
+  const r = (p.lastPrice - p.avgCost) / p.avgCost
+  return { text: `${r > 0 ? '+' : ''}${(r * 100).toFixed(1)}%`, value: r }
+}
+/** R3 今日可卖：后端 available 即 T+1 可卖口径（接口无独立 sellableToday 字段，注明）；0 显「T+1 不可卖」text-3。 */
+function sellable(p: { available: number | null }): { text: string; hold: boolean } {
+  if (p.available == null) return { text: '—', hold: false }
+  if (p.available === 0) return { text: 'T+1 不可卖', hold: true }
+  return { text: String(p.available), hold: false }
+}
+
 const badge = computed(() => {
   if (book.value === 'LIVE') return { text: 'LIVE · 未授权', tone: 'danger' as const, note: '实盘执行权限未验收，提交保持禁用' }
   return { text: 'SIM 模拟', tone: 'accent' as const, note: '模拟账本撮合，不等同实盘成交' }
@@ -253,10 +272,6 @@ function refreshBook() {
 
 function openTradePanel() {
   getWorkbench()?.openPanel('trade')
-}
-
-function snap(symbol: string) {
-  symbolStore.setSymbol(symbol, 'trade-bar')
 }
 
 onMounted(() => {
@@ -343,18 +358,20 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else-if="tab === 'open'">
+      <!-- R4（§6.3）：委托行无时间字段（接口 Delivery 未携带），不拿当前时刻冒充；
+           状态文案为订单状态机散值（orderStatusLabel），status-map 册无 order.* 键——维持原文案待评审入册（§7.1 禁自封）。 -->
       <p v-if="!trade.ready && !trade.orders.length" class="nt-empty">委托未读到，点「刷新」重试。</p>
       <p v-else-if="!openOrders.length" class="nt-empty">当前没有未终态委托。</p>
       <table v-else class="sheet">
-        <thead><tr><th>编号</th><th>代码</th><th>方向</th><th>限价</th><th>数量</th><th>已成</th><th>状态</th><th></th></tr></thead>
+        <thead><tr><th>编号</th><th>证券</th><th>方向</th><th>限价</th><th>数量</th><th>已成</th><th>状态</th><th></th></tr></thead>
         <tbody>
           <tr v-for="o in openOrders" :key="o.id">
             <td class="mono">{{ o.id.slice(0, 13) }}…</td>
-            <td><button type="button" class="sym" @click="snap(o.symbol)">{{ o.symbol }}</button></td>
+            <td><SymbolName :code="o.symbol" mode="inline" /></td>
             <td :class="pnlClass(o.side === 'buy' ? 1 : o.side === 'sell' ? -1 : 0)">{{ sideLabel(o.side) }}</td>
             <td class="mono">{{ price(o.price) }}</td>
             <td class="mono">{{ o.volume ?? '—' }}</td>
-            <td class="mono">{{ o.filled ?? 0 }}</td>
+            <td class="mono">{{ o.filled ?? '—' }}</td>
             <td>{{ orderStatusLabel(o.status) }}<template v-if="o.reason"> · {{ o.reason }}</template></td>
             <td>
               <NtButton
@@ -370,18 +387,19 @@ onBeforeUnmount(() => {
     </section>
 
     <section v-else-if="tab === 'all'">
+      <!-- R4（§6.3）：同「当前委托」——时间位缺（接口无时间字段）；状态章维持 orderStatusLabel 原文案待入册评审。 -->
       <p class="nt-note">后端口径：最近 100 条委托（暂无日期字段，今日/历史暂不拆分）。</p>
       <p v-if="!trade.orders.length" class="nt-empty">{{ trade.ready ? '还没有委托。' : '委托未读到，点「刷新」重试。' }}</p>
       <table v-else class="sheet">
-        <thead><tr><th>编号</th><th>代码</th><th>方向</th><th>限价</th><th>数量</th><th>已成</th><th>状态</th></tr></thead>
+        <thead><tr><th>编号</th><th>证券</th><th>方向</th><th>限价</th><th>数量</th><th>已成</th><th>状态</th></tr></thead>
         <tbody>
           <tr v-for="o in trade.orders" :key="o.id">
             <td class="mono">{{ o.id.slice(0, 13) }}…</td>
-            <td><button type="button" class="sym" @click="snap(o.symbol)">{{ o.symbol }}</button></td>
+            <td><SymbolName :code="o.symbol" mode="inline" /></td>
             <td :class="pnlClass(o.side === 'buy' ? 1 : o.side === 'sell' ? -1 : 0)">{{ sideLabel(o.side) }}</td>
             <td class="mono">{{ price(o.price) }}</td>
             <td class="mono">{{ o.volume ?? '—' }}</td>
-            <td class="mono">{{ o.filled ?? 0 }}</td>
+            <td class="mono">{{ o.filled ?? '—' }}</td>
             <td>{{ orderStatusLabel(o.status) }}</td>
           </tr>
         </tbody>
@@ -395,14 +413,18 @@ onBeforeUnmount(() => {
           <p v-if="!accountStore.positionsOk" class="nt-empty">持仓未读到，不能按账面为空处理；点「刷新」重试。</p>
           <p v-else-if="!trade.ready && !accountStore.positions.length" class="nt-empty">读取中……</p>
           <table v-else-if="accountStore.positions.length" class="sheet">
-            <thead><tr><th>代码</th><th>数量</th><th>可用</th><th>成本</th><th>现价</th></tr></thead>
+            <!-- R3（§6.3）：数量 | 可用 | 成本(mono) | 现价(mono) | 浮盈额/浮盈%(up/down) | 今日可卖 -->
+            <thead><tr><th>证券</th><th>数量</th><th>可用</th><th>成本</th><th>现价</th><th>浮盈额</th><th>浮盈%</th><th>今日可卖</th></tr></thead>
             <tbody>
               <tr v-for="p in accountStore.positions" :key="p.symbol">
-                <td><button type="button" class="sym" @click="snap(p.symbol)">{{ p.symbol }}</button></td>
+                <td><SymbolName :code="p.symbol" mode="inline" /></td>
                 <td class="mono">{{ p.quantity ?? '—' }}</td>
                 <td class="mono">{{ p.available ?? '—' }}</td>
                 <td class="mono">{{ price(p.avgCost) }}</td>
                 <td class="mono" :class="pnlClass(p.lastPrice != null && p.avgCost != null ? p.lastPrice - p.avgCost : 0)">{{ price(p.lastPrice) }}</td>
+                <td class="mono" :class="pnlClass(pnlAmount(p))">{{ pnlAmount(p) != null ? amount(pnlAmount(p)) : '—' }}</td>
+                <td class="mono" :class="pnlClass(pnlRatioText(p).value)">{{ pnlRatioText(p).text }}</td>
+                <td class="sellable" :class="{ 'sellable--hold': sellable(p).hold }">{{ sellable(p).text }}</td>
               </tr>
             </tbody>
           </table>
@@ -412,11 +434,12 @@ onBeforeUnmount(() => {
           <h2 class="nt-panel__title">最近成交</h2>
           <p v-if="!trade.fills.length" class="nt-empty">{{ trade.ready ? '还没有成交。' : '成交未读到。' }}</p>
           <table v-else class="sheet">
-            <thead><tr><th>时间</th><th>代码</th><th>方向</th><th>量</th><th>价</th><th>额</th></tr></thead>
+            <!-- R4（§6.3）：时间(mono text-3)置首 | SymbolName(inline) | 方向字色双编码 | 量 | 价(mono) | 额(mono)；成交终态无状态章位 -->
+            <thead><tr><th>时间</th><th>证券</th><th>方向</th><th>量</th><th>价</th><th>额</th></tr></thead>
             <tbody>
               <tr v-for="(f, i) in trade.fills.slice(0, 8)" :key="f.id + i">
-                <td class="mono">{{ clock(f.time) }}</td>
-                <td>{{ f.symbol }}</td>
+                <td class="mono dim">{{ clock(f.time) }}</td>
+                <td><SymbolName :code="f.symbol" mode="inline" /></td>
                 <td :class="pnlClass(f.side === 'buy' ? 1 : -1)">{{ sideLabel(f.side) }}</td>
                 <td class="mono">{{ f.qty ?? '—' }}</td>
                 <td class="mono">{{ price(f.price) }}</td>
@@ -542,23 +565,24 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+/* R4 时间位降档（mono text-3）；R3 今日可卖 text-2，0 时显「T+1 不可卖」text-3。 */
+.sheet td.dim {
+  color: var(--nt-text-3);
+}
+
+.sheet td.sellable {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--nt-text-2);
+}
+
+.sheet td.sellable--hold {
+  color: var(--nt-text-3);
+}
+
 .mono {
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
-}
-
-.sym {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--nt-accent);
-  font: inherit;
-  font-family: var(--nt-font-mono);
-  cursor: pointer;
-}
-
-.sym:hover {
-  text-decoration: underline;
 }
 
 .hold {

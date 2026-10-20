@@ -1,11 +1,16 @@
 <script setup lang="ts">
 /**
- * 单券行情侧栏（视频设计指引 §8 右栏恒随）：报价头卡 + 字段网格 + 五档 + 相关情报。
+ * 单券行情侧栏（视频设计指引 §8 右栏恒随 + 方案 §6.4 个股浓缩卡四区块）：
+ * 身份（SymbolName stacked + 市场/行业/ST·停牌徽注，全走 security 字典）
+ * + 价格（hero 现价/涨跌 + 昨收/今开/最高/最低/振幅/涨跌停）
+ * + 量额（总量/总额/换手；量比、52 周高/低无数据源占位「—」）
+ * + 估值（流通市值/PE(TTM)/PB 走字典；总市值字典未携带显「—」）+ 五档 + 相关情报。
  * 纪律：
  * - 恒随全局 symbol store——切代码只换数据，布局不动；
  * - 数据面：切代码 REST 首刷 → subscribe('market', {symbol}) 推送防抖触发再刷 → 手动刷新兜底；
  *   WS 断连显「非实时」，快照过期显琥珀「已过期」；
- * - 算不出的字段显「未知」（后端零值不猜），无盘口时五档区显占位，逐笔/异动入口显「P1 待接入」。
+ * - 算不出的字段显「未知」（后端零值不猜），无源字段显「—」（数据纪律「没取到≠0」，禁虚构禁派生），
+ *   无盘口时五档区显占位，逐笔/异动入口显「P1 待接入」。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getQuote, type QuoteView } from '@/api/market'
@@ -14,7 +19,9 @@ import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
+import SymbolName from '@/display/SymbolName.vue'
 import { clock, compactAmount, messageOf, pctText, price, signed, toneOf } from '@/utils/format'
+import { useSecurityStore } from '@/stores/security'
 import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
@@ -23,6 +30,7 @@ import { dataFrame } from '@/ws/data-frame'
 import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
 
 const symbolStore = useSymbolStore()
+const security = useSecurityStore()
 
 /** 面板头的手输框：跟随全局代码；回车/失焦写回 store（source 记本面板）。 */
 const draft = ref(symbolStore.code)
@@ -130,7 +138,6 @@ watch(code, (next, before) => {
 
 /* ---------- 展示派生 ---------- */
 
-const displayName = computed(() => quote.value?.name || symbolStore.name)
 const tone = computed(() => toneOf(quote.value?.pctChg ?? null))
 const priceNow = computed(() => (quote.value && quote.value.last > 0 ? price(quote.value.last) : '未知'))
 const statusBadges = computed(() => {
@@ -145,30 +152,70 @@ const statusBadges = computed(() => {
 
 interface FieldItem { label: string; value: string }
 
-/** 两列字段网格：0/空显「未知」（口径见后端 Quote 注释）；比率为百分点。 */
-const fields = computed<FieldItem[]>(() => {
+/** 缺失两态（数据纪律，泾渭分明）：
+ * 「未知」= 行情有该字段但 0/空（GetQuote 契约 P3-10c，后端零值不猜）；
+ * 「—」 = 字段无数据源/字典缺行（方案 §6.4 缺失表现，禁虚构禁派生）。 */
+const MISS_QUOTE = '未知'
+const MISS_FIELD = '—'
+function isMiss(v: string) { return v === MISS_QUOTE || v === MISS_FIELD }
+
+/** security 字典行（§6.4 身份/估值区块数据源，§6.2 字典）：无行=字典尚未回补，逐项显「—」不冒充。 */
+const basic = computed(() => (code.value ? security.get(code.value) : undefined))
+/** 行业行：dict industry，缺省「—」（text-3）。 */
+const industryText = computed(() => basic.value?.industry || MISS_FIELD)
+
+/** 价格区块（§6.4）：现价/涨跌在 hero（.last 24px，fs 令牌块的 --nt-fs-hero 未定义，暂保留字面值），
+ * 「无涨跌幅」票涨跌停价显「无」。 */
+const priceFields = computed<FieldItem[]>(() => {
   const q = quote.value
-  const miss = '未知'
   if (!q || !q.found) {
-    return ['昨收', '今开', '最高', '最低', '成交量', '成交额', '换手率', '振幅', 'PE-TTM', 'PB', '流通市值', '总市值', '涨停价', '跌停价']
-      .map((label) => ({ label, value: miss }))
+    return ['昨收', '今开', '最高', '最低', '振幅', '涨停价', '跌停价']
+      .map((label) => ({ label, value: MISS_QUOTE }))
   }
-  const num = (v: number, fmt: (v: number) => string) => (v ? fmt(v) : miss)
+  const num = (v: number, fmt: (v: number) => string) => (v ? fmt(v) : MISS_QUOTE)
   return [
     { label: '昨收', value: num(q.prevClose, price) },
     { label: '今开', value: num(q.open, price) },
     { label: '最高', value: num(q.high, price) },
     { label: '最低', value: num(q.low, price) },
-    { label: '成交量', value: num(q.volume, compactAmount) },
-    { label: '成交额', value: num(q.amount, compactAmount) },
-    { label: '换手率', value: q.turnoverRate > 0 ? pctText(q.turnoverRate) : miss },
-    { label: '振幅', value: q.amplitude > 0 ? pctText(q.amplitude) : miss },
-    { label: 'PE-TTM', value: num(q.peTtm, (v) => v.toFixed(1)) },
-    { label: 'PB', value: num(q.pb, (v) => v.toFixed(2)) },
-    { label: '流通市值', value: num(q.circMv, compactAmount) },
-    { label: '总市值', value: num(q.totalMv, compactAmount) },
+    { label: '振幅', value: q.amplitude > 0 ? pctText(q.amplitude) : MISS_QUOTE },
     { label: '涨停价', value: q.noLimit ? '无' : num(q.limitUp, price) },
     { label: '跌停价', value: q.noLimit ? '无' : num(q.limitDown, price) },
+  ]
+})
+
+/** 量额区块（§6.4）：总量/总额/换手出自 GetQuote。
+ * 「—」两项：量比 GetQuote proto 未携带盘中口径（仅竞价截面有 auction_vol_ratio，口径不同不挪用）；
+ * 52 周高/低需附录 B-2 端点补字段（未上）——显式缺失，禁虚构。 */
+const volumeFields = computed<FieldItem[]>(() => {
+  const q = quote.value
+  if (!q || !q.found) {
+    return [
+      { label: '总量', value: MISS_QUOTE },
+      { label: '总额', value: MISS_QUOTE },
+      { label: '换手', value: MISS_QUOTE },
+      { label: '量比', value: MISS_FIELD },
+      { label: '52周高/低', value: MISS_FIELD },
+    ]
+  }
+  return [
+    { label: '总量', value: q.volume ? compactAmount(q.volume) : MISS_QUOTE },
+    { label: '总额', value: q.amount ? compactAmount(q.amount) : MISS_QUOTE },
+    { label: '换手', value: q.turnoverRate > 0 ? pctText(q.turnoverRate) : MISS_QUOTE },
+    { label: '量比', value: MISS_FIELD },
+    { label: '52周高/低', value: MISS_FIELD },
+  ]
+})
+
+/** 估值区块（§6.4）：全部读 security 字典（stock_basic 口径），truthy 守卫让负 PE 照样渲染、0/null 显「—」。
+ * 总市值字典未携带（stock_basic 无该列；不拿 total_share×现价派生——禁计算派生）→ 恒显「—」。 */
+const valuationFields = computed<FieldItem[]>(() => {
+  const b = basic.value
+  return [
+    { label: '流通市值', value: b?.circMv ? compactAmount(b.circMv) : MISS_FIELD },
+    { label: 'PE(TTM)', value: b?.peTtm ? b.peTtm.toFixed(1) : MISS_FIELD },
+    { label: 'PB', value: b?.pb ? b.pb.toFixed(2) : MISS_FIELD },
+    { label: '总市值', value: MISS_FIELD },
   ]
 })
 
@@ -205,7 +252,7 @@ onBeforeUnmount(() => {
     <header class="nt-head">
       <div>
         <h1 class="nt-title">行情侧栏</h1>
-        <p class="nt-note">恒随当前证券：{{ displayName || '—' }} · 图纸见 M12 附议。</p>
+        <p class="nt-note">恒随当前证券，身份块走 SymbolName · 图纸见 M12 附议。</p>
       </div>
     </header>
 
@@ -222,13 +269,28 @@ onBeforeUnmount(() => {
 
     <template v-if="quote">
       <header class="head">
+        <div class="head__id">
+          <SymbolName :code="code" mode="stacked" />
+          <div class="head__tags">
+            <!-- 身份徽注（方案 §6.4 身份区块）：市场/行业/ST·停牌全出自 security 字典；
+                 ST/停牌章缺省不显（文案对齐 §7.1 册「ST=warn / 停牌=neutral」；web/src/ui/status-map.ts 未建，
+                 先内联同文案，status-map 批建册后收口为导入）。 -->
+            <NtBadge v-if="basic?.market" tone="neutral">{{ basic.market }}</NtBadge>
+            <NtBadge v-if="basic?.st" tone="warn">ST</NtBadge>
+            <NtBadge v-if="basic?.suspended" tone="neutral">停牌</NtBadge>
+            <span class="head__ind" :class="{ miss: isMiss(industryText) }">{{ industryText }}</span>
+          </div>
+        </div>
         <div class="head__main" :class="tone">
           <b class="last" :class="qFlashClass">{{ priceNow }}</b>
           <span class="chg">
-            {{ quote.last > 0 ? `${signed(quote.chg)} · ${quote.pctChg >= 0 ? '+' : ''}${quote.pctChg.toFixed(2)}%` : '' }}
+            <!-- 「没取到≠0」（P3-10c）：prevClose=0 是没取到（新股首日无昨收），pctChg 无口径，显缺失而非假「+0.00%」 -->
+            {{ quote.last > 0 ? (quote.prevClose > 0 ? `${signed(quote.chg)} · ${quote.pctChg >= 0 ? '+' : ''}${quote.pctChg.toFixed(2)}%` : '昨收缺失') : '' }}
           </span>
         </div>
         <div class="head__meta">
+          <!-- §7.3 NtFreshness 挂载位（组件 web/src/ui/NtFreshness.vue 未建）：建组件后接 quote.asOf / 字典 updatedAt
+               显「行情 12s」年龄口径；现状 .asof 绝对时点兜底，未知时点已显「时间未知」。 -->
           <span v-for="b in statusBadges" :key="b.text"><NtBadge :tone="b.badge">{{ b.text }}</NtBadge></span>
           <NtBadge v-if="!liveNow" tone="warn">非实时</NtBadge>
           <span class="asof">{{ quote.asOf ? clock(quote.asOf) : '时间未知' }}<template v-if="quote.source"> · {{ quote.source === 'snap' ? '盘中快照' : '日线回退' }}</template></span>
@@ -258,11 +320,31 @@ onBeforeUnmount(() => {
       </section>
 
       <section class="grid nt-panel">
-        <h2 class="nt-panel__title">概况</h2>
+        <h2 class="nt-panel__title">价格</h2>
         <dl class="pairs">
-          <template v-for="f in fields" :key="f.label">
+          <template v-for="f in priceFields" :key="f.label">
             <dt>{{ f.label }}</dt>
-            <dd :class="{ miss: f.value === '未知' }">{{ f.value }}</dd>
+            <dd :class="{ miss: isMiss(f.value) }">{{ f.value }}</dd>
+          </template>
+        </dl>
+      </section>
+
+      <section class="grid nt-panel">
+        <h2 class="nt-panel__title">量额</h2>
+        <dl class="pairs">
+          <template v-for="f in volumeFields" :key="f.label">
+            <dt>{{ f.label }}</dt>
+            <dd :class="{ miss: isMiss(f.value) }">{{ f.value }}</dd>
+          </template>
+        </dl>
+      </section>
+
+      <section class="grid nt-panel">
+        <h2 class="nt-panel__title">估值</h2>
+        <dl class="pairs">
+          <template v-for="f in valuationFields" :key="f.label">
+            <dt>{{ f.label }}</dt>
+            <dd :class="{ miss: isMiss(f.value) }">{{ f.value }}</dd>
           </template>
         </dl>
       </section>
@@ -309,6 +391,29 @@ onBeforeUnmount(() => {
   border-radius: var(--nt-radius-m);
 }
 
+.head__id {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.head__tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.head__ind {
+  font-size: 11px;
+  color: var(--nt-text-2);
+}
+
+.head__ind.miss {
+  color: var(--nt-text-3);
+}
+
 .head__main {
   display: flex;
   align-items: baseline;
@@ -320,6 +425,8 @@ onBeforeUnmount(() => {
 .last {
   font-size: 24px;
   font-weight: 700;
+  /* hero 档（方案 §5.1）：单面板唯一 text-0 大数字；± 颜色由 .chg 继承 tone 承担。 */
+  color: var(--nt-text-0);
   line-height: 1.05;
   padding: 0 4px;
   margin: 0 -4px;
