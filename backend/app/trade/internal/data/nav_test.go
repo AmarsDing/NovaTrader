@@ -124,7 +124,7 @@ func TestPostgresNAVExportHTTPToActualQuantStatsContract(t *testing.T) {
 	if err = c.DatasetManifest.Create().SetManifestID(m.ManifestID).SetHash(m.Hash).SetCutoff(m.Cutoff).SetContent(manifestJSON).OnConflict().DoNothing().Exec(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal(err)
 	}
-	svc := service.NewTradeService(e, nil)
+	svc := service.NewTradeService(e, nil, nil)
 	navSvc := service.NewNavService(svc)
 	srv := httptest.NewServer(tradehttp.NewHTTPServer(nil, svc, service.NewAdmissionService(svc), navSvc, log.DefaultLogger))
 	defer srv.Close()

@@ -22,7 +22,7 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
-var ProviderSet = wire.NewSet(NewRunner, NewChannelTracker)
+var ProviderSet = wire.NewSet(NewRunner, NewChannelTracker, NewLiveChannel)
 
 // NewChannelTracker 建 sim 执行通道的状态机单例（G7）：Runner 记心跳，service 读状态面。
 func NewChannelTracker() *brokerif.Tracker { return brokerif.NewTracker(time.Now()) }
@@ -38,6 +38,7 @@ type Runner struct {
 	box        *outbox.Dispatcher
 	track      *brokerif.Tracker
 	obs        *brokerif.Observer
+	live       *LiveChannel
 	interval   time.Duration
 	log        *log.Helper
 	sub        *nats.Subscription
@@ -52,7 +53,7 @@ type Runner struct {
 	wg         sync.WaitGroup
 }
 
-func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
+func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, live *LiveChannel, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
 	every := 10 * time.Second
 	if c != nil && c.GetSnapshotInterval() != nil && c.GetSnapshotInterval().AsDuration() > 0 {
 		every = c.GetSnapshotInterval().AsDuration()
@@ -66,7 +67,18 @@ func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, bus *events.B
 	}
 	r.track = ch
 	r.obs = brokerif.NewObserver(ch, time.Now)
-	r.track.Subscribe(r.publishChannel)
+	r.track.Subscribe(func(from, to brokerif.Status, at time.Time) {
+		r.publishChannel("sim", from, to, at)
+	})
+	// emfile 通道（G7 服务端接线）：未配置时 live 为 nil、状态面如实缺席；
+	// 起不来的半件实例已在装配期如实停在 down（装配早于这里的订阅，那一笔不补发事件，
+	// 读面第一次查询即如实返回 down，与「没取到≠0」同口径：如实表达，不回填假事件）。
+	if live != nil && live.Tracker != nil {
+		r.live = live
+		live.Tracker.Subscribe(func(from, to brokerif.Status, at time.Time) {
+			r.publishChannel("emfile", from, to, at)
+		})
+	}
 	return r
 }
 
@@ -90,7 +102,8 @@ func (r *Runner) channelFail() {
 // 回调由 Tracker 在锁外同步触发，发布带 5s 上限，不会反压状态机。
 // 链纪律（决策 C）：Tracker 回调结构上不带因果父，每次迁移即一条根链——OpenTrace
 // 幂等开新链、不编 causation_id；若未来 Tracker 透传上游链，OpenTrace 尊重不另开。
-func (r *Runner) publishChannel(from, to brokerif.Status, at time.Time) {
+// channel 参数区分 sim（快照心跳折算）与 emfile（broker-gw 健康探测折算）两条通道。
+func (r *Runner) publishChannel(channel string, from, to brokerif.Status, at time.Time) {
 	if r.publish == nil {
 		return
 	}
@@ -98,7 +111,7 @@ func (r *Runner) publishChannel(from, to brokerif.Status, at time.Time) {
 	defer cancel()
 	ctx = events.OpenTrace(ctx)
 	env, err := events.New("trade", events.SubjectTradeChannel, events.TraceID(ctx), map[string]any{
-		"channel": "sim", "from": string(from), "to": string(to),
+		"channel": channel, "from": string(from), "to": string(to),
 		"at": at.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
@@ -158,7 +171,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		r.beginStop()
 		return context.Canceled
 	}
-	for _, run := range []func(context.Context){r.loop, r.evidenceLoop, r.watchLoop} {
+	for _, run := range []func(context.Context){r.loop, r.evidenceLoop, r.watchLoop, r.liveProbeLoop} {
 		r.wg.Add(1)
 		go func(run func(context.Context)) {
 			defer r.wg.Done()
@@ -168,9 +181,46 @@ func (r *Runner) Start(ctx context.Context) error {
 		}(run)
 	}
 	r.lifecycle.Unlock()
-	// 引擎装配（首帧快照）已是 Start 前置条件；走到这里通道视为连上。
+	// 引擎装配（首帧快照）已是 Start 前置条件；走到这里 sim 通道视为连上。
 	r.channelOK()
 	return nil
+}
+
+// liveProbeLoop 是 emfile 通道的健康心跳：按 LiveChannel.Interval 节拍探测 broker-gw，
+// 成败由 remote.Client 按 Observer 口径折算进 LiveChannel.Tracker（与 sim 同一份状态机、
+// 同一份 publishChannel 纪律）。未配置（nil）或配置不合法的半件实例（Client 为 nil）
+// 直接返回不占循环——前者状态面如实缺席，后者已在装配期如实停在 down。
+func (r *Runner) liveProbeLoop(ctx context.Context) {
+	if r.live == nil || r.live.Client == nil {
+		return
+	}
+	ticker := time.NewTicker(r.live.Interval())
+	defer ticker.Stop()
+	probe := func() {
+		if ctx.Err() != nil {
+			return
+		}
+		c, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		done := observe.ForService("trade").Op("live_probe").Begin()
+		if err := r.live.Probe(c); err != nil {
+			observe.FinishError(done, err)
+			if c.Err() == nil {
+				r.log.Warnf("emfile probe: %v", err)
+			}
+		} else {
+			done(observe.Succeeded)
+		}
+	}
+	probe()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			probe()
+		}
+	}
 }
 
 const exitConsumer = "trade_risk_exit"

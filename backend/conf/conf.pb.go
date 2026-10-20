@@ -727,8 +727,12 @@ type Trade struct {
 	PaperDaysRequired int32 `protobuf:"varint,5,opt,name=paper_days_required,json=paperDaysRequired,proto3" json:"paper_days_required,omitempty"`
 	// 账户快照间隔，默认 10s
 	SnapshotInterval *durationpb.Duration `protobuf:"bytes,6,opt,name=snapshot_interval,json=snapshotInterval,proto3" json:"snapshot_interval,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// 东方财富文件单观测通道（G7 服务端接线；mTLS 到 Windows 隔离 broker-gw）。
+	// 未配置：emfile 通道读面如实缺席；配置了连不上：如实 down——两种情形都不报虚假 idle。
+	// 本服务只做健康探测与回报核验，不放实盘下单出口、不写 CSV。
+	BrokerFile    *BrokerFile `protobuf:"bytes,7,opt,name=broker_file,json=brokerFile,proto3" json:"broker_file,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Trade) Reset() {
@@ -803,6 +807,111 @@ func (x *Trade) GetSnapshotInterval() *durationpb.Duration {
 	return nil
 }
 
+func (x *Trade) GetBrokerFile() *BrokerFile {
+	if x != nil {
+		return x.BrokerFile
+	}
+	return nil
+}
+
+// 东方财富量化终端文件单的隔离网关（broker-gw）连接与探测配置，仅观测用途。
+type BrokerFile struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// broker-gw 的 HTTPS 地址，例如 https://<交易机IP>:9443
+	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	// 与 broker-gw 白名单一致的资金账号（正则约束在传输层执行）
+	AccountId string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	// mTLS 材料（PEM 文件路径，相对服务工作目录或绝对路径）
+	CaFile   string `protobuf:"bytes,3,opt,name=ca_file,json=caFile,proto3" json:"ca_file,omitempty"`
+	CertFile string `protobuf:"bytes,4,opt,name=cert_file,json=certFile,proto3" json:"cert_file,omitempty"`
+	KeyFile  string `protobuf:"bytes,5,opt,name=key_file,json=keyFile,proto3" json:"key_file,omitempty"`
+	// 单次调用超时，默认 10s（传输层硬性限 1s–30s）
+	Timeout *durationpb.Duration `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	// 健康探测间隔，默认 10s（下端 2s、上端 60s）
+	ProbeInterval *durationpb.Duration `protobuf:"bytes,7,opt,name=probe_interval,json=probeInterval,proto3" json:"probe_interval,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BrokerFile) Reset() {
+	*x = BrokerFile{}
+	mi := &file_conf_conf_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BrokerFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BrokerFile) ProtoMessage() {}
+
+func (x *BrokerFile) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BrokerFile.ProtoReflect.Descriptor instead.
+func (*BrokerFile) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *BrokerFile) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *BrokerFile) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *BrokerFile) GetCaFile() string {
+	if x != nil {
+		return x.CaFile
+	}
+	return ""
+}
+
+func (x *BrokerFile) GetCertFile() string {
+	if x != nil {
+		return x.CertFile
+	}
+	return ""
+}
+
+func (x *BrokerFile) GetKeyFile() string {
+	if x != nil {
+		return x.KeyFile
+	}
+	return ""
+}
+
+func (x *BrokerFile) GetTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.Timeout
+	}
+	return nil
+}
+
+func (x *BrokerFile) GetProbeInterval() *durationpb.Duration {
+	if x != nil {
+		return x.ProbeInterval
+	}
+	return nil
+}
+
 type Admin struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Http      *HTTP                  `protobuf:"bytes,1,opt,name=http,proto3" json:"http,omitempty"`
@@ -818,7 +927,7 @@ type Admin struct {
 
 func (x *Admin) Reset() {
 	*x = Admin{}
-	mi := &file_conf_conf_proto_msgTypes[7]
+	mi := &file_conf_conf_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -830,7 +939,7 @@ func (x *Admin) String() string {
 func (*Admin) ProtoMessage() {}
 
 func (x *Admin) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[7]
+	mi := &file_conf_conf_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -843,7 +952,7 @@ func (x *Admin) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Admin.ProtoReflect.Descriptor instead.
 func (*Admin) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{7}
+	return file_conf_conf_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Admin) GetHttp() *HTTP {
@@ -892,7 +1001,7 @@ type Demo struct {
 
 func (x *Demo) Reset() {
 	*x = Demo{}
-	mi := &file_conf_conf_proto_msgTypes[8]
+	mi := &file_conf_conf_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -904,7 +1013,7 @@ func (x *Demo) String() string {
 func (*Demo) ProtoMessage() {}
 
 func (x *Demo) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[8]
+	mi := &file_conf_conf_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -917,7 +1026,7 @@ func (x *Demo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Demo.ProtoReflect.Descriptor instead.
 func (*Demo) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{8}
+	return file_conf_conf_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Demo) GetHttp() *HTTP {
@@ -952,7 +1061,7 @@ type HTTP struct {
 
 func (x *HTTP) Reset() {
 	*x = HTTP{}
-	mi := &file_conf_conf_proto_msgTypes[9]
+	mi := &file_conf_conf_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -964,7 +1073,7 @@ func (x *HTTP) String() string {
 func (*HTTP) ProtoMessage() {}
 
 func (x *HTTP) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[9]
+	mi := &file_conf_conf_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -977,7 +1086,7 @@ func (x *HTTP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HTTP.ProtoReflect.Descriptor instead.
 func (*HTTP) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{9}
+	return file_conf_conf_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HTTP) GetNetwork() string {
@@ -1012,7 +1121,7 @@ type GRPC struct {
 
 func (x *GRPC) Reset() {
 	*x = GRPC{}
-	mi := &file_conf_conf_proto_msgTypes[10]
+	mi := &file_conf_conf_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1024,7 +1133,7 @@ func (x *GRPC) String() string {
 func (*GRPC) ProtoMessage() {}
 
 func (x *GRPC) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[10]
+	mi := &file_conf_conf_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1037,7 +1146,7 @@ func (x *GRPC) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GRPC.ProtoReflect.Descriptor instead.
 func (*GRPC) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{10}
+	return file_conf_conf_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GRPC) GetNetwork() string {
@@ -1072,7 +1181,7 @@ type WEBSOCKET struct {
 
 func (x *WEBSOCKET) Reset() {
 	*x = WEBSOCKET{}
-	mi := &file_conf_conf_proto_msgTypes[11]
+	mi := &file_conf_conf_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1084,7 +1193,7 @@ func (x *WEBSOCKET) String() string {
 func (*WEBSOCKET) ProtoMessage() {}
 
 func (x *WEBSOCKET) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[11]
+	mi := &file_conf_conf_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1097,7 +1206,7 @@ func (x *WEBSOCKET) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WEBSOCKET.ProtoReflect.Descriptor instead.
 func (*WEBSOCKET) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{11}
+	return file_conf_conf_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *WEBSOCKET) GetNetwork() string {
@@ -1137,7 +1246,7 @@ type Discovery struct {
 
 func (x *Discovery) Reset() {
 	*x = Discovery{}
-	mi := &file_conf_conf_proto_msgTypes[12]
+	mi := &file_conf_conf_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1149,7 +1258,7 @@ func (x *Discovery) String() string {
 func (*Discovery) ProtoMessage() {}
 
 func (x *Discovery) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[12]
+	mi := &file_conf_conf_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1162,7 +1271,7 @@ func (x *Discovery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Discovery.ProtoReflect.Descriptor instead.
 func (*Discovery) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{12}
+	return file_conf_conf_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Discovery) GetNodes() []string {
@@ -1230,7 +1339,7 @@ type Trace struct {
 
 func (x *Trace) Reset() {
 	*x = Trace{}
-	mi := &file_conf_conf_proto_msgTypes[13]
+	mi := &file_conf_conf_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1242,7 +1351,7 @@ func (x *Trace) String() string {
 func (*Trace) ProtoMessage() {}
 
 func (x *Trace) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[13]
+	mi := &file_conf_conf_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1255,7 +1364,7 @@ func (x *Trace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Trace.ProtoReflect.Descriptor instead.
 func (*Trace) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{13}
+	return file_conf_conf_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Trace) GetEndpoint() string {
@@ -1274,7 +1383,7 @@ type Nats struct {
 
 func (x *Nats) Reset() {
 	*x = Nats{}
-	mi := &file_conf_conf_proto_msgTypes[14]
+	mi := &file_conf_conf_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1286,7 +1395,7 @@ func (x *Nats) String() string {
 func (*Nats) ProtoMessage() {}
 
 func (x *Nats) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[14]
+	mi := &file_conf_conf_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1299,7 +1408,7 @@ func (x *Nats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Nats.ProtoReflect.Descriptor instead.
 func (*Nats) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{14}
+	return file_conf_conf_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Nats) GetUrl() string {
@@ -1319,7 +1428,7 @@ type Log struct {
 
 func (x *Log) Reset() {
 	*x = Log{}
-	mi := &file_conf_conf_proto_msgTypes[15]
+	mi := &file_conf_conf_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1331,7 +1440,7 @@ func (x *Log) String() string {
 func (*Log) ProtoMessage() {}
 
 func (x *Log) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[15]
+	mi := &file_conf_conf_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1344,7 +1453,7 @@ func (x *Log) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log.ProtoReflect.Descriptor instead.
 func (*Log) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{15}
+	return file_conf_conf_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Log) GetLogger() *Log_Logger {
@@ -1373,7 +1482,7 @@ type Auth struct {
 
 func (x *Auth) Reset() {
 	*x = Auth{}
-	mi := &file_conf_conf_proto_msgTypes[16]
+	mi := &file_conf_conf_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1385,7 +1494,7 @@ func (x *Auth) String() string {
 func (*Auth) ProtoMessage() {}
 
 func (x *Auth) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[16]
+	mi := &file_conf_conf_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1398,7 +1507,7 @@ func (x *Auth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Auth.ProtoReflect.Descriptor instead.
 func (*Auth) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{16}
+	return file_conf_conf_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Auth) GetKey() string {
@@ -1440,7 +1549,7 @@ type Redis struct {
 
 func (x *Redis) Reset() {
 	*x = Redis{}
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1452,7 +1561,7 @@ func (x *Redis) String() string {
 func (*Redis) ProtoMessage() {}
 
 func (x *Redis) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1465,7 +1574,7 @@ func (x *Redis) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Redis.ProtoReflect.Descriptor instead.
 func (*Redis) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{17}
+	return file_conf_conf_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Redis) GetAddr() string {
@@ -1508,7 +1617,7 @@ type Postgres struct {
 
 func (x *Postgres) Reset() {
 	*x = Postgres{}
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1520,7 +1629,7 @@ func (x *Postgres) String() string {
 func (*Postgres) ProtoMessage() {}
 
 func (x *Postgres) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1533,7 +1642,7 @@ func (x *Postgres) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Postgres.ProtoReflect.Descriptor instead.
 func (*Postgres) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{18}
+	return file_conf_conf_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Postgres) GetDsn() string {
@@ -1630,7 +1739,7 @@ type Intel struct {
 
 func (x *Intel) Reset() {
 	*x = Intel{}
-	mi := &file_conf_conf_proto_msgTypes[19]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1642,7 +1751,7 @@ func (x *Intel) String() string {
 func (*Intel) ProtoMessage() {}
 
 func (x *Intel) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[19]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1655,7 +1764,7 @@ func (x *Intel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Intel.ProtoReflect.Descriptor instead.
 func (*Intel) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{19}
+	return file_conf_conf_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Intel) GetHttp() *HTTP {
@@ -1745,7 +1854,7 @@ type IntelLLM struct {
 
 func (x *IntelLLM) Reset() {
 	*x = IntelLLM{}
-	mi := &file_conf_conf_proto_msgTypes[20]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1757,7 +1866,7 @@ func (x *IntelLLM) String() string {
 func (*IntelLLM) ProtoMessage() {}
 
 func (x *IntelLLM) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[20]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1770,7 +1879,7 @@ func (x *IntelLLM) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IntelLLM.ProtoReflect.Descriptor instead.
 func (*IntelLLM) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{20}
+	return file_conf_conf_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *IntelLLM) GetEnabled() bool {
@@ -1852,7 +1961,7 @@ type Datahub struct {
 
 func (x *Datahub) Reset() {
 	*x = Datahub{}
-	mi := &file_conf_conf_proto_msgTypes[21]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1864,7 +1973,7 @@ func (x *Datahub) String() string {
 func (*Datahub) ProtoMessage() {}
 
 func (x *Datahub) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[21]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1877,7 +1986,7 @@ func (x *Datahub) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Datahub.ProtoReflect.Descriptor instead.
 func (*Datahub) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{21}
+	return file_conf_conf_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Datahub) GetHttp() *HTTP {
@@ -1989,7 +2098,7 @@ type DataSource struct {
 
 func (x *DataSource) Reset() {
 	*x = DataSource{}
-	mi := &file_conf_conf_proto_msgTypes[22]
+	mi := &file_conf_conf_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2001,7 +2110,7 @@ func (x *DataSource) String() string {
 func (*DataSource) ProtoMessage() {}
 
 func (x *DataSource) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[22]
+	mi := &file_conf_conf_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2014,7 +2123,7 @@ func (x *DataSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataSource.ProtoReflect.Descriptor instead.
 func (*DataSource) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{22}
+	return file_conf_conf_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DataSource) GetEnabled() bool {
@@ -2093,7 +2202,7 @@ type DataDomain struct {
 
 func (x *DataDomain) Reset() {
 	*x = DataDomain{}
-	mi := &file_conf_conf_proto_msgTypes[23]
+	mi := &file_conf_conf_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2105,7 +2214,7 @@ func (x *DataDomain) String() string {
 func (*DataDomain) ProtoMessage() {}
 
 func (x *DataDomain) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[23]
+	mi := &file_conf_conf_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2118,7 +2227,7 @@ func (x *DataDomain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataDomain.ProtoReflect.Descriptor instead.
 func (*DataDomain) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{23}
+	return file_conf_conf_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DataDomain) GetEnabled() bool {
@@ -2156,7 +2265,7 @@ type DatahubSnapshot struct {
 
 func (x *DatahubSnapshot) Reset() {
 	*x = DatahubSnapshot{}
-	mi := &file_conf_conf_proto_msgTypes[24]
+	mi := &file_conf_conf_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2168,7 +2277,7 @@ func (x *DatahubSnapshot) String() string {
 func (*DatahubSnapshot) ProtoMessage() {}
 
 func (x *DatahubSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[24]
+	mi := &file_conf_conf_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2181,7 +2290,7 @@ func (x *DatahubSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DatahubSnapshot.ProtoReflect.Descriptor instead.
 func (*DatahubSnapshot) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{24}
+	return file_conf_conf_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DatahubSnapshot) GetInterval() *durationpb.Duration {
@@ -2216,7 +2325,7 @@ type Other struct {
 
 func (x *Other) Reset() {
 	*x = Other{}
-	mi := &file_conf_conf_proto_msgTypes[25]
+	mi := &file_conf_conf_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2228,7 +2337,7 @@ func (x *Other) String() string {
 func (*Other) ProtoMessage() {}
 
 func (x *Other) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[25]
+	mi := &file_conf_conf_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2241,7 +2350,7 @@ func (x *Other) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Other.ProtoReflect.Descriptor instead.
 func (*Other) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{25}
+	return file_conf_conf_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Other) GetDataws() *WEBSOCKET {
@@ -2286,7 +2395,7 @@ type Kb struct {
 
 func (x *Kb) Reset() {
 	*x = Kb{}
-	mi := &file_conf_conf_proto_msgTypes[26]
+	mi := &file_conf_conf_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2298,7 +2407,7 @@ func (x *Kb) String() string {
 func (*Kb) ProtoMessage() {}
 
 func (x *Kb) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[26]
+	mi := &file_conf_conf_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2311,7 +2420,7 @@ func (x *Kb) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Kb.ProtoReflect.Descriptor instead.
 func (*Kb) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{26}
+	return file_conf_conf_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *Kb) GetEmbedProvider() string {
@@ -2408,7 +2517,7 @@ type Brain struct {
 
 func (x *Brain) Reset() {
 	*x = Brain{}
-	mi := &file_conf_conf_proto_msgTypes[27]
+	mi := &file_conf_conf_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2420,7 +2529,7 @@ func (x *Brain) String() string {
 func (*Brain) ProtoMessage() {}
 
 func (x *Brain) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[27]
+	mi := &file_conf_conf_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2433,7 +2542,7 @@ func (x *Brain) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Brain.ProtoReflect.Descriptor instead.
 func (*Brain) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{27}
+	return file_conf_conf_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *Brain) GetHttp() *HTTP {
@@ -2517,7 +2626,7 @@ type BrainModel struct {
 
 func (x *BrainModel) Reset() {
 	*x = BrainModel{}
-	mi := &file_conf_conf_proto_msgTypes[28]
+	mi := &file_conf_conf_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2529,7 +2638,7 @@ func (x *BrainModel) String() string {
 func (*BrainModel) ProtoMessage() {}
 
 func (x *BrainModel) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[28]
+	mi := &file_conf_conf_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2542,7 +2651,7 @@ func (x *BrainModel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrainModel.ProtoReflect.Descriptor instead.
 func (*BrainModel) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{28}
+	return file_conf_conf_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *BrainModel) GetBaseUrl() string {
@@ -2625,7 +2734,7 @@ type Strategy struct {
 
 func (x *Strategy) Reset() {
 	*x = Strategy{}
-	mi := &file_conf_conf_proto_msgTypes[29]
+	mi := &file_conf_conf_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2637,7 +2746,7 @@ func (x *Strategy) String() string {
 func (*Strategy) ProtoMessage() {}
 
 func (x *Strategy) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[29]
+	mi := &file_conf_conf_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2650,7 +2759,7 @@ func (x *Strategy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Strategy.ProtoReflect.Descriptor instead.
 func (*Strategy) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{29}
+	return file_conf_conf_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *Strategy) GetHttp() *HTTP {
@@ -2738,7 +2847,7 @@ type Market struct {
 
 func (x *Market) Reset() {
 	*x = Market{}
-	mi := &file_conf_conf_proto_msgTypes[30]
+	mi := &file_conf_conf_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2750,7 +2859,7 @@ func (x *Market) String() string {
 func (*Market) ProtoMessage() {}
 
 func (x *Market) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[30]
+	mi := &file_conf_conf_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2763,7 +2872,7 @@ func (x *Market) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Market.ProtoReflect.Descriptor instead.
 func (*Market) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{30}
+	return file_conf_conf_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *Market) GetHttp() *HTTP {
@@ -2835,7 +2944,7 @@ type Log_Logger struct {
 
 func (x *Log_Logger) Reset() {
 	*x = Log_Logger{}
-	mi := &file_conf_conf_proto_msgTypes[34]
+	mi := &file_conf_conf_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2847,7 +2956,7 @@ func (x *Log_Logger) String() string {
 func (*Log_Logger) ProtoMessage() {}
 
 func (x *Log_Logger) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[34]
+	mi := &file_conf_conf_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2860,7 +2969,7 @@ func (x *Log_Logger) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log_Logger.ProtoReflect.Descriptor instead.
 func (*Log_Logger) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{15, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{16, 0}
 }
 
 func (x *Log_Logger) GetLevel() int64 {
@@ -2911,7 +3020,7 @@ type Log_File struct {
 
 func (x *Log_File) Reset() {
 	*x = Log_File{}
-	mi := &file_conf_conf_proto_msgTypes[35]
+	mi := &file_conf_conf_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2923,7 +3032,7 @@ func (x *Log_File) String() string {
 func (*Log_File) ProtoMessage() {}
 
 func (x *Log_File) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[35]
+	mi := &file_conf_conf_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2936,7 +3045,7 @@ func (x *Log_File) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log_File.ProtoReflect.Descriptor instead.
 func (*Log_File) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{15, 1}
+	return file_conf_conf_proto_rawDescGZIP(), []int{16, 1}
 }
 
 func (x *Log_File) GetFilename() string {
@@ -3065,7 +3174,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\ttemplates\x18\a \x03(\v2\x1b.conf.Notify.TemplatesEntryR\ttemplates\x1a<\n" +
 	"\x0eTemplatesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xff\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb2\x02\n" +
 	"\x05Trade\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +
@@ -3074,7 +3183,19 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\trisk_addr\x18\x03 \x01(\tR\briskAddr\x12!\n" +
 	"\finitial_cash\x18\x04 \x01(\x01R\vinitialCash\x12.\n" +
 	"\x13paper_days_required\x18\x05 \x01(\x05R\x11paperDaysRequired\x12F\n" +
-	"\x11snapshot_interval\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\x10snapshotInterval\"\xbe\x01\n" +
+	"\x11snapshot_interval\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\x10snapshotInterval\x121\n" +
+	"\vbroker_file\x18\a \x01(\v2\x10.conf.BrokerFileR\n" +
+	"brokerFile\"\x85\x02\n" +
+	"\n" +
+	"BrokerFile\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\x12\x17\n" +
+	"\aca_file\x18\x03 \x01(\tR\x06caFile\x12\x1b\n" +
+	"\tcert_file\x18\x04 \x01(\tR\bcertFile\x12\x19\n" +
+	"\bkey_file\x18\x05 \x01(\tR\akeyFile\x123\n" +
+	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12@\n" +
+	"\x0eprobe_interval\x18\a \x01(\v2\x19.google.protobuf.DurationR\rprobeInterval\"\xbe\x01\n" +
 	"\x05Admin\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +
@@ -3327,7 +3448,7 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 	return file_conf_conf_proto_rawDescData
 }
 
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
 var file_conf_conf_proto_goTypes = []any{
 	(*Bootstrap)(nil),           // 0: conf.Bootstrap
 	(*Backtest)(nil),            // 1: conf.Backtest
@@ -3336,137 +3457,141 @@ var file_conf_conf_proto_goTypes = []any{
 	(*Risk)(nil),                // 4: conf.Risk
 	(*Notify)(nil),              // 5: conf.Notify
 	(*Trade)(nil),               // 6: conf.Trade
-	(*Admin)(nil),               // 7: conf.Admin
-	(*Demo)(nil),                // 8: conf.Demo
-	(*HTTP)(nil),                // 9: conf.HTTP
-	(*GRPC)(nil),                // 10: conf.GRPC
-	(*WEBSOCKET)(nil),           // 11: conf.WEBSOCKET
-	(*Discovery)(nil),           // 12: conf.Discovery
-	(*Trace)(nil),               // 13: conf.Trace
-	(*Nats)(nil),                // 14: conf.Nats
-	(*Log)(nil),                 // 15: conf.Log
-	(*Auth)(nil),                // 16: conf.Auth
-	(*Redis)(nil),               // 17: conf.Redis
-	(*Postgres)(nil),            // 18: conf.Postgres
-	(*Intel)(nil),               // 19: conf.Intel
-	(*IntelLLM)(nil),            // 20: conf.IntelLLM
-	(*Datahub)(nil),             // 21: conf.Datahub
-	(*DataSource)(nil),          // 22: conf.DataSource
-	(*DataDomain)(nil),          // 23: conf.DataDomain
-	(*DatahubSnapshot)(nil),     // 24: conf.DatahubSnapshot
-	(*Other)(nil),               // 25: conf.Other
-	(*Kb)(nil),                  // 26: conf.Kb
-	(*Brain)(nil),               // 27: conf.Brain
-	(*BrainModel)(nil),          // 28: conf.BrainModel
-	(*Strategy)(nil),            // 29: conf.Strategy
-	(*Market)(nil),              // 30: conf.Market
-	nil,                         // 31: conf.Notify.TemplatesEntry
-	nil,                         // 32: conf.Discovery.EndpointsEntry
-	nil,                         // 33: conf.Discovery.ClientsEntry
-	(*Log_Logger)(nil),          // 34: conf.Log.Logger
-	(*Log_File)(nil),            // 35: conf.Log.File
-	nil,                         // 36: conf.Datahub.SourcesEntry
-	nil,                         // 37: conf.Datahub.DomainsEntry
-	nil,                         // 38: conf.Brain.ModelsEntry
-	nil,                         // 39: conf.Brain.RoutesEntry
-	nil,                         // 40: conf.Brain.WeightsEntry
-	nil,                         // 41: conf.Brain.PhaseCoefEntry
-	(*durationpb.Duration)(nil), // 42: google.protobuf.Duration
+	(*BrokerFile)(nil),          // 7: conf.BrokerFile
+	(*Admin)(nil),               // 8: conf.Admin
+	(*Demo)(nil),                // 9: conf.Demo
+	(*HTTP)(nil),                // 10: conf.HTTP
+	(*GRPC)(nil),                // 11: conf.GRPC
+	(*WEBSOCKET)(nil),           // 12: conf.WEBSOCKET
+	(*Discovery)(nil),           // 13: conf.Discovery
+	(*Trace)(nil),               // 14: conf.Trace
+	(*Nats)(nil),                // 15: conf.Nats
+	(*Log)(nil),                 // 16: conf.Log
+	(*Auth)(nil),                // 17: conf.Auth
+	(*Redis)(nil),               // 18: conf.Redis
+	(*Postgres)(nil),            // 19: conf.Postgres
+	(*Intel)(nil),               // 20: conf.Intel
+	(*IntelLLM)(nil),            // 21: conf.IntelLLM
+	(*Datahub)(nil),             // 22: conf.Datahub
+	(*DataSource)(nil),          // 23: conf.DataSource
+	(*DataDomain)(nil),          // 24: conf.DataDomain
+	(*DatahubSnapshot)(nil),     // 25: conf.DatahubSnapshot
+	(*Other)(nil),               // 26: conf.Other
+	(*Kb)(nil),                  // 27: conf.Kb
+	(*Brain)(nil),               // 28: conf.Brain
+	(*BrainModel)(nil),          // 29: conf.BrainModel
+	(*Strategy)(nil),            // 30: conf.Strategy
+	(*Market)(nil),              // 31: conf.Market
+	nil,                         // 32: conf.Notify.TemplatesEntry
+	nil,                         // 33: conf.Discovery.EndpointsEntry
+	nil,                         // 34: conf.Discovery.ClientsEntry
+	(*Log_Logger)(nil),          // 35: conf.Log.Logger
+	(*Log_File)(nil),            // 36: conf.Log.File
+	nil,                         // 37: conf.Datahub.SourcesEntry
+	nil,                         // 38: conf.Datahub.DomainsEntry
+	nil,                         // 39: conf.Brain.ModelsEntry
+	nil,                         // 40: conf.Brain.RoutesEntry
+	nil,                         // 41: conf.Brain.WeightsEntry
+	nil,                         // 42: conf.Brain.PhaseCoefEntry
+	(*durationpb.Duration)(nil), // 43: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
-	7,  // 0: conf.Bootstrap.admin:type_name -> conf.Admin
-	8,  // 1: conf.Bootstrap.demo:type_name -> conf.Demo
-	12, // 2: conf.Bootstrap.discovery:type_name -> conf.Discovery
-	13, // 3: conf.Bootstrap.trace:type_name -> conf.Trace
-	14, // 4: conf.Bootstrap.nats:type_name -> conf.Nats
-	15, // 5: conf.Bootstrap.log:type_name -> conf.Log
-	16, // 6: conf.Bootstrap.auth:type_name -> conf.Auth
-	17, // 7: conf.Bootstrap.redis:type_name -> conf.Redis
-	18, // 8: conf.Bootstrap.postgres:type_name -> conf.Postgres
-	25, // 9: conf.Bootstrap.other:type_name -> conf.Other
-	19, // 10: conf.Bootstrap.intel:type_name -> conf.Intel
-	26, // 11: conf.Bootstrap.kb:type_name -> conf.Kb
-	27, // 12: conf.Bootstrap.brain:type_name -> conf.Brain
-	21, // 13: conf.Bootstrap.datahub:type_name -> conf.Datahub
-	30, // 14: conf.Bootstrap.market:type_name -> conf.Market
-	29, // 15: conf.Bootstrap.strategy:type_name -> conf.Strategy
+	8,  // 0: conf.Bootstrap.admin:type_name -> conf.Admin
+	9,  // 1: conf.Bootstrap.demo:type_name -> conf.Demo
+	13, // 2: conf.Bootstrap.discovery:type_name -> conf.Discovery
+	14, // 3: conf.Bootstrap.trace:type_name -> conf.Trace
+	15, // 4: conf.Bootstrap.nats:type_name -> conf.Nats
+	16, // 5: conf.Bootstrap.log:type_name -> conf.Log
+	17, // 6: conf.Bootstrap.auth:type_name -> conf.Auth
+	18, // 7: conf.Bootstrap.redis:type_name -> conf.Redis
+	19, // 8: conf.Bootstrap.postgres:type_name -> conf.Postgres
+	26, // 9: conf.Bootstrap.other:type_name -> conf.Other
+	20, // 10: conf.Bootstrap.intel:type_name -> conf.Intel
+	27, // 11: conf.Bootstrap.kb:type_name -> conf.Kb
+	28, // 12: conf.Bootstrap.brain:type_name -> conf.Brain
+	22, // 13: conf.Bootstrap.datahub:type_name -> conf.Datahub
+	31, // 14: conf.Bootstrap.market:type_name -> conf.Market
+	30, // 15: conf.Bootstrap.strategy:type_name -> conf.Strategy
 	4,  // 16: conf.Bootstrap.risk:type_name -> conf.Risk
 	1,  // 17: conf.Bootstrap.backtest:type_name -> conf.Backtest
 	6,  // 18: conf.Bootstrap.trade:type_name -> conf.Trade
 	5,  // 19: conf.Bootstrap.notify:type_name -> conf.Notify
-	9,  // 20: conf.Backtest.http:type_name -> conf.HTTP
-	10, // 21: conf.Backtest.grpc:type_name -> conf.GRPC
+	10, // 20: conf.Backtest.http:type_name -> conf.HTTP
+	11, // 21: conf.Backtest.grpc:type_name -> conf.GRPC
 	2,  // 22: conf.Backtest.introspect:type_name -> conf.BacktestIntrospect
 	3,  // 23: conf.Backtest.admission:type_name -> conf.BacktestAdmission
-	9,  // 24: conf.Risk.http:type_name -> conf.HTTP
-	10, // 25: conf.Risk.grpc:type_name -> conf.GRPC
-	9,  // 26: conf.Notify.http:type_name -> conf.HTTP
-	10, // 27: conf.Notify.grpc:type_name -> conf.GRPC
-	31, // 28: conf.Notify.templates:type_name -> conf.Notify.TemplatesEntry
-	9,  // 29: conf.Trade.http:type_name -> conf.HTTP
-	10, // 30: conf.Trade.grpc:type_name -> conf.GRPC
-	42, // 31: conf.Trade.snapshot_interval:type_name -> google.protobuf.Duration
-	9,  // 32: conf.Admin.http:type_name -> conf.HTTP
-	10, // 33: conf.Admin.grpc:type_name -> conf.GRPC
-	11, // 34: conf.Admin.websocket:type_name -> conf.WEBSOCKET
-	9,  // 35: conf.Demo.http:type_name -> conf.HTTP
-	10, // 36: conf.Demo.grpc:type_name -> conf.GRPC
-	11, // 37: conf.Demo.websocket:type_name -> conf.WEBSOCKET
-	42, // 38: conf.HTTP.timeout:type_name -> google.protobuf.Duration
-	42, // 39: conf.GRPC.timeout:type_name -> google.protobuf.Duration
-	42, // 40: conf.WEBSOCKET.timeout:type_name -> google.protobuf.Duration
-	32, // 41: conf.Discovery.endpoints:type_name -> conf.Discovery.EndpointsEntry
-	33, // 42: conf.Discovery.clients:type_name -> conf.Discovery.ClientsEntry
-	34, // 43: conf.Log.logger:type_name -> conf.Log.Logger
-	35, // 44: conf.Log.file:type_name -> conf.Log.File
-	42, // 45: conf.Redis.read_timeout:type_name -> google.protobuf.Duration
-	42, // 46: conf.Redis.write_timeout:type_name -> google.protobuf.Duration
-	42, // 47: conf.Postgres.dial_timeout:type_name -> google.protobuf.Duration
-	9,  // 48: conf.Intel.http:type_name -> conf.HTTP
-	10, // 49: conf.Intel.grpc:type_name -> conf.GRPC
-	42, // 50: conf.Intel.dedup_window:type_name -> google.protobuf.Duration
-	20, // 51: conf.Intel.llm:type_name -> conf.IntelLLM
-	42, // 52: conf.IntelLLM.timeout:type_name -> google.protobuf.Duration
-	9,  // 53: conf.Datahub.http:type_name -> conf.HTTP
-	10, // 54: conf.Datahub.grpc:type_name -> conf.GRPC
-	36, // 55: conf.Datahub.sources:type_name -> conf.Datahub.SourcesEntry
-	37, // 56: conf.Datahub.domains:type_name -> conf.Datahub.DomainsEntry
-	24, // 57: conf.Datahub.snapshot:type_name -> conf.DatahubSnapshot
-	42, // 58: conf.Datahub.breaker_cooldown:type_name -> google.protobuf.Duration
-	42, // 59: conf.DataSource.timeout:type_name -> google.protobuf.Duration
-	42, // 60: conf.DataDomain.interval:type_name -> google.protobuf.Duration
-	42, // 61: conf.DatahubSnapshot.interval:type_name -> google.protobuf.Duration
-	42, // 62: conf.DatahubSnapshot.stale_after:type_name -> google.protobuf.Duration
-	42, // 63: conf.DatahubSnapshot.timeout:type_name -> google.protobuf.Duration
-	11, // 64: conf.Other.dataws:type_name -> conf.WEBSOCKET
-	42, // 65: conf.Kb.embed_timeout:type_name -> google.protobuf.Duration
-	9,  // 66: conf.Brain.http:type_name -> conf.HTTP
-	10, // 67: conf.Brain.grpc:type_name -> conf.GRPC
-	38, // 68: conf.Brain.models:type_name -> conf.Brain.ModelsEntry
-	39, // 69: conf.Brain.routes:type_name -> conf.Brain.RoutesEntry
-	40, // 70: conf.Brain.weights:type_name -> conf.Brain.WeightsEntry
-	41, // 71: conf.Brain.phase_coef:type_name -> conf.Brain.PhaseCoefEntry
-	42, // 72: conf.Brain.analyze_timeout:type_name -> google.protobuf.Duration
-	42, // 73: conf.BrainModel.timeout:type_name -> google.protobuf.Duration
-	9,  // 74: conf.Strategy.http:type_name -> conf.HTTP
-	10, // 75: conf.Strategy.grpc:type_name -> conf.GRPC
-	42, // 76: conf.Strategy.scan_interval:type_name -> google.protobuf.Duration
-	42, // 77: conf.Strategy.full_scan_interval:type_name -> google.protobuf.Duration
-	42, // 78: conf.Strategy.ai_timeout:type_name -> google.protobuf.Duration
-	9,  // 79: conf.Market.http:type_name -> conf.HTTP
-	10, // 80: conf.Market.grpc:type_name -> conf.GRPC
-	42, // 81: conf.Market.refresh_interval:type_name -> google.protobuf.Duration
-	42, // 82: conf.Market.stale_after:type_name -> google.protobuf.Duration
-	42, // 83: conf.Market.bar_grace:type_name -> google.protobuf.Duration
-	42, // 84: conf.Market.watch_ttl:type_name -> google.protobuf.Duration
-	22, // 85: conf.Datahub.SourcesEntry.value:type_name -> conf.DataSource
-	23, // 86: conf.Datahub.DomainsEntry.value:type_name -> conf.DataDomain
-	28, // 87: conf.Brain.ModelsEntry.value:type_name -> conf.BrainModel
-	88, // [88:88] is the sub-list for method output_type
-	88, // [88:88] is the sub-list for method input_type
-	88, // [88:88] is the sub-list for extension type_name
-	88, // [88:88] is the sub-list for extension extendee
-	0,  // [0:88] is the sub-list for field type_name
+	10, // 24: conf.Risk.http:type_name -> conf.HTTP
+	11, // 25: conf.Risk.grpc:type_name -> conf.GRPC
+	10, // 26: conf.Notify.http:type_name -> conf.HTTP
+	11, // 27: conf.Notify.grpc:type_name -> conf.GRPC
+	32, // 28: conf.Notify.templates:type_name -> conf.Notify.TemplatesEntry
+	10, // 29: conf.Trade.http:type_name -> conf.HTTP
+	11, // 30: conf.Trade.grpc:type_name -> conf.GRPC
+	43, // 31: conf.Trade.snapshot_interval:type_name -> google.protobuf.Duration
+	7,  // 32: conf.Trade.broker_file:type_name -> conf.BrokerFile
+	43, // 33: conf.BrokerFile.timeout:type_name -> google.protobuf.Duration
+	43, // 34: conf.BrokerFile.probe_interval:type_name -> google.protobuf.Duration
+	10, // 35: conf.Admin.http:type_name -> conf.HTTP
+	11, // 36: conf.Admin.grpc:type_name -> conf.GRPC
+	12, // 37: conf.Admin.websocket:type_name -> conf.WEBSOCKET
+	10, // 38: conf.Demo.http:type_name -> conf.HTTP
+	11, // 39: conf.Demo.grpc:type_name -> conf.GRPC
+	12, // 40: conf.Demo.websocket:type_name -> conf.WEBSOCKET
+	43, // 41: conf.HTTP.timeout:type_name -> google.protobuf.Duration
+	43, // 42: conf.GRPC.timeout:type_name -> google.protobuf.Duration
+	43, // 43: conf.WEBSOCKET.timeout:type_name -> google.protobuf.Duration
+	33, // 44: conf.Discovery.endpoints:type_name -> conf.Discovery.EndpointsEntry
+	34, // 45: conf.Discovery.clients:type_name -> conf.Discovery.ClientsEntry
+	35, // 46: conf.Log.logger:type_name -> conf.Log.Logger
+	36, // 47: conf.Log.file:type_name -> conf.Log.File
+	43, // 48: conf.Redis.read_timeout:type_name -> google.protobuf.Duration
+	43, // 49: conf.Redis.write_timeout:type_name -> google.protobuf.Duration
+	43, // 50: conf.Postgres.dial_timeout:type_name -> google.protobuf.Duration
+	10, // 51: conf.Intel.http:type_name -> conf.HTTP
+	11, // 52: conf.Intel.grpc:type_name -> conf.GRPC
+	43, // 53: conf.Intel.dedup_window:type_name -> google.protobuf.Duration
+	21, // 54: conf.Intel.llm:type_name -> conf.IntelLLM
+	43, // 55: conf.IntelLLM.timeout:type_name -> google.protobuf.Duration
+	10, // 56: conf.Datahub.http:type_name -> conf.HTTP
+	11, // 57: conf.Datahub.grpc:type_name -> conf.GRPC
+	37, // 58: conf.Datahub.sources:type_name -> conf.Datahub.SourcesEntry
+	38, // 59: conf.Datahub.domains:type_name -> conf.Datahub.DomainsEntry
+	25, // 60: conf.Datahub.snapshot:type_name -> conf.DatahubSnapshot
+	43, // 61: conf.Datahub.breaker_cooldown:type_name -> google.protobuf.Duration
+	43, // 62: conf.DataSource.timeout:type_name -> google.protobuf.Duration
+	43, // 63: conf.DataDomain.interval:type_name -> google.protobuf.Duration
+	43, // 64: conf.DatahubSnapshot.interval:type_name -> google.protobuf.Duration
+	43, // 65: conf.DatahubSnapshot.stale_after:type_name -> google.protobuf.Duration
+	43, // 66: conf.DatahubSnapshot.timeout:type_name -> google.protobuf.Duration
+	12, // 67: conf.Other.dataws:type_name -> conf.WEBSOCKET
+	43, // 68: conf.Kb.embed_timeout:type_name -> google.protobuf.Duration
+	10, // 69: conf.Brain.http:type_name -> conf.HTTP
+	11, // 70: conf.Brain.grpc:type_name -> conf.GRPC
+	39, // 71: conf.Brain.models:type_name -> conf.Brain.ModelsEntry
+	40, // 72: conf.Brain.routes:type_name -> conf.Brain.RoutesEntry
+	41, // 73: conf.Brain.weights:type_name -> conf.Brain.WeightsEntry
+	42, // 74: conf.Brain.phase_coef:type_name -> conf.Brain.PhaseCoefEntry
+	43, // 75: conf.Brain.analyze_timeout:type_name -> google.protobuf.Duration
+	43, // 76: conf.BrainModel.timeout:type_name -> google.protobuf.Duration
+	10, // 77: conf.Strategy.http:type_name -> conf.HTTP
+	11, // 78: conf.Strategy.grpc:type_name -> conf.GRPC
+	43, // 79: conf.Strategy.scan_interval:type_name -> google.protobuf.Duration
+	43, // 80: conf.Strategy.full_scan_interval:type_name -> google.protobuf.Duration
+	43, // 81: conf.Strategy.ai_timeout:type_name -> google.protobuf.Duration
+	10, // 82: conf.Market.http:type_name -> conf.HTTP
+	11, // 83: conf.Market.grpc:type_name -> conf.GRPC
+	43, // 84: conf.Market.refresh_interval:type_name -> google.protobuf.Duration
+	43, // 85: conf.Market.stale_after:type_name -> google.protobuf.Duration
+	43, // 86: conf.Market.bar_grace:type_name -> google.protobuf.Duration
+	43, // 87: conf.Market.watch_ttl:type_name -> google.protobuf.Duration
+	23, // 88: conf.Datahub.SourcesEntry.value:type_name -> conf.DataSource
+	24, // 89: conf.Datahub.DomainsEntry.value:type_name -> conf.DataDomain
+	29, // 90: conf.Brain.ModelsEntry.value:type_name -> conf.BrainModel
+	91, // [91:91] is the sub-list for method output_type
+	91, // [91:91] is the sub-list for method input_type
+	91, // [91:91] is the sub-list for extension type_name
+	91, // [91:91] is the sub-list for extension extendee
+	0,  // [0:91] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -3480,7 +3605,7 @@ func file_conf_conf_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   42,
+			NumMessages:   43,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

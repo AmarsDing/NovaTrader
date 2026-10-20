@@ -15,7 +15,7 @@ import (
 // TestRunnerChannelHeartbeatWiring 验证 sim 通道心跳的接线缝：
 // NewRunner 自带状态机，channelOK/channelFail 折算迁移并触发订阅（bus 为 nil 时发布只跳过不panic）。
 func TestRunnerChannelHeartbeatWiring(t *testing.T) {
-	r := NewRunner(nil, nil, nil, nil, nil, log.DefaultLogger)
+	r := NewRunner(nil, nil, nil, nil, nil, nil, log.DefaultLogger)
 	type event struct{ from, to brokerif.Status }
 	var got []event
 	r.Channel().Subscribe(func(from, to brokerif.Status, _ time.Time) { got = append(got, event{from, to}) })
@@ -48,7 +48,7 @@ func TestRunnerChannelHeartbeatWiring(t *testing.T) {
 // Tracker 回调结构上不带因果父，每次状态迁移即一条根链——发出的信封带合法新 uuid
 // 链号、不编 causation_id，两次迁移链号互异。
 func TestPublishChannelOpensFreshRootTracePerTransition(t *testing.T) {
-	r := NewRunner(nil, nil, nil, nil, nil, log.DefaultLogger)
+	r := NewRunner(nil, nil, nil, nil, nil, nil, log.DefaultLogger)
 	var envs []events.Envelope
 	r.publish = func(_ context.Context, env events.Envelope) error {
 		envs = append(envs, env)

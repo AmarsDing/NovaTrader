@@ -149,6 +149,26 @@ message Trade {
   int32 paper_days_required = 5;
   // 账户快照间隔，默认 10s
   google.protobuf.Duration snapshot_interval = 6;
+  // 东方财富文件单观测通道（G7 服务端接线；mTLS 到 Windows 隔离 broker-gw）。
+  // 未配置：emfile 通道读面如实缺席；配置了连不上：如实 down——两种情形都不报虚假 idle。
+  // 本服务只做健康探测与回报核验，不放实盘下单出口、不写 CSV。
+  BrokerFile broker_file = 7;
+}
+
+// 东方财富量化终端文件单的隔离网关（broker-gw）连接与探测配置，仅观测用途。
+message BrokerFile {
+  // broker-gw 的 HTTPS 地址，例如 https://<交易机IP>:9443
+  string url = 1;
+  // 与 broker-gw 白名单一致的资金账号（正则约束在传输层执行）
+  string account_id = 2;
+  // mTLS 材料（PEM 文件路径，相对服务工作目录或绝对路径）
+  string ca_file = 3;
+  string cert_file = 4;
+  string key_file = 5;
+  // 单次调用超时，默认 10s（传输层硬性限 1s–30s）
+  google.protobuf.Duration timeout = 6;
+  // 健康探测间隔，默认 10s（下端 2s、上端 60s）
+  google.protobuf.Duration probe_interval = 7;
 }
 
 // -----------------------------------------------------------------------------

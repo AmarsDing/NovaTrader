@@ -33,7 +33,7 @@ func TestDeskRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := khttp.NewServer()
-	mountDesk(srv, service.NewTradeService(engine, nil))
+	mountDesk(srv, service.NewTradeService(engine, nil, nil))
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 

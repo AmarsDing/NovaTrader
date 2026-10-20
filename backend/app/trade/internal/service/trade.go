@@ -7,6 +7,7 @@ import (
 
 	v1 "server/api/trade/v1"
 	"server/app/trade/internal/biz"
+	"server/app/trade/internal/core"
 	"server/pkg/brokerif"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -19,25 +20,32 @@ type TradeService struct {
 	v1.UnimplementedTradeServer
 	v1.UnimplementedAutomationServer
 	v1.UnimplementedPortfolioAllocationServer
-	e  *biz.Engine
-	ch *brokerif.Tracker
+	e    *biz.Engine
+	ch   *brokerif.Tracker
+	live *core.LiveChannel
 }
 
-func NewTradeService(e *biz.Engine, ch *brokerif.Tracker) *TradeService {
-	return &TradeService{e: e, ch: ch}
+func NewTradeService(e *biz.Engine, ch *brokerif.Tracker, live *core.LiveChannel) *TradeService {
+	return &TradeService{e: e, ch: ch, live: live}
 }
 
-// GetChannelStatus 只回服务端真实跟踪的通道（G7）：sim 状态机由 core 心跳记账；
-// emfile 通道服务端未接线，不回而不是虚报 idle。
+// GetChannelStatus 只回服务端真实跟踪的通道（G7）：sim 状态机由 core 心跳记账，
+// emfile 状态机由 broker-gw 健康探测折算；两类「没接线」都不出现——
+// 未配置 trade.broker_file 时 emfile 如实缺席，配置了起不来才以 down 现身。
 func (s *TradeService) GetChannelStatus(context.Context, *v1.GetChannelStatusRequest) (*v1.ChannelStatusReply, error) {
 	out := &v1.ChannelStatusReply{}
-	if s.ch == nil {
-		return out, nil
+	if s.ch != nil {
+		status, since := s.ch.Current()
+		out.Channels = append(out.Channels, &v1.ChannelStatus{
+			Channel: "sim", Status: string(status), Since: rfc3339(since),
+		})
 	}
-	status, since := s.ch.Current()
-	out.Channels = append(out.Channels, &v1.ChannelStatus{
-		Channel: "sim", Status: string(status), Since: rfc3339(since),
-	})
+	if s.live != nil && s.live.Tracker != nil {
+		status, since := s.live.Tracker.Current()
+		out.Channels = append(out.Channels, &v1.ChannelStatus{
+			Channel: "emfile", Status: string(status), Since: rfc3339(since),
+		})
+	}
 	return out, nil
 }
 
