@@ -69,6 +69,19 @@ func TestFromConfigKeepsGoodValues(t *testing.T) {
 	}
 }
 
+// TestFromConfigSkipsDrillReceipts 锁 M13-T15 同源纪律：risk.drill.* 演练回执不是
+// 引擎参数，引擎热载/trade 预览绝不能因为它标 failed/Policy.Known=false——哪怕是脏值。
+func TestFromConfigSkipsDrillReceipts(t *testing.T) {
+	p, errs := FromConfig(map[string]string{
+		"risk.max_single_pct":           "0.04",
+		"risk.drill.risk_drill.receipt": `{"at":"2026-10-22T09:30:00+08:00","operator":"ops","result":"pass","evidence_hash":"abc"}`,
+		"risk.drill.broker.receipt":     "not json",
+	})
+	if len(errs) != 0 || p.MaxSinglePct != 0.04 {
+		t.Fatal(errs, p.MaxSinglePct)
+	}
+}
+
 func TestKillSwitch(t *testing.T) {
 	var k KillState
 	k, changed := k.Trigger(KillFromClient, "手动", "owner", now)

@@ -1850,8 +1850,11 @@ type IntelLLM struct {
 	Timeout    *durationpb.Duration   `protobuf:"bytes,6,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	// 小模型给出的重要度达到此值时，再用大模型复核，默认 4
 	ReviewImportance int32 `protobuf:"varint,7,opt,name=review_importance,json=reviewImportance,proto3" json:"review_importance,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// true 时请求体不带 response_format，适配不支持 json_object 的模型网关（M13-T06）。
+	// 配置页键 app.intel.disable_json_mode 可运行期盖写；键值非 true/false（含清除）保持本配置。
+	DisableJsonMode bool `protobuf:"varint,8,opt,name=disable_json_mode,json=disableJsonMode,proto3" json:"disable_json_mode,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *IntelLLM) Reset() {
@@ -1931,6 +1934,13 @@ func (x *IntelLLM) GetReviewImportance() int32 {
 		return x.ReviewImportance
 	}
 	return 0
+}
+
+func (x *IntelLLM) GetDisableJsonMode() bool {
+	if x != nil {
+		return x.DisableJsonMode
+	}
+	return false
 }
 
 type Datahub struct {
@@ -2631,8 +2641,12 @@ type BrainModel struct {
 	MaxQueue       int32                `protobuf:"varint,6,opt,name=max_queue,json=maxQueue,proto3" json:"max_queue,omitempty"`
 	Temperature    float64              `protobuf:"fixed64,7,opt,name=temperature,proto3" json:"temperature,omitempty"`
 	MaxTokens      int32                `protobuf:"varint,8,opt,name=max_tokens,json=maxTokens,proto3" json:"max_tokens,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// true 时请求体不带 response_format，适配不支持 json_object 的模型（如 deepseek-reasoner）或
+	// 第三方网关（M13-T06）。配置页键 app.brain.<large|small>.disable_json_mode 可运行期盖写；
+	// 键值非 true/false（含清除）保持本配置。
+	DisableJsonMode bool `protobuf:"varint,9,opt,name=disable_json_mode,json=disableJsonMode,proto3" json:"disable_json_mode,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *BrainModel) Reset() {
@@ -2719,6 +2733,13 @@ func (x *BrainModel) GetMaxTokens() int32 {
 		return x.MaxTokens
 	}
 	return 0
+}
+
+func (x *BrainModel) GetDisableJsonMode() bool {
+	if x != nil {
+		return x.DisableJsonMode
+	}
+	return false
 }
 
 type Strategy struct {
@@ -3326,7 +3347,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\vad_keywords\x18\t \x03(\tR\n" +
 	"adKeywords\x12 \n" +
 	"\x03llm\x18\n" +
-	" \x01(\v2\x0e.conf.IntelLLMR\x03llm\"\xfc\x01\n" +
+	" \x01(\v2\x0e.conf.IntelLLMR\x03llm\"\xa8\x02\n" +
 	"\bIntelLLM\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x19\n" +
 	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x17\n" +
@@ -3336,7 +3357,8 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\vlarge_model\x18\x05 \x01(\tR\n" +
 	"largeModel\x123\n" +
 	"\atimeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12+\n" +
-	"\x11review_importance\x18\a \x01(\x05R\x10reviewImportance\"\xb2\x05\n" +
+	"\x11review_importance\x18\a \x01(\x05R\x10reviewImportance\x12*\n" +
+	"\x11disable_json_mode\x18\b \x01(\bR\x0fdisableJsonMode\"\xb2\x05\n" +
 	"\aDatahub\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +
@@ -3428,7 +3450,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\x1a<\n" +
 	"\x0ePhaseCoefEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\x92\x02\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value:\x028\x01\"\xbe\x02\n" +
 	"\n" +
 	"BrainModel\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12\x14\n" +
@@ -3439,7 +3461,8 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\tmax_queue\x18\x06 \x01(\x05R\bmaxQueue\x12 \n" +
 	"\vtemperature\x18\a \x01(\x01R\vtemperature\x12\x1d\n" +
 	"\n" +
-	"max_tokens\x18\b \x01(\x05R\tmaxTokens\"\xc6\x03\n" +
+	"max_tokens\x18\b \x01(\x05R\tmaxTokens\x12*\n" +
+	"\x11disable_json_mode\x18\t \x01(\bR\x0fdisableJsonMode\"\xc6\x03\n" +
 	"\bStrategy\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +

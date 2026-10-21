@@ -15,6 +15,7 @@ import (
 	"server/app/intel/internal/biz/kb"
 	"server/conf"
 	"server/pkg/appcfg"
+	"server/pkg/llm"
 )
 
 // Dims 是 kb_chunk.embedding 的列宽。配置的维度必须与之相等。
@@ -191,6 +192,12 @@ type embedResponse struct {
 }
 
 func (e *openAIEmbedder) call(ctx context.Context, texts []string) ([][]float32, error) {
+	// M13-T06b：api_key 统一走 pkg/llm.ResolveAPIKey——env:VAR 运行期读环境变量、
+	// enc: 密文在解密器未接入前明确报错而不是当明文发送；错误文案不带密钥原文。
+	apiKey, err := llm.ResolveAPIKey(e.apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("kbstore: embed api_key 解析失败: %w", err)
+	}
 	body, err := json.Marshal(embedRequest{Model: e.model, Input: texts})
 	if err != nil {
 		return nil, err
@@ -200,8 +207,8 @@ func (e *openAIEmbedder) call(ctx context.Context, texts []string) ([][]float32,
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if e.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	resp, err := e.http.Do(req)
 	if err != nil {

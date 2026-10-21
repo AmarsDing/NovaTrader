@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"server/pkg/backtest"
+	"server/pkg/params"
 	"server/pkg/rules"
 )
 
@@ -259,10 +261,16 @@ func (uc *Usecase) Admission(ctx context.Context, strategy string) ([]AdmissionI
 	} else {
 		pdd.Status, pdd.Detail = Fail, fmt.Sprintf("最大回撤 %.1f%% > %.0f%%", dd*100, c.PaperMaxDrawdown*100)
 	}
-	items = append(items, pd, pdd,
-		AdmissionItem{Key: "risk_drill", Title: "风控演练", Status: Unknown, Detail: "熔断、Kill Switch、行情中断、终端扫单停止：M08 尚无演练记录，需人工确认"},
-		AdmissionItem{Key: "broker", Title: "东财文件单联调", Status: Unknown, Detail: "仿真账户买入、撤单、卖出各一笔：M09 尚无记录，需人工确认"},
-	)
+	items = append(items, pd, pdd)
+	// M13-T15：准入表「风控六项演练/东财联调」两项由硬编码 Unknown 改为读演练回执。
+	drillRows := []AdmissionItem{
+		{Key: "risk_drill", Title: "风控演练"},
+		{Key: "broker", Title: "东财文件单联调"},
+	}
+	if err := uc.fillDrillItems(ctx, drillRows); err != nil {
+		return nil, false, err
+	}
+	items = append(items, drillRows...)
 	ready := true
 	for _, it := range items {
 		if it.Status != Pass {
@@ -270,6 +278,63 @@ func (uc *Usecase) Admission(ctx context.Context, strategy string) ([]AdmissionI
 		}
 	}
 	return items, ready, nil
+}
+
+// fillDrillItems 是 M13-T15 的准入演练呈现：strategy_config 版本化留痕的
+// risk.drill.<项>.receipt 是唯一事实源（键名与准入项 Key 同源）。无记录保持
+// unknown 不伪造；有记录如实呈现 at/operator/result/evidence 摘要（result=pass
+// →pass，其余→fail）；记录损坏显式 unknown 并在详情说明，绝不冒充通过。
+func (uc *Usecase) fillDrillItems(ctx context.Context, rows []AdmissionItem) error {
+	keys := make([]string, len(rows))
+	for i, it := range rows {
+		keys[i] = params.DrillKeyPrefix + it.Key + ".receipt"
+	}
+	receipts, err := uc.repo.ConfigValues(ctx, keys)
+	if err != nil {
+		return err
+	}
+	for i, it := range rows {
+		rows[i] = drillItem(it, receipts[keys[i]])
+	}
+	return nil
+}
+
+// drillScopes 与 report.go 顶部两项准入条目的展示口径一致；缺省口径兜底新键。
+func drillScope(key string) string {
+	if key == "risk_drill" {
+		return "熔断、Kill Switch、行情中断、终端扫单停止："
+	}
+	return "仿真账户买入、撤单、卖出各一笔："
+}
+
+// drillItem 组装单个演练准入项；raw 为 strategy_config 里的回执原文（可能缺失）。
+func drillItem(it AdmissionItem, raw string) AdmissionItem {
+	scope := drillScope(it.Key)
+	if strings.TrimSpace(raw) == "" {
+		it.Status, it.Detail = Unknown, scope+"尚无演练记录，需人工确认"
+		return it
+	}
+	r, err := params.ParseDrillReceipt(raw)
+	if err != nil {
+		it.Status, it.Detail = Unknown, scope+"演练回执无法解析，需人工确认（不冒充通过）"
+		return it
+	}
+	if r.Result == "pass" {
+		it.Status = Pass
+	} else {
+		it.Status = Fail
+	}
+	it.Detail = fmt.Sprintf("%sat=%s operator=%s result=%s evidence=%s",
+		scope, r.At.Format("2006-01-02 15:04"), r.Operator, r.Result, shortEvidence(r.EvidenceHash))
+	return it
+}
+
+func shortEvidence(h string) string {
+	const keep = 12
+	if len(h) > keep {
+		return h[:keep] + "…"
+	}
+	return h
 }
 
 func join(s []string) string {

@@ -317,6 +317,8 @@ intel:
   # api_key 支持前缀：env:VAR 表示运行期读环境变量（推荐，密钥不落盘）；enc: 是 M13 预留的密文形态，
   # 解密器未接入前会明确报错而不是当明文发送。DeepSeek 样例（仅注释说明，真实密钥一律走环境变量）：
   #   base_url: https://api.deepseek.com/v1、small_model: deepseek-chat、api_key: env:DEEPSEEK_API_KEY
+  # deepseek-chat 支持 response_format=json_object，JSON 模式保持默认即可；换 deepseek-reasoner 类
+  # 不支持 json_object 的模型/网关时 disable_json_mode 置 true（运行期改配置页键 app.intel.disable_json_mode 亦可）。
   llm:
     enabled: false
     base_url: http://127.0.0.1:8000/v1
@@ -325,6 +327,7 @@ intel:
     large_model: ""
     timeout: 20s
     review_importance: 4
+    disable_json_mode: false
 # M04 知识库，挂在 intel 服务。见 doc/开发文档/M04-知识库/设计文档.md 第 8 节
 kb:
   # DGX 上的嵌入服务地址未定，先只用关键词检索。接上后改成 openai 并填 endpoint，补嵌入任务会把已有分块补齐
@@ -351,8 +354,9 @@ brain:
   # 各档可选 api_key：支持 env:VAR（运行期读环境变量，推荐）、enc: 密文（M13 预留，未接解密器会报错）、明文。
   # 接 DeepSeek 样例（仅注释说明，真实密钥一律走环境变量，不写进本文件）：
   #   large 档 base_url: https://api.deepseek.com/v1、model: deepseek-chat、api_key: env:DEEPSEEK_API_KEY
-  # deepseek-chat 支持 response_format=json_object，JSON 模式保持默认即可；遇不支持 json_object 的网关
-  # 再按 M13-T06 的 disable_json_mode 开关关闭。
+  # deepseek-chat 支持 response_format=json_object，JSON 模式保持默认即可；遇 deepseek-reasoner 类
+  # 不支持 json_object 的模型/网关把该档 disable_json_mode 置 true
+  # （运行期也可改配置页键 app.brain.<large|small>.disable_json_mode）。
   models:
     large:
       base_url: ""
@@ -363,6 +367,7 @@ brain:
       max_queue: 128
       temperature: 0.2
       max_tokens: 1200
+      disable_json_mode: false
     small:
       base_url: ""
       model: Qwen2.5-7B-Instruct-GPTQ-Int8
@@ -371,6 +376,7 @@ brain:
       max_queue: 256
       temperature: 0.1
       max_tokens: 800
+      disable_json_mode: false
   routes:
     technical: small
     capital: small

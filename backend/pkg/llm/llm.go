@@ -138,6 +138,9 @@ type Overlay struct {
 	BaseURL string
 	Model   string
 	APIKey  string
+	// DisableJSONMode 非 nil 时盖过该档启动配置（M13-T06b：配置页 *_disable_json_mode 键的
+	// true/false）；nil 表示配置页未设定或已清除，保持启动配置。
+	DisableJSONMode *bool
 }
 
 type Gateway struct {
@@ -198,6 +201,9 @@ func (g *Gateway) overlay(t Tier, cfg ModelConfig) ModelConfig {
 	}
 	if over.APIKey != "" {
 		cfg.APIKey = over.APIKey
+	}
+	if over.DisableJSONMode != nil {
+		cfg.DisableJSONMode = *over.DisableJSONMode
 	}
 	return cfg
 }

@@ -3,13 +3,16 @@ package kbstore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"server/conf"
+	"server/pkg/llm"
 )
 
 func TestNewEmbedderConfig(t *testing.T) {
@@ -100,5 +103,54 @@ func TestHashEmbedderDeterministic(t *testing.T) {
 		if a[i] != b[i] {
 			t.Fatal("hash embedding must be deterministic")
 		}
+	}
+}
+
+// TestEmbedderResolvesAPIKey 钉测试（M13-T06b）：embed 客户端复用 pkg/llm.ResolveAPIKey——
+// env: 前缀运行期取真值鉴权；env 缺变量显式报错不发请求；enc: 解密器未配置报错且不回显密文原文。
+func TestEmbedderResolvesAPIKey(t *testing.T) {
+	t.Setenv("NT_KB_TEST_KEY", "sk-env-real")
+	var hits atomic.Int32
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		auth = r.Header.Get("Authorization")
+		v := make([]float32, Dims)
+		v[0] = 1
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"index": 0, "embedding": v}}})
+	}))
+	defer srv.Close()
+
+	embed := func(t *testing.T, key string) error {
+		t.Helper()
+		e, err := NewEmbedder(&conf.Kb{
+			EmbedProvider: "openai", EmbedEndpoint: srv.URL + "/v1", EmbedModel: "m", EmbedApiKey: key,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = e.EmbedDocuments(context.Background(), []string{"x"})
+		return err
+	}
+
+	// env: 前缀：真实密钥从运行期环境变量取，鉴权头带真值。
+	if err := embed(t, "env:NT_KB_TEST_KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if auth != "Bearer sk-env-real" {
+		t.Fatalf("auth = %q", auth)
+	}
+	// env: 缺变量：显式报错（错误只带变量名），且不发出任何 HTTP 请求。
+	if err := embed(t, "env:NT_KB_MISSING"); !errors.Is(err, llm.ErrUnavailable) || !strings.Contains(err.Error(), "NT_KB_MISSING") {
+		t.Fatalf("want unavailable+变量名, got %v", err)
+	}
+	// enc: 密文未接解密器：显式报错，错误绝不回显密文原文（会进错误留痕）。
+	if err := embed(t, "enc:Y2lwaGVydGV4dA=="); !errors.Is(err, llm.ErrUnavailable) || !strings.Contains(err.Error(), "解密器未配置") {
+		t.Fatalf("want 解密器未配置, got %v", err)
+	} else if strings.Contains(err.Error(), "Y2lwaGVydGV4dA==") {
+		t.Fatalf("error must not echo the ciphertext: %v", err)
+	}
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("解析失败的密钥不得发送到服务端, hits = %d", n)
 	}
 }

@@ -336,6 +336,9 @@ message IntelLLM {
   google.protobuf.Duration timeout = 6;
   // 小模型给出的重要度达到此值时，再用大模型复核，默认 4
   int32 review_importance = 7;
+  // true 时请求体不带 response_format，适配不支持 json_object 的模型网关（M13-T06）。
+  // 配置页键 app.intel.disable_json_mode 可运行期盖写；键值非 true/false（含清除）保持本配置。
+  bool disable_json_mode = 8;
 }
 
 // -----------------------------------------------------------------------------
@@ -470,6 +473,10 @@ message BrainModel {
   int32 max_queue = 6;
   double temperature = 7;
   int32 max_tokens = 8;
+  // true 时请求体不带 response_format，适配不支持 json_object 的模型（如 deepseek-reasoner）或
+  // 第三方网关（M13-T06）。配置页键 app.brain.<large|small>.disable_json_mode 可运行期盖写；
+  // 键值非 true/false（含清除）保持本配置。
+  bool disable_json_mode = 9;
 }
 
 // -----------------------------------------------------------------------------

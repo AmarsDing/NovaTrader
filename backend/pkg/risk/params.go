@@ -14,6 +14,12 @@ import (
 // KeyPrefix 是风控参数在 strategy_config 里的键前缀。
 const KeyPrefix = "risk."
 
+// drillKeyPrefix 是 M13-T15 演练回执键前缀（risk.drill.<name>.receipt，见
+// pkg/params/validate.go 同源纪律）。回执是人工演练留痕，由 backtest 准入表呈现，
+// 不属于风控引擎参数：FromConfig 必须跳过，否则 unknown-param 错误会污染
+// ReloadConfig/trade 预览对配置合法性的判定。
+const drillKeyPrefix = KeyPrefix + "drill."
+
 // 程序化交易高频认定线：每秒申报撤单 300 笔、每日 20000 笔。速度参数必须低于这两条线。
 const (
 	HFTPerSecond = 300
@@ -269,6 +275,9 @@ func FromConfig(rows map[string]string) (Params, []error) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		if !strings.HasPrefix(k, KeyPrefix) {
+			continue
+		}
+		if strings.HasPrefix(k, drillKeyPrefix) {
 			continue
 		}
 		if err := p.Set(k, rows[k]); err != nil {

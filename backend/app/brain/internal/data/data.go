@@ -4,6 +4,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"server/app/brain/internal/biz"
 	"server/conf"
@@ -76,13 +77,14 @@ func NewGateway(c *conf.Brain, client *ent.Client) *llm.Gateway {
 	models := map[llm.Tier]llm.ModelConfig{llm.Large: {}, llm.Small: {}}
 	for name, m := range c.GetModels() {
 		cfg := llm.ModelConfig{
-			BaseURL:        m.GetBaseUrl(),
-			Model:          m.GetModel(),
-			APIKey:         m.GetApiKey(),
-			MaxConcurrency: int(m.GetMaxConcurrency()),
-			MaxQueue:       int(m.GetMaxQueue()),
-			Temperature:    m.GetTemperature(),
-			MaxTokens:      int(m.GetMaxTokens()),
+			BaseURL:         m.GetBaseUrl(),
+			Model:           m.GetModel(),
+			APIKey:          m.GetApiKey(),
+			MaxConcurrency:  int(m.GetMaxConcurrency()),
+			MaxQueue:        int(m.GetMaxQueue()),
+			Temperature:     m.GetTemperature(),
+			MaxTokens:       int(m.GetMaxTokens()),
+			DisableJSONMode: m.GetDisableJsonMode(),
 		}
 		if d := m.GetTimeout(); d != nil {
 			cfg.Timeout = d.AsDuration()
@@ -90,16 +92,33 @@ func NewGateway(c *conf.Brain, client *ent.Client) *llm.Gateway {
 		models[llm.Tier(name)] = cfg
 	}
 	gw := llm.New(models, llm.EntRecorder{Client: client})
-	gw.SetLive(func(t llm.Tier) llm.Overlay {
+	gw.SetLive(liveOverlay(appcfg.Get))
+	return gw
+}
+
+// liveOverlay 每次调用前读配置页里的地址、模型名、密钥与 JSON 模式开关（M13-T06b 接线）。
+// appcfg 值非空即盖 conf（冲突 appcfg 优先，与既有 url/model/key 同惯例）；
+// *_disable_json_mode 键只认 "true"/"false"，其余取值（含空串=清除）保持启动配置。
+// get 注入便于钉测试（生产传 appcfg.Get）。
+func liveOverlay(get func(context.Context, string) string) func(llm.Tier) llm.Overlay {
+	return func(t llm.Tier) llm.Overlay {
 		prefix := "app.brain.small."
 		if t == llm.Large {
 			prefix = "app.brain.large."
 		}
-		return llm.Overlay{
-			BaseURL: appcfg.Get(context.Background(), prefix+"url"),
-			Model:   appcfg.Get(context.Background(), prefix+"model"),
-			APIKey:  appcfg.Get(context.Background(), prefix+"key"),
+		over := llm.Overlay{
+			BaseURL: get(context.Background(), prefix+"url"),
+			Model:   get(context.Background(), prefix+"model"),
+			APIKey:  get(context.Background(), prefix+"key"),
 		}
-	})
-	return gw
+		switch strings.TrimSpace(get(context.Background(), prefix+"disable_json_mode")) {
+		case "true":
+			on := true
+			over.DisableJSONMode = &on
+		case "false":
+			off := false
+			over.DisableJSONMode = &off
+		}
+		return over
+	}
 }

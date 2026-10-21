@@ -11,10 +11,78 @@ import (
 	"server/pkg/rules"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func Secret(key string) bool {
 	return strings.HasSuffix(key, ".token") || strings.HasSuffix(key, ".key") || key == "app.notify.webhook" || key == "app.notify.secret"
+}
+
+// --- M13-T15 演练回执键（risk.drill.<name>.receipt） ---------------------------
+// 设计见 doc/开发文档/M13-全自动交易闭环/设计文档.md §T15：准入表「风控六项演练/
+// 东财联调」两项由硬编码 Unknown 改为读演练回执。回执走 strategy_config 现有
+// 版本化写口（人工演练完成后经配置页留痕），backtest 准入表读取如实呈现。
+// 同源纪律：pkg/risk/params.go 的 FromConfig 跳过 drill 键（引擎参数族不含回执，
+// 否则 unknown-param 会让 ReloadConfig 标 failed、trade 预览 Policy.Known=false）。
+
+// DrillKeyPrefix 是演练回执键前缀；完整键形 risk.drill.<name>.receipt。
+const DrillKeyPrefix = "risk.drill."
+
+// DrillReceipt 是回执值：at（RFC3339 时间）、operator（操作人）、result（pass/fail）、
+// evidence_hash（证据哈希/归档编号）。strictObject 禁额外字段。
+type DrillReceipt struct {
+	At           time.Time `json:"at"`
+	Operator     string    `json:"operator"`
+	Result       string    `json:"result"`
+	EvidenceHash string    `json:"evidence_hash"`
+}
+
+// DrillReceiptKey 判定 risk.drill.<name>.receipt 并返回 drill 名。
+// name 需匹配 [a-z][a-z0-9_]{0,31}（与准入表项 Key 同源，如 risk_drill、broker）。
+func DrillReceiptKey(key string) (string, bool) {
+	rest, ok := strings.CutPrefix(key, DrillKeyPrefix)
+	if !ok {
+		return "", false
+	}
+	name, ok := strings.CutSuffix(rest, ".receipt")
+	if !ok || len(name) < 1 || len(name) > 32 || name[0] < 'a' || name[0] > 'z' {
+		return "", false
+	}
+	for i := 1; i < len(name); i++ {
+		c := name[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' {
+			return "", false
+		}
+	}
+	return name, true
+}
+
+// ParseDrillReceipt 解析并校验回执；供 backtest 准入表（写口已校验，读口防脏数据）。
+func ParseDrillReceipt(raw string) (DrillReceipt, error) {
+	var r DrillReceipt
+	if err := strictObject(raw, &r); err != nil {
+		return r, fmt.Errorf("演练回执需为单对象合法JSON")
+	}
+	if r.At.IsZero() {
+		return r, fmt.Errorf("演练回执缺 at")
+	}
+	if strings.TrimSpace(r.Operator) == "" || len(r.Operator) > 64 {
+		return r, fmt.Errorf("演练回执 operator 需为1到64字符")
+	}
+	if r.Result != "pass" && r.Result != "fail" {
+		return r, fmt.Errorf("演练回执 result 需为 pass/fail")
+	}
+	if strings.TrimSpace(r.EvidenceHash) == "" || len(r.EvidenceHash) > 128 {
+		return r, fmt.Errorf("演练回执 evidence_hash 需为1到128字符")
+	}
+	return r, nil
+}
+
+func checkDrillReceipt(key, raw string) error {
+	if _, err := ParseDrillReceipt(raw); err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	return nil
 }
 func Target(key string) (service, effective string) {
 	switch {
@@ -191,13 +259,22 @@ func ValidatePatch(current, patch map[string]string) (map[string]string, error) 
 			_, b := appAllowed[key]
 			defaults := risk.Defaults()
 			_, c := defaults.Get(strings.TrimPrefix(key, "risk."))
-			if a || b || key == market.RulesKey || key == market.SectorWeightsKey || (strings.HasPrefix(key, "risk.") && c) {
+			_, drill := DrillReceiptKey(key)
+			if a || b || key == market.RulesKey || key == market.SectorWeightsKey || (strings.HasPrefix(key, "risk.") && c) || drill {
 				out[key] = ""
 				continue
 			}
 			return nil, fmt.Errorf("未登记的参数键")
 		}
 		switch {
+		case strings.HasPrefix(key, DrillKeyPrefix):
+			// M13-T15 演练回执键：先按键模式拒非法名，再按回执合同校验值。
+			if _, ok := DrillReceiptKey(key); !ok {
+				return nil, fmt.Errorf("演练键需为 risk.drill.<小写字母开头-小写数字下划线>.receipt")
+			}
+			if err := checkDrillReceipt(key, value); err != nil {
+				return nil, err
+			}
 		case strings.HasPrefix(key, "risk."):
 			if key == "risk.live_admitted" && value == "true" && current[key] != "true" {
 				return nil, fmt.Errorf("实盘准入只能通过准入流程开启")

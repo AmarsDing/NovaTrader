@@ -39,26 +39,45 @@ func NewModel(c *conf.Intel, client *ent.Client) biz.Model {
 	small := llm.ModelConfig{
 		BaseURL: l.GetBaseUrl(), Model: l.GetSmallModel(), APIKey: l.GetApiKey(),
 		Timeout: timeout, Temperature: 0, MaxTokens: 300, MaxConcurrency: 2, MaxQueue: 128,
+		DisableJSONMode: l.GetDisableJsonMode(),
 	}
-	large := llm.ModelConfig{Timeout: timeout, Temperature: 0, MaxTokens: 300, MaxConcurrency: 1, MaxQueue: 32}
+	large := llm.ModelConfig{Timeout: timeout, Temperature: 0, MaxTokens: 300, MaxConcurrency: 1, MaxQueue: 32,
+		DisableJSONMode: l.GetDisableJsonMode()}
 	if l.GetLargeModel() != "" {
 		large.BaseURL = l.GetBaseUrl()
 		large.Model = l.GetLargeModel()
 		large.APIKey = l.GetApiKey()
 	}
 	gw := llm.New(map[llm.Tier]llm.ModelConfig{llm.Small: small, llm.Large: large}, llm.EntRecorder{Client: client})
-	gw.SetLive(func(t llm.Tier) llm.Overlay {
-		model := appcfg.Get(context.Background(), "app.intel.small")
-		if t == llm.Large {
-			model = appcfg.Get(context.Background(), "app.intel.large")
-		}
-		return llm.Overlay{
-			BaseURL: appcfg.Get(context.Background(), "app.intel.url"),
-			Model:   model,
-			APIKey:  appcfg.Get(context.Background(), "app.intel.key"),
-		}
-	})
+	gw.SetLive(liveOverlay(appcfg.Get))
 	return &gatewayModel{gw: gw, yamlOn: l.GetEnabled()}
+}
+
+// liveOverlay 每次调用前读配置页的地址、模型名、密钥与 JSON 模式开关（M13-T06b 接线）。
+// appcfg 值非空即盖 conf（冲突 appcfg 优先，与既有 url/small/large/key 同惯例）；
+// app.intel.disable_json_mode 键只认 "true"/"false"，其余取值（含空串=清除）保持启动配置。
+// get 注入便于钉测试（生产传 appcfg.Get）。
+func liveOverlay(get func(context.Context, string) string) func(llm.Tier) llm.Overlay {
+	return func(t llm.Tier) llm.Overlay {
+		model := get(context.Background(), "app.intel.small")
+		if t == llm.Large {
+			model = get(context.Background(), "app.intel.large")
+		}
+		over := llm.Overlay{
+			BaseURL: get(context.Background(), "app.intel.url"),
+			Model:   model,
+			APIKey:  get(context.Background(), "app.intel.key"),
+		}
+		switch strings.TrimSpace(get(context.Background(), "app.intel.disable_json_mode")) {
+		case "true":
+			on := true
+			over.DisableJSONMode = &on
+		case "false":
+			off := false
+			over.DisableJSONMode = &off
+		}
+		return over
+	}
 }
 
 const promptVersion = "intel-score-v1"

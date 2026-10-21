@@ -137,3 +137,62 @@ func TestDatahubKeyFamily(t *testing.T) {
 		t.Fatal("baostock must support daily_bar and finance")
 	}
 }
+
+// TestDrillReceiptKeys 锁 M13-T15 演练回执键模式与值合同：
+// risk.drill.<[a-z][a-z0-9_]{0,31}>.receipt，值为 {at,operator,result,evidence_hash}。
+func TestDrillReceiptKeys(t *testing.T) {
+	goodReceipt := `{"at":"2026-10-22T09:30:00+08:00","operator":"ops.zhang","result":"pass","evidence_hash":"a94f8e2c1b3d"}`
+	good := map[string]string{
+		"risk.drill.risk_drill.receipt": goodReceipt,
+		"risk.drill.broker.receipt":     `{"at":"2026-10-21T15:00:00+08:00","operator":"ops.li","result":"fail","evidence_hash":"deadbeef"}`,
+	}
+	out, err := ValidatePatch(nil, good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out["risk.drill.risk_drill.receipt"] != goodReceipt {
+		t.Fatal("回执值应原样留痕")
+	}
+	// 清空回执合法（回到 Unknown），未登记键仍拒绝。
+	if _, err := ValidatePatch(good, map[string]string{"risk.drill.broker.receipt": ""}); err != nil {
+		t.Fatal(err)
+	}
+	bads := []map[string]string{
+		// 非法名
+		{"risk.drill..receipt": goodReceipt},
+		{"risk.drill.Bad.receipt": goodReceipt},
+		{"risk.drill.a.b.receipt": goodReceipt},
+		{"risk.drill.1st.receipt": goodReceipt},
+		{"risk.drill.risk-drill.receipt": goodReceipt},
+		{"risk.drill.risk_drill.noteceipt": goodReceipt},
+		// 非法值：缺字段/坏时间/坏结论/多字段/尾随垃圾
+		{"risk.drill.risk_drill.receipt": `{"operator":"ops","result":"pass","evidence_hash":"abc"}`},
+		{"risk.drill.risk_drill.receipt": `{"at":"not-a-time","operator":"ops","result":"pass","evidence_hash":"abc"}`},
+		{"risk.drill.risk_drill.receipt": `{"at":"2026-10-22T09:30:00+08:00","operator":"ops","result":"unknown","evidence_hash":"abc"}`},
+		{"risk.drill.risk_drill.receipt": `{"at":"2026-10-22T09:30:00+08:00","operator":"ops","result":"pass","evidence_hash":"abc","x":1}`},
+		{"risk.drill.risk_drill.receipt": goodReceipt + ` {}`},
+	}
+	for _, v := range bads {
+		if _, e := ValidatePatch(nil, v); e == nil {
+			t.Errorf("accepted invalid drill patch %v", v)
+		}
+	}
+	// 路由走 risk 服务轮询（回执键属 risk 命名空间，引擎读取时跳过不参与参数装配）。
+	if svc, _ := Target("risk.drill.risk_drill.receipt"); svc != "risk" {
+		t.Fatal("drill receipt key must route to risk target family")
+	}
+}
+
+// TestParseDrillReceipt 钉读口解析合同（backtest 准入表呈现依赖；坏值必须报错而非伪造）。
+func TestParseDrillReceipt(t *testing.T) {
+	r, err := ParseDrillReceipt(`{"at":"2026-10-22T09:30:00+08:00","operator":"ops.zhang","result":"pass","evidence_hash":"a94f8e2c1b3d"}`)
+	if err != nil || r.Operator != "ops.zhang" || r.Result != "pass" || r.At.Year() != 2026 {
+		t.Fatal(r, err)
+	}
+	if _, err := ParseDrillReceipt(`{"at":`); err == nil {
+		t.Fatal("bad JSON must not parse")
+	}
+	if _, err := ParseDrillReceipt(`{}`); err == nil {
+		t.Fatal("empty object must not parse")
+	}
+}
