@@ -56,7 +56,8 @@ it('连接成功但未同步不显示实时或Kill Switch未触发，失败原�
   risk.ready = false
   const wrapper = mount(StatusBar)
   wrappers.push(wrapper)
-  expect(wrapper.text()).toContain('待检测')
+  // 链路五态册（§7.1）无「待检测」键：health unknown 归 off 档，文案取册词「关闭」（禁自封散值）。
+  expect(wrapper.text()).toContain('关闭')
   expect(wrapper.text()).toContain('Kill Switch 状态待核对')
   expect(wrapper.text()).not.toContain('Kill Switch 未触发')
   Object.assign(link, { health: 'ok', ws: 'open', sync: 'syncing' })

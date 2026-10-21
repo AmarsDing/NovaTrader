@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { configDefaults, defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { visualizer } from 'rollup-plugin-visualizer'
 import path from 'path'
@@ -48,5 +48,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    /* graphics/ 是 Playwright 图形回归（P2-12），它的 *.spec.ts 归 playwright 跑，vitest 不能捡；
+     * 在默认排除数组上追加，不整体替换（丢了 cypress/config 文件等默认项会误捡别的目录） */
+    exclude: [...configDefaults.exclude, 'graphics/**'],
   },
 })

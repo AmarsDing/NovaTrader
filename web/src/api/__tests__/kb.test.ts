@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { request } from '@/api/http'
 import { deleteDocument, getDocument, ingestDocument, listDocuments, searchKb, similarCases } from '@/api/kb'
@@ -5,7 +6,11 @@ import { deleteDocument, getDocument, ingestDocument, listDocuments, searchKb, s
 vi.mock('@/api/http', () => ({ request: vi.fn() }))
 const req = request as unknown as Mock
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  // api-fill 批次：normalizeCase 命中名称字典会在函数体内 useSecurityStore，需激活 pinia
+  setActivePinia(createPinia())
+})
 
 describe('api/kb：与 api/intel/v1/knowledge.proto 的合同', () => {
   it('searchKb 走 POST /api/kb/search，body 用 proto json_name，degraded 原样透出', async () => {

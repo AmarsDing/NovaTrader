@@ -1,7 +1,8 @@
 /**
  * API 归一化 parser 单测（P6）：pick/num/asList 容错取值 + audit.normalizeRow/listAudit 映射。
  */
-import { describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { asList, num, pick } from '@/utils/format'
 
 vi.mock('@/api/http', () => ({
@@ -16,6 +17,9 @@ vi.mock('@/api/http', () => ({
 import { request } from '@/api/http'
 import { listAudit, normalizeRow } from '@/api/audit'
 import { getSignal, normalizeSignal } from '@/api/signals'
+
+// api-fill 批次：normalizeSignal 回填名称字典，函数体内 useSecurityStore，需激活 pinia
+beforeEach(() => setActivePinia(createPinia()))
 
 describe('pick', () => {
   it('snake/camel 混用按顺序取第一个非空', () => {
