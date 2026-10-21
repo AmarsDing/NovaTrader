@@ -133,7 +133,7 @@ describe('跨角色归并钉档（down-success / up-danger）', () => {
    * 2026-10-21 棘轮实测定题（gap.mjs 复算）：
    * - 亮默认 down==success #066c4c、两 safe 档 up==danger / down==success 同源——同色章承担双语义，
    *   属设计归并契约（安全档以可辨度×1.3 兜底来回交叉角色），拆并必须显式过评改测，钉相等防连环回归。
-   * - 暗默认明度调和（6bd4f59）后 down #60b296 与 success #35dfb1 分裂：实测 minCVD 0.0562(deut)/OKLab 0.1206；
+   * - 暗默认明度调和（690de3b）后 down #60b296 与 success #35dfb1 分裂：实测 minCVD 0.0562(deut)/OKLab 0.1206；
    *   双绿同族且亮/safe 归并=0，充分性阈值物理不可立足 → 只钉防劣化棘轮（实测扣余量），允许改善放开。
    * - up-danger 双红贴色：暗 #ff6b81/#ff5c7c minCVD 0.0085、亮 #b52548/#b92249 0.0078，同钉地板。
    */

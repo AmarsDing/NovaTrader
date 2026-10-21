@@ -45,6 +45,8 @@ function statusOf(s: DataSource): 'live' | 'ok' | 'stale' | 'down' | 'off' {
   return Date.now() - at < STALE_MS ? 'live' : 'stale'
 }
 
+type SourceRow = DataSource & Record<string, unknown>
+const sourceColumns: NtTableColumn<SourceRow>[] = [
 /** 状态点双编码（§7.2-1）：dot 带字，状态词取自链路五态册（§7.1，一字锁定）。 */
 function dotLabel(s: DataSource): string {
   return `${s.name || s.id} · ${linkStatus(statusOf(s)).text}`
@@ -61,8 +63,6 @@ const latestFreshAt = computed<number | null>(() => {
   return best > 0 ? best : null
 })
 
-type SourceRow = DataSource & Record<string, unknown>
-const sourceColumns: NtTableColumn<SourceRow>[] = [
   { key: 'name', title: '数据源' },
   { key: 'kind', title: '域', mono: true },
   { key: 'successRate', title: '成功率', align: 'right' },
@@ -89,6 +89,8 @@ const qualityColumns: NtTableColumn<QualityRow>[] = [
 ]
 const qualityRows = computed(() => quality.value as unknown as QualityRow[])
 
+async function load() {
+  loading.value = true
 /** 严重度章词/tone 出自 quality 册（§7.1，一字锁定）：high 高 warn / medium 中 neutral / low 低 neutral；
  *  册外值返回 null，由调用处原样回显（不自封文案）。 */
 function severityEntry(v: string | null | undefined) {
@@ -98,8 +100,6 @@ function severityEntry(v: string | null | undefined) {
   return null
 }
 
-async function load() {
-  loading.value = true
   error.value = ''
   try {
     const [s, q] = await Promise.allSettled([listSources(), getQuality({ limit: 50 })])
@@ -217,6 +217,9 @@ onMounted(load)
   align-items: center;
 }
 
+  color: var(--nt-text-2);
+}
+</style>
 /* G4 棘轮候选（§7.1 lint 候选方向）：scoped 散写状态色 class 待 G4 收编为册导出；
    severity 章已率先改走册（NtBadge + quality.*），successRate/fails 告警着色仍用 .warn（P3-10c 守卫区不动）。 */
 .warn {
@@ -224,6 +227,3 @@ onMounted(load)
   font-weight: 600;
 }
 .mid {
-  color: var(--nt-text-2);
-}
-</style>
