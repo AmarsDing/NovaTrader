@@ -21,16 +21,29 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	Admission_GetAdmission_FullMethodName = "/api.trade.v1.Admission/GetAdmission"
 	Admission_GetEvidence_FullMethodName  = "/api.trade.v1.Admission/GetEvidence"
+	Admission_GrantLive_FullMethodName    = "/api.trade.v1.Admission/GrantLive"
+	Admission_RevokeLive_FullMethodName   = "/api.trade.v1.Admission/RevokeLive"
 )
 
 // AdmissionClient is the client API for Admission service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Read-only SIM operation evidence. This service cannot create credits or enable LIVE.
+// Read-only SIM operation evidence plus the audited LIVE gate (M13-T05).
+// 双闸语义：本服务 GrantLive 打开的 trade 侧总闸与风控侧 risk.live_admitted（M08-R01）
+// 同时为 true 才真正放行实盘委托，任一闸关闭一律 fail-closed（M09 决策3 半自动实盘门槛）；
+// place() 仍会内联重算运行证据准入，闸门状态不是免审凭证。
 type AdmissionClient interface {
 	GetAdmission(ctx context.Context, in *AdmissionEvidenceRequest, opts ...grpc.CallOption) (*AdmissionEvidenceReply, error)
 	GetEvidence(ctx context.Context, in *AdmissionEvidenceRequest, opts ...grpc.CallOption) (*AdmissionEvidenceReply, error)
+	// GrantLive 是打开 LIVE 总闸的唯一路径：校验运行证据就绪（RunEvidenceReady ∧
+	// 连续≥20 真实交易日）且服务上层（admin 网关）已先写 audit_log（动作
+	// trade.grant_live），先持久留痕（strategy_config 键 app.trade.live.enabled，值含
+	// granted_by/granted_at/admission_evidence）后生效；服务重启按留痕恢复门状态。
+	GrantLive(ctx context.Context, in *GrantLiveRequest, opts ...grpc.CallOption) (*AdmissionEvidenceReply, error)
+	// RevokeLive 收权：同样要求已审计留痕（动作 trade.revoke_live）且记录操作人，
+	// 先清除持久留痕后关闸门。
+	RevokeLive(ctx context.Context, in *RevokeLiveRequest, opts ...grpc.CallOption) (*AdmissionEvidenceReply, error)
 }
 
 type admissionClient struct {
@@ -61,14 +74,45 @@ func (c *admissionClient) GetEvidence(ctx context.Context, in *AdmissionEvidence
 	return out, nil
 }
 
+func (c *admissionClient) GrantLive(ctx context.Context, in *GrantLiveRequest, opts ...grpc.CallOption) (*AdmissionEvidenceReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdmissionEvidenceReply)
+	err := c.cc.Invoke(ctx, Admission_GrantLive_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *admissionClient) RevokeLive(ctx context.Context, in *RevokeLiveRequest, opts ...grpc.CallOption) (*AdmissionEvidenceReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdmissionEvidenceReply)
+	err := c.cc.Invoke(ctx, Admission_RevokeLive_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdmissionServer is the server API for Admission service.
 // All implementations must embed UnimplementedAdmissionServer
 // for forward compatibility.
 //
-// Read-only SIM operation evidence. This service cannot create credits or enable LIVE.
+// Read-only SIM operation evidence plus the audited LIVE gate (M13-T05).
+// 双闸语义：本服务 GrantLive 打开的 trade 侧总闸与风控侧 risk.live_admitted（M08-R01）
+// 同时为 true 才真正放行实盘委托，任一闸关闭一律 fail-closed（M09 决策3 半自动实盘门槛）；
+// place() 仍会内联重算运行证据准入，闸门状态不是免审凭证。
 type AdmissionServer interface {
 	GetAdmission(context.Context, *AdmissionEvidenceRequest) (*AdmissionEvidenceReply, error)
 	GetEvidence(context.Context, *AdmissionEvidenceRequest) (*AdmissionEvidenceReply, error)
+	// GrantLive 是打开 LIVE 总闸的唯一路径：校验运行证据就绪（RunEvidenceReady ∧
+	// 连续≥20 真实交易日）且服务上层（admin 网关）已先写 audit_log（动作
+	// trade.grant_live），先持久留痕（strategy_config 键 app.trade.live.enabled，值含
+	// granted_by/granted_at/admission_evidence）后生效；服务重启按留痕恢复门状态。
+	GrantLive(context.Context, *GrantLiveRequest) (*AdmissionEvidenceReply, error)
+	// RevokeLive 收权：同样要求已审计留痕（动作 trade.revoke_live）且记录操作人，
+	// 先清除持久留痕后关闸门。
+	RevokeLive(context.Context, *RevokeLiveRequest) (*AdmissionEvidenceReply, error)
 	mustEmbedUnimplementedAdmissionServer()
 }
 
@@ -84,6 +128,12 @@ func (UnimplementedAdmissionServer) GetAdmission(context.Context, *AdmissionEvid
 }
 func (UnimplementedAdmissionServer) GetEvidence(context.Context, *AdmissionEvidenceRequest) (*AdmissionEvidenceReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetEvidence not implemented")
+}
+func (UnimplementedAdmissionServer) GrantLive(context.Context, *GrantLiveRequest) (*AdmissionEvidenceReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GrantLive not implemented")
+}
+func (UnimplementedAdmissionServer) RevokeLive(context.Context, *RevokeLiveRequest) (*AdmissionEvidenceReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeLive not implemented")
 }
 func (UnimplementedAdmissionServer) mustEmbedUnimplementedAdmissionServer() {}
 func (UnimplementedAdmissionServer) testEmbeddedByValue()                   {}
@@ -142,6 +192,42 @@ func _Admission_GetEvidence_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Admission_GrantLive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GrantLiveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdmissionServer).GrantLive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Admission_GrantLive_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdmissionServer).GrantLive(ctx, req.(*GrantLiveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Admission_RevokeLive_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeLiveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdmissionServer).RevokeLive(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Admission_RevokeLive_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdmissionServer).RevokeLive(ctx, req.(*RevokeLiveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Admission_ServiceDesc is the grpc.ServiceDesc for Admission service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -156,6 +242,14 @@ var Admission_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetEvidence",
 			Handler:    _Admission_GetEvidence_Handler,
+		},
+		{
+			MethodName: "GrantLive",
+			Handler:    _Admission_GrantLive_Handler,
+		},
+		{
+			MethodName: "RevokeLive",
+			Handler:    _Admission_RevokeLive_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import struct
 import threading
@@ -13,6 +14,7 @@ from urllib.parse import parse_qs, urlparse
 
 SHANGHAI = timezone(timedelta(hours=8))
 TDX_DIR = Path(os.environ.get("TDX_DIR", r"D:\new_tdx"))
+logger = logging.getLogger("pyworker")
 ROLES = {x.strip() for x in os.environ.get("PYWORKER_ROLES", "local,file,tcp,akshare,baostock").split(",") if x.strip()}
 LISTEN = os.environ.get("PYWORKER_LISTEN", "127.0.0.1:18080")
 
@@ -476,6 +478,34 @@ def local_securities():
 
 # --- AkShare ----------------------------------------------------------------
 
+
+def pct_chg_from_closes(closes) -> float | None:
+    """两根收盘实算涨跌幅 %，closes 按时间升序（最新在最后）。
+
+    数据纪律：样本不足两根或基准收盘非正 → None（显式缺失），绝不返回 0 冒充。
+    """
+    vals = [float(c) for c in closes if c is not None]
+    if len(vals) < 2:
+        return None
+    prev, cur = vals[-2], vals[-1]
+    if prev <= 0:
+        return None
+    return (cur - prev) / prev * 100.0
+
+
+def usdcny_pct_chg(ak) -> float | None:
+    """美元兑人民币涨跌幅：currency_hist 最近两根收盘实算；拿不到返回 None。"""
+    try:
+        end = datetime.now(SHANGHAI).strftime("%Y%m%d")
+        start = (datetime.now(SHANGHAI) - timedelta(days=14)).strftime("%Y%m%d")
+        df = ak.currency_hist(symbol="usd-cny", start_date=start, end_date=end)
+        if df is None or getattr(df, "empty", True) or "收盘" not in df.columns:
+            return None
+        return pct_chg_from_closes(df["收盘"].dropna().tolist())
+    except Exception:
+        return None
+
+
 def ak_global():
     import akshare as ak
 
@@ -504,15 +534,19 @@ def ak_global():
         df = ak.fx_spot_quote(symbol="美元人民币")
         if df is not None and not df.empty:
             row = df.iloc[-1]
-            items.append(
-                {
-                    "code": "USDCNH",
-                    "name": "美元兑人民币",
-                    "trade_date": str(row.get("日期", datetime.now(SHANGHAI).date())),
-                    "close": float(row.get("最新价", row.get("卖出价", 0)) or 0),
-                    "pct_chg": 0.0,
-                }
-            )
+            item = {
+                "code": "USDCNH",
+                "name": "美元兑人民币",
+                "trade_date": str(row.get("日期", datetime.now(SHANGHAI).date())),
+                "close": float(row.get("最新价", row.get("卖出价", 0)) or 0),
+            }
+            pct = usdcny_pct_chg(ak)
+            if pct is None:
+                # 数据纪律「没取到≠0」：上一收盘不可得则缺键表达缺失，绝不写 0.0 冒充。
+                logger.warning("ak_global: USDCNH pct_chg 上一收盘不可得，载荷缺键（datahub 必填列将落 0，治理债见 M13-T12b）")
+            else:
+                item["pct_chg"] = pct
+            items.append(item)
     except Exception:
         pass
     try:

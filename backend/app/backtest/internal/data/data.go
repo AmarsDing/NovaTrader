@@ -8,10 +8,12 @@ import (
 	"server/app/backtest/internal/biz"
 	"server/conf"
 	"server/ent"
+	"server/pkg/appcfg"
 	"server/pkg/backtest"
 	"server/pkg/dbinit"
 	"server/pkg/entclient"
 	"server/pkg/events"
+	"server/pkg/llm"
 	"server/pkg/registry"
 	"server/pkg/scheduler"
 
@@ -20,10 +22,11 @@ import (
 )
 
 var ProviderSet = wire.NewSet(
-	NewEntClient, scheduler.NewEntStore, registry.NewBeater, NewBus, NewRepo, NewSource, NewPublisher,
+	NewEntClient, scheduler.NewEntStore, registry.NewBeater, NewBus, NewRepo, NewSource, NewPublisher, NewGateway,
 	wire.Bind(new(biz.Repo), new(*Repo)),
 	wire.Bind(new(biz.Publisher), new(*Publisher)),
 	wire.Bind(new(backtest.Source), new(*Source)),
+	wire.Bind(new(biz.LLM), new(*llm.Gateway)),
 )
 
 func dbConfig(c *conf.Postgres) dbinit.Config {
@@ -61,6 +64,24 @@ func NewEntClient(c *conf.Postgres, logger log.Logger) (*ent.Client, func(), err
 		}
 	}
 	return conn.Client, cleanup, nil
+}
+
+// NewGateway 是 M13-T14 small 档 LLM 网关。conf.Backtest 暂未挂 models 字段；
+// 启动配置留空，靠 SetLive 在每次调用前从 appcfg 读 app.backtest.small.{url,model,key}。
+// 未配置或读不到时 Chat 走 pkg/llm 现行的 ErrUnavailable，调用方按合同留空叙述字段。
+func NewGateway(client *ent.Client) *llm.Gateway {
+	gw := llm.New(map[llm.Tier]llm.ModelConfig{llm.Small: {}}, llm.EntRecorder{Client: client})
+	gw.SetLive(func(t llm.Tier) llm.Overlay {
+		if t != llm.Small {
+			return llm.Overlay{}
+		}
+		return llm.Overlay{
+			BaseURL: appcfg.Get(context.Background(), "app.backtest.small.url"),
+			Model:   appcfg.Get(context.Background(), "app.backtest.small.model"),
+			APIKey:  appcfg.Get(context.Background(), "app.backtest.small.key"),
+		}
+	})
+	return gw
 }
 
 // NewBus 连接 NATS。连不上时返回 nil：进度只写库，客户端靠轮询。

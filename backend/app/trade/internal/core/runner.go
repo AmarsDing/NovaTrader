@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"server/app/trade/internal/biz"
 	"server/conf"
+	"server/pkg/appcfg"
 	"server/pkg/brokerif"
 	"server/pkg/events"
 	"server/pkg/market"
@@ -33,32 +36,39 @@ func NewChannelTracker() *brokerif.Tracker { return brokerif.NewTracker(time.Now
 // 快照回路同时充当 sim 执行通道的心跳（G7）：连续失败按 brokerif.Observer 口径
 // 折算为通道降级/停机，迁移发布到 trade.channel.status。
 type Runner struct {
-	now        func() time.Time
-	e          *biz.Engine
-	bus        *events.Bus
-	publish    func(ctx context.Context, env events.Envelope) error
-	box        *outbox.Dispatcher
-	track      *brokerif.Tracker
-	obs        *brokerif.Observer
-	live       *LiveChannel
+	now     func() time.Time
+	e       *biz.Engine
+	bus     *events.Bus
+	publish func(ctx context.Context, env events.Envelope) error
+	box     *outbox.Dispatcher
+	track   *brokerif.Tracker
+	obs     *brokerif.Observer
+	live    *LiveChannel
+	// reportSrc 可选注入（测试用 broker-gw simulator 语义的假来源）；
+	// 生产由 live.Client 解析——接口注入，回报回路不经测试网络。
+	reportSrc ReportSource
+	// reportAcct 是假来源的回声账户（仅测试装配用）：ParseSnapshot 的账户
+	// 回声校验在两条路径都走同一份校验，测试不豁免身份门槛。
+	reportAcct string
 	// liveUnknownBaseline 是 transport_unknown 告警的边沿基线：只记探测循环一根
 	// goroutine，无需加锁。归零重武装、上升沿才打屏（告警转净纪律，同 U6 族）。
 	liveUnknownBaseline int
 	beater              *registry.Beater
-	addr       string
-	id         string
-	interval   time.Duration
-	log        *log.Helper
-	sub        *nats.Subscription
-	exitSub    *nats.Subscription
-	cancel     context.CancelFunc
-	watchOwner string
-	lifecycle  sync.Mutex
-	runCtx     context.Context
-	started    bool
-	stopping   bool
-	done       chan struct{}
-	wg         sync.WaitGroup
+	addr                string
+	id                  string
+	interval            time.Duration
+	log                 *log.Helper
+	sub                 *nats.Subscription
+	exitSub             *nats.Subscription
+	sigSub              *nats.Subscription
+	cancel              context.CancelFunc
+	watchOwner          string
+	lifecycle           sync.Mutex
+	runCtx              context.Context
+	started             bool
+	stopping            bool
+	done                chan struct{}
+	wg                  sync.WaitGroup
 }
 
 func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, live *LiveChannel, beat *registry.Beater, bus *events.Bus, box *outbox.Dispatcher, logger log.Logger) *Runner {
@@ -91,6 +101,12 @@ func NewRunner(c *conf.Trade, e *biz.Engine, ch *brokerif.Tracker, live *LiveCha
 		live.Tracker.Subscribe(func(from, to brokerif.Status, at time.Time) {
 			r.publishChannel("emfile", from, to, at)
 		})
+	}
+	// M13-T03：emfile 客户端可用时把文件单出口挂进引擎（confirm/cancel 两段式
+	// 出口链）。双闸（LiveEnabled 经 data.Settings、BrokerConnected 经核验链置位）
+	// 仍是必经门禁——本接线只提供通道，不放行任何实盘委托。
+	if live != nil && live.Client != nil {
+		e.AttachFileBroker(live.Client)
 	}
 	return r
 }
@@ -178,13 +194,18 @@ func (r *Runner) Start(ctx context.Context) error {
 	} else {
 		r.keepSubscription(sub, true)
 	}
+	if sub, err = r.subscribeSignal(startupCtx); err != nil {
+		r.log.Warnf("subscribe signals: %v", err)
+	} else {
+		r.keepSignalSubscription(sub)
+	}
 	r.lifecycle.Lock()
 	if r.stopping || ctx.Err() != nil {
 		r.lifecycle.Unlock()
 		r.beginStop()
 		return context.Canceled
 	}
-	for _, run := range []func(context.Context){r.loop, r.evidenceLoop, r.watchLoop, r.liveProbeLoop, r.beatLoop} {
+	for _, run := range []func(context.Context){r.loop, r.evidenceLoop, r.watchLoop, r.liveProbeLoop, r.reportLoop, r.beatLoop} {
 		r.wg.Add(1)
 		go func(run func(context.Context)) {
 			defer r.wg.Done()
@@ -209,33 +230,43 @@ func (r *Runner) liveProbeLoop(ctx context.Context) {
 	}
 	ticker := time.NewTicker(r.live.Interval())
 	defer ticker.Stop()
-	probe := func() {
-		if ctx.Err() != nil {
-			return
-		}
-		c, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		done := observe.ForService("trade").Op("live_probe").Begin()
-		health, err := r.live.Probe(c)
-		if err != nil {
-			observe.FinishError(done, err)
-			if c.Err() == nil {
-				r.log.Warnf("emfile probe: %v", err)
-			}
-		} else {
-			done(observe.Succeeded)
-			r.noteLiveUnknown(health.TransportUnknown)
-		}
-	}
-	probe()
+	r.probeLive(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			probe()
+			r.probeLive(ctx)
 		}
 	}
+}
+
+// probeLive 做一次健康探测并折算 LIVE 通道闸（M13-T05）：探测成功置位
+// BrokerConnected，任何失败立即回落 false（fail-closed）——闸只由这条核验链
+// 驱动，无配置/界面旁路；引擎未装配（测试裸 Runner）时探测记账照旧、不翻闸。
+func (r *Runner) probeLive(ctx context.Context) {
+	if ctx.Err() != nil || r.live == nil || r.live.Client == nil {
+		return
+	}
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	done := observe.ForService("trade").Op("live_probe").Begin()
+	health, err := r.live.Probe(c)
+	if err != nil {
+		observe.FinishError(done, err)
+		if r.e != nil {
+			r.e.SetBrokerConnected(false)
+		}
+		if c.Err() == nil {
+			r.log.Warnf("emfile probe: %v", err)
+		}
+		return
+	}
+	done(observe.Succeeded)
+	if r.e != nil {
+		r.e.SetBrokerConnected(true)
+	}
+	r.noteLiveUnknown(health.TransportUnknown)
 }
 
 // noteLiveUnknown 是 transport_unknown 的告警边沿纪律（D7）：回执滞留 PREPARED/UNKNOWN
@@ -334,6 +365,158 @@ func (r *Runner) subscribeExit(ctx context.Context) (*nats.Subscription, error) 
 	return js.Subscribe(events.SubjectRiskExit, r.onExit, nats.Bind(events.StreamName, exitConsumer), nats.ManualAck())
 }
 
+// signalConsumer 是 M13-T02 自动消费者的 durable 名：重启/重挂续用同一
+// ack 位置，完成消费的信号事件不被重放（重放也只会命中 execution_intent 唯一
+// 约束而跳过并计数）。ack 纪律与 risk.exit 消费者一致：显式 ack、30s 窗。
+const signalConsumer = "trade_signal_auto"
+
+func (r *Runner) subscribeSignal(ctx context.Context) (*nats.Subscription, error) {
+	js := r.bus.JetStream()
+	info, err := js.ConsumerInfo(events.StreamName, signalConsumer, nats.Context(ctx))
+	if errors.Is(err, nats.ErrConsumerNotFound) {
+		info, err = js.AddConsumer(events.StreamName, &nats.ConsumerConfig{
+			Durable: signalConsumer, FilterSubject: events.SubjectSignal, DeliverSubject: nats.NewInbox(),
+			DeliverPolicy: nats.DeliverAllPolicy, AckPolicy: nats.AckExplicitPolicy,
+			AckWait: 30 * time.Second, MaxAckPending: 64,
+		}, nats.Context(ctx))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if info.Config.FilterSubject != events.SubjectSignal || info.Config.AckPolicy != nats.AckExplicitPolicy || info.Config.DeliverSubject == "" || info.Config.DeliverGroup != "" {
+		return nil, fmt.Errorf("signal auto durable has incompatible configuration")
+	}
+	return js.Subscribe(events.SubjectSignal, r.onSignal, nats.Bind(events.StreamName, signalConsumer), nats.ManualAck())
+}
+
+// onSignal 解开 strategy.signal.updated 的信封，过滤链与消费动作收口到
+// biz.AutoConsume（终审仍在 place() 内联风控，契约见 automation.go 头注）。
+// ack 纪律：信封/载荷不可信即 ack 丢弃；过滤或去重跳过即 ack；处理成功才 ack；
+// 消费失败先投 notify（critical）再 nak 让 durable 重投——残余意图已占位，
+// 重放只会命中唯一约束跳过并计数，绝不产生第二意图。
+func (r *Runner) onSignal(msg *nats.Msg) {
+	op := observe.ForService("trade").Op("signal_auto")
+	op.Received()
+	observed := op.Begin()
+	outcome := observe.Rejected
+	defer func() { observed(outcome) }()
+	ctx, finish, active := r.beginCallback()
+	if !active {
+		outcome = observe.Cancelled
+		return // Leave unacknowledged for the next active instance.
+	}
+	defer finish()
+	env, err := events.Unmarshal(msg.Data)
+	if err != nil || env.Subject != events.SubjectSignal || env.Source != "strategy" || msg.Subject != events.SubjectSignal {
+		r.log.Warnf("signal envelope: %v", err)
+		_ = msg.Ack()
+		return
+	}
+	var body struct {
+		SignalID   int     `json:"signal_id"`
+		Book       string  `json:"book"`
+		Status     string  `json:"status"`
+		StockCode  string  `json:"stock_code"`
+		Strategy   string  `json:"strategy"`
+		SignalType string  `json:"signal_type"`
+		FinalScore float64 `json:"final_score"`
+		AIDegraded bool    `json:"ai_degraded"`
+	}
+	if err := json.Unmarshal(env.Payload, &body); err != nil || body.SignalID <= 0 {
+		r.log.Warnf("signal payload: %v", err)
+		_ = msg.Ack()
+		return
+	}
+	if ctx.Err() != nil {
+		outcome = observe.Cancelled
+		return
+	}
+	out, err := r.e.AutoConsume(events.ContextWithEnvelope(ctx, env), biz.AutoSignal{
+		SignalID: body.SignalID, Book: body.Book, Status: body.Status, Symbol: body.StockCode,
+		Strategy: body.Strategy, SignalType: body.SignalType, FinalScore: body.FinalScore, AIDegraded: body.AIDegraded,
+	}, r.autoGates(ctx))
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			outcome = observe.Cancelled
+		} else {
+			outcome = observe.Failed
+		}
+		r.log.Warnf("signal auto %d %s: %v", body.SignalID, body.StockCode, err)
+		if ctx.Err() == nil {
+			r.publishAutoFailure(body.SignalID, body.StockCode, err)
+			_ = msg.Nak()
+		}
+		return
+	}
+	if out.Skipped != "" {
+		outcome = observe.Skipped
+		r.log.Debugf("signal auto %d skipped: %s", body.SignalID, out.Skipped)
+	} else {
+		outcome = observe.Succeeded
+		r.log.Infof("signal auto %d: plan %s authorized", body.SignalID, out.Plan.Plan.PlanID)
+	}
+	_ = msg.Ack()
+}
+
+// autoGates 是 M13-T02 闸门三键的运行期读取（appcfg 5s 缓存，策略化文本市
+// app.trade.auto.score_min/.templates/.allow_degraded，白名单在 pkg/params）。
+// 键缺省/非法一律回落出厂闸门（默认两模板、阈值 80、AI 降级不开新仓），
+// 非法值被当成缺省表达而不是被当成 0/空集——「没取到≠0」。
+func (r *Runner) autoGates(ctx context.Context) biz.AutoGates {
+	g := biz.DefaultAutoGates()
+	if v := strings.TrimSpace(appcfg.Get(ctx, "app.trade.auto.score_min")); v != "" {
+		if n, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && n >= 0 && n <= 100 {
+			g.ScoreMin = n
+		}
+	}
+	if v := strings.TrimSpace(appcfg.Get(ctx, "app.trade.auto.templates")); v != "" {
+		var names []string
+		if err := json.NewDecoder(strings.NewReader(v)).Decode(&names); err == nil {
+			set := map[string]bool{}
+			for _, n := range names {
+				if s := strings.TrimSpace(n); s != "" {
+					set[s] = true
+				}
+			}
+			if len(set) > 0 {
+				g.Templates = set
+			}
+		}
+	}
+	if v := strings.TrimSpace(appcfg.Get(ctx, "app.trade.auto.allow_degraded")); v != "" {
+		g.AllowDegraded = v == "true"
+	}
+	return g
+}
+
+// publishAutoFailure 把自动消费失败投递到 notify.request（level=critical 与
+// notify 分类器对齐，category=trade）。dedup_key 按信号归并：同一信号的失败
+// 只留最新一条。与 publishChannel 同一链路纪律：OpenTrace 幂等开根链、5s
+// 发布上限、失败只记日志不反压信号消费。
+func (r *Runner) publishAutoFailure(signalID int, symbol string, cause error) {
+	if r.publish == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ctx = events.OpenTrace(ctx)
+	env, err := events.New("trade", events.SubjectNotifyRequest, events.TraceID(ctx), map[string]any{
+		"level":    "critical",
+		"category": "trade",
+		"title":    "全自动条件计划生成失败",
+		"body": fmt.Sprintf("信号 %d %s 的计划生成或授权失败：%v。"+
+			"残余意图保留待人工核对；同一信号不会被自动重发。", signalID, symbol, cause),
+		"dedup_key": fmt.Sprintf("trade:auto-plan:%d", signalID),
+	})
+	if err != nil {
+		r.log.Warnf("auto failure event: %v", err)
+		return
+	}
+	if err := r.publish(ctx, env); err != nil {
+		r.log.Warnf("publish auto failure: %v", err)
+	}
+}
+
 func (r *Runner) keepSubscription(sub *nats.Subscription, exit bool) {
 	r.lifecycle.Lock()
 	if !r.stopping && r.runCtx.Err() == nil {
@@ -342,6 +525,19 @@ func (r *Runner) keepSubscription(sub *nats.Subscription, exit bool) {
 		} else {
 			r.sub = sub
 		}
+		r.lifecycle.Unlock()
+		return
+	}
+	r.lifecycle.Unlock()
+	_ = sub.Unsubscribe()
+}
+
+// keepSignalSubscription 与 keepSubscription 同一份生命周期纪律：
+// 停机可见前只允许登记，之后立即退订，绝不丢下一条还在回调的订阅。
+func (r *Runner) keepSignalSubscription(sub *nats.Subscription) {
+	r.lifecycle.Lock()
+	if !r.stopping && r.runCtx.Err() == nil {
+		r.sigSub = sub
 		r.lifecycle.Unlock()
 		return
 	}
@@ -551,14 +747,17 @@ func (r *Runner) beginStop() <-chan struct{} {
 		if r.cancel != nil {
 			r.cancel()
 		}
-		bars, exits := r.sub, r.exitSub
-		r.sub, r.exitSub = nil, nil
+		bars, exits, signals := r.sub, r.exitSub, r.sigSub
+		r.sub, r.exitSub, r.sigSub = nil, nil, nil
 		go func() {
 			if bars != nil {
 				_ = bars.Unsubscribe()
 			}
 			if exits != nil {
 				_ = exits.Unsubscribe()
+			}
+			if signals != nil {
+				_ = signals.Unsubscribe()
 			}
 			r.wg.Wait()
 			close(r.done)

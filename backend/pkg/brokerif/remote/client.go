@@ -1,6 +1,8 @@
 // Package remote is an opt-in mTLS transport to the isolated Windows broker-gw.
 // It deliberately does NOT implement brokerif.Adapter: a published CSV cannot
-// be represented as a successful broker order submission. trade is not wired.
+// be represented as a successful broker order submission. The trade LIVE exit
+// chain calls Submit/Cancel through the narrow surface here (M13-T03, wired by
+// app/trade internal biz behind the double gate, never through config/UI).
 package remote
 
 import (
@@ -22,6 +24,22 @@ import (
 )
 
 const Protocol = "eastmoney-file-csv-isolated-v1"
+
+// ErrTransportUnknown 标注「文件发布结局未知」一族：请求已发出（或回执语义
+// 无法自洽），调用侧必须按原 SID 只读查询，绝不重发。errors.Is 可判。
+var ErrTransportUnknown = errors.New("broker remote: transport unknown; query original sid, do not resubmit")
+
+// IsTransportUnknown 判别 Submit/Cancel 的错误是否属于发布结局未知族。
+// 传输中断、回执截断/畸形/身份不符、网关 TRANSPORT_UNAVAILABLE_QUERY_ONLY /
+// IDENTITY_CONFLICT 都归此族；网关 4xx 语义拒绝与本地非法载荷是明确错误
+// （文件确定未发布），不属于本族。
+func IsTransportUnknown(err error) bool { return errors.Is(err, ErrTransportUnknown) }
+
+// uncertainCode 是网关显式错误码里「写没写成不可知」的白名单。
+var uncertainCode = map[string]bool{
+	"TRANSPORT_UNAVAILABLE_QUERY_ONLY": true,
+	"IDENTITY_CONFLICT":                true,
+}
 
 var safeAccount = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 var safeSID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:#-]{0,95}$`)
@@ -72,6 +90,10 @@ func New(config Config) (*Client, error) {
 }
 
 func (c *Client) Close() { c.http.CloseIdleConnections() }
+
+// Account 返回客户端白名单资金账号（与每次请求的回声校验同一值）。
+// 归并侧用它校验快照账户回声，绝不把隔壁账户的回报进自己的账。
+func (c *Client) Account() string { return c.account }
 
 type Order struct {
 	SID    string `json:"sid"`
@@ -132,7 +154,7 @@ func (c *Client) Submit(ctx context.Context, value Order) (Receipt, error) {
 	}
 	if result.BrokerACK || result.RetryAllowed || result.Protocol != Protocol || result.SID != value.SID || result.Key != value.SID || result.Kind != "order" || !receiptState(result.State) {
 		c.reportFail()
-		return result, errors.New("broker remote: invalid transport receipt")
+		return result, fmt.Errorf("broker remote: %w: invalid transport receipt", ErrTransportUnknown)
 	}
 	c.reportOK()
 	return result, nil
@@ -162,7 +184,7 @@ func (c *Client) Cancel(ctx context.Context, requestID, sid string) (Receipt, er
 	}
 	if result.BrokerACK || result.CancelConfirmed || result.RetryAllowed || result.SID != sid || result.Key != requestID || result.Protocol != Protocol || result.Kind != "cancel" || !receiptState(result.State) {
 		c.reportFail()
-		return result, errors.New("broker remote: invalid cancel receipt")
+		return result, fmt.Errorf("broker remote: %w: invalid cancel receipt", ErrTransportUnknown)
 	}
 	c.reportOK()
 	return result, nil
@@ -231,13 +253,13 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 	resp, err := c.http.Do(req)
 	if err != nil {
 		c.reportFail()
-		return errors.New("broker remote: transport unknown; query original sid, do not resubmit")
+		return ErrTransportUnknown
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024+1))
 	if err != nil || len(data) > 16*1024*1024 {
 		c.reportFail()
-		return errors.New("broker remote: incomplete or oversized response")
+		return fmt.Errorf("broker remote: %w: incomplete or oversized response", ErrTransportUnknown)
 	}
 	if resp.StatusCode != http.StatusOK {
 		var failure struct {
@@ -248,6 +270,9 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 			failure.Error = "TRANSPORT_REJECTED"
 		}
 		c.reportFail()
+		if uncertainCode[failure.Error] {
+			return fmt.Errorf("broker remote: %w: %s (HTTP %d)", ErrTransportUnknown, failure.Error, resp.StatusCode)
+		}
 		return fmt.Errorf("broker remote: %s (HTTP %d)", failure.Error, resp.StatusCode)
 	}
 	var envelope struct {
@@ -257,11 +282,11 @@ func (c *Client) request(ctx context.Context, method, path string, input, output
 	}
 	if json.Unmarshal(data, &envelope) != nil || envelope.Protocol != Protocol || envelope.AccountID != c.account || len(envelope.Payload) == 0 || string(envelope.Payload) == "null" {
 		c.reportFail()
-		return errors.New("broker remote: response identity mismatch")
+		return fmt.Errorf("broker remote: %w: response identity mismatch", ErrTransportUnknown)
 	}
 	if json.Unmarshal(envelope.Payload, output) != nil {
 		c.reportFail()
-		return errors.New("broker remote: invalid response shape")
+		return fmt.Errorf("broker remote: %w: invalid response shape", ErrTransportUnknown)
 	}
 	// 传输层到此为止不记 Ok：回包的语义校验（回声/隔离约束）由各方法自己做，
 	// 校验不过必须记 Fail（「回包身份不符」契约），全部通过才记 Ok。

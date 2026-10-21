@@ -37,7 +37,7 @@ func TestRunNextBusinessFailureIsNotNilReturnSuccessMetric(t *testing.T) {
 		}
 	}
 	repo := &failingExecutionRepo{}
-	uc := NewUsecase(repo, nil, nil, NewSettings(nil), log.DefaultLogger)
+	uc := NewUsecase(repo, nil, nil, NewSettings(nil), nil, log.DefaultLogger)
 	ran, err := uc.RunNext(context.Background())
 	if !ran || err != nil || repo.terminal != StatusFailed {
 		t.Fatalf("expected durable handled business failure: ran=%v err=%v status=%s", ran, err, repo.terminal)

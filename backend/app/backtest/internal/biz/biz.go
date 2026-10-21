@@ -13,6 +13,7 @@ import (
 	"server/conf"
 	"server/pkg/backtest"
 	"server/pkg/dataset"
+	"server/pkg/llm"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
@@ -188,7 +189,17 @@ type Introspection struct {
 	TriggerReason string
 	TaskID        *int
 	Note          string
+	// Narrative / NarrativeTags 由 M13-T14 的 small 档 LLM 组样本组一次输出；
+	// LLM 不可用/超时/解析错时同时为空，不写占位串。
+	Narrative     string
+	NarrativeTags []string
 	CreatedAt     time.Time
+}
+
+// LLM 是 pkg/llm.Gateway 在 biz 层看到的样子（M13-T14）。
+// 只走一次非流式 Chat；未配置、排队满、超时、解析错都由调用方按 ErrUnavailable 退回规则归因。
+type LLM interface {
+	Chat(ctx context.Context, req llm.Request) (llm.Response, error)
 }
 
 type Proposal struct {
@@ -354,6 +365,7 @@ type Usecase struct {
 	src  backtest.Source
 	pub  Publisher
 	cfg  Settings
+	llm  LLM
 	log  *log.Helper
 	now  func() time.Time
 
@@ -363,9 +375,9 @@ type Usecase struct {
 	running map[int]context.CancelFunc
 }
 
-func NewUsecase(repo Repo, src backtest.Source, pub Publisher, cfg Settings, logger log.Logger) *Usecase {
+func NewUsecase(repo Repo, src backtest.Source, pub Publisher, cfg Settings, ll LLM, logger log.Logger) *Usecase {
 	return &Usecase{
-		repo: repo, src: src, pub: pub, cfg: cfg,
+		repo: repo, src: src, pub: pub, cfg: cfg, llm: ll,
 		log:     log.NewHelper(log.With(logger, "module", "backtest/biz")),
 		now:     time.Now,
 		build:   buildVersion(),

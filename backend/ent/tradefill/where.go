@@ -104,6 +104,11 @@ func StrategyVersion(v string) predicate.TradeFill {
 	return predicate.TradeFill(sql.FieldEQ(FieldStrategyVersion, v))
 }
 
+// ExecID applies equality check predicate on the "exec_id" field. It's identical to ExecIDEQ.
+func ExecID(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldEQ(FieldExecID, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.TradeFill {
 	return predicate.TradeFill(sql.FieldEQ(FieldCreatedAt, v))
@@ -657,6 +662,81 @@ func StrategyVersionEqualFold(v string) predicate.TradeFill {
 // StrategyVersionContainsFold applies the ContainsFold predicate on the "strategy_version" field.
 func StrategyVersionContainsFold(v string) predicate.TradeFill {
 	return predicate.TradeFill(sql.FieldContainsFold(FieldStrategyVersion, v))
+}
+
+// ExecIDEQ applies the EQ predicate on the "exec_id" field.
+func ExecIDEQ(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldEQ(FieldExecID, v))
+}
+
+// ExecIDNEQ applies the NEQ predicate on the "exec_id" field.
+func ExecIDNEQ(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldNEQ(FieldExecID, v))
+}
+
+// ExecIDIn applies the In predicate on the "exec_id" field.
+func ExecIDIn(vs ...string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldIn(FieldExecID, vs...))
+}
+
+// ExecIDNotIn applies the NotIn predicate on the "exec_id" field.
+func ExecIDNotIn(vs ...string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldNotIn(FieldExecID, vs...))
+}
+
+// ExecIDGT applies the GT predicate on the "exec_id" field.
+func ExecIDGT(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldGT(FieldExecID, v))
+}
+
+// ExecIDGTE applies the GTE predicate on the "exec_id" field.
+func ExecIDGTE(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldGTE(FieldExecID, v))
+}
+
+// ExecIDLT applies the LT predicate on the "exec_id" field.
+func ExecIDLT(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldLT(FieldExecID, v))
+}
+
+// ExecIDLTE applies the LTE predicate on the "exec_id" field.
+func ExecIDLTE(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldLTE(FieldExecID, v))
+}
+
+// ExecIDContains applies the Contains predicate on the "exec_id" field.
+func ExecIDContains(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldContains(FieldExecID, v))
+}
+
+// ExecIDHasPrefix applies the HasPrefix predicate on the "exec_id" field.
+func ExecIDHasPrefix(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldHasPrefix(FieldExecID, v))
+}
+
+// ExecIDHasSuffix applies the HasSuffix predicate on the "exec_id" field.
+func ExecIDHasSuffix(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldHasSuffix(FieldExecID, v))
+}
+
+// ExecIDIsNil applies the IsNil predicate on the "exec_id" field.
+func ExecIDIsNil() predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldIsNull(FieldExecID))
+}
+
+// ExecIDNotNil applies the NotNil predicate on the "exec_id" field.
+func ExecIDNotNil() predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldNotNull(FieldExecID))
+}
+
+// ExecIDEqualFold applies the EqualFold predicate on the "exec_id" field.
+func ExecIDEqualFold(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldEqualFold(FieldExecID, v))
+}
+
+// ExecIDContainsFold applies the ContainsFold predicate on the "exec_id" field.
+func ExecIDContainsFold(v string) predicate.TradeFill {
+	return predicate.TradeFill(sql.FieldContainsFold(FieldExecID, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

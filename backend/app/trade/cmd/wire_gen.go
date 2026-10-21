@@ -33,7 +33,7 @@ func wireApp(trade *conf.Trade, postgres *conf.Postgres, nats *conf.Nats, redis 
 	}
 	repo := data.NewRepoWithMarket(client, redisClient, logger)
 	riskClient := data.NewRiskClient(trade)
-	settings := data.NewSettings(trade)
+	settings := data.NewSettings(trade, client, logger)
 	engine := biz.NewEngine(repo, riskClient, settings, logger)
 	tracker := core.NewChannelTracker()
 	liveChannel := core.NewLiveChannel(trade, logger)

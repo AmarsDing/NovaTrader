@@ -12,6 +12,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 )
 
@@ -263,6 +264,44 @@ func (_u *IntrospectionUpdate) SetNillableNote(v *string) *IntrospectionUpdate {
 	return _u
 }
 
+// SetNarrative sets the "narrative" field.
+func (_u *IntrospectionUpdate) SetNarrative(v string) *IntrospectionUpdate {
+	_u.mutation.SetNarrative(v)
+	return _u
+}
+
+// SetNillableNarrative sets the "narrative" field if the given value is not nil.
+func (_u *IntrospectionUpdate) SetNillableNarrative(v *string) *IntrospectionUpdate {
+	if v != nil {
+		_u.SetNarrative(*v)
+	}
+	return _u
+}
+
+// ClearNarrative clears the value of the "narrative" field.
+func (_u *IntrospectionUpdate) ClearNarrative() *IntrospectionUpdate {
+	_u.mutation.ClearNarrative()
+	return _u
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (_u *IntrospectionUpdate) SetNarrativeTags(v []string) *IntrospectionUpdate {
+	_u.mutation.SetNarrativeTags(v)
+	return _u
+}
+
+// AppendNarrativeTags appends value to the "narrative_tags" field.
+func (_u *IntrospectionUpdate) AppendNarrativeTags(v []string) *IntrospectionUpdate {
+	_u.mutation.AppendNarrativeTags(v)
+	return _u
+}
+
+// ClearNarrativeTags clears the value of the "narrative_tags" field.
+func (_u *IntrospectionUpdate) ClearNarrativeTags() *IntrospectionUpdate {
+	_u.mutation.ClearNarrativeTags()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *IntrospectionUpdate) SetCreatedAt(v time.Time) *IntrospectionUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -402,6 +441,23 @@ func (_u *IntrospectionUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.Note(); ok {
 		_spec.SetField(introspection.FieldNote, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Narrative(); ok {
+		_spec.SetField(introspection.FieldNarrative, field.TypeString, value)
+	}
+	if _u.mutation.NarrativeCleared() {
+		_spec.ClearField(introspection.FieldNarrative, field.TypeString)
+	}
+	if value, ok := _u.mutation.NarrativeTags(); ok {
+		_spec.SetField(introspection.FieldNarrativeTags, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedNarrativeTags(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, introspection.FieldNarrativeTags, value)
+		})
+	}
+	if _u.mutation.NarrativeTagsCleared() {
+		_spec.ClearField(introspection.FieldNarrativeTags, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(introspection.FieldCreatedAt, field.TypeTime, value)
@@ -661,6 +717,44 @@ func (_u *IntrospectionUpdateOne) SetNillableNote(v *string) *IntrospectionUpdat
 	return _u
 }
 
+// SetNarrative sets the "narrative" field.
+func (_u *IntrospectionUpdateOne) SetNarrative(v string) *IntrospectionUpdateOne {
+	_u.mutation.SetNarrative(v)
+	return _u
+}
+
+// SetNillableNarrative sets the "narrative" field if the given value is not nil.
+func (_u *IntrospectionUpdateOne) SetNillableNarrative(v *string) *IntrospectionUpdateOne {
+	if v != nil {
+		_u.SetNarrative(*v)
+	}
+	return _u
+}
+
+// ClearNarrative clears the value of the "narrative" field.
+func (_u *IntrospectionUpdateOne) ClearNarrative() *IntrospectionUpdateOne {
+	_u.mutation.ClearNarrative()
+	return _u
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (_u *IntrospectionUpdateOne) SetNarrativeTags(v []string) *IntrospectionUpdateOne {
+	_u.mutation.SetNarrativeTags(v)
+	return _u
+}
+
+// AppendNarrativeTags appends value to the "narrative_tags" field.
+func (_u *IntrospectionUpdateOne) AppendNarrativeTags(v []string) *IntrospectionUpdateOne {
+	_u.mutation.AppendNarrativeTags(v)
+	return _u
+}
+
+// ClearNarrativeTags clears the value of the "narrative_tags" field.
+func (_u *IntrospectionUpdateOne) ClearNarrativeTags() *IntrospectionUpdateOne {
+	_u.mutation.ClearNarrativeTags()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *IntrospectionUpdateOne) SetCreatedAt(v time.Time) *IntrospectionUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -830,6 +924,23 @@ func (_u *IntrospectionUpdateOne) sqlSave(ctx context.Context) (_node *Introspec
 	}
 	if value, ok := _u.mutation.Note(); ok {
 		_spec.SetField(introspection.FieldNote, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Narrative(); ok {
+		_spec.SetField(introspection.FieldNarrative, field.TypeString, value)
+	}
+	if _u.mutation.NarrativeCleared() {
+		_spec.ClearField(introspection.FieldNarrative, field.TypeString)
+	}
+	if value, ok := _u.mutation.NarrativeTags(); ok {
+		_spec.SetField(introspection.FieldNarrativeTags, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedNarrativeTags(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, introspection.FieldNarrativeTags, value)
+		})
+	}
+	if _u.mutation.NarrativeTagsCleared() {
+		_spec.ClearField(introspection.FieldNarrativeTags, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(introspection.FieldCreatedAt, field.TypeTime, value)

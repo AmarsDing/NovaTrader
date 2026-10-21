@@ -15,13 +15,16 @@ import (
 const chaseTick = 0.01
 
 // SweepWorking 撤掉超时的盯盘限价单，并在追价上限内重报剩余数量。
-func (e *Engine) sweepWorking(ctx context.Context) error {
+// 返回实盘超时就绪单：LIVE 预警单的撤/重报不做本地裁决——撤单文件出口由公开
+// 入口 SweepWorking 在账本事务之外编排（M13-T03），重报必须等柜台撤单确认，
+// 本迭代不自动重报（M09 追价确认纪律，留账后续版本）。
+func (e *Engine) sweepWorking(ctx context.Context) (liveDue []Order, err error) {
 	now := e.clock()
 	var due []Order
 	for _, status := range []string{StatusSubmitted, StatusPartial} {
 		rows, err := e.store.ListByStatus(ctx, status)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, order := range rows {
 			if chaseable(order, now, e.set.WorkTimeout) {
@@ -30,11 +33,15 @@ func (e *Engine) sweepWorking(ctx context.Context) error {
 		}
 	}
 	for _, order := range due {
+		if order.Book == BookLive {
+			liveDue = append(liveDue, order)
+			continue
+		}
 		if err := e.chase(ctx, order); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return liveDue, nil
 }
 
 func chaseable(order Order, now time.Time, timeout time.Duration) bool {

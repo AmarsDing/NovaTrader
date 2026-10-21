@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"server/app/trade/internal/biz"
 	"server/conf"
 	"server/pkg/brokerif"
 	"server/pkg/brokerif/remote"
@@ -221,6 +222,38 @@ func TestNoteLiveUnknownEdge(t *testing.T) {
 	if bare.liveUnknownBaseline != 5 {
 		t.Fatalf("baseline must advance even without a publish chain, got %d", bare.liveUnknownBaseline)
 	}
+}
+
+// TestProbeLiveBrokerConnectedGate 钉死 M13-T05 健康探测与 BrokerConnected 通道闸的
+// 折算纪律：未探测/探测失败一律 fail-closed（默认关、任何失败立即回落关），
+// 健康探测成功才置位开——闸只认这条核验链，无配置/界面旁路。
+func TestProbeLiveBrokerConnectedGate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	fixture := newBrokerFixture(t, 0)
+	lc := NewLiveChannel(fixture.tradeConfig(), log.DefaultLogger)
+	if lc == nil || lc.Client == nil {
+		t.Fatal("valid config must build a probed client")
+	}
+	engine := biz.NewEngine(nil, nil, biz.Settings{}, log.DefaultLogger)
+	r := &Runner{e: engine, live: lc, log: log.NewHelper(log.DefaultLogger)}
+	if engine.BrokerConnected() {
+		t.Fatal("gate must start closed before any probe")
+	}
+	// 健康探测成功 → 开闸。
+	r.probeLive(ctx)
+	if !engine.BrokerConnected() {
+		t.Fatal("healthy probe must open the gate")
+	}
+	// 服务端拉倒后探测失败 → 立即回落关闸（一次失败即收，不等阈值折算）。
+	fixture.close()
+	r.probeLive(ctx)
+	if engine.BrokerConnected() {
+		t.Fatal("failed probe must fail closed immediately")
+	}
+	// 引擎未装配的裸 Runner（测试场景）：探测记账照旧，不 panic。
+	bare := &Runner{live: lc, log: log.NewHelper(log.DefaultLogger)}
+	bare.probeLive(ctx)
 }
 
 const fixtureAccount = "T123456"

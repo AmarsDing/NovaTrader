@@ -114,6 +114,11 @@ func Note(v string) predicate.Introspection {
 	return predicate.Introspection(sql.FieldEQ(FieldNote, v))
 }
 
+// Narrative applies equality check predicate on the "narrative" field. It's identical to NarrativeEQ.
+func Narrative(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldEQ(FieldNarrative, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Introspection {
 	return predicate.Introspection(sql.FieldEQ(FieldCreatedAt, v))
@@ -662,6 +667,91 @@ func NoteEqualFold(v string) predicate.Introspection {
 // NoteContainsFold applies the ContainsFold predicate on the "note" field.
 func NoteContainsFold(v string) predicate.Introspection {
 	return predicate.Introspection(sql.FieldContainsFold(FieldNote, v))
+}
+
+// NarrativeEQ applies the EQ predicate on the "narrative" field.
+func NarrativeEQ(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldEQ(FieldNarrative, v))
+}
+
+// NarrativeNEQ applies the NEQ predicate on the "narrative" field.
+func NarrativeNEQ(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldNEQ(FieldNarrative, v))
+}
+
+// NarrativeIn applies the In predicate on the "narrative" field.
+func NarrativeIn(vs ...string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldIn(FieldNarrative, vs...))
+}
+
+// NarrativeNotIn applies the NotIn predicate on the "narrative" field.
+func NarrativeNotIn(vs ...string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldNotIn(FieldNarrative, vs...))
+}
+
+// NarrativeGT applies the GT predicate on the "narrative" field.
+func NarrativeGT(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldGT(FieldNarrative, v))
+}
+
+// NarrativeGTE applies the GTE predicate on the "narrative" field.
+func NarrativeGTE(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldGTE(FieldNarrative, v))
+}
+
+// NarrativeLT applies the LT predicate on the "narrative" field.
+func NarrativeLT(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldLT(FieldNarrative, v))
+}
+
+// NarrativeLTE applies the LTE predicate on the "narrative" field.
+func NarrativeLTE(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldLTE(FieldNarrative, v))
+}
+
+// NarrativeContains applies the Contains predicate on the "narrative" field.
+func NarrativeContains(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldContains(FieldNarrative, v))
+}
+
+// NarrativeHasPrefix applies the HasPrefix predicate on the "narrative" field.
+func NarrativeHasPrefix(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldHasPrefix(FieldNarrative, v))
+}
+
+// NarrativeHasSuffix applies the HasSuffix predicate on the "narrative" field.
+func NarrativeHasSuffix(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldHasSuffix(FieldNarrative, v))
+}
+
+// NarrativeIsNil applies the IsNil predicate on the "narrative" field.
+func NarrativeIsNil() predicate.Introspection {
+	return predicate.Introspection(sql.FieldIsNull(FieldNarrative))
+}
+
+// NarrativeNotNil applies the NotNil predicate on the "narrative" field.
+func NarrativeNotNil() predicate.Introspection {
+	return predicate.Introspection(sql.FieldNotNull(FieldNarrative))
+}
+
+// NarrativeEqualFold applies the EqualFold predicate on the "narrative" field.
+func NarrativeEqualFold(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldEqualFold(FieldNarrative, v))
+}
+
+// NarrativeContainsFold applies the ContainsFold predicate on the "narrative" field.
+func NarrativeContainsFold(v string) predicate.Introspection {
+	return predicate.Introspection(sql.FieldContainsFold(FieldNarrative, v))
+}
+
+// NarrativeTagsIsNil applies the IsNil predicate on the "narrative_tags" field.
+func NarrativeTagsIsNil() predicate.Introspection {
+	return predicate.Introspection(sql.FieldIsNull(FieldNarrativeTags))
+}
+
+// NarrativeTagsNotNil applies the NotNil predicate on the "narrative_tags" field.
+func NarrativeTagsNotNil() predicate.Introspection {
+	return predicate.Introspection(sql.FieldNotNull(FieldNarrativeTags))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

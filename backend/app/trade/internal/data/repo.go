@@ -2,6 +2,8 @@ package data
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"server/app/trade/internal/biz"
@@ -184,7 +186,7 @@ func (r *Repo) Commit(ctx context.Context, batch biz.Batch) error {
 		}
 	}
 	for _, f := range batch.Fills {
-		if err := tx.TradeFill.Create().
+		b := tx.TradeFill.Create().
 			SetClientOrderID(f.ClientOrderID).
 			SetBook(f.Book).
 			SetSymbol(f.Symbol).
@@ -194,8 +196,18 @@ func (r *Repo) Commit(ctx context.Context, batch biz.Batch) error {
 			SetAmount(f.Amount).
 			SetFee(f.Fee).
 			SetSignalID(f.SignalID).
-			SetStrategyVersion(f.StrategyVersion).
-			Exec(ctx); err != nil {
+			SetStrategyVersion(f.StrategyVersion)
+		if f.ExecID != "" {
+			// 实盘回报幂等兜底：biz 的 HasFillExec 预检是正常路径，
+			// (book, exec_id) 唯一索引兜并发与修复脚本漏判——重复即跳过，
+			// 绝不二次入账（M13-T04 与 M09 回报纪律）。DoNothing 碰上纯跳过时
+			// driver 可能报 sql.ErrNoRows（与 durable.go 账本锁同例）。
+			if err := b.SetExecID(f.ExecID).OnConflictColumns(tradefill.FieldBook, tradefill.FieldExecID).DoNothing().Exec(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			continue
+		}
+		if err := b.Exec(ctx); err != nil {
 			return err
 		}
 	}
@@ -331,11 +343,15 @@ func orderFrom(row *ent.TradeOrder) biz.Order {
 }
 
 func fillFrom(row *ent.TradeFill) biz.Fill {
-	return biz.Fill{
+	f := biz.Fill{
 		ClientOrderID: row.ClientOrderID, Book: row.Book, Symbol: row.Symbol, Side: row.Side,
 		Qty: row.Qty, Price: row.Price, Amount: row.Amount, Fee: row.Fee,
 		SignalID: row.SignalID, StrategyVersion: row.StrategyVersion, CreatedAt: row.CreatedAt,
 	}
+	if row.ExecID != nil {
+		f.ExecID = *row.ExecID
+	}
+	return f
 }
 
 func posFrom(row *ent.Position) biz.Position {

@@ -74,12 +74,28 @@ func NewBus(c *conf.Nats) (*events.Bus, func(), error) {
 	return bus, bus.Close, nil
 }
 
-func NewSettings(c *conf.Trade) biz.Settings {
+// NewSettings 是 LIVE 出口双闸读取的统一收口（M13-T03）：
+// LiveEnabled/BrokerConnected 默认 false → fail-closed，conf 不提供任何开关，
+// 默认装配下 LIVE 委托一律 reject，SIM 链不受影响。
+// T05（已落地）：LiveEnabled 的持久值在此映射 strategy_config 键
+// app.trade.live.enabled（含批准人/时间/准入证据，经 GrantLive 先写审计
+// 留痕后生效）；键缺失/读失败/损坏一律保持关闭，读故障大声记日志——
+// 「没取到≠放行」也不因此拖垮 SIM 链启动。BrokerConnected 只允许 runner
+// 健康循环经核验的 broker 适配链置位，掉线自动回落 false（无配置/界面旁路）。
+// 本函数的其余输入只来自 conf 的模拟撮合门槛。
+func NewSettings(c *conf.Trade, client *ent.Client, logger log.Logger) biz.Settings {
 	s := biz.Settings{}
-	if c == nil {
+	if c != nil {
+		s.InitialCash = c.GetInitialCash()
+		s.PaperDaysRequired = int(c.GetPaperDaysRequired())
+	}
+	if client == nil { // 单测裸装配（无库）保持关闸
 		return s
 	}
-	s.InitialCash = c.GetInitialCash()
-	s.PaperDaysRequired = int(c.GetPaperDaysRequired())
+	grant, known, err := NewRepo(client, logger).LoadLiveGrant(context.Background())
+	if err != nil {
+		log.NewHelper(logger).Errorf("live grant restore failed; LIVE gate stays closed: %v", err)
+	}
+	s.LiveEnabled = biz.LiveGateFromGrant(grant, known, err)
 	return s
 }

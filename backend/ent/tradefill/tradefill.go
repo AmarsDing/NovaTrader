@@ -33,6 +33,8 @@ const (
 	FieldSignalID = "signal_id"
 	// FieldStrategyVersion holds the string denoting the strategy_version field in the database.
 	FieldStrategyVersion = "strategy_version"
+	// FieldExecID holds the string denoting the exec_id field in the database.
+	FieldExecID = "exec_id"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the tradefill in the database.
@@ -52,6 +54,7 @@ var Columns = []string{
 	FieldFee,
 	FieldSignalID,
 	FieldStrategyVersion,
+	FieldExecID,
 	FieldCreatedAt,
 }
 
@@ -84,6 +87,8 @@ var (
 	DefaultStrategyVersion string
 	// StrategyVersionValidator is a validator for the "strategy_version" field. It is called by the builders before save.
 	StrategyVersionValidator func(string) error
+	// ExecIDValidator is a validator for the "exec_id" field. It is called by the builders before save.
+	ExecIDValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 )
@@ -144,6 +149,11 @@ func BySignalID(opts ...sql.OrderTermOption) OrderOption {
 // ByStrategyVersion orders the results by the strategy_version field.
 func ByStrategyVersion(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStrategyVersion, opts...).ToFunc()
+}
+
+// ByExecID orders the results by the exec_id field.
+func ByExecID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExecID, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

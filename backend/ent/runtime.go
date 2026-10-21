@@ -21,6 +21,7 @@ import (
 	"server/ent/decisionplan"
 	"server/ent/emotiondayfrozen"
 	"server/ent/equityunlock"
+	"server/ent/etfshare"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -1031,6 +1032,50 @@ func init() {
 	equityunlock.DefaultSource = equityunlockDescSource.Default.(string)
 	// equityunlock.SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	equityunlock.SourceValidator = equityunlockDescSource.Validators[0].(func(string) error)
+	etfshareFields := schema.EtfShare{}.Fields()
+	_ = etfshareFields
+	// etfshareDescSymbol is the schema descriptor for symbol field.
+	etfshareDescSymbol := etfshareFields[0].Descriptor()
+	// etfshare.SymbolValidator is a validator for the "symbol" field. It is called by the builders before save.
+	etfshare.SymbolValidator = func() func(string) error {
+		validators := etfshareDescSymbol.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(symbol string) error {
+			for _, fn := range fns {
+				if err := fn(symbol); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// etfshareDescEtfType is the schema descriptor for etf_type field.
+	etfshareDescEtfType := etfshareFields[4].Descriptor()
+	// etfshare.EtfTypeValidator is a validator for the "etf_type" field. It is called by the builders before save.
+	etfshare.EtfTypeValidator = etfshareDescEtfType.Validators[0].(func(string) error)
+	// etfshareDescFundCategory is the schema descriptor for fund_category field.
+	etfshareDescFundCategory := etfshareFields[5].Descriptor()
+	// etfshare.FundCategoryValidator is a validator for the "fund_category" field. It is called by the builders before save.
+	etfshare.FundCategoryValidator = etfshareDescFundCategory.Validators[0].(func(string) error)
+	// etfshareDescName is the schema descriptor for name field.
+	etfshareDescName := etfshareFields[6].Descriptor()
+	// etfshare.DefaultName holds the default value on creation for the name field.
+	etfshare.DefaultName = etfshareDescName.Default.(string)
+	// etfshare.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	etfshare.NameValidator = etfshareDescName.Validators[0].(func(string) error)
+	// etfshareDescManager is the schema descriptor for manager field.
+	etfshareDescManager := etfshareFields[7].Descriptor()
+	// etfshare.ManagerValidator is a validator for the "manager" field. It is called by the builders before save.
+	etfshare.ManagerValidator = etfshareDescManager.Validators[0].(func(string) error)
+	// etfshareDescSource is the schema descriptor for source field.
+	etfshareDescSource := etfshareFields[9].Descriptor()
+	// etfshare.DefaultSource holds the default value on creation for the source field.
+	etfshare.DefaultSource = etfshareDescSource.Default.(string)
+	// etfshare.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	etfshare.SourceValidator = etfshareDescSource.Validators[0].(func(string) error)
 	eventdispositionFields := schema.EventDisposition{}.Fields()
 	_ = eventdispositionFields
 	// eventdispositionDescEventID is the schema descriptor for event_id field.
@@ -1506,7 +1551,7 @@ func init() {
 	// introspection.DefaultNote holds the default value on creation for the note field.
 	introspection.DefaultNote = introspectionDescNote.Default.(string)
 	// introspectionDescCreatedAt is the schema descriptor for created_at field.
-	introspectionDescCreatedAt := introspectionFields[13].Descriptor()
+	introspectionDescCreatedAt := introspectionFields[15].Descriptor()
 	// introspection.DefaultCreatedAt holds the default value on creation for the created_at field.
 	introspection.DefaultCreatedAt = introspectionDescCreatedAt.Default.(func() time.Time)
 	// introspection.UpdateDefaultCreatedAt holds the default value on update for the created_at field.
@@ -4577,8 +4622,12 @@ func init() {
 	tradefill.DefaultStrategyVersion = tradefillDescStrategyVersion.Default.(string)
 	// tradefill.StrategyVersionValidator is a validator for the "strategy_version" field. It is called by the builders before save.
 	tradefill.StrategyVersionValidator = tradefillDescStrategyVersion.Validators[0].(func(string) error)
+	// tradefillDescExecID is the schema descriptor for exec_id field.
+	tradefillDescExecID := tradefillFields[10].Descriptor()
+	// tradefill.ExecIDValidator is a validator for the "exec_id" field. It is called by the builders before save.
+	tradefill.ExecIDValidator = tradefillDescExecID.Validators[0].(func(string) error)
 	// tradefillDescCreatedAt is the schema descriptor for created_at field.
-	tradefillDescCreatedAt := tradefillFields[10].Descriptor()
+	tradefillDescCreatedAt := tradefillFields[11].Descriptor()
 	// tradefill.DefaultCreatedAt holds the default value on creation for the created_at field.
 	tradefill.DefaultCreatedAt = tradefillDescCreatedAt.Default.(func() time.Time)
 	tradeledgerlockFields := schema.TradeLedgerLock{}.Fields()

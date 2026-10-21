@@ -25,8 +25,12 @@ type Settings struct {
 	PaperDaysRequired int
 	Fee               ashare.Fee
 	Match             sim.MatchRule
-	LiveEnabled       bool
-	BrokerConnected   bool // Only a verified broker adapter may set this; no config/UI bypass.
+	// LiveEnabled/BrokerConnected 是 LIVE 出口双闸，读取统一收口在 data.NewSettings
+	// （M13-T03）：默认 false → fail-closed，conf 不提供开关，SIM 链不受影响。
+	// LiveEnabled 的持久值（strategy_config 键 app.trade.live.enabled）与 setter
+	// 由 T05 落地；BrokerConnected 只允许经核验的 broker 适配链置位（无配置/界面旁路）。
+	LiveEnabled     bool
+	BrokerConnected bool // Only a verified broker adapter may set this; no config/UI bypass.
 	// WorkTimeout 是盯盘限价单未成交多久后撤掉剩余。默认 60 秒。
 	WorkTimeout time.Duration
 	// ChaseMax 是超时后最多重报几次。默认 2。
@@ -62,12 +66,13 @@ func (s Settings) norm() Settings {
 
 // Engine 串行处理一个进程内的委托。每次变化一次 Commit。
 type Engine struct {
-	store Store
-	risk  Checker
-	set   Settings
-	mu    sync.Mutex
-	now   func() time.Time
-	log   *log.Helper
+	store      Store
+	risk       Checker
+	set        Settings
+	fileBroker FileBroker // M13-T03 文件单出口；由 core 装配，nil 时 LIVE 出口 fail-closed
+	mu         sync.Mutex
+	now        func() time.Time
+	log        *log.Helper
 }
 
 func NewEngine(store Store, risk Checker, set Settings, logger log.Logger) *Engine {
@@ -154,6 +159,11 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 		evidence, err := e.PaperAdmission(ctx, "SIM", 40)
 		if err != nil || !evidence.RunEvidenceReady || evidence.RequiredDays < 20 {
 			return reject("连续真实交易日运行证据未通过；旧paper_days不作为准入依据")
+		}
+		if e.fileBroker == nil {
+			// 三道闸过了但出口没装配是装配缺陷（T03 接线不在或半件），
+			// fail-closed：宁可拒单也不让委托进无法落文件的待确认窗。
+			return reject("实盘文件单出口未装配")
 		}
 	}
 	if err := e.prepareDay(ctx, book, true, false); err != nil {
@@ -475,6 +485,17 @@ func (e *Engine) cancelOrder(ctx context.Context, clientID string) (Order, error
 	if order.Status != StatusSubmitted && order.Status != StatusPartial {
 		return Order{}, fmt.Errorf("%w: 当前状态 %s 不能撤单", ErrInvalid, order.Status)
 	}
+	if order.Book == BookLive {
+		// M13-T03：实盘撤单只发撤单文件（出口编排见 Cancel/SweepWorking 公开
+		// 入口），本地不预支终态——柜台撤单回报经归并器落定 cancelled。
+		if !e.set.BrokerConnected {
+			return Order{}, fmt.Errorf("%w: 柜台通道未连接，实盘撤单失败关闭", ErrInvalid)
+		}
+		if e.fileBroker == nil {
+			return Order{}, fmt.Errorf("%w: 实盘文件单出口未装配", ErrInvalid)
+		}
+		return order, nil
+	}
 	order.Status = StatusCancelled
 	order.Reason = "已撤"
 	if err := e.store.Commit(ctx, Batch{
@@ -656,7 +677,8 @@ func confirmPayload(o Order) map[string]any {
 	}
 }
 
-// Confirm 把待确认的实盘委托放进撮合。超时则作废。
+// Confirm 把待确认的实盘委托核准为已提交。超时则作废。文件单出口在公开
+// 入口 Confirm 的第二段完成（M13-T03：先落 submitted，后写文件，再入账回执）。
 func (e *Engine) confirm(ctx context.Context, clientID string) (Order, error) {
 	order, ok, err := e.store.LoadOrder(ctx, strings.TrimSpace(clientID))
 	if err != nil {
@@ -676,6 +698,9 @@ func (e *Engine) confirm(ctx context.Context, clientID string) (Order, error) {
 	}
 	if order.Book == BookLive && !e.set.BrokerConnected {
 		return Order{}, fmt.Errorf("%w: 柜台通道未连接", ErrInvalid)
+	}
+	if order.Book == BookLive && e.fileBroker == nil {
+		return Order{}, fmt.Errorf("%w: 实盘文件单出口未装配", ErrInvalid)
 	}
 	check, err := e.risk.Check(ctx, CheckIn{ClientOrderID: order.ClientOrderID, Account: accountOf(order.Book), Symbol: order.Symbol, Side: order.Side, Price: order.Price, Volume: order.Volume, Source: order.Source, Operator: order.Operator})
 	if err != nil || !check.Approved {

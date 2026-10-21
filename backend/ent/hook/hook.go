@@ -224,6 +224,18 @@ func (f EquityUnlockFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EquityUnlockMutation", m)
 }
 
+// The EtfShareFunc type is an adapter to allow the use of ordinary
+// function as EtfShare mutator.
+type EtfShareFunc func(context.Context, *ent.EtfShareMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f EtfShareFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.EtfShareMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.EtfShareMutation", m)
+}
+
 // The EventDispositionFunc type is an adapter to allow the use of ordinary
 // function as EventDisposition mutator.
 type EventDispositionFunc func(context.Context, *ent.EventDispositionMutation) (ent.Value, error)

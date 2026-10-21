@@ -71,13 +71,23 @@ func (e *Engine) Cancel(ctx context.Context, id string) (out Order, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	err = e.withLedger(ctx, "global", func(c context.Context) error { out, err = e.cancelOrder(c, id); return err })
-	return
+	if err != nil || out.Book != BookLive || (out.Status != StatusSubmitted && out.Status != StatusPartial) {
+		return out, err
+	}
+	// M13-T03 撤单第二段：账本事务之外发撤单文件，回执另起一笔事务入账；
+	// 本地不预支终态，柜台撤单回报经归并器落定。
+	return e.settleLiveCancel(ctx, out, "人工撤单")
 }
 func (e *Engine) Confirm(ctx context.Context, id string) (out Order, err error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	err = e.withLedger(ctx, "global", func(c context.Context) error { out, err = e.confirm(c, id); return err })
-	return
+	if err != nil || out.Book != BookLive || out.Status != StatusSubmitted {
+		return out, err
+	}
+	// M13-T03 出口第二段：本地 submitted 已落库，账本事务之外写文件单，
+	// 传输回执（发布/UNKNOWN/明确失败）再入第二笔事务——绝不自动重发。
+	return e.settleLiveSubmit(ctx, out)
 }
 func (e *Engine) Snapshot(ctx context.Context, account string) (out AccountView, err error) {
 	e.mu.Lock()
@@ -105,5 +115,20 @@ func (e *Engine) ExpireConfirms(ctx context.Context) error {
 func (e *Engine) SweepWorking(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.withLedger(ctx, "global", e.sweepWorking)
+	var liveDue []Order
+	err := e.withLedger(ctx, "global", func(c context.Context) error {
+		var err error
+		liveDue, err = e.sweepWorking(c)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	for _, order := range liveDue {
+		// 实盘超时盯盘单只发撤单文件；本地与追价重报都等柜台撤单回报。
+		if _, err := e.settleLiveCancel(ctx, order, "超时撤单"); err != nil {
+			return err
+		}
+	}
+	return nil
 }

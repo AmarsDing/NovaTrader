@@ -25,6 +25,7 @@ import (
 	"server/ent/decisionplan"
 	"server/ent/emotiondayfrozen"
 	"server/ent/equityunlock"
+	"server/ent/etfshare"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -176,6 +177,7 @@ func checkColumn(t, c string) error {
 			decisionplan.Table:      decisionplan.ValidColumn,
 			emotiondayfrozen.Table:  emotiondayfrozen.ValidColumn,
 			equityunlock.Table:      equityunlock.ValidColumn,
+			etfshare.Table:          etfshare.ValidColumn,
 			eventdisposition.Table:  eventdisposition.ValidColumn,
 			executionintent.Table:   executionintent.ValidColumn,
 			financereport.Table:     financereport.ValidColumn,

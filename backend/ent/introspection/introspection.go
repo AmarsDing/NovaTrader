@@ -39,6 +39,10 @@ const (
 	FieldTaskID = "task_id"
 	// FieldNote holds the string denoting the note field in the database.
 	FieldNote = "note"
+	// FieldNarrative holds the string denoting the narrative field in the database.
+	FieldNarrative = "narrative"
+	// FieldNarrativeTags holds the string denoting the narrative_tags field in the database.
+	FieldNarrativeTags = "narrative_tags"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// Table holds the table name of the introspection in the database.
@@ -61,6 +65,8 @@ var Columns = []string{
 	FieldTriggerReason,
 	FieldTaskID,
 	FieldNote,
+	FieldNarrative,
+	FieldNarrativeTags,
 	FieldCreatedAt,
 }
 
@@ -171,6 +177,11 @@ func ByTaskID(opts ...sql.OrderTermOption) OrderOption {
 // ByNote orders the results by the note field.
 func ByNote(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNote, opts...).ToFunc()
+}
+
+// ByNarrative orders the results by the narrative field.
+func ByNarrative(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNarrative, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -29,6 +29,7 @@ import (
 	"server/ent/decisionplan"
 	"server/ent/emotiondayfrozen"
 	"server/ent/equityunlock"
+	"server/ent/etfshare"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -145,6 +146,8 @@ type Client struct {
 	EmotionDayFrozen *EmotionDayFrozenClient
 	// EquityUnlock is the client for interacting with the EquityUnlock builders.
 	EquityUnlock *EquityUnlockClient
+	// EtfShare is the client for interacting with the EtfShare builders.
+	EtfShare *EtfShareClient
 	// EventDisposition is the client for interacting with the EventDisposition builders.
 	EventDisposition *EventDispositionClient
 	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
@@ -310,6 +313,7 @@ func (c *Client) init() {
 	c.DecisionPlan = NewDecisionPlanClient(c.config)
 	c.EmotionDayFrozen = NewEmotionDayFrozenClient(c.config)
 	c.EquityUnlock = NewEquityUnlockClient(c.config)
+	c.EtfShare = NewEtfShareClient(c.config)
 	c.EventDisposition = NewEventDispositionClient(c.config)
 	c.ExecutionIntent = NewExecutionIntentClient(c.config)
 	c.FinanceReport = NewFinanceReportClient(c.config)
@@ -488,6 +492,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		DecisionPlan:      NewDecisionPlanClient(cfg),
 		EmotionDayFrozen:  NewEmotionDayFrozenClient(cfg),
 		EquityUnlock:      NewEquityUnlockClient(cfg),
+		EtfShare:          NewEtfShareClient(cfg),
 		EventDisposition:  NewEventDispositionClient(cfg),
 		ExecutionIntent:   NewExecutionIntentClient(cfg),
 		FinanceReport:     NewFinanceReportClient(cfg),
@@ -593,6 +598,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		DecisionPlan:      NewDecisionPlanClient(cfg),
 		EmotionDayFrozen:  NewEmotionDayFrozenClient(cfg),
 		EquityUnlock:      NewEquityUnlockClient(cfg),
+		EtfShare:          NewEtfShareClient(cfg),
 		EventDisposition:  NewEventDispositionClient(cfg),
 		ExecutionIntent:   NewExecutionIntentClient(cfg),
 		FinanceReport:     NewFinanceReportClient(cfg),
@@ -694,16 +700,16 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BacktestReport, c.BacktestTask, c.BacktestTrade, c.CollectCursor,
 		c.ConfigHead, c.ConfigReceipt, c.DailyReview, c.DataQualityIssue,
 		c.DatasetManifest, c.DatasetRecord, c.DecisionPlan, c.EmotionDayFrozen,
-		c.EquityUnlock, c.EventDisposition, c.ExecutionIntent, c.FinanceReport,
-		c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact, c.IntelLink,
-		c.IntradayAlert, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
-		c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog, c.MacroSeries,
-		c.MarginDetail, c.MarginMarket, c.MarketBreadth, c.MarketData,
-		c.MarketSentiment, c.MoneyFlow, c.MorningBriefing, c.NewsSentiment,
-		c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping, c.OverseasQuote,
-		c.PaperRunSample, c.ParamProposal, c.Position, c.PredictionCheck,
-		c.RawResponse, c.ReportEstimate, c.ResearchJob, c.RiskCheck, c.RiskEvent,
-		c.SeatStats, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
+		c.EquityUnlock, c.EtfShare, c.EventDisposition, c.ExecutionIntent,
+		c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact,
+		c.IntelLink, c.IntradayAlert, c.Introspection, c.KbCase, c.KbChunk,
+		c.KbDocument, c.LhbSeat, c.LimitBoard, c.LimitPool, c.LimitPremium,
+		c.LlmCallLog, c.MacroSeries, c.MarginDetail, c.MarginMarket, c.MarketBreadth,
+		c.MarketData, c.MarketSentiment, c.MoneyFlow, c.MorningBriefing,
+		c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping,
+		c.OverseasQuote, c.PaperRunSample, c.ParamProposal, c.Position,
+		c.PredictionCheck, c.RawResponse, c.ReportEstimate, c.ResearchJob, c.RiskCheck,
+		c.RiskEvent, c.SeatStats, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
 		c.ServiceInstance, c.ShadowSignal, c.SignalEvent, c.SimBarCursor,
 		c.SourceHealth, c.StockAlias, c.StockBasic, c.StockBlacklist, c.StockFactor,
 		c.StockNameHistory, c.StrategyCandidate, c.StrategyConfig, c.StrategyFeedback,
@@ -722,16 +728,16 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BacktestReport, c.BacktestTask, c.BacktestTrade, c.CollectCursor,
 		c.ConfigHead, c.ConfigReceipt, c.DailyReview, c.DataQualityIssue,
 		c.DatasetManifest, c.DatasetRecord, c.DecisionPlan, c.EmotionDayFrozen,
-		c.EquityUnlock, c.EventDisposition, c.ExecutionIntent, c.FinanceReport,
-		c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact, c.IntelLink,
-		c.IntradayAlert, c.Introspection, c.KbCase, c.KbChunk, c.KbDocument, c.LhbSeat,
-		c.LimitBoard, c.LimitPool, c.LimitPremium, c.LlmCallLog, c.MacroSeries,
-		c.MarginDetail, c.MarginMarket, c.MarketBreadth, c.MarketData,
-		c.MarketSentiment, c.MoneyFlow, c.MorningBriefing, c.NewsSentiment,
-		c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping, c.OverseasQuote,
-		c.PaperRunSample, c.ParamProposal, c.Position, c.PredictionCheck,
-		c.RawResponse, c.ReportEstimate, c.ResearchJob, c.RiskCheck, c.RiskEvent,
-		c.SeatStats, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
+		c.EquityUnlock, c.EtfShare, c.EventDisposition, c.ExecutionIntent,
+		c.FinanceReport, c.HotRank, c.HsgtTop10, c.IntelCluster, c.IntelFact,
+		c.IntelLink, c.IntradayAlert, c.Introspection, c.KbCase, c.KbChunk,
+		c.KbDocument, c.LhbSeat, c.LimitBoard, c.LimitPool, c.LimitPremium,
+		c.LlmCallLog, c.MacroSeries, c.MarginDetail, c.MarginMarket, c.MarketBreadth,
+		c.MarketData, c.MarketSentiment, c.MoneyFlow, c.MorningBriefing,
+		c.NewsSentiment, c.NotifyMessage, c.OrderTrail, c.Outbox, c.OverseasMapping,
+		c.OverseasQuote, c.PaperRunSample, c.ParamProposal, c.Position,
+		c.PredictionCheck, c.RawResponse, c.ReportEstimate, c.ResearchJob, c.RiskCheck,
+		c.RiskEvent, c.SeatStats, c.SeatTag, c.Sector, c.SectorHeat, c.SectorMember,
 		c.ServiceInstance, c.ShadowSignal, c.SignalEvent, c.SimBarCursor,
 		c.SourceHealth, c.StockAlias, c.StockBasic, c.StockBlacklist, c.StockFactor,
 		c.StockNameHistory, c.StrategyCandidate, c.StrategyConfig, c.StrategyFeedback,
@@ -781,6 +787,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.EmotionDayFrozen.mutate(ctx, m)
 	case *EquityUnlockMutation:
 		return c.EquityUnlock.mutate(ctx, m)
+	case *EtfShareMutation:
+		return c.EtfShare.mutate(ctx, m)
 	case *EventDispositionMutation:
 		return c.EventDisposition.mutate(ctx, m)
 	case *ExecutionIntentMutation:
@@ -3313,6 +3321,139 @@ func (c *EquityUnlockClient) mutate(ctx context.Context, m *EquityUnlockMutation
 		return (&EquityUnlockDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown EquityUnlock mutation op: %q", m.Op())
+	}
+}
+
+// EtfShareClient is a client for the EtfShare schema.
+type EtfShareClient struct {
+	config
+}
+
+// NewEtfShareClient returns a client for the EtfShare from the given config.
+func NewEtfShareClient(c config) *EtfShareClient {
+	return &EtfShareClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `etfshare.Hooks(f(g(h())))`.
+func (c *EtfShareClient) Use(hooks ...Hook) {
+	c.hooks.EtfShare = append(c.hooks.EtfShare, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `etfshare.Intercept(f(g(h())))`.
+func (c *EtfShareClient) Intercept(interceptors ...Interceptor) {
+	c.inters.EtfShare = append(c.inters.EtfShare, interceptors...)
+}
+
+// Create returns a builder for creating a EtfShare entity.
+func (c *EtfShareClient) Create() *EtfShareCreate {
+	mutation := newEtfShareMutation(c.config, OpCreate)
+	return &EtfShareCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of EtfShare entities.
+func (c *EtfShareClient) CreateBulk(builders ...*EtfShareCreate) *EtfShareCreateBulk {
+	return &EtfShareCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *EtfShareClient) MapCreateBulk(slice any, setFunc func(*EtfShareCreate, int)) *EtfShareCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &EtfShareCreateBulk{err: fmt.Errorf("calling to EtfShareClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*EtfShareCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &EtfShareCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for EtfShare.
+func (c *EtfShareClient) Update() *EtfShareUpdate {
+	mutation := newEtfShareMutation(c.config, OpUpdate)
+	return &EtfShareUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *EtfShareClient) UpdateOne(_m *EtfShare) *EtfShareUpdateOne {
+	mutation := newEtfShareMutation(c.config, OpUpdateOne, withEtfShare(_m))
+	return &EtfShareUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *EtfShareClient) UpdateOneID(id int) *EtfShareUpdateOne {
+	mutation := newEtfShareMutation(c.config, OpUpdateOne, withEtfShareID(id))
+	return &EtfShareUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for EtfShare.
+func (c *EtfShareClient) Delete() *EtfShareDelete {
+	mutation := newEtfShareMutation(c.config, OpDelete)
+	return &EtfShareDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *EtfShareClient) DeleteOne(_m *EtfShare) *EtfShareDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *EtfShareClient) DeleteOneID(id int) *EtfShareDeleteOne {
+	builder := c.Delete().Where(etfshare.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &EtfShareDeleteOne{builder}
+}
+
+// Query returns a query builder for EtfShare.
+func (c *EtfShareClient) Query() *EtfShareQuery {
+	return &EtfShareQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeEtfShare},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a EtfShare entity by its id.
+func (c *EtfShareClient) Get(ctx context.Context, id int) (*EtfShare, error) {
+	return c.Query().Where(etfshare.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *EtfShareClient) GetX(ctx context.Context, id int) *EtfShare {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *EtfShareClient) Hooks() []Hook {
+	return c.hooks.EtfShare
+}
+
+// Interceptors returns the client interceptors.
+func (c *EtfShareClient) Interceptors() []Interceptor {
+	return c.inters.EtfShare
+}
+
+func (c *EtfShareClient) mutate(ctx context.Context, m *EtfShareMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&EtfShareCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&EtfShareUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&EtfShareUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&EtfShareDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown EtfShare mutation op: %q", m.Op())
 	}
 }
 
@@ -12430,7 +12571,7 @@ type (
 		AccountSnapshot, AgentDecision, AlertRule, AuditLog, BackfillJob,
 		BacktestReport, BacktestTask, BacktestTrade, CollectCursor, ConfigHead,
 		ConfigReceipt, DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord,
-		DecisionPlan, EmotionDayFrozen, EquityUnlock, EventDisposition,
+		DecisionPlan, EmotionDayFrozen, EquityUnlock, EtfShare, EventDisposition,
 		ExecutionIntent, FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact,
 		IntelLink, IntradayAlert, Introspection, KbCase, KbChunk, KbDocument, LhbSeat,
 		LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries, MarginDetail,
@@ -12449,7 +12590,7 @@ type (
 		AccountSnapshot, AgentDecision, AlertRule, AuditLog, BackfillJob,
 		BacktestReport, BacktestTask, BacktestTrade, CollectCursor, ConfigHead,
 		ConfigReceipt, DailyReview, DataQualityIssue, DatasetManifest, DatasetRecord,
-		DecisionPlan, EmotionDayFrozen, EquityUnlock, EventDisposition,
+		DecisionPlan, EmotionDayFrozen, EquityUnlock, EtfShare, EventDisposition,
 		ExecutionIntent, FinanceReport, HotRank, HsgtTop10, IntelCluster, IntelFact,
 		IntelLink, IntradayAlert, Introspection, KbCase, KbChunk, KbDocument, LhbSeat,
 		LimitBoard, LimitPool, LimitPremium, LlmCallLog, MacroSeries, MarginDetail,

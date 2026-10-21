@@ -11,19 +11,20 @@ import (
 
 // MemStore 是测试用的内存账本。
 type MemStore struct {
-	ledgerMu   sync.Mutex
-	intents    map[string]Intent
-	mu         sync.Mutex
-	orders     map[string]Order
-	fills      []Fill
-	trails     []Trail
-	cash       map[string]Cash
-	pos        map[string]Position
-	events     []Event
-	snaps      []AccountView
-	states     []accountstate.Snapshot
-	generation int64
-	simBars    map[string]time.Time
+	ledgerMu     sync.Mutex
+	intents      map[string]Intent
+	mu           sync.Mutex
+	orders       map[string]Order
+	fills        []Fill
+	trails       []Trail
+	cash         map[string]Cash
+	pos          map[string]Position
+	events       []Event
+	snaps        []AccountView
+	states       []accountstate.Snapshot
+	generation   int64
+	simBars      map[string]time.Time
+	dispositions []Disposition
 }
 
 func NewMemStore() *MemStore {
@@ -174,5 +175,14 @@ func (m *MemStore) Events() []Event {
 	defer m.mu.Unlock()
 	out := make([]Event, len(m.events))
 	copy(out, m.events)
+	return out
+}
+
+// Trails 返回全部委托状态流水（测试断言用）。
+func (m *MemStore) Trails() []Trail {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Trail, len(m.trails))
+	copy(out, m.trails)
 	return out
 }

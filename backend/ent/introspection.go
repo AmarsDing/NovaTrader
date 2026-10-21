@@ -44,6 +44,10 @@ type Introspection struct {
 	TaskID *int `json:"task_id,omitempty"`
 	// Note holds the value of the "note" field.
 	Note string `json:"note,omitempty"`
+	// M13-T14 LLM 归因叙述中文长文；LLM 不可用留 NULL
+	Narrative *string `json:"narrative,omitempty"`
+	// M13-T14 LLM 归因标签，随 narrative 一同输出；无内容留空
+	NarrativeTags []string `json:"narrative_tags,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -54,7 +58,7 @@ func (*Introspection) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case introspection.FieldAttribution:
+		case introspection.FieldAttribution, introspection.FieldNarrativeTags:
 			values[i] = new([]byte)
 		case introspection.FieldTriggered:
 			values[i] = new(sql.NullBool)
@@ -62,7 +66,7 @@ func (*Introspection) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case introspection.FieldID, introspection.FieldWindowDays, introspection.FieldSampleCount, introspection.FieldMissedCount, introspection.FieldTaskID:
 			values[i] = new(sql.NullInt64)
-		case introspection.FieldBook, introspection.FieldTriggerReason, introspection.FieldNote:
+		case introspection.FieldBook, introspection.FieldTriggerReason, introspection.FieldNote, introspection.FieldNarrative:
 			values[i] = new(sql.NullString)
 		case introspection.FieldTradeDate, introspection.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -168,6 +172,21 @@ func (_m *Introspection) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Note = value.String
 			}
+		case introspection.FieldNarrative:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field narrative", values[i])
+			} else if value.Valid {
+				_m.Narrative = new(string)
+				*_m.Narrative = value.String
+			}
+		case introspection.FieldNarrativeTags:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field narrative_tags", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.NarrativeTags); err != nil {
+					return fmt.Errorf("unmarshal field narrative_tags: %w", err)
+				}
+			}
 		case introspection.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -250,6 +269,14 @@ func (_m *Introspection) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("note=")
 	builder.WriteString(_m.Note)
+	builder.WriteString(", ")
+	if v := _m.Narrative; v != nil {
+		builder.WriteString("narrative=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	builder.WriteString("narrative_tags=")
+	builder.WriteString(fmt.Sprintf("%v", _m.NarrativeTags))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

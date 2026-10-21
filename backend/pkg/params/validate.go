@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"server/pkg/market"
 	"server/pkg/risk"
+	"server/pkg/rules"
 	"strconv"
 	"strings"
 )
@@ -29,6 +30,8 @@ func Target(key string) (service, effective string) {
 		return "brain", "下一次研判读取；配置缓存最长5秒"
 	case strings.HasPrefix(key, "app.intel.") || strings.HasPrefix(key, "app.kb."):
 		return "intel", "下一次处理读取；配置缓存最长5秒"
+	case strings.HasPrefix(key, "app.trade."):
+		return "trade", "下一次信号消费读取；配置缓存最长5秒"
 	case strings.HasPrefix(key, "app.notify."):
 		return "notify", "下一次通知读取；配置缓存最长5秒"
 	default:
@@ -138,6 +141,14 @@ var appAllowed = func() map[string]string {
 	add("bool", "brain.large.disable_json_mode brain.small.disable_json_mode intel.disable_json_mode")
 	// M13-T09：brain 研判是否接 M04 知识库案例检索（关闭则跳过 kb 段，不标 kb_missing）。
 	add("bool", "brain.kb.enabled")
+	// M13-T02 全自动消费闸门三键（trade 读面：score_min 0..100 / templates 白名单 / 降级治理开关）。
+	add("bool", "trade.auto.allow_degraded")
+	add("score0100", "trade.auto.score_min")
+	add("templates", "trade.auto.templates")
+	// M13-T05：app.trade.live.enabled（LIVE 放行总闸留痕）刻意不登记——配置页
+	// 泛化 PATCH/回滚遇到该键一律以「未登记的参数键」拒绝；唯一写口是 trade
+	// 准入流 GrantLive/RevokeLive（admin 网关先写 audit_log 后转发，先留痕后生效）。
+	// Target 的前缀映射仍让它在配置回执目标集显示为 trade（只读展示）。
 	add("text", "ds.tushare.token ds.tavily.token ds.tavily.feeds ds.rss.feeds ds.eastmoney.margin_reports ds.openbb_fred.key brain.large.model brain.large.key brain.small.model brain.small.key intel.key intel.small intel.large kb.model kb.key notify.webhook notify.secret")
 	add("url", "ds.pyworker brain.large.url brain.small.url intel.url kb.endpoint")
 	add("tier", "agent.technical agent.capital agent.news agent.external agent.synthesis agent.briefing agent.explain agent.ask")
@@ -274,6 +285,15 @@ func ValidatePatch(current, patch map[string]string) (map[string]string, error) 
 				if err := checkSourceChain(key, value); err != nil {
 					return nil, err
 				}
+			case "templates":
+				if err := checkTemplateChain(key, value); err != nil {
+					return nil, err
+				}
+			case "score0100":
+				n, e := strconv.ParseFloat(value, 64)
+				if e != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 100 {
+					return nil, fmt.Errorf("%s: 分数阈值需在0到100", key)
+				}
 			case "url":
 				if value != "" {
 					u, e := url.Parse(value)
@@ -316,6 +336,52 @@ func strictObject(raw string, v any) error {
 	}
 	return nil
 }
+
+// checkTemplateChain 校验 app.trade.auto.templates（M13-T02）：严格 JSON 字符串
+// 数组（拒绝尾随垃圾），长度 1..6、去重、元素属于现行生产模板白名单。
+// 空串清除覆盖走 appAllowed 既有空值分支，不经这里。
+func checkTemplateChain(key, raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "[") {
+		return fmt.Errorf("%s: 模板白名单需为JSON字符串数组", key)
+	}
+	var names []string
+	d := json.NewDecoder(strings.NewReader(trimmed))
+	if err := d.Decode(&names); err != nil {
+		return fmt.Errorf("%s: 模板白名单需为JSON字符串数组", key)
+	}
+	var trailing any
+	if err := d.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("%s: 模板白名单必须是单个JSON数组", key)
+	}
+	if len(names) < 1 || len(names) > 6 {
+		return fmt.Errorf("%s: 模板白名单长度需在1到6", key)
+	}
+	seen := map[string]bool{}
+	for _, n := range names {
+		if !tradeTemplateSet[n] {
+			return fmt.Errorf("%s: 存在未登记的选股模板", key)
+		}
+		if seen[n] {
+			return fmt.Errorf("%s: 模板白名单不得重复", key)
+		}
+		seen[n] = true
+	}
+	return nil
+}
+
+// tradeTemplateNames 现行生产模板白名单。同步纪律：与 pkg/rules 注册的模板常量
+// 同源——参数量不能 import strategy biz（biz→params 依赖环），故在用 pkg/rules 的
+// 导出常量登记；新增生产模板先在 pkg/rules 落常量再加进本表。
+var tradeTemplateNames = []string{rules.NameFirstBoard, rules.NamePullback}
+
+var tradeTemplateSet = func() map[string]bool {
+	m := make(map[string]bool, len(tradeTemplateNames))
+	for _, s := range tradeTemplateNames {
+		m[s] = true
+	}
+	return m
+}()
 
 // checkSourceChain 校验 app.domain.<domain>.sources：严格 JSON 字符串数组（拒绝尾随垃圾），
 // 长度 1..6、去重、元素在源白名单且都声明支持该域。错误文案不携带提交值。

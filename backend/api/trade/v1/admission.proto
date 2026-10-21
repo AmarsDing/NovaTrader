@@ -3,13 +3,28 @@ package api.trade.v1;
 import "google/api/annotations.proto";
 option go_package = "server/api/trade/v1;v1";
 
-// Read-only SIM operation evidence. This service cannot create credits or enable LIVE.
+// Read-only SIM operation evidence plus the audited LIVE gate (M13-T05).
+// 双闸语义：本服务 GrantLive 打开的 trade 侧总闸与风控侧 risk.live_admitted（M08-R01）
+// 同时为 true 才真正放行实盘委托，任一闸关闭一律 fail-closed（M09 决策3 半自动实盘门槛）；
+// place() 仍会内联重算运行证据准入，闸门状态不是免审凭证。
 service Admission {
   rpc GetAdmission(AdmissionEvidenceRequest) returns (AdmissionEvidenceReply) {
     option (google.api.http)={get:"/v1/trade/admission"};
   }
   rpc GetEvidence(AdmissionEvidenceRequest) returns (AdmissionEvidenceReply) {
     option (google.api.http)={get:"/v1/trade/admission/evidence"};
+  }
+  // GrantLive 是打开 LIVE 总闸的唯一路径：校验运行证据就绪（RunEvidenceReady ∧
+  // 连续≥20 真实交易日）且服务上层（admin 网关）已先写 audit_log（动作
+  // trade.grant_live），先持久留痕（strategy_config 键 app.trade.live.enabled，值含
+  // granted_by/granted_at/admission_evidence）后生效；服务重启按留痕恢复门状态。
+  rpc GrantLive(GrantLiveRequest) returns (AdmissionEvidenceReply) {
+    option (google.api.http)={post:"/v1/trade/admission/live/grant" body:"*"};
+  }
+  // RevokeLive 收权：同样要求已审计留痕（动作 trade.revoke_live）且记录操作人，
+  // 先清除持久留痕后关闸门。
+  rpc RevokeLive(RevokeLiveRequest) returns (AdmissionEvidenceReply) {
+    option (google.api.http)={post:"/v1/trade/admission/live/revoke" body:"*"};
   }
 }
 message AdmissionEvidenceRequest { string account=1; int32 limit=2; }
@@ -19,5 +34,19 @@ message AdmissionEvidenceReply {
   int32 consecutive_days=2;
   int32 required_days=3;
   bool run_evidence_ready=4;
-  bool live_enabled=5; // Always false: execution authority is a separate gate.
+  // LIVE 总闸当前状态：GrantLive 审计留痕开启、RevokeLive 关闭，服务启动时从
+  // strategy_config 持久留痕映射恢复（读不到一律保持关闭）。
+  bool live_enabled=5;
+  // 实盘通道状态：broker-gw 健康探测驱动，掉线/探测失败自动回落 false（fail-closed）。
+  bool broker_connected=6;
+}
+message GrantLiveRequest {
+  // operator 是批准人标识：admin 网关已做 Owner 鉴权并先行审计，空值一律拒绝。
+  // 经网关转发时以网关注入的 X-User 头为准（与审计 actor 同一身份），本字段是
+  // 直连 gRPC 的兜底取口。
+  string operator=1;
+}
+message RevokeLiveRequest {
+  // operator 是收权操作人标识：同样须先审计留痕，空值一律拒绝；取口同 GrantLive。
+  string operator=1;
 }

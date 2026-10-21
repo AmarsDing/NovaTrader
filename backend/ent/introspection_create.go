@@ -188,6 +188,26 @@ func (_c *IntrospectionCreate) SetNillableNote(v *string) *IntrospectionCreate {
 	return _c
 }
 
+// SetNarrative sets the "narrative" field.
+func (_c *IntrospectionCreate) SetNarrative(v string) *IntrospectionCreate {
+	_c.mutation.SetNarrative(v)
+	return _c
+}
+
+// SetNillableNarrative sets the "narrative" field if the given value is not nil.
+func (_c *IntrospectionCreate) SetNillableNarrative(v *string) *IntrospectionCreate {
+	if v != nil {
+		_c.SetNarrative(*v)
+	}
+	return _c
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (_c *IntrospectionCreate) SetNarrativeTags(v []string) *IntrospectionCreate {
+	_c.mutation.SetNarrativeTags(v)
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *IntrospectionCreate) SetCreatedAt(v time.Time) *IntrospectionCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -409,6 +429,14 @@ func (_c *IntrospectionCreate) createSpec() (*Introspection, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.Note(); ok {
 		_spec.SetField(introspection.FieldNote, field.TypeString, value)
 		_node.Note = value
+	}
+	if value, ok := _c.mutation.Narrative(); ok {
+		_spec.SetField(introspection.FieldNarrative, field.TypeString, value)
+		_node.Narrative = &value
+	}
+	if value, ok := _c.mutation.NarrativeTags(); ok {
+		_spec.SetField(introspection.FieldNarrativeTags, field.TypeJSON, value)
+		_node.NarrativeTags = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(introspection.FieldCreatedAt, field.TypeTime, value)
@@ -673,6 +701,42 @@ func (u *IntrospectionUpsert) SetNote(v string) *IntrospectionUpsert {
 // UpdateNote sets the "note" field to the value that was provided on create.
 func (u *IntrospectionUpsert) UpdateNote() *IntrospectionUpsert {
 	u.SetExcluded(introspection.FieldNote)
+	return u
+}
+
+// SetNarrative sets the "narrative" field.
+func (u *IntrospectionUpsert) SetNarrative(v string) *IntrospectionUpsert {
+	u.Set(introspection.FieldNarrative, v)
+	return u
+}
+
+// UpdateNarrative sets the "narrative" field to the value that was provided on create.
+func (u *IntrospectionUpsert) UpdateNarrative() *IntrospectionUpsert {
+	u.SetExcluded(introspection.FieldNarrative)
+	return u
+}
+
+// ClearNarrative clears the value of the "narrative" field.
+func (u *IntrospectionUpsert) ClearNarrative() *IntrospectionUpsert {
+	u.SetNull(introspection.FieldNarrative)
+	return u
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (u *IntrospectionUpsert) SetNarrativeTags(v []string) *IntrospectionUpsert {
+	u.Set(introspection.FieldNarrativeTags, v)
+	return u
+}
+
+// UpdateNarrativeTags sets the "narrative_tags" field to the value that was provided on create.
+func (u *IntrospectionUpsert) UpdateNarrativeTags() *IntrospectionUpsert {
+	u.SetExcluded(introspection.FieldNarrativeTags)
+	return u
+}
+
+// ClearNarrativeTags clears the value of the "narrative_tags" field.
+func (u *IntrospectionUpsert) ClearNarrativeTags() *IntrospectionUpsert {
+	u.SetNull(introspection.FieldNarrativeTags)
 	return u
 }
 
@@ -970,6 +1034,48 @@ func (u *IntrospectionUpsertOne) SetNote(v string) *IntrospectionUpsertOne {
 func (u *IntrospectionUpsertOne) UpdateNote() *IntrospectionUpsertOne {
 	return u.Update(func(s *IntrospectionUpsert) {
 		s.UpdateNote()
+	})
+}
+
+// SetNarrative sets the "narrative" field.
+func (u *IntrospectionUpsertOne) SetNarrative(v string) *IntrospectionUpsertOne {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.SetNarrative(v)
+	})
+}
+
+// UpdateNarrative sets the "narrative" field to the value that was provided on create.
+func (u *IntrospectionUpsertOne) UpdateNarrative() *IntrospectionUpsertOne {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.UpdateNarrative()
+	})
+}
+
+// ClearNarrative clears the value of the "narrative" field.
+func (u *IntrospectionUpsertOne) ClearNarrative() *IntrospectionUpsertOne {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.ClearNarrative()
+	})
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (u *IntrospectionUpsertOne) SetNarrativeTags(v []string) *IntrospectionUpsertOne {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.SetNarrativeTags(v)
+	})
+}
+
+// UpdateNarrativeTags sets the "narrative_tags" field to the value that was provided on create.
+func (u *IntrospectionUpsertOne) UpdateNarrativeTags() *IntrospectionUpsertOne {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.UpdateNarrativeTags()
+	})
+}
+
+// ClearNarrativeTags clears the value of the "narrative_tags" field.
+func (u *IntrospectionUpsertOne) ClearNarrativeTags() *IntrospectionUpsertOne {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.ClearNarrativeTags()
 	})
 }
 
@@ -1433,6 +1539,48 @@ func (u *IntrospectionUpsertBulk) SetNote(v string) *IntrospectionUpsertBulk {
 func (u *IntrospectionUpsertBulk) UpdateNote() *IntrospectionUpsertBulk {
 	return u.Update(func(s *IntrospectionUpsert) {
 		s.UpdateNote()
+	})
+}
+
+// SetNarrative sets the "narrative" field.
+func (u *IntrospectionUpsertBulk) SetNarrative(v string) *IntrospectionUpsertBulk {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.SetNarrative(v)
+	})
+}
+
+// UpdateNarrative sets the "narrative" field to the value that was provided on create.
+func (u *IntrospectionUpsertBulk) UpdateNarrative() *IntrospectionUpsertBulk {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.UpdateNarrative()
+	})
+}
+
+// ClearNarrative clears the value of the "narrative" field.
+func (u *IntrospectionUpsertBulk) ClearNarrative() *IntrospectionUpsertBulk {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.ClearNarrative()
+	})
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (u *IntrospectionUpsertBulk) SetNarrativeTags(v []string) *IntrospectionUpsertBulk {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.SetNarrativeTags(v)
+	})
+}
+
+// UpdateNarrativeTags sets the "narrative_tags" field to the value that was provided on create.
+func (u *IntrospectionUpsertBulk) UpdateNarrativeTags() *IntrospectionUpsertBulk {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.UpdateNarrativeTags()
+	})
+}
+
+// ClearNarrativeTags clears the value of the "narrative_tags" field.
+func (u *IntrospectionUpsertBulk) ClearNarrativeTags() *IntrospectionUpsertBulk {
+	return u.Update(func(s *IntrospectionUpsert) {
+		s.ClearNarrativeTags()
 	})
 }
 

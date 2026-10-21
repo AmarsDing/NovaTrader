@@ -557,6 +557,44 @@ var (
 			},
 		},
 	}
+	// EtfShareColumns holds the columns for the "etf_share" table.
+	EtfShareColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "symbol", Type: field.TypeString, Size: 16},
+		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "as_of", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "shares", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(24,4)"}},
+		{Name: "etf_type", Type: field.TypeString, Nullable: true, Size: 16},
+		{Name: "fund_category", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "name", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "manager", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "listing_date", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "date"}},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// EtfShareTable holds the schema information for the "etf_share" table.
+	EtfShareTable = &schema.Table{
+		Name:       "etf_share",
+		Columns:    EtfShareColumns,
+		PrimaryKey: []*schema.Column{EtfShareColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "etfshare_symbol_trade_date_as_of",
+				Unique:  true,
+				Columns: []*schema.Column{EtfShareColumns[1], EtfShareColumns[2], EtfShareColumns[3]},
+			},
+			{
+				Name:    "etfshare_trade_date",
+				Unique:  false,
+				Columns: []*schema.Column{EtfShareColumns[2]},
+			},
+			{
+				Name:    "etfshare_symbol_trade_date",
+				Unique:  false,
+				Columns: []*schema.Column{EtfShareColumns[1], EtfShareColumns[2]},
+			},
+		},
+	}
 	// EventDispositionsColumns holds the columns for the "event_dispositions" table.
 	EventDispositionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -845,6 +883,8 @@ var (
 		{Name: "trigger_reason", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "task_id", Type: field.TypeInt, Nullable: true},
 		{Name: "note", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "narrative", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "narrative_tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// IntrospectionTable holds the schema information for the "introspection" table.
@@ -2590,6 +2630,7 @@ var (
 		{Name: "fee", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
 		{Name: "signal_id", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "strategy_version", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "exec_id", Type: field.TypeString, Nullable: true, Size: 96},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// TradeFillTable holds the schema information for the "trade_fill" table.
@@ -2606,6 +2647,11 @@ var (
 			{
 				Name:    "tradefill_book_created_at",
 				Unique:  false,
+				Columns: []*schema.Column{TradeFillColumns[2], TradeFillColumns[12]},
+			},
+			{
+				Name:    "tradefill_book_exec_id",
+				Unique:  true,
 				Columns: []*schema.Column{TradeFillColumns[2], TradeFillColumns[11]},
 			},
 		},
@@ -2757,6 +2803,7 @@ var (
 		DecisionPlansTable,
 		EmotionDayFrozenTable,
 		EquityUnlockTable,
+		EtfShareTable,
 		EventDispositionsTable,
 		ExecutionIntentsTable,
 		FinanceReportTable,
@@ -2873,6 +2920,9 @@ func init() {
 	}
 	EquityUnlockTable.Annotation = &entsql.Annotation{
 		Table: "equity_unlock",
+	}
+	EtfShareTable.Annotation = &entsql.Annotation{
+		Table: "etf_share",
 	}
 	FinanceReportTable.Annotation = &entsql.Annotation{
 		Table: "finance_report",

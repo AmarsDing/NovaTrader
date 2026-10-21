@@ -25,6 +25,7 @@ import (
 	"server/ent/decisionplan"
 	"server/ent/emotiondayfrozen"
 	"server/ent/equityunlock"
+	"server/ent/etfshare"
 	"server/ent/eventdisposition"
 	"server/ent/executionintent"
 	"server/ent/financereport"
@@ -129,6 +130,7 @@ const (
 	TypeDecisionPlan      = "DecisionPlan"
 	TypeEmotionDayFrozen  = "EmotionDayFrozen"
 	TypeEquityUnlock      = "EquityUnlock"
+	TypeEtfShare          = "EtfShare"
 	TypeEventDisposition  = "EventDisposition"
 	TypeExecutionIntent   = "ExecutionIntent"
 	TypeFinanceReport     = "FinanceReport"
@@ -18733,6 +18735,987 @@ func (m *EquityUnlockMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown EquityUnlock edge %s", name)
 }
 
+// EtfShareMutation represents an operation that mutates the EtfShare nodes in the graph.
+type EtfShareMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	symbol        *string
+	trade_date    *time.Time
+	as_of         *time.Time
+	shares        *float64
+	addshares     *float64
+	etf_type      *string
+	fund_category *string
+	name          *string
+	manager       *string
+	listing_date  *time.Time
+	source        *string
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*EtfShare, error)
+	predicates    []predicate.EtfShare
+}
+
+var _ ent.Mutation = (*EtfShareMutation)(nil)
+
+// etfshareOption allows management of the mutation configuration using functional options.
+type etfshareOption func(*EtfShareMutation)
+
+// newEtfShareMutation creates new mutation for the EtfShare entity.
+func newEtfShareMutation(c config, op Op, opts ...etfshareOption) *EtfShareMutation {
+	m := &EtfShareMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeEtfShare,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withEtfShareID sets the ID field of the mutation.
+func withEtfShareID(id int) etfshareOption {
+	return func(m *EtfShareMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *EtfShare
+		)
+		m.oldValue = func(ctx context.Context) (*EtfShare, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().EtfShare.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withEtfShare sets the old EtfShare of the mutation.
+func withEtfShare(node *EtfShare) etfshareOption {
+	return func(m *EtfShareMutation) {
+		m.oldValue = func(context.Context) (*EtfShare, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m EtfShareMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m EtfShareMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *EtfShareMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *EtfShareMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().EtfShare.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSymbol sets the "symbol" field.
+func (m *EtfShareMutation) SetSymbol(s string) {
+	m.symbol = &s
+}
+
+// Symbol returns the value of the "symbol" field in the mutation.
+func (m *EtfShareMutation) Symbol() (r string, exists bool) {
+	v := m.symbol
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSymbol returns the old "symbol" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldSymbol(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSymbol is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSymbol requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSymbol: %w", err)
+	}
+	return oldValue.Symbol, nil
+}
+
+// ResetSymbol resets all changes to the "symbol" field.
+func (m *EtfShareMutation) ResetSymbol() {
+	m.symbol = nil
+}
+
+// SetTradeDate sets the "trade_date" field.
+func (m *EtfShareMutation) SetTradeDate(t time.Time) {
+	m.trade_date = &t
+}
+
+// TradeDate returns the value of the "trade_date" field in the mutation.
+func (m *EtfShareMutation) TradeDate() (r time.Time, exists bool) {
+	v := m.trade_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTradeDate returns the old "trade_date" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldTradeDate(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTradeDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTradeDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTradeDate: %w", err)
+	}
+	return oldValue.TradeDate, nil
+}
+
+// ResetTradeDate resets all changes to the "trade_date" field.
+func (m *EtfShareMutation) ResetTradeDate() {
+	m.trade_date = nil
+}
+
+// SetAsOf sets the "as_of" field.
+func (m *EtfShareMutation) SetAsOf(t time.Time) {
+	m.as_of = &t
+}
+
+// AsOf returns the value of the "as_of" field in the mutation.
+func (m *EtfShareMutation) AsOf() (r time.Time, exists bool) {
+	v := m.as_of
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAsOf returns the old "as_of" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldAsOf(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAsOf is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAsOf requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAsOf: %w", err)
+	}
+	return oldValue.AsOf, nil
+}
+
+// ResetAsOf resets all changes to the "as_of" field.
+func (m *EtfShareMutation) ResetAsOf() {
+	m.as_of = nil
+}
+
+// SetShares sets the "shares" field.
+func (m *EtfShareMutation) SetShares(f float64) {
+	m.shares = &f
+	m.addshares = nil
+}
+
+// Shares returns the value of the "shares" field in the mutation.
+func (m *EtfShareMutation) Shares() (r float64, exists bool) {
+	v := m.shares
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldShares returns the old "shares" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldShares(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldShares is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldShares requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldShares: %w", err)
+	}
+	return oldValue.Shares, nil
+}
+
+// AddShares adds f to the "shares" field.
+func (m *EtfShareMutation) AddShares(f float64) {
+	if m.addshares != nil {
+		*m.addshares += f
+	} else {
+		m.addshares = &f
+	}
+}
+
+// AddedShares returns the value that was added to the "shares" field in this mutation.
+func (m *EtfShareMutation) AddedShares() (r float64, exists bool) {
+	v := m.addshares
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetShares resets all changes to the "shares" field.
+func (m *EtfShareMutation) ResetShares() {
+	m.shares = nil
+	m.addshares = nil
+}
+
+// SetEtfType sets the "etf_type" field.
+func (m *EtfShareMutation) SetEtfType(s string) {
+	m.etf_type = &s
+}
+
+// EtfType returns the value of the "etf_type" field in the mutation.
+func (m *EtfShareMutation) EtfType() (r string, exists bool) {
+	v := m.etf_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEtfType returns the old "etf_type" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldEtfType(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEtfType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEtfType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEtfType: %w", err)
+	}
+	return oldValue.EtfType, nil
+}
+
+// ClearEtfType clears the value of the "etf_type" field.
+func (m *EtfShareMutation) ClearEtfType() {
+	m.etf_type = nil
+	m.clearedFields[etfshare.FieldEtfType] = struct{}{}
+}
+
+// EtfTypeCleared returns if the "etf_type" field was cleared in this mutation.
+func (m *EtfShareMutation) EtfTypeCleared() bool {
+	_, ok := m.clearedFields[etfshare.FieldEtfType]
+	return ok
+}
+
+// ResetEtfType resets all changes to the "etf_type" field.
+func (m *EtfShareMutation) ResetEtfType() {
+	m.etf_type = nil
+	delete(m.clearedFields, etfshare.FieldEtfType)
+}
+
+// SetFundCategory sets the "fund_category" field.
+func (m *EtfShareMutation) SetFundCategory(s string) {
+	m.fund_category = &s
+}
+
+// FundCategory returns the value of the "fund_category" field in the mutation.
+func (m *EtfShareMutation) FundCategory() (r string, exists bool) {
+	v := m.fund_category
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFundCategory returns the old "fund_category" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldFundCategory(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFundCategory is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFundCategory requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFundCategory: %w", err)
+	}
+	return oldValue.FundCategory, nil
+}
+
+// ClearFundCategory clears the value of the "fund_category" field.
+func (m *EtfShareMutation) ClearFundCategory() {
+	m.fund_category = nil
+	m.clearedFields[etfshare.FieldFundCategory] = struct{}{}
+}
+
+// FundCategoryCleared returns if the "fund_category" field was cleared in this mutation.
+func (m *EtfShareMutation) FundCategoryCleared() bool {
+	_, ok := m.clearedFields[etfshare.FieldFundCategory]
+	return ok
+}
+
+// ResetFundCategory resets all changes to the "fund_category" field.
+func (m *EtfShareMutation) ResetFundCategory() {
+	m.fund_category = nil
+	delete(m.clearedFields, etfshare.FieldFundCategory)
+}
+
+// SetName sets the "name" field.
+func (m *EtfShareMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *EtfShareMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *EtfShareMutation) ResetName() {
+	m.name = nil
+}
+
+// SetManager sets the "manager" field.
+func (m *EtfShareMutation) SetManager(s string) {
+	m.manager = &s
+}
+
+// Manager returns the value of the "manager" field in the mutation.
+func (m *EtfShareMutation) Manager() (r string, exists bool) {
+	v := m.manager
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManager returns the old "manager" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldManager(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManager is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManager requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManager: %w", err)
+	}
+	return oldValue.Manager, nil
+}
+
+// ClearManager clears the value of the "manager" field.
+func (m *EtfShareMutation) ClearManager() {
+	m.manager = nil
+	m.clearedFields[etfshare.FieldManager] = struct{}{}
+}
+
+// ManagerCleared returns if the "manager" field was cleared in this mutation.
+func (m *EtfShareMutation) ManagerCleared() bool {
+	_, ok := m.clearedFields[etfshare.FieldManager]
+	return ok
+}
+
+// ResetManager resets all changes to the "manager" field.
+func (m *EtfShareMutation) ResetManager() {
+	m.manager = nil
+	delete(m.clearedFields, etfshare.FieldManager)
+}
+
+// SetListingDate sets the "listing_date" field.
+func (m *EtfShareMutation) SetListingDate(t time.Time) {
+	m.listing_date = &t
+}
+
+// ListingDate returns the value of the "listing_date" field in the mutation.
+func (m *EtfShareMutation) ListingDate() (r time.Time, exists bool) {
+	v := m.listing_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldListingDate returns the old "listing_date" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldListingDate(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldListingDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldListingDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldListingDate: %w", err)
+	}
+	return oldValue.ListingDate, nil
+}
+
+// ClearListingDate clears the value of the "listing_date" field.
+func (m *EtfShareMutation) ClearListingDate() {
+	m.listing_date = nil
+	m.clearedFields[etfshare.FieldListingDate] = struct{}{}
+}
+
+// ListingDateCleared returns if the "listing_date" field was cleared in this mutation.
+func (m *EtfShareMutation) ListingDateCleared() bool {
+	_, ok := m.clearedFields[etfshare.FieldListingDate]
+	return ok
+}
+
+// ResetListingDate resets all changes to the "listing_date" field.
+func (m *EtfShareMutation) ResetListingDate() {
+	m.listing_date = nil
+	delete(m.clearedFields, etfshare.FieldListingDate)
+}
+
+// SetSource sets the "source" field.
+func (m *EtfShareMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *EtfShareMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *EtfShareMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *EtfShareMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *EtfShareMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the EtfShare entity.
+// If the EtfShare object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EtfShareMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *EtfShareMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the EtfShareMutation builder.
+func (m *EtfShareMutation) Where(ps ...predicate.EtfShare) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the EtfShareMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *EtfShareMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.EtfShare, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *EtfShareMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *EtfShareMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (EtfShare).
+func (m *EtfShareMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *EtfShareMutation) Fields() []string {
+	fields := make([]string, 0, 11)
+	if m.symbol != nil {
+		fields = append(fields, etfshare.FieldSymbol)
+	}
+	if m.trade_date != nil {
+		fields = append(fields, etfshare.FieldTradeDate)
+	}
+	if m.as_of != nil {
+		fields = append(fields, etfshare.FieldAsOf)
+	}
+	if m.shares != nil {
+		fields = append(fields, etfshare.FieldShares)
+	}
+	if m.etf_type != nil {
+		fields = append(fields, etfshare.FieldEtfType)
+	}
+	if m.fund_category != nil {
+		fields = append(fields, etfshare.FieldFundCategory)
+	}
+	if m.name != nil {
+		fields = append(fields, etfshare.FieldName)
+	}
+	if m.manager != nil {
+		fields = append(fields, etfshare.FieldManager)
+	}
+	if m.listing_date != nil {
+		fields = append(fields, etfshare.FieldListingDate)
+	}
+	if m.source != nil {
+		fields = append(fields, etfshare.FieldSource)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, etfshare.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *EtfShareMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case etfshare.FieldSymbol:
+		return m.Symbol()
+	case etfshare.FieldTradeDate:
+		return m.TradeDate()
+	case etfshare.FieldAsOf:
+		return m.AsOf()
+	case etfshare.FieldShares:
+		return m.Shares()
+	case etfshare.FieldEtfType:
+		return m.EtfType()
+	case etfshare.FieldFundCategory:
+		return m.FundCategory()
+	case etfshare.FieldName:
+		return m.Name()
+	case etfshare.FieldManager:
+		return m.Manager()
+	case etfshare.FieldListingDate:
+		return m.ListingDate()
+	case etfshare.FieldSource:
+		return m.Source()
+	case etfshare.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *EtfShareMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case etfshare.FieldSymbol:
+		return m.OldSymbol(ctx)
+	case etfshare.FieldTradeDate:
+		return m.OldTradeDate(ctx)
+	case etfshare.FieldAsOf:
+		return m.OldAsOf(ctx)
+	case etfshare.FieldShares:
+		return m.OldShares(ctx)
+	case etfshare.FieldEtfType:
+		return m.OldEtfType(ctx)
+	case etfshare.FieldFundCategory:
+		return m.OldFundCategory(ctx)
+	case etfshare.FieldName:
+		return m.OldName(ctx)
+	case etfshare.FieldManager:
+		return m.OldManager(ctx)
+	case etfshare.FieldListingDate:
+		return m.OldListingDate(ctx)
+	case etfshare.FieldSource:
+		return m.OldSource(ctx)
+	case etfshare.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown EtfShare field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EtfShareMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case etfshare.FieldSymbol:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSymbol(v)
+		return nil
+	case etfshare.FieldTradeDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTradeDate(v)
+		return nil
+	case etfshare.FieldAsOf:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAsOf(v)
+		return nil
+	case etfshare.FieldShares:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetShares(v)
+		return nil
+	case etfshare.FieldEtfType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEtfType(v)
+		return nil
+	case etfshare.FieldFundCategory:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFundCategory(v)
+		return nil
+	case etfshare.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case etfshare.FieldManager:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManager(v)
+		return nil
+	case etfshare.FieldListingDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetListingDate(v)
+		return nil
+	case etfshare.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case etfshare.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EtfShare field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *EtfShareMutation) AddedFields() []string {
+	var fields []string
+	if m.addshares != nil {
+		fields = append(fields, etfshare.FieldShares)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *EtfShareMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case etfshare.FieldShares:
+		return m.AddedShares()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *EtfShareMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case etfshare.FieldShares:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddShares(v)
+		return nil
+	}
+	return fmt.Errorf("unknown EtfShare numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *EtfShareMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(etfshare.FieldEtfType) {
+		fields = append(fields, etfshare.FieldEtfType)
+	}
+	if m.FieldCleared(etfshare.FieldFundCategory) {
+		fields = append(fields, etfshare.FieldFundCategory)
+	}
+	if m.FieldCleared(etfshare.FieldManager) {
+		fields = append(fields, etfshare.FieldManager)
+	}
+	if m.FieldCleared(etfshare.FieldListingDate) {
+		fields = append(fields, etfshare.FieldListingDate)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *EtfShareMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *EtfShareMutation) ClearField(name string) error {
+	switch name {
+	case etfshare.FieldEtfType:
+		m.ClearEtfType()
+		return nil
+	case etfshare.FieldFundCategory:
+		m.ClearFundCategory()
+		return nil
+	case etfshare.FieldManager:
+		m.ClearManager()
+		return nil
+	case etfshare.FieldListingDate:
+		m.ClearListingDate()
+		return nil
+	}
+	return fmt.Errorf("unknown EtfShare nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *EtfShareMutation) ResetField(name string) error {
+	switch name {
+	case etfshare.FieldSymbol:
+		m.ResetSymbol()
+		return nil
+	case etfshare.FieldTradeDate:
+		m.ResetTradeDate()
+		return nil
+	case etfshare.FieldAsOf:
+		m.ResetAsOf()
+		return nil
+	case etfshare.FieldShares:
+		m.ResetShares()
+		return nil
+	case etfshare.FieldEtfType:
+		m.ResetEtfType()
+		return nil
+	case etfshare.FieldFundCategory:
+		m.ResetFundCategory()
+		return nil
+	case etfshare.FieldName:
+		m.ResetName()
+		return nil
+	case etfshare.FieldManager:
+		m.ResetManager()
+		return nil
+	case etfshare.FieldListingDate:
+		m.ResetListingDate()
+		return nil
+	case etfshare.FieldSource:
+		m.ResetSource()
+		return nil
+	case etfshare.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown EtfShare field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *EtfShareMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *EtfShareMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *EtfShareMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *EtfShareMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *EtfShareMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *EtfShareMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *EtfShareMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown EtfShare unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *EtfShareMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown EtfShare edge %s", name)
+}
+
 // EventDispositionMutation represents an operation that mutates the EventDisposition nodes in the graph.
 type EventDispositionMutation struct {
 	config
@@ -26219,34 +27202,37 @@ func (m *IntradayAlertMutation) ResetEdge(name string) error {
 // IntrospectionMutation represents an operation that mutates the Introspection nodes in the graph.
 type IntrospectionMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *int
-	trade_date      *time.Time
-	book            *string
-	window_days     *int
-	addwindow_days  *int
-	sample_count    *int
-	addsample_count *int
-	win_rate        *float64
-	addwin_rate     *float64
-	avg_return      *float64
-	addavg_return   *float64
-	max_drawdown    *float64
-	addmax_drawdown *float64
-	missed_count    *int
-	addmissed_count *int
-	attribution     *map[string]int
-	triggered       *bool
-	trigger_reason  *string
-	task_id         *int
-	addtask_id      *int
-	note            *string
-	created_at      *time.Time
-	clearedFields   map[string]struct{}
-	done            bool
-	oldValue        func(context.Context) (*Introspection, error)
-	predicates      []predicate.Introspection
+	op                   Op
+	typ                  string
+	id                   *int
+	trade_date           *time.Time
+	book                 *string
+	window_days          *int
+	addwindow_days       *int
+	sample_count         *int
+	addsample_count      *int
+	win_rate             *float64
+	addwin_rate          *float64
+	avg_return           *float64
+	addavg_return        *float64
+	max_drawdown         *float64
+	addmax_drawdown      *float64
+	missed_count         *int
+	addmissed_count      *int
+	attribution          *map[string]int
+	triggered            *bool
+	trigger_reason       *string
+	task_id              *int
+	addtask_id           *int
+	note                 *string
+	narrative            *string
+	narrative_tags       *[]string
+	appendnarrative_tags []string
+	created_at           *time.Time
+	clearedFields        map[string]struct{}
+	done                 bool
+	oldValue             func(context.Context) (*Introspection, error)
+	predicates           []predicate.Introspection
 }
 
 var _ ent.Mutation = (*IntrospectionMutation)(nil)
@@ -26982,6 +27968,120 @@ func (m *IntrospectionMutation) ResetNote() {
 	m.note = nil
 }
 
+// SetNarrative sets the "narrative" field.
+func (m *IntrospectionMutation) SetNarrative(s string) {
+	m.narrative = &s
+}
+
+// Narrative returns the value of the "narrative" field in the mutation.
+func (m *IntrospectionMutation) Narrative() (r string, exists bool) {
+	v := m.narrative
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNarrative returns the old "narrative" field's value of the Introspection entity.
+// If the Introspection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IntrospectionMutation) OldNarrative(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNarrative is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNarrative requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNarrative: %w", err)
+	}
+	return oldValue.Narrative, nil
+}
+
+// ClearNarrative clears the value of the "narrative" field.
+func (m *IntrospectionMutation) ClearNarrative() {
+	m.narrative = nil
+	m.clearedFields[introspection.FieldNarrative] = struct{}{}
+}
+
+// NarrativeCleared returns if the "narrative" field was cleared in this mutation.
+func (m *IntrospectionMutation) NarrativeCleared() bool {
+	_, ok := m.clearedFields[introspection.FieldNarrative]
+	return ok
+}
+
+// ResetNarrative resets all changes to the "narrative" field.
+func (m *IntrospectionMutation) ResetNarrative() {
+	m.narrative = nil
+	delete(m.clearedFields, introspection.FieldNarrative)
+}
+
+// SetNarrativeTags sets the "narrative_tags" field.
+func (m *IntrospectionMutation) SetNarrativeTags(s []string) {
+	m.narrative_tags = &s
+	m.appendnarrative_tags = nil
+}
+
+// NarrativeTags returns the value of the "narrative_tags" field in the mutation.
+func (m *IntrospectionMutation) NarrativeTags() (r []string, exists bool) {
+	v := m.narrative_tags
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNarrativeTags returns the old "narrative_tags" field's value of the Introspection entity.
+// If the Introspection object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *IntrospectionMutation) OldNarrativeTags(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNarrativeTags is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNarrativeTags requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNarrativeTags: %w", err)
+	}
+	return oldValue.NarrativeTags, nil
+}
+
+// AppendNarrativeTags adds s to the "narrative_tags" field.
+func (m *IntrospectionMutation) AppendNarrativeTags(s []string) {
+	m.appendnarrative_tags = append(m.appendnarrative_tags, s...)
+}
+
+// AppendedNarrativeTags returns the list of values that were appended to the "narrative_tags" field in this mutation.
+func (m *IntrospectionMutation) AppendedNarrativeTags() ([]string, bool) {
+	if len(m.appendnarrative_tags) == 0 {
+		return nil, false
+	}
+	return m.appendnarrative_tags, true
+}
+
+// ClearNarrativeTags clears the value of the "narrative_tags" field.
+func (m *IntrospectionMutation) ClearNarrativeTags() {
+	m.narrative_tags = nil
+	m.appendnarrative_tags = nil
+	m.clearedFields[introspection.FieldNarrativeTags] = struct{}{}
+}
+
+// NarrativeTagsCleared returns if the "narrative_tags" field was cleared in this mutation.
+func (m *IntrospectionMutation) NarrativeTagsCleared() bool {
+	_, ok := m.clearedFields[introspection.FieldNarrativeTags]
+	return ok
+}
+
+// ResetNarrativeTags resets all changes to the "narrative_tags" field.
+func (m *IntrospectionMutation) ResetNarrativeTags() {
+	m.narrative_tags = nil
+	m.appendnarrative_tags = nil
+	delete(m.clearedFields, introspection.FieldNarrativeTags)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *IntrospectionMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -27052,7 +28152,7 @@ func (m *IntrospectionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *IntrospectionMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.trade_date != nil {
 		fields = append(fields, introspection.FieldTradeDate)
 	}
@@ -27092,6 +28192,12 @@ func (m *IntrospectionMutation) Fields() []string {
 	if m.note != nil {
 		fields = append(fields, introspection.FieldNote)
 	}
+	if m.narrative != nil {
+		fields = append(fields, introspection.FieldNarrative)
+	}
+	if m.narrative_tags != nil {
+		fields = append(fields, introspection.FieldNarrativeTags)
+	}
 	if m.created_at != nil {
 		fields = append(fields, introspection.FieldCreatedAt)
 	}
@@ -27129,6 +28235,10 @@ func (m *IntrospectionMutation) Field(name string) (ent.Value, bool) {
 		return m.TaskID()
 	case introspection.FieldNote:
 		return m.Note()
+	case introspection.FieldNarrative:
+		return m.Narrative()
+	case introspection.FieldNarrativeTags:
+		return m.NarrativeTags()
 	case introspection.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -27166,6 +28276,10 @@ func (m *IntrospectionMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldTaskID(ctx)
 	case introspection.FieldNote:
 		return m.OldNote(ctx)
+	case introspection.FieldNarrative:
+		return m.OldNarrative(ctx)
+	case introspection.FieldNarrativeTags:
+		return m.OldNarrativeTags(ctx)
 	case introspection.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -27267,6 +28381,20 @@ func (m *IntrospectionMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetNote(v)
+		return nil
+	case introspection.FieldNarrative:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNarrative(v)
+		return nil
+	case introspection.FieldNarrativeTags:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNarrativeTags(v)
 		return nil
 	case introspection.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -27398,6 +28526,12 @@ func (m *IntrospectionMutation) ClearedFields() []string {
 	if m.FieldCleared(introspection.FieldTaskID) {
 		fields = append(fields, introspection.FieldTaskID)
 	}
+	if m.FieldCleared(introspection.FieldNarrative) {
+		fields = append(fields, introspection.FieldNarrative)
+	}
+	if m.FieldCleared(introspection.FieldNarrativeTags) {
+		fields = append(fields, introspection.FieldNarrativeTags)
+	}
 	return fields
 }
 
@@ -27417,6 +28551,12 @@ func (m *IntrospectionMutation) ClearField(name string) error {
 		return nil
 	case introspection.FieldTaskID:
 		m.ClearTaskID()
+		return nil
+	case introspection.FieldNarrative:
+		m.ClearNarrative()
+		return nil
+	case introspection.FieldNarrativeTags:
+		m.ClearNarrativeTags()
 		return nil
 	}
 	return fmt.Errorf("unknown Introspection nullable field %s", name)
@@ -27464,6 +28604,12 @@ func (m *IntrospectionMutation) ResetField(name string) error {
 		return nil
 	case introspection.FieldNote:
 		m.ResetNote()
+		return nil
+	case introspection.FieldNarrative:
+		m.ResetNarrative()
+		return nil
+	case introspection.FieldNarrativeTags:
+		m.ResetNarrativeTags()
 		return nil
 	case introspection.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -82128,6 +83274,7 @@ type TradeFillMutation struct {
 	addfee           *float64
 	signal_id        *string
 	strategy_version *string
+	exec_id          *string
 	created_at       *time.Time
 	clearedFields    map[string]struct{}
 	done             bool
@@ -82673,6 +83820,55 @@ func (m *TradeFillMutation) ResetStrategyVersion() {
 	m.strategy_version = nil
 }
 
+// SetExecID sets the "exec_id" field.
+func (m *TradeFillMutation) SetExecID(s string) {
+	m.exec_id = &s
+}
+
+// ExecID returns the value of the "exec_id" field in the mutation.
+func (m *TradeFillMutation) ExecID() (r string, exists bool) {
+	v := m.exec_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExecID returns the old "exec_id" field's value of the TradeFill entity.
+// If the TradeFill object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TradeFillMutation) OldExecID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExecID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExecID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExecID: %w", err)
+	}
+	return oldValue.ExecID, nil
+}
+
+// ClearExecID clears the value of the "exec_id" field.
+func (m *TradeFillMutation) ClearExecID() {
+	m.exec_id = nil
+	m.clearedFields[tradefill.FieldExecID] = struct{}{}
+}
+
+// ExecIDCleared returns if the "exec_id" field was cleared in this mutation.
+func (m *TradeFillMutation) ExecIDCleared() bool {
+	_, ok := m.clearedFields[tradefill.FieldExecID]
+	return ok
+}
+
+// ResetExecID resets all changes to the "exec_id" field.
+func (m *TradeFillMutation) ResetExecID() {
+	m.exec_id = nil
+	delete(m.clearedFields, tradefill.FieldExecID)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *TradeFillMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -82743,7 +83939,7 @@ func (m *TradeFillMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *TradeFillMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.client_order_id != nil {
 		fields = append(fields, tradefill.FieldClientOrderID)
 	}
@@ -82773,6 +83969,9 @@ func (m *TradeFillMutation) Fields() []string {
 	}
 	if m.strategy_version != nil {
 		fields = append(fields, tradefill.FieldStrategyVersion)
+	}
+	if m.exec_id != nil {
+		fields = append(fields, tradefill.FieldExecID)
 	}
 	if m.created_at != nil {
 		fields = append(fields, tradefill.FieldCreatedAt)
@@ -82805,6 +84004,8 @@ func (m *TradeFillMutation) Field(name string) (ent.Value, bool) {
 		return m.SignalID()
 	case tradefill.FieldStrategyVersion:
 		return m.StrategyVersion()
+	case tradefill.FieldExecID:
+		return m.ExecID()
 	case tradefill.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -82836,6 +84037,8 @@ func (m *TradeFillMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldSignalID(ctx)
 	case tradefill.FieldStrategyVersion:
 		return m.OldStrategyVersion(ctx)
+	case tradefill.FieldExecID:
+		return m.OldExecID(ctx)
 	case tradefill.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -82916,6 +84119,13 @@ func (m *TradeFillMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStrategyVersion(v)
+		return nil
+	case tradefill.FieldExecID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExecID(v)
 		return nil
 	case tradefill.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -83004,7 +84214,11 @@ func (m *TradeFillMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *TradeFillMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(tradefill.FieldExecID) {
+		fields = append(fields, tradefill.FieldExecID)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -83017,6 +84231,11 @@ func (m *TradeFillMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *TradeFillMutation) ClearField(name string) error {
+	switch name {
+	case tradefill.FieldExecID:
+		m.ClearExecID()
+		return nil
+	}
 	return fmt.Errorf("unknown TradeFill nullable field %s", name)
 }
 
@@ -83053,6 +84272,9 @@ func (m *TradeFillMutation) ResetField(name string) error {
 		return nil
 	case tradefill.FieldStrategyVersion:
 		m.ResetStrategyVersion()
+		return nil
+	case tradefill.FieldExecID:
+		m.ResetExecID()
 		return nil
 	case tradefill.FieldCreatedAt:
 		m.ResetCreatedAt()

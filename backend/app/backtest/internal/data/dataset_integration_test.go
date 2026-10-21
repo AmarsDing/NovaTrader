@@ -69,7 +69,7 @@ func TestPostgresFreezeQueueReplayImmutable(t *testing.T) {
 	repo := NewRepo(client)
 	settings := biz.NewSettings(&conf.Backtest{})
 	settings.MonteCarloRuns = 10
-	uc := biz.NewUsecase(repo, src, nil, settings, log.NewStdLogger(io.Discard))
+	uc := biz.NewUsecase(repo, src, nil, settings, nil, log.NewStdLogger(io.Discard))
 	cfg := backtest.DefaultConfig()
 	cfg.Strategy = "breakout_ref"
 	cfg.Freq = "1d"

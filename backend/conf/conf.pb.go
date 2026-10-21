@@ -727,9 +727,11 @@ type Trade struct {
 	PaperDaysRequired int32 `protobuf:"varint,5,opt,name=paper_days_required,json=paperDaysRequired,proto3" json:"paper_days_required,omitempty"`
 	// 账户快照间隔，默认 10s
 	SnapshotInterval *durationpb.Duration `protobuf:"bytes,6,opt,name=snapshot_interval,json=snapshotInterval,proto3" json:"snapshot_interval,omitempty"`
-	// 东方财富文件单观测通道（G7 服务端接线；mTLS 到 Windows 隔离 broker-gw）。
+	// 东方财富文件单隔离通道（G7 服务端接线；mTLS 到 Windows 隔离 broker-gw）。
 	// 未配置：emfile 通道读面如实缺席；配置了连不上：如实 down——两种情形都不报虚假 idle。
-	// 本服务只做健康探测与回报核验，不放实盘下单出口、不写 CSV。
+	// 用途：健康探测、回报核验与实盘文件单出口（M13-T03 起由 trade biz 出口链接线，
+	// 本配置不是 LIVE 开关——放行在 strategy_config 键 app.trade.live.enabled
+	// 与柜台健康双闸，fail-closed 默认关）。
 	BrokerFile    *BrokerFile `protobuf:"bytes,7,opt,name=broker_file,json=brokerFile,proto3" json:"broker_file,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -814,7 +816,7 @@ func (x *Trade) GetBrokerFile() *BrokerFile {
 	return nil
 }
 
-// 东方财富量化终端文件单的隔离网关（broker-gw）连接与探测配置，仅观测用途。
+// 东方财富量化终端文件单的隔离网关（broker-gw）连接与探测配置。
 type BrokerFile struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// broker-gw 的 HTTPS 地址，例如 https://<交易机IP>:9443

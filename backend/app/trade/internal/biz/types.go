@@ -35,7 +35,9 @@ type Fill struct {
 	Fee             float64
 	SignalID        string
 	StrategyVersion string
-	CreatedAt       time.Time
+	// ExecID 是券商成交回报的柜台成交号；SIM 撮合成交恒为空。
+	ExecID    string
+	CreatedAt time.Time
 }
 
 type Trail struct {

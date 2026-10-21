@@ -60,6 +60,9 @@ type EmotionDayFrozen func(*sql.Selector)
 // EquityUnlock is the predicate function for equityunlock builders.
 type EquityUnlock func(*sql.Selector)
 
+// EtfShare is the predicate function for etfshare builders.
+type EtfShare func(*sql.Selector)
+
 // EventDisposition is the predicate function for eventdisposition builders.
 type EventDisposition func(*sql.Selector)
 

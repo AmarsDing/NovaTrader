@@ -1,5 +1,16 @@
 package biz
 
+// =============================================================================
+// M13-T02 契约固化（自动消费 | 终审闸门）
+// 自动消费者把 strategy 的 pending 信号转成 SIM 条件计划（sim_auto 授权）。
+// 契约：信号状态机 pending→approved 的最终闸门由 trade place() 内联的同步
+// /risk/v1/check（Engine.place → risk.Check）承担；strategy 侧
+// risk_checking/approved 分支只服务人工半自动流，自动消费链不依赖、不回写。
+// 幂等：以 signal_id 生成确定性 business_key 先占 execution_intent，重复事件
+// 命中唯一约束即跳过并计数；任一后续步骤失败保留意图给人核对（RecoverIntents
+// 如实标 unknown），同一信号绝不自动重发第二次开仓尝试。
+// =============================================================================
+
 import (
 	"context"
 	"errors"
@@ -13,6 +24,7 @@ import (
 	"server/pkg/decision"
 	"server/pkg/market"
 	"server/pkg/observe"
+	"server/pkg/rules"
 	"server/pkg/tradecal"
 )
 
@@ -305,4 +317,112 @@ func (e *Engine) Intents(ctx context.Context, account string) ([]Intent, error) 
 		return nil, err
 	}
 	return store.ListIntents(ctx, book)
+}
+
+// AutoGates 是自动消费的过滤闸门（M13-T02）：买方向+pending 之外的条目按
+// 配置裁决。阈值含边界；模板为闭集白名单；AllowDegraded=false 时 AI 降级
+// 信号一律不自动开新仓（治理：AI 全挂时不靠裸规则单开仓）。
+type AutoGates struct {
+	ScoreMin      float64
+	Templates     map[string]bool
+	AllowDegraded bool
+}
+
+// DefaultAutoGates 是出厂闸门（默认两生产模板、阈值 80、AI 降级不自动开新仓）。
+// 运行期由 appcfg 键 app.trade.auto.score_min / .templates / .allow_degraded 盖写，
+// 键校验在 pkg/params 白名单；模板别名集与 pkg/rules 注册常量同源。
+func DefaultAutoGates() AutoGates {
+	return AutoGates{ScoreMin: 80, Templates: map[string]bool{rules.NameFirstBoard: true, rules.NamePullback: true}}
+}
+
+// AutoSignal 是 strategy.signal.updated 载荷里自动消费者关心的裁剪
+// （载荷契约见 M06 设计文档第 12 节）；biz 不 import strategy 包，字段名对齐载荷 json 键。
+type AutoSignal struct {
+	SignalID   int
+	Book       string
+	Status     string
+	Symbol     string
+	Strategy   string
+	SignalType string
+	FinalScore float64
+	AIDegraded bool
+}
+
+// AutoOutcome 是这一次自动消费的落点。Skipped 非空表示被过滤或去重（成功处理
+// 的一种，不是失败）；非空 return 且 err 非 nil 时意图已占位、留给人工核对。
+type AutoOutcome struct {
+	Plan    PlanRecord
+	Skipped string
+}
+
+// AutoConsume 把一条信号事件按过滤链裁决，通过则 CreatePlan(sim_auto)+AuthorizePlan。
+// 只下单 SIM 账本；appcfg/环境读取由 core 组装进 gates，biz 只认 Gates 本体。
+func (e *Engine) AutoConsume(ctx context.Context, s AutoSignal, gates AutoGates) (AutoOutcome, error) {
+	if s.SignalID <= 0 {
+		return AutoOutcome{}, fmt.Errorf("%w: 信号编号非法", ErrInvalid)
+	}
+	if gates.ScoreMin <= 0 {
+		gates.ScoreMin = DefaultAutoGates().ScoreMin
+	}
+	if len(gates.Templates) == 0 {
+		gates.Templates = DefaultAutoGates().Templates
+	}
+	switch {
+	case s.Book != "" && s.Book != BookPaper:
+		// 全自动只进 SIM；live 账本由 T03/T05 双闸另行放行，这不是可由配置绕过的口。
+		return AutoOutcome{Skipped: "book"}, nil
+	case s.SignalType != "buy":
+		return AutoOutcome{Skipped: "non_buy"}, nil
+	case s.Status != "pending":
+		return AutoOutcome{Skipped: "status"}, nil
+	case s.FinalScore < gates.ScoreMin:
+		return AutoOutcome{Skipped: "score"}, nil
+	case !gates.Templates[s.Strategy]:
+		return AutoOutcome{Skipped: "template"}, nil
+	case s.AIDegraded && !gates.AllowDegraded:
+		return AutoOutcome{Skipped: "ai_degraded"}, nil
+	}
+	durable, ok := e.store.(LedgerStore)
+	if !ok {
+		return AutoOutcome{}, fmt.Errorf("%w: durable ledger unavailable", ErrInvalid)
+	}
+	if _, err := e.automationStore(); err != nil {
+		return AutoOutcome{}, err
+	}
+	id := strconv.Itoa(s.SignalID)
+	claim := Intent{
+		BusinessKey:   "autosignal:SIM:default:" + id,
+		ClientOrderID: "autosignal-" + id,
+		RequestHash: decision.Hash(struct {
+			ID                           int
+			Book, Symbol, Side, Strategy string
+		}{s.SignalID, BookPaper, s.Symbol, s.SignalType, s.Strategy}),
+		Book:  BookPaper,
+		State: "claimed",
+	}
+	if claim.RequestHash == "" {
+		return AutoOutcome{}, fmt.Errorf("%w: 意图摘要不可用", ErrInvalid)
+	}
+	in, created, err := durable.ClaimIntent(ctx, claim)
+	if err != nil {
+		return AutoOutcome{}, err
+	}
+	if !created {
+		if in.RequestHash != claim.RequestHash || in.ClientOrderID != claim.ClientOrderID {
+			return AutoOutcome{}, fmt.Errorf("%w: 同一信号自动意图身份不一致，需人工核对", ErrConflict)
+		}
+		return AutoOutcome{Skipped: "duplicate"}, nil
+	}
+	plan, err := e.CreatePlan(ctx, s.SignalID, "SIM", "", 0)
+	if err != nil {
+		return AutoOutcome{}, err
+	}
+	plan, err = e.AuthorizePlan(ctx, plan.Plan.PlanID, plan.Plan.Revision, "sim_auto", "auto")
+	if err != nil {
+		return AutoOutcome{}, err
+	}
+	if err = durable.FinishIntent(ctx, claim.ClientOrderID, plan.State, plan.Plan.PlanID); err != nil {
+		return AutoOutcome{}, err
+	}
+	return AutoOutcome{Plan: plan}, nil
 }

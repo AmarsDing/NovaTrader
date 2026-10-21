@@ -12,6 +12,8 @@ import (
 	"server/ent/executionintent"
 	"server/ent/tradeledgerlock"
 	"server/ent/tradeorder"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type ledgerTxKey struct{}
@@ -76,7 +78,7 @@ func (r *Repo) ClaimIntent(ctx context.Context, in biz.Intent) (biz.Intent, bool
 	if err == nil {
 		return intentFrom(row), true, nil
 	}
-	if !ent.IsConstraintError(err) {
+	if !isConstraintError(err) {
 		return biz.Intent{}, false, err
 	}
 	row, err = r.client.ExecutionIntent.Query().Where(executionintent.Or(executionintent.BusinessKey(in.BusinessKey), executionintent.ClientOrderID(in.ClientOrderID))).Only(ctx)
@@ -84,6 +86,17 @@ func (r *Repo) ClaimIntent(ctx context.Context, in biz.Intent) (biz.Intent, bool
 		return biz.Intent{}, false, fmt.Errorf("%w: 委托键冲突", biz.ErrConflict)
 	}
 	return intentFrom(row), false, nil
+}
+
+// isConstraintError 判唯一约束冲突：ent 的 IsConstraintError 靠错误文本匹配，
+// zh_CN locale 的 PostgreSQL 返回本地化的「重复键违反唯一约束」会漏判——
+// 显式认 SQLSTATE 23505，不只依赖文本（中文机上提交流程的幂等闸门不被击穿）。
+func isConstraintError(err error) bool {
+	if ent.IsConstraintError(err) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 func (r *Repo) FinishIntent(ctx context.Context, id, state, reason string) error {
 	n, err := r.clientFor(ctx).ExecutionIntent.Update().Where(executionintent.ClientOrderID(id)).SetState(state).SetReason(reason).SetUpdatedAt(time.Now()).Save(ctx)

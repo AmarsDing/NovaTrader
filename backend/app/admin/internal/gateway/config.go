@@ -122,6 +122,9 @@ func previewConfig(current params.Snapshot, values map[string]string, replace bo
 	if services["datahub"] {
 		out.KnownEffects = append(out.KnownEffects, "数据源开关/降级链/配额在下一次采集读取后生效，最长约5秒；域降级链改动立即影响下一次该域采集。")
 	}
+	if services["trade"] {
+		out.KnownEffects = append(out.KnownEffects, "app.trade.* 闸门键在下一次信号消费读取后生效（最长约5秒）；实盘总闸 app.trade.live.enabled 只经准入接口审计开关，不经配置页直改。")
+	}
 	return out
 }
 func (g *Gate) config(w http.ResponseWriter, r *http.Request) {
@@ -268,7 +271,7 @@ func (g *Gate) writeConfig(w http.ResponseWriter, r *http.Request, store Revisio
 	// Every registered reader observes the same global snapshot version. Include
 	// readers whose last override was removed, so clear/rollback still waits for
 	// their real load acknowledgement instead of silently dropping the target.
-	targets := map[string]bool{"datahub": true, "market": true, "intel": true, "brain": true, "strategy": true, "risk": true, "notify": true}
+	targets := map[string]bool{"datahub": true, "market": true, "intel": true, "brain": true, "strategy": true, "risk": true, "notify": true, "trade": true}
 	for key := range s.Values {
 		if target, _ := params.Target(key); target != "unknown" {
 			targets[target] = true

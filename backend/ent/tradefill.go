@@ -37,6 +37,8 @@ type TradeFill struct {
 	SignalID string `json:"signal_id,omitempty"`
 	// StrategyVersion holds the value of the "strategy_version" field.
 	StrategyVersion string `json:"strategy_version,omitempty"`
+	// ExecID holds the value of the "exec_id" field.
+	ExecID *string `json:"exec_id,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 	selectValues sql.SelectValues
@@ -51,7 +53,7 @@ func (*TradeFill) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case tradefill.FieldID, tradefill.FieldQty:
 			values[i] = new(sql.NullInt64)
-		case tradefill.FieldClientOrderID, tradefill.FieldBook, tradefill.FieldSymbol, tradefill.FieldSide, tradefill.FieldSignalID, tradefill.FieldStrategyVersion:
+		case tradefill.FieldClientOrderID, tradefill.FieldBook, tradefill.FieldSymbol, tradefill.FieldSide, tradefill.FieldSignalID, tradefill.FieldStrategyVersion, tradefill.FieldExecID:
 			values[i] = new(sql.NullString)
 		case tradefill.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -136,6 +138,13 @@ func (_m *TradeFill) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.StrategyVersion = value.String
 			}
+		case tradefill.FieldExecID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field exec_id", values[i])
+			} else if value.Valid {
+				_m.ExecID = new(string)
+				*_m.ExecID = value.String
+			}
 		case tradefill.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -207,6 +216,11 @@ func (_m *TradeFill) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("strategy_version=")
 	builder.WriteString(_m.StrategyVersion)
+	builder.WriteString(", ")
+	if v := _m.ExecID; v != nil {
+		builder.WriteString("exec_id=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

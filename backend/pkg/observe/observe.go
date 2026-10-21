@@ -33,6 +33,7 @@ var definitions = map[string][]definition{
 		{"minute_notice", "notification", "market.bar.1m", "validated_market_bar_envelope_only_not_ledger_or_broker_ack"},
 		{"minute_bar", "business", "validated_source_minute", "source_minute_cursor_and_ledger_committed_not_guaranteed_fill"},
 		{"risk_exit", "business", "risk.exit", "local_exit_order_record_committed_not_broker_ack"},
+		{"signal_auto", "business", "strategy.signal.updated", "consume_outcome_recorded_not_order_or_broker_ack"},
 		{"plan_tick", "infrastructure", "plan_timer", "conditional_plan_tick_returned_nil_internal_waits_are_not_execution"},
 		{"plan_execute", "business", "conditional_timer_or_manual", "conditional_execution_transaction_outcome_not_guaranteed_fill"},
 		{"snapshot", "business", "startup_or_snapshot_timer", "complete_sim_snapshot_transaction_committed"},
@@ -42,6 +43,8 @@ var definitions = map[string][]definition{
 		{"watch_sweep", "infrastructure", "dispatch_timer", "watch_order_sweep_pass_returned_success_not_guaranteed_exit"},
 		{"paper_evidence", "business", "evidence_timer", "collection_and_store_returned_success_not_day_qualification_or_unique_insert"},
 		{"market_lease", "notification", "lease_timer", "local_nats_publish_returned_success_not_lease_consumer_ack"},
+		{"live_probe", "infrastructure", "live_probe_timer", "health_call_finished_and_observer_recorded_not_broker_open"},
+		{"broker_report", "business", "report_poll_timer", "snapshot_merged_committed_or_section_skipped_not_broker_ack"},
 	},
 	"backtest": {
 		{"task_claim", "infrastructure", "worker_poll", "task_claim_returned_ownership_not_task_result"},
@@ -75,6 +78,8 @@ var definitions = map[string][]definition{
 		{"briefing", "business", "briefing_rpc_or_scheduler", "briefing_persisted_fallback_skipped_not_model_availability_or_prediction_accuracy"},
 		{"explain", "business", "explain_rpc", "explanation_persisted_fallback_skipped_discard_rejected_not_prediction_accuracy"},
 		{"ask", "business", "ask_rpc", "answer_persisted_fallback_skipped_discard_rejected_not_prediction_accuracy"},
+		{"review_ai", "business", "review_ai_scheduler_or_rpc", "ai_review_persisted_segment_degraded_skipped_not_prediction_accuracy"},
+		{"review_ai_week", "business", "review_ai_weekly_scheduler_or_rpc", "ai_weekly_review_persisted_degraded_skipped_not_prediction_accuracy"},
 		{"outbox", "infrastructure", "dispatch_timer", "outbox_dispatch_returned_success"},
 	},
 	"notify": {

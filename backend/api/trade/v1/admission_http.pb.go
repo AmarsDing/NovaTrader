@@ -21,16 +21,28 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationAdmissionGetAdmission = "/api.trade.v1.Admission/GetAdmission"
 const OperationAdmissionGetEvidence = "/api.trade.v1.Admission/GetEvidence"
+const OperationAdmissionGrantLive = "/api.trade.v1.Admission/GrantLive"
+const OperationAdmissionRevokeLive = "/api.trade.v1.Admission/RevokeLive"
 
 type AdmissionHTTPServer interface {
 	GetAdmission(context.Context, *AdmissionEvidenceRequest) (*AdmissionEvidenceReply, error)
 	GetEvidence(context.Context, *AdmissionEvidenceRequest) (*AdmissionEvidenceReply, error)
+	// GrantLive GrantLive 是打开 LIVE 总闸的唯一路径：校验运行证据就绪（RunEvidenceReady ∧
+	// 连续≥20 真实交易日）且服务上层（admin 网关）已先写 audit_log（动作
+	// trade.grant_live），先持久留痕（strategy_config 键 app.trade.live.enabled，值含
+	// granted_by/granted_at/admission_evidence）后生效；服务重启按留痕恢复门状态。
+	GrantLive(context.Context, *GrantLiveRequest) (*AdmissionEvidenceReply, error)
+	// RevokeLive RevokeLive 收权：同样要求已审计留痕（动作 trade.revoke_live）且记录操作人，
+	// 先清除持久留痕后关闸门。
+	RevokeLive(context.Context, *RevokeLiveRequest) (*AdmissionEvidenceReply, error)
 }
 
 func RegisterAdmissionHTTPServer(s *http.Server, srv AdmissionHTTPServer) {
 	r := s.Route("/")
 	r.GET("/v1/trade/admission", _Admission_GetAdmission0_HTTP_Handler(srv))
 	r.GET("/v1/trade/admission/evidence", _Admission_GetEvidence0_HTTP_Handler(srv))
+	r.POST("/v1/trade/admission/live/grant", _Admission_GrantLive0_HTTP_Handler(srv))
+	r.POST("/v1/trade/admission/live/revoke", _Admission_RevokeLive0_HTTP_Handler(srv))
 }
 
 func _Admission_GetAdmission0_HTTP_Handler(srv AdmissionHTTPServer) func(ctx http.Context) error {
@@ -71,9 +83,61 @@ func _Admission_GetEvidence0_HTTP_Handler(srv AdmissionHTTPServer) func(ctx http
 	}
 }
 
+func _Admission_GrantLive0_HTTP_Handler(srv AdmissionHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GrantLiveRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationAdmissionGrantLive)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GrantLive(ctx, req.(*GrantLiveRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AdmissionEvidenceReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Admission_RevokeLive0_HTTP_Handler(srv AdmissionHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RevokeLiveRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationAdmissionRevokeLive)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RevokeLive(ctx, req.(*RevokeLiveRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*AdmissionEvidenceReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type AdmissionHTTPClient interface {
 	GetAdmission(ctx context.Context, req *AdmissionEvidenceRequest, opts ...http.CallOption) (rsp *AdmissionEvidenceReply, err error)
 	GetEvidence(ctx context.Context, req *AdmissionEvidenceRequest, opts ...http.CallOption) (rsp *AdmissionEvidenceReply, err error)
+	// GrantLive GrantLive 是打开 LIVE 总闸的唯一路径：校验运行证据就绪（RunEvidenceReady ∧
+	// 连续≥20 真实交易日）且服务上层（admin 网关）已先写 audit_log（动作
+	// trade.grant_live），先持久留痕（strategy_config 键 app.trade.live.enabled，值含
+	// granted_by/granted_at/admission_evidence）后生效；服务重启按留痕恢复门状态。
+	GrantLive(ctx context.Context, req *GrantLiveRequest, opts ...http.CallOption) (rsp *AdmissionEvidenceReply, err error)
+	// RevokeLive RevokeLive 收权：同样要求已审计留痕（动作 trade.revoke_live）且记录操作人，
+	// 先清除持久留痕后关闸门。
+	RevokeLive(ctx context.Context, req *RevokeLiveRequest, opts ...http.CallOption) (rsp *AdmissionEvidenceReply, err error)
 }
 
 type AdmissionHTTPClientImpl struct {
@@ -104,6 +168,38 @@ func (c *AdmissionHTTPClientImpl) GetEvidence(ctx context.Context, in *Admission
 	opts = append(opts, http.Operation(OperationAdmissionGetEvidence))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GrantLive GrantLive 是打开 LIVE 总闸的唯一路径：校验运行证据就绪（RunEvidenceReady ∧
+// 连续≥20 真实交易日）且服务上层（admin 网关）已先写 audit_log（动作
+// trade.grant_live），先持久留痕（strategy_config 键 app.trade.live.enabled，值含
+// granted_by/granted_at/admission_evidence）后生效；服务重启按留痕恢复门状态。
+func (c *AdmissionHTTPClientImpl) GrantLive(ctx context.Context, in *GrantLiveRequest, opts ...http.CallOption) (*AdmissionEvidenceReply, error) {
+	var out AdmissionEvidenceReply
+	pattern := "/v1/trade/admission/live/grant"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationAdmissionGrantLive))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RevokeLive RevokeLive 收权：同样要求已审计留痕（动作 trade.revoke_live）且记录操作人，
+// 先清除持久留痕后关闸门。
+func (c *AdmissionHTTPClientImpl) RevokeLive(ctx context.Context, in *RevokeLiveRequest, opts ...http.CallOption) (*AdmissionEvidenceReply, error) {
+	var out AdmissionEvidenceReply
+	pattern := "/v1/trade/admission/live/revoke"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationAdmissionRevokeLive))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

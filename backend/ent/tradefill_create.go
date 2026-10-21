@@ -106,6 +106,20 @@ func (_c *TradeFillCreate) SetNillableStrategyVersion(v *string) *TradeFillCreat
 	return _c
 }
 
+// SetExecID sets the "exec_id" field.
+func (_c *TradeFillCreate) SetExecID(v string) *TradeFillCreate {
+	_c.mutation.SetExecID(v)
+	return _c
+}
+
+// SetNillableExecID sets the "exec_id" field if the given value is not nil.
+func (_c *TradeFillCreate) SetNillableExecID(v *string) *TradeFillCreate {
+	if v != nil {
+		_c.SetExecID(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TradeFillCreate) SetCreatedAt(v time.Time) *TradeFillCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -235,6 +249,11 @@ func (_c *TradeFillCreate) check() error {
 			return &ValidationError{Name: "strategy_version", err: fmt.Errorf(`ent: validator failed for field "TradeFill.strategy_version": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.ExecID(); ok {
+		if err := tradefill.ExecIDValidator(v); err != nil {
+			return &ValidationError{Name: "exec_id", err: fmt.Errorf(`ent: validator failed for field "TradeFill.exec_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "TradeFill.created_at"`)}
 	}
@@ -304,6 +323,10 @@ func (_c *TradeFillCreate) createSpec() (*TradeFill, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.StrategyVersion(); ok {
 		_spec.SetField(tradefill.FieldStrategyVersion, field.TypeString, value)
 		_node.StrategyVersion = value
+	}
+	if value, ok := _c.mutation.ExecID(); ok {
+		_spec.SetField(tradefill.FieldExecID, field.TypeString, value)
+		_node.ExecID = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(tradefill.FieldCreatedAt, field.TypeTime, value)
@@ -502,6 +525,24 @@ func (u *TradeFillUpsert) SetStrategyVersion(v string) *TradeFillUpsert {
 // UpdateStrategyVersion sets the "strategy_version" field to the value that was provided on create.
 func (u *TradeFillUpsert) UpdateStrategyVersion() *TradeFillUpsert {
 	u.SetExcluded(tradefill.FieldStrategyVersion)
+	return u
+}
+
+// SetExecID sets the "exec_id" field.
+func (u *TradeFillUpsert) SetExecID(v string) *TradeFillUpsert {
+	u.Set(tradefill.FieldExecID, v)
+	return u
+}
+
+// UpdateExecID sets the "exec_id" field to the value that was provided on create.
+func (u *TradeFillUpsert) UpdateExecID() *TradeFillUpsert {
+	u.SetExcluded(tradefill.FieldExecID)
+	return u
+}
+
+// ClearExecID clears the value of the "exec_id" field.
+func (u *TradeFillUpsert) ClearExecID() *TradeFillUpsert {
+	u.SetNull(tradefill.FieldExecID)
 	return u
 }
 
@@ -722,6 +763,27 @@ func (u *TradeFillUpsertOne) SetStrategyVersion(v string) *TradeFillUpsertOne {
 func (u *TradeFillUpsertOne) UpdateStrategyVersion() *TradeFillUpsertOne {
 	return u.Update(func(s *TradeFillUpsert) {
 		s.UpdateStrategyVersion()
+	})
+}
+
+// SetExecID sets the "exec_id" field.
+func (u *TradeFillUpsertOne) SetExecID(v string) *TradeFillUpsertOne {
+	return u.Update(func(s *TradeFillUpsert) {
+		s.SetExecID(v)
+	})
+}
+
+// UpdateExecID sets the "exec_id" field to the value that was provided on create.
+func (u *TradeFillUpsertOne) UpdateExecID() *TradeFillUpsertOne {
+	return u.Update(func(s *TradeFillUpsert) {
+		s.UpdateExecID()
+	})
+}
+
+// ClearExecID clears the value of the "exec_id" field.
+func (u *TradeFillUpsertOne) ClearExecID() *TradeFillUpsertOne {
+	return u.Update(func(s *TradeFillUpsert) {
+		s.ClearExecID()
 	})
 }
 
@@ -1108,6 +1170,27 @@ func (u *TradeFillUpsertBulk) SetStrategyVersion(v string) *TradeFillUpsertBulk 
 func (u *TradeFillUpsertBulk) UpdateStrategyVersion() *TradeFillUpsertBulk {
 	return u.Update(func(s *TradeFillUpsert) {
 		s.UpdateStrategyVersion()
+	})
+}
+
+// SetExecID sets the "exec_id" field.
+func (u *TradeFillUpsertBulk) SetExecID(v string) *TradeFillUpsertBulk {
+	return u.Update(func(s *TradeFillUpsert) {
+		s.SetExecID(v)
+	})
+}
+
+// UpdateExecID sets the "exec_id" field to the value that was provided on create.
+func (u *TradeFillUpsertBulk) UpdateExecID() *TradeFillUpsertBulk {
+	return u.Update(func(s *TradeFillUpsert) {
+		s.UpdateExecID()
+	})
+}
+
+// ClearExecID clears the value of the "exec_id" field.
+func (u *TradeFillUpsertBulk) ClearExecID() *TradeFillUpsertBulk {
+	return u.Update(func(s *TradeFillUpsert) {
+		s.ClearExecID()
 	})
 }
 

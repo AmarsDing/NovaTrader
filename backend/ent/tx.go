@@ -48,6 +48,8 @@ type Tx struct {
 	EmotionDayFrozen *EmotionDayFrozenClient
 	// EquityUnlock is the client for interacting with the EquityUnlock builders.
 	EquityUnlock *EquityUnlockClient
+	// EtfShare is the client for interacting with the EtfShare builders.
+	EtfShare *EtfShareClient
 	// EventDisposition is the client for interacting with the EventDisposition builders.
 	EventDisposition *EventDispositionClient
 	// ExecutionIntent is the client for interacting with the ExecutionIntent builders.
@@ -333,6 +335,7 @@ func (tx *Tx) init() {
 	tx.DecisionPlan = NewDecisionPlanClient(tx.config)
 	tx.EmotionDayFrozen = NewEmotionDayFrozenClient(tx.config)
 	tx.EquityUnlock = NewEquityUnlockClient(tx.config)
+	tx.EtfShare = NewEtfShareClient(tx.config)
 	tx.EventDisposition = NewEventDispositionClient(tx.config)
 	tx.ExecutionIntent = NewExecutionIntentClient(tx.config)
 	tx.FinanceReport = NewFinanceReportClient(tx.config)

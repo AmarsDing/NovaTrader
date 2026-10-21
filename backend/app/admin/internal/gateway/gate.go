@@ -363,7 +363,7 @@ func sensitive(action string) bool {
 	}
 	switch action {
 	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params", "config.save",
-		"trade.order", "trade.cancel", "trade.confirm", "strategy.approve", "strategy.reject", "strategy.rollback",
+		"trade.order", "trade.cancel", "trade.confirm", "trade.grant_live", "trade.revoke_live", "strategy.approve", "strategy.reject", "strategy.rollback",
 		"ops.backup", "ops.disposition", "ops.dead_letter_replay":
 		return true
 	default:
@@ -393,6 +393,12 @@ func auditAction(method, path string) string {
 		return "trade.cancel"
 	case method == http.MethodPost && strings.HasSuffix(path, "/confirm"):
 		return "trade.confirm"
+	// M13-T05：LIVE 放行/收权先写审计后转发（动作名与 trade biz.LiveGateAudit* 同源）；
+	// 审计关闸时代理直接 503，绝不出现「未审计先放行」。
+	case method == http.MethodPost && strings.HasSuffix(path, "/api/trade/admission/live/grant"):
+		return "trade.grant_live"
+	case method == http.MethodPost && strings.HasSuffix(path, "/api/trade/admission/live/revoke"):
+		return "trade.revoke_live"
 	case method == http.MethodPost && strings.Contains(path, "/approve"):
 		return "strategy.approve"
 	case method == http.MethodPost && strings.Contains(path, "/reject"):

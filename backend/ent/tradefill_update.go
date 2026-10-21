@@ -196,6 +196,26 @@ func (_u *TradeFillUpdate) SetNillableStrategyVersion(v *string) *TradeFillUpdat
 	return _u
 }
 
+// SetExecID sets the "exec_id" field.
+func (_u *TradeFillUpdate) SetExecID(v string) *TradeFillUpdate {
+	_u.mutation.SetExecID(v)
+	return _u
+}
+
+// SetNillableExecID sets the "exec_id" field if the given value is not nil.
+func (_u *TradeFillUpdate) SetNillableExecID(v *string) *TradeFillUpdate {
+	if v != nil {
+		_u.SetExecID(*v)
+	}
+	return _u
+}
+
+// ClearExecID clears the value of the "exec_id" field.
+func (_u *TradeFillUpdate) ClearExecID() *TradeFillUpdate {
+	_u.mutation.ClearExecID()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TradeFillUpdate) SetCreatedAt(v time.Time) *TradeFillUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -274,6 +294,11 @@ func (_u *TradeFillUpdate) check() error {
 			return &ValidationError{Name: "strategy_version", err: fmt.Errorf(`ent: validator failed for field "TradeFill.strategy_version": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExecID(); ok {
+		if err := tradefill.ExecIDValidator(v); err != nil {
+			return &ValidationError{Name: "exec_id", err: fmt.Errorf(`ent: validator failed for field "TradeFill.exec_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -330,6 +355,12 @@ func (_u *TradeFillUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.StrategyVersion(); ok {
 		_spec.SetField(tradefill.FieldStrategyVersion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExecID(); ok {
+		_spec.SetField(tradefill.FieldExecID, field.TypeString, value)
+	}
+	if _u.mutation.ExecIDCleared() {
+		_spec.ClearField(tradefill.FieldExecID, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(tradefill.FieldCreatedAt, field.TypeTime, value)
@@ -522,6 +553,26 @@ func (_u *TradeFillUpdateOne) SetNillableStrategyVersion(v *string) *TradeFillUp
 	return _u
 }
 
+// SetExecID sets the "exec_id" field.
+func (_u *TradeFillUpdateOne) SetExecID(v string) *TradeFillUpdateOne {
+	_u.mutation.SetExecID(v)
+	return _u
+}
+
+// SetNillableExecID sets the "exec_id" field if the given value is not nil.
+func (_u *TradeFillUpdateOne) SetNillableExecID(v *string) *TradeFillUpdateOne {
+	if v != nil {
+		_u.SetExecID(*v)
+	}
+	return _u
+}
+
+// ClearExecID clears the value of the "exec_id" field.
+func (_u *TradeFillUpdateOne) ClearExecID() *TradeFillUpdateOne {
+	_u.mutation.ClearExecID()
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *TradeFillUpdateOne) SetCreatedAt(v time.Time) *TradeFillUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -613,6 +664,11 @@ func (_u *TradeFillUpdateOne) check() error {
 			return &ValidationError{Name: "strategy_version", err: fmt.Errorf(`ent: validator failed for field "TradeFill.strategy_version": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExecID(); ok {
+		if err := tradefill.ExecIDValidator(v); err != nil {
+			return &ValidationError{Name: "exec_id", err: fmt.Errorf(`ent: validator failed for field "TradeFill.exec_id": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -686,6 +742,12 @@ func (_u *TradeFillUpdateOne) sqlSave(ctx context.Context) (_node *TradeFill, er
 	}
 	if value, ok := _u.mutation.StrategyVersion(); ok {
 		_spec.SetField(tradefill.FieldStrategyVersion, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExecID(); ok {
+		_spec.SetField(tradefill.FieldExecID, field.TypeString, value)
+	}
+	if _u.mutation.ExecIDCleared() {
+		_spec.ClearField(tradefill.FieldExecID, field.TypeString)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(tradefill.FieldCreatedAt, field.TypeTime, value)

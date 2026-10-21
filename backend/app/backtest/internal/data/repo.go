@@ -633,18 +633,36 @@ func (r *Repo) SaveIntrospection(ctx context.Context, in *biz.Introspection) (*b
 		Where(introspection.TradeDateEQ(in.TradeDate), introspection.BookEQ(in.Book)).
 		Only(ctx)
 	if ent.IsNotFound(err) {
-		row, err = r.client.Introspection.Create().
+		c := r.client.Introspection.Create().
 			SetTradeDate(in.TradeDate).SetBook(in.Book).SetWindowDays(in.WindowDays).
 			SetSampleCount(in.SampleCount).SetWinRate(in.WinRate).SetAvgReturn(in.AvgReturn).
 			SetMaxDrawdown(in.MaxDrawdown).SetMissedCount(in.MissedCount).SetAttribution(in.Attribution).
-			SetTriggered(in.Triggered).SetTriggerReason(in.TriggerReason).SetNillableTaskID(in.TaskID).SetNote(in.Note).
-			Save(ctx)
+			SetTriggered(in.Triggered).SetTriggerReason(in.TriggerReason).SetNillableTaskID(in.TaskID).SetNote(in.Note)
+		// M13-T14：仅 LLM 成功产出时写，未产出(NULL/空串/空标签)保持 NULL，不写占位串
+		if in.Narrative != "" {
+			c.SetNarrative(in.Narrative)
+		}
+		if len(in.NarrativeTags) > 0 {
+			c.SetNarrativeTags(in.NarrativeTags)
+		}
+		row, err = c.Save(ctx)
 	} else if err == nil {
-		row, err = r.client.Introspection.UpdateOneID(row.ID).
+		u := r.client.Introspection.UpdateOneID(row.ID).
 			SetWindowDays(in.WindowDays).SetSampleCount(in.SampleCount).SetWinRate(in.WinRate).SetAvgReturn(in.AvgReturn).
 			SetMaxDrawdown(in.MaxDrawdown).SetMissedCount(in.MissedCount).SetAttribution(in.Attribution).
-			SetTriggered(in.Triggered).SetTriggerReason(in.TriggerReason).SetNillableTaskID(in.TaskID).SetNote(in.Note).
-			Save(ctx)
+			SetTriggered(in.Triggered).SetTriggerReason(in.TriggerReason).SetNillableTaskID(in.TaskID).SetNote(in.Note)
+		// 同上：有内容才覆盖；空值时清成 NULL，防止上一次跑出的叙述在重跑失败时被错误保留。
+		if in.Narrative != "" {
+			u.SetNarrative(in.Narrative)
+		} else {
+			u.ClearNarrative()
+		}
+		if len(in.NarrativeTags) > 0 {
+			u.SetNarrativeTags(in.NarrativeTags)
+		} else {
+			u.ClearNarrativeTags()
+		}
+		row, err = u.Save(ctx)
 	}
 	if err != nil {
 		return nil, err
@@ -676,12 +694,17 @@ func (r *Repo) Introspections(ctx context.Context, book string, from, to time.Ti
 }
 
 func toIntro(row *ent.Introspection) *biz.Introspection {
-	return &biz.Introspection{
+	out := &biz.Introspection{
 		ID: row.ID, TradeDate: backtest.Day(row.TradeDate), Book: row.Book, WindowDays: row.WindowDays,
 		SampleCount: row.SampleCount, WinRate: row.WinRate, AvgReturn: row.AvgReturn, MaxDrawdown: row.MaxDrawdown,
 		MissedCount: row.MissedCount, Attribution: row.Attribution, Triggered: row.Triggered,
 		TriggerReason: row.TriggerReason, TaskID: row.TaskID, Note: row.Note, CreatedAt: row.CreatedAt,
 	}
+	if row.Narrative != nil {
+		out.Narrative = *row.Narrative
+	}
+	out.NarrativeTags = row.NarrativeTags
+	return out
 }
 
 func (r *Repo) ConfigValues(ctx context.Context, keys []string) (map[string]string, error) {

@@ -81,9 +81,13 @@ type AdmissionEvidenceReply struct {
 	ConsecutiveDays  int32  `protobuf:"varint,2,opt,name=consecutive_days,json=consecutiveDays,proto3" json:"consecutive_days,omitempty"`
 	RequiredDays     int32  `protobuf:"varint,3,opt,name=required_days,json=requiredDays,proto3" json:"required_days,omitempty"`
 	RunEvidenceReady bool   `protobuf:"varint,4,opt,name=run_evidence_ready,json=runEvidenceReady,proto3" json:"run_evidence_ready,omitempty"`
-	LiveEnabled      bool   `protobuf:"varint,5,opt,name=live_enabled,json=liveEnabled,proto3" json:"live_enabled,omitempty"` // Always false: execution authority is a separate gate.
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// LIVE 总闸当前状态：GrantLive 审计留痕开启、RevokeLive 关闭，服务启动时从
+	// strategy_config 持久留痕映射恢复（读不到一律保持关闭）。
+	LiveEnabled bool `protobuf:"varint,5,opt,name=live_enabled,json=liveEnabled,proto3" json:"live_enabled,omitempty"`
+	// 实盘通道状态：broker-gw 健康探测驱动，掉线/探测失败自动回落 false（fail-closed）。
+	BrokerConnected bool `protobuf:"varint,6,opt,name=broker_connected,json=brokerConnected,proto3" json:"broker_connected,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AdmissionEvidenceReply) Reset() {
@@ -151,6 +155,105 @@ func (x *AdmissionEvidenceReply) GetLiveEnabled() bool {
 	return false
 }
 
+func (x *AdmissionEvidenceReply) GetBrokerConnected() bool {
+	if x != nil {
+		return x.BrokerConnected
+	}
+	return false
+}
+
+type GrantLiveRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// operator 是批准人标识：admin 网关已做 Owner 鉴权并先行审计，空值一律拒绝。
+	// 经网关转发时以网关注入的 X-User 头为准（与审计 actor 同一身份），本字段是
+	// 直连 gRPC 的兜底取口。
+	Operator      string `protobuf:"bytes,1,opt,name=operator,proto3" json:"operator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GrantLiveRequest) Reset() {
+	*x = GrantLiveRequest{}
+	mi := &file_api_trade_v1_admission_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GrantLiveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GrantLiveRequest) ProtoMessage() {}
+
+func (x *GrantLiveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_trade_v1_admission_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GrantLiveRequest.ProtoReflect.Descriptor instead.
+func (*GrantLiveRequest) Descriptor() ([]byte, []int) {
+	return file_api_trade_v1_admission_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GrantLiveRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
+type RevokeLiveRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// operator 是收权操作人标识：同样须先审计留痕，空值一律拒绝；取口同 GrantLive。
+	Operator      string `protobuf:"bytes,1,opt,name=operator,proto3" json:"operator,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeLiveRequest) Reset() {
+	*x = RevokeLiveRequest{}
+	mi := &file_api_trade_v1_admission_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeLiveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeLiveRequest) ProtoMessage() {}
+
+func (x *RevokeLiveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_trade_v1_admission_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeLiveRequest.ProtoReflect.Descriptor instead.
+func (*RevokeLiveRequest) Descriptor() ([]byte, []int) {
+	return file_api_trade_v1_admission_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RevokeLiveRequest) GetOperator() string {
+	if x != nil {
+		return x.Operator
+	}
+	return ""
+}
+
 var File_api_trade_v1_admission_proto protoreflect.FileDescriptor
 
 const file_api_trade_v1_admission_proto_rawDesc = "" +
@@ -158,17 +261,25 @@ const file_api_trade_v1_admission_proto_rawDesc = "" +
 	"\x1capi/trade/v1/admission.proto\x12\fapi.trade.v1\x1a\x1cgoogle/api/annotations.proto\"J\n" +
 	"\x18AdmissionEvidenceRequest\x12\x18\n" +
 	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\xda\x01\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\x85\x02\n" +
 	"\x16AdmissionEvidenceReply\x12\x1f\n" +
 	"\vreport_json\x18\x01 \x01(\tR\n" +
 	"reportJson\x12)\n" +
 	"\x10consecutive_days\x18\x02 \x01(\x05R\x0fconsecutiveDays\x12#\n" +
 	"\rrequired_days\x18\x03 \x01(\x05R\frequiredDays\x12,\n" +
 	"\x12run_evidence_ready\x18\x04 \x01(\bR\x10runEvidenceReady\x12!\n" +
-	"\flive_enabled\x18\x05 \x01(\bR\vliveEnabled2\x8a\x02\n" +
+	"\flive_enabled\x18\x05 \x01(\bR\vliveEnabled\x12)\n" +
+	"\x10broker_connected\x18\x06 \x01(\bR\x0fbrokerConnected\".\n" +
+	"\x10GrantLiveRequest\x12\x1a\n" +
+	"\boperator\x18\x01 \x01(\tR\boperator\"/\n" +
+	"\x11RevokeLiveRequest\x12\x1a\n" +
+	"\boperator\x18\x01 \x01(\tR\boperator2\x89\x04\n" +
 	"\tAdmission\x12y\n" +
 	"\fGetAdmission\x12&.api.trade.v1.AdmissionEvidenceRequest\x1a$.api.trade.v1.AdmissionEvidenceReply\"\x1b\x82\xd3\xe4\x93\x02\x15\x12\x13/v1/trade/admission\x12\x81\x01\n" +
-	"\vGetEvidence\x12&.api.trade.v1.AdmissionEvidenceRequest\x1a$.api.trade.v1.AdmissionEvidenceReply\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/trade/admission/evidenceB\x18Z\x16server/api/trade/v1;v1b\x06proto3"
+	"\vGetEvidence\x12&.api.trade.v1.AdmissionEvidenceRequest\x1a$.api.trade.v1.AdmissionEvidenceReply\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/trade/admission/evidence\x12|\n" +
+	"\tGrantLive\x12\x1e.api.trade.v1.GrantLiveRequest\x1a$.api.trade.v1.AdmissionEvidenceReply\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/trade/admission/live/grant\x12\x7f\n" +
+	"\n" +
+	"RevokeLive\x12\x1f.api.trade.v1.RevokeLiveRequest\x1a$.api.trade.v1.AdmissionEvidenceReply\"*\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/v1/trade/admission/live/revokeB\x18Z\x16server/api/trade/v1;v1b\x06proto3"
 
 var (
 	file_api_trade_v1_admission_proto_rawDescOnce sync.Once
@@ -182,18 +293,24 @@ func file_api_trade_v1_admission_proto_rawDescGZIP() []byte {
 	return file_api_trade_v1_admission_proto_rawDescData
 }
 
-var file_api_trade_v1_admission_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_api_trade_v1_admission_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_api_trade_v1_admission_proto_goTypes = []any{
 	(*AdmissionEvidenceRequest)(nil), // 0: api.trade.v1.AdmissionEvidenceRequest
 	(*AdmissionEvidenceReply)(nil),   // 1: api.trade.v1.AdmissionEvidenceReply
+	(*GrantLiveRequest)(nil),         // 2: api.trade.v1.GrantLiveRequest
+	(*RevokeLiveRequest)(nil),        // 3: api.trade.v1.RevokeLiveRequest
 }
 var file_api_trade_v1_admission_proto_depIdxs = []int32{
 	0, // 0: api.trade.v1.Admission.GetAdmission:input_type -> api.trade.v1.AdmissionEvidenceRequest
 	0, // 1: api.trade.v1.Admission.GetEvidence:input_type -> api.trade.v1.AdmissionEvidenceRequest
-	1, // 2: api.trade.v1.Admission.GetAdmission:output_type -> api.trade.v1.AdmissionEvidenceReply
-	1, // 3: api.trade.v1.Admission.GetEvidence:output_type -> api.trade.v1.AdmissionEvidenceReply
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	2, // 2: api.trade.v1.Admission.GrantLive:input_type -> api.trade.v1.GrantLiveRequest
+	3, // 3: api.trade.v1.Admission.RevokeLive:input_type -> api.trade.v1.RevokeLiveRequest
+	1, // 4: api.trade.v1.Admission.GetAdmission:output_type -> api.trade.v1.AdmissionEvidenceReply
+	1, // 5: api.trade.v1.Admission.GetEvidence:output_type -> api.trade.v1.AdmissionEvidenceReply
+	1, // 6: api.trade.v1.Admission.GrantLive:output_type -> api.trade.v1.AdmissionEvidenceReply
+	1, // 7: api.trade.v1.Admission.RevokeLive:output_type -> api.trade.v1.AdmissionEvidenceReply
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -210,7 +327,7 @@ func file_api_trade_v1_admission_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_trade_v1_admission_proto_rawDesc), len(file_api_trade_v1_admission_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

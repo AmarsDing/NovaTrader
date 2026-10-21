@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"server/pkg/ashare"
+	"server/pkg/brokerif/remote"
 	"server/pkg/tradecal"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -245,6 +246,8 @@ func TestLiveConfirmWindow(t *testing.T) {
 	e.set.LiveEnabled = true
 	e.set.BrokerConnected = true // Explicit state-machine fixture; no external broker in this test.
 	withSyntheticAdmission(t, e, mem)
+	broker := &fakeFileBroker{receipt: remote.Receipt{State: "FILE_PUBLISHED"}}
+	e.AttachFileBroker(broker)
 	now := time.Date(2026, 10, 9, 10, 0, 0, 0, time.UTC)
 	e.now = func() time.Time { return now }
 	if err := mem.Commit(context.Background(), Batch{Cash: &Cash{Book: BookLive, Cash: 1_000_000, DayStartDate: now.In(tradecal.Shanghai()).Format("2006-01-02"), DayStartEquity: 1_000_000}}); err != nil {
