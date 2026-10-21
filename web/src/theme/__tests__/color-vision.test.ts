@@ -26,7 +26,7 @@ describe('color-vision 基础换算', () => {
     expect(() => hexToSrgb('#zzzzzz')).toThrow()
   })
 
-  it('红色盲模拟纯红：Machado 矩阵第一列', () => {
+  it('红色盲模拟纯红：仿真矩阵第一列（Vischeck 系）', () => {
     const [r, g, b] = simulateDichromacy('#ff0000', 'protanopia')
     expect(r).toBeCloseTo(0.567, 3)
     expect(g).toBeCloseTo(0.558, 3)
@@ -72,7 +72,8 @@ describe('warn 关系硬门禁（G4 weak-pair 加固）', () => {
   /**
    * 2026-10-19 G4 定色：暗 --nt-warn #ffe852（h52 黄琥珀，safe≥base 成对成立）、亮 #705600（h47 深金琥珀）。
    * 实测三类二色觉最小 OKLab 距离：暗 up-warn 0.044→0.080、亮 up-warn 0.088→0.133；
-   * down-warn 暗 0.216 / 亮 0.132；warn vs danger·success 暗 0.087 / 亮 0.132。
+   * down-warn 暗 0.218（2026-10-21 明度调和后实测，原 0.216）/ 亮 0.132；warn vs danger·success 暗 0.087 / 亮 0.132。
+   * 余量警戒（2026-10-21 复核）：多路 warn 地板只剩 1.6%–6.9%（亮 down/success-warn 0.132 vs 地板 0.13 最薄），warn 或涨跌族微调必须先复算再放数。
    * 地板按实测值再留余量钉死——任何 dilute warn 的改动必须在此显式放数评审。
    */
   const FLOORS: Record<'dark' | 'light', { up: number; down: number; bad: number }> = {

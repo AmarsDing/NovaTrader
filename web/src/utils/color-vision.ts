@@ -2,14 +2,18 @@
  * 色觉模拟与感知距离（G4 视觉工程化守护）。
  *
  * 移植自 gloomberb color-vision 测试思路：
- * - 二色觉模拟矩阵：Machado, Oliveira & Fernandes (2009)，作用于线性 sRGB；
+ * - 二色觉模拟矩阵：Vischeck/Wickline 系 RGB 域仿真，作用于线性 sRGB；
+ *   2026-10-21 对抗复核勘正：原注释误书 Machado 2009——Machado severity=1.0 官方表
+ *   含负项（prot 首列 0.152/0.115/-0.004），与本装载值（0.567/0.558/0）根本不同；
+ *   门禁数值口径不变（≥0.25 / 二色觉 ≥0.15 / warn 地板 / safe≥base×1.3 均按本模型实测校准），
+ *   是否改采真 Machado 2009 重校准留独立批决策。
  * - 感知空间：OKLab（Ottosson 2017），欧氏距离 ≥0.15 视为色盲用户可稳定区分的阈值。
  * 纯函数、无 DOM 依赖；守护测试与本模块共用同一实现，避免测试"自己骗自己"。
  */
 
 export type Dichromacy = 'protanopia' | 'deuteranopia' | 'tritanopia'
 
-/** Machado 2009 二色觉模拟矩阵（行主序 3×3，作用于线性 sRGB）。 */
+/** Vischeck/Wickline 系二色觉模拟矩阵（行主序 3×3，作用于线性 sRGB；非 Machado 2009 表，勘正见文件头）。 */
 const MATRICES: Record<Dichromacy, [number, number, number, number, number, number, number, number, number]> = {
   protanopia: [0.567, 0.433, 0, 0.558, 0.442, 0, 0, 0.242, 0.758],
   deuteranopia: [0.625, 0.375, 0, 0.7, 0.3, 0, 0, 0.3, 0.7],

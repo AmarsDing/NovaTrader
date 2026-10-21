@@ -34,9 +34,10 @@
   --nt-accent-border: rgba(69, 224, 255, 0.42);
   --nt-focus-ring: rgba(69, 224, 255, 0.3);
 
-  /* 红涨绿跌（A 股约定） */
+  /* 红涨绿跌（A 股约定）。2026-10-21 明度调和（用户拍板，方案 §2.5-6）：up 冻结值保持 #ff6b81(6.36:1 已在 [6.0,7.5] 带)，
+     down #35dfb1(10.2:1) → #60b296（6.89，与 up 感知亮度比 1.70→1.095 ≤1.15；warn/色觉/×1.3 门禁全套带余量）。 */
   --nt-up: #ff6b81;
-  --nt-down: #35dfb1;
+  --nt-down: #60b296;
 
   /* 空间与材质：只在壳层合成 blur，密集正文始终有稳定背板。 */
   --nt-glass-bg: rgba(10, 29, 46, 0.84);
@@ -162,19 +163,22 @@
    红绿色盲下靠明度与黄蓝轴仍可辨（OKLab ≥0.15 由 theme/__tests__/color-vision.test.ts 硬门禁）。
    danger/success 归并到同一暖/冷族，保证 fail/pass 与涨/跌在色盲下同样可辨。 */
 :root[data-colorvision='safe'] {
-  --nt-up: #f95738;
-  --nt-down: #4da3ff;
-  --nt-danger: #f95738;
-  --nt-success: #4da3ff;
-  --nt-glow-danger: 0 0 14px rgba(249, 87, 56, 0.35);
+  /* 2026-10-21 明度调和：up 5.35→#f87e64(6.77) 入带、down #4da3ff→#46a0fe(6.40)（Y 比 1.285→1.065；
+     safe≥base×1.3 依调后 base 复测通过；glow-danger rgba 与 up 同源同步）。 */
+  --nt-up: #f87e64;
+  --nt-down: #46a0fe;
+  --nt-danger: #f87e64;
+  --nt-success: #46a0fe;
+  --nt-glow-danger: 0 0 14px rgba(248, 126, 100, 0.35);
 }
 
 :root[data-theme='light'][data-colorvision='safe'] {
-  --nt-up: #d9480f;
-  --nt-down: #2563eb;
-  --nt-danger: #d9480f;
-  --nt-success: #2563eb;
-  --nt-glow-danger: 0 0 10px rgba(217, 72, 15, 0.24);
+  /* 2026-10-21 明度调和：up 4.17(低于 AA)→#b62000(6.37) 脱 belowAA、down 5.01→#003afc(6.76)（Y 比 1.268→1.092）。 */
+  --nt-up: #b62000;
+  --nt-down: #003afc;
+  --nt-danger: #b62000;
+  --nt-success: #003afc;
+  --nt-glow-danger: 0 0 10px rgba(182, 32, 0, 0.24);
 }
 
 :root[data-density='compact'] {
