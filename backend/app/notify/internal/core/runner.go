@@ -36,6 +36,7 @@ type Runner struct {
 	id     string
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	subs   []*nats.Subscription // 普通 NATS 订阅（market.alert），Stop 时退订
 }
 
 func NewRunner(p *biz.Pipeline, beat *registry.Beater, bus *events.Bus, cfg *conf.Notify, logger log.Logger) *Runner {
@@ -81,6 +82,16 @@ func (r *Runner) Start(ctx context.Context) error {
 			return err
 		}
 	}
+	// market.alert 走普通 NATS（market.* 不进 JetStream，见 events.Persistent；T07③）。
+	// 无 ack 语义：失败只记观察与日志，引擎侧 5 分钟重发窗让下一次异动自然补达。
+	if r.bus.Conn() != nil {
+		sub, err := r.bus.Conn().Subscribe(events.SubjectMarketAlert, func(m *nats.Msg) { r.onMarketAlert(runCtx, m.Data) })
+		if err != nil {
+			cancel()
+			return err
+		}
+		r.subs = append(r.subs, sub)
+	}
 	r.wg.Add(2)
 	go func() {
 		defer r.wg.Done()
@@ -105,6 +116,9 @@ func (r *Runner) Start(ctx context.Context) error {
 func (r *Runner) Stop(context.Context) error {
 	if r.cancel != nil {
 		r.cancel()
+	}
+	for _, sub := range r.subs {
+		_ = sub.Unsubscribe()
 	}
 	r.wg.Wait()
 	return nil
@@ -142,6 +156,27 @@ func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
 		return
 	}
 	_ = m.Ack()
+}
+
+// onMarketAlert 处理普通 NATS 上的 market.alert（T07③）：market.* 不进 JetStream，
+// 没有持久消费者与 ack；处理失败只记观测，由引擎侧 5 分钟重发窗与 next alert 自然补达。
+func (r *Runner) onMarketAlert(ctx context.Context, body []byte) {
+	op := observe.ForService("notify").Op("market_alert_handle")
+	op.Received()
+	finish := op.Begin()
+	env, err := events.Unmarshal(body)
+	if err != nil {
+		finish(observe.Rejected)
+		r.log.Warnf("bad market.alert envelope: %v", err)
+		return
+	}
+	ctx = events.WithTraceID(ctx, env.TraceID)
+	// 父信封完整下放，notify.desktop 沿真实因果父续链，与 JetStream 直发链同一缝合规则。
+	handleErr := r.p.Handle(events.ContextWithEnvelope(ctx, env), env)
+	observe.FinishError(finish, handleErr)
+	if handleErr != nil {
+		r.log.Errorf("%s %s: %v", env.Subject, env.EventID, handleErr)
+	}
 }
 
 // A successful flush means the pipeline returned nil; individual channel results

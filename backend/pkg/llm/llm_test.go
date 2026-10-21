@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -134,6 +135,131 @@ func TestUnconfiguredAndBreaker(t *testing.T) {
 	}
 	if st[1].Configured || st[1].KVCacheUsage != -1 {
 		t.Fatalf("small stats = %+v", st[1])
+	}
+}
+
+func TestResolveAPIKey(t *testing.T) {
+	t.Setenv("NT_LLM_TEST_KEY", "sk-env-real")
+	t.Setenv("NT_LLM_TEST_EMPTY", "")
+	cases := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr string // 为空表示不应报错
+	}{
+		{"空密钥保持无鉴权", "", "", ""},
+		{"明文照旧", "sk-plain", "sk-plain", ""},
+		{"env 取真值", "env:NT_LLM_TEST_KEY", "sk-env-real", ""},
+		{"env 变量名允许空格", "env: NT_LLM_TEST_KEY", "sk-env-real", ""},
+		{"env 变量未设置显式报错", "env:NT_LLM_MISSING", "", "ErrUnavailable"},
+		{"env 变量为空显式报错", "env:NT_LLM_TEST_EMPTY", "", "ErrUnavailable"},
+		{"env 缺变量名报错", "env:", "", "ErrUnavailable"},
+		{"enc 识别但解密器未配置", "enc:Y2lwaGVydGV4dA==", "", "enc"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := ResolveAPIKey(c.raw)
+			switch c.wantErr {
+			case "":
+				if err != nil {
+					t.Fatalf("err = %v", err)
+				}
+				if got != c.want {
+					t.Fatalf("got = %q, want %q", got, c.want)
+				}
+			case "ErrUnavailable":
+				if !errors.Is(err, ErrUnavailable) {
+					t.Fatalf("want ErrUnavailable, got %v", err)
+				}
+			case "enc":
+				if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "解密器未配置") {
+					t.Fatalf("want 解密器未配置, got %v", err)
+				}
+				// 错误会进 llm_call_log，绝不回显密文本身。
+				if strings.Contains(err.Error(), "Y2lwaGVydGV4dA==") {
+					t.Fatalf("error must not echo the ciphertext: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestPostResolvesKeyAndJSONMode(t *testing.T) {
+	t.Setenv("NT_LLM_TEST_KEY", "sk-env-real")
+	type captured struct {
+		auth string
+		body string
+	}
+	var mu sync.Mutex
+	var got []captured
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		got = append(got, captured{auth: r.Header.Get("Authorization"), body: string(raw)})
+		mu.Unlock()
+		rep := map[string]any{
+			"model":   "m-served",
+			"choices": []any{map[string]any{"message": map[string]any{"content": "{}"}}},
+		}
+		_ = json.NewEncoder(w).Encode(rep)
+	}))
+	t.Cleanup(srv.Close)
+	chat := func(cfg ModelConfig) {
+		t.Helper()
+		g := New(map[Tier]ModelConfig{Small: cfg}, nil)
+		if _, err := g.Chat(context.Background(), Request{Task: "x", Tier: Small, Messages: []Message{{Role: "user", Content: "hi"}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	url := srv.URL + "/v1"
+	chat(ModelConfig{BaseURL: url, Model: "qwen", APIKey: "env:NT_LLM_TEST_KEY"})
+	chat(ModelConfig{BaseURL: url, Model: "qwen", APIKey: "sk-plain", DisableJSONMode: true})
+	chat(ModelConfig{BaseURL: url, Model: "qwen"})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 3 {
+		t.Fatalf("calls = %d", len(got))
+	}
+	// 默认路径：env: 解析出真值鉴权，且带 response_format。
+	if got[0].auth != "Bearer sk-env-real" {
+		t.Fatalf("auth = %q", got[0].auth)
+	}
+	if !strings.Contains(got[0].body, `"response_format"`) {
+		t.Fatalf("default body missing response_format: %s", got[0].body)
+	}
+	// DisableJSONMode：请求体不带 response_format，明文密钥照旧。
+	if got[1].auth != "Bearer sk-plain" {
+		t.Fatalf("auth = %q", got[1].auth)
+	}
+	if strings.Contains(got[1].body, "response_format") {
+		t.Fatalf("disable_json_mode body must drop response_format: %s", got[1].body)
+	}
+	// 空密钥：无鉴权头，JSON 模式默认开。
+	if got[2].auth != "" {
+		t.Fatalf("empty key must not set auth header, got %q", got[2].auth)
+	}
+	if !strings.Contains(got[2].body, `"response_format"`) {
+		t.Fatalf("body missing response_format: %s", got[2].body)
+	}
+}
+
+func TestEncKeyFailsBeforeRequest(t *testing.T) {
+	var hits atomic.Int32
+	srv := fakeVLLM(t, func(chatBody) (int, string) {
+		hits.Add(1)
+		return 200, "{}"
+	})
+	rec := &memRecorder{}
+	g := New(map[Tier]ModelConfig{Small: {BaseURL: srv.URL + "/v1", Model: "qwen", APIKey: "enc:ciphertext"}}, rec)
+	_, err := g.Chat(context.Background(), Request{Task: "x", Tier: Small, Messages: []Message{{Role: "user", Content: "hi"}}})
+	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "解密器未配置") {
+		t.Fatalf("want unavailable+解密器未配置, got %v", err)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("enc: key was sent as plaintext, server hits = %d", hits.Load())
+	}
+	if st := rec.statuses(); len(st) != 1 || st[0] != "unavailable" {
+		t.Fatalf("statuses = %v", st)
 	}
 }
 

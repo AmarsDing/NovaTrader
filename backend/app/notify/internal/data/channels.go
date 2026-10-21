@@ -53,10 +53,13 @@ type Feishu struct {
 	secret  string
 	client  *http.Client
 	now     func() time.Time
+	// conf 是 appcfg 查询缝（默认 appcfg.Get），测试注入假覆盖值才办得到
+	// 「overlay 生效」回归——appcfg.Get 本身绑的是进程内 ent 缓存。
+	conf func(ctx context.Context, key string) string
 }
 
 func NewFeishu(c *conf.Notify) *Feishu {
-	f := &Feishu{client: &http.Client{Timeout: 5 * time.Second}, now: time.Now}
+	f := &Feishu{client: &http.Client{Timeout: 5 * time.Second}, now: time.Now, conf: appcfg.Get}
 	if c != nil {
 		f.webhook = strings.TrimSpace(c.GetFeishuWebhook())
 		f.secret = c.GetFeishuSecret()
@@ -68,12 +71,13 @@ func (f *Feishu) Send(ctx context.Context, text string) error {
 	if f == nil {
 		return biz.ErrSkipped
 	}
+	// appcfg overlay 优先于 boot 配置：webhook/secret 都必须用合并后的局部变量。
 	webhook := f.webhook
-	if v := strings.TrimSpace(appcfg.Get(ctx, "app.notify.webhook")); v != "" {
+	if v := strings.TrimSpace(f.conf(ctx, "app.notify.webhook")); v != "" {
 		webhook = v
 	}
 	secret := f.secret
-	if v := appcfg.Get(ctx, "app.notify.secret"); v != "" {
+	if v := f.conf(ctx, "app.notify.secret"); v != "" {
 		secret = v
 	}
 	if webhook == "" {
@@ -83,7 +87,7 @@ func (f *Feishu) Send(ctx context.Context, text string) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.webhook, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

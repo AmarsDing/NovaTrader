@@ -2,9 +2,17 @@ package data
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"server/app/notify/internal/biz"
+	"server/conf"
 	"server/pkg/events"
 )
 
@@ -13,6 +21,58 @@ type capturePublisher struct{ envs []events.Envelope }
 func (c *capturePublisher) Publish(_ context.Context, env events.Envelope) error {
 	c.envs = append(c.envs, env)
 	return nil
+}
+
+// feishu 回归：appcfg overlay 的 webhook 必须盖过 boot 配置值——channels.go 曾把
+// 合并后的局部变量算出来却仍用 f.webhook 建请求（M13-T07① 修复钉死）。
+func TestFeishuSendHonorsAppcfgOverlay(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		raw, _ := io.ReadAll(r.Body)
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil || m["msg_type"] != "text" {
+			t.Errorf("bad feishu body: %q err %v", raw, err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// 假 appcfg：只覆盖 webhook（secret UI 键不参与断言，返回空走 boot 值）。
+	overlay := func(_ context.Context, key string) string {
+		if key == "app.notify.webhook" {
+			return srv.URL
+		}
+		return ""
+	}
+	dead := &http.Client{Timeout: 200 * time.Millisecond}
+
+	// 1. boot webhook 是死地址、overlay 给活地址：消息必须送达活地址。
+	f := NewFeishu(&conf.Notify{FeishuWebhook: "https://127.0.0.1:9/dead"})
+	f.client, f.conf = dead, overlay
+	if err := f.Send(context.Background(), "hi"); err != nil {
+		t.Fatalf("overlay send: %v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("overlay webhook must receive the message, hits=%d", hits.Load())
+	}
+
+	// 2. overlay 返回空白（trim 后为空）时回落 boot 配置：向活地址发成功。
+	f2 := NewFeishu(&conf.Notify{FeishuWebhook: srv.URL})
+	f2.client, f2.conf = srv.Client(), overlay
+	if err := f2.Send(context.Background(), "boot-path"); err != nil {
+		t.Fatalf("boot fallback send: %v", err)
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("boot webhook fallback must receive the message, hits=%d", hits.Load())
+	}
+
+	// 3. 合并后 webhook 仍为空：跳过不算失败。
+	f3 := NewFeishu(nil)
+	f3.conf = func(context.Context, string) string { return "" }
+	if err := f3.Send(context.Background(), "x"); !errors.Is(err, biz.ErrSkipped) {
+		t.Fatalf("empty merged webhook must skip, got %v", err)
+	}
 }
 
 // 直发链：ctx 里有真实父信封（runner 消费 Handle 时放入）时，notify.desktop

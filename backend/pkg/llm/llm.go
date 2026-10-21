@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +65,9 @@ type ModelConfig struct {
 	MaxQueue       int
 	Temperature    float64
 	MaxTokens      int
+	// DisableJSONMode 为 true 时请求体不带 response_format，适配不支持 json_object
+	// 的模型或第三方网关（M13-T06）。默认 false 保持请求 response_format=json_object。
+	DisableJSONMode bool
 }
 
 type Message struct {
@@ -316,7 +320,7 @@ type chatBody struct {
 	Messages       []Message         `json:"messages"`
 	Temperature    float64           `json:"temperature"`
 	MaxTokens      int               `json:"max_tokens"`
-	ResponseFormat map[string]string `json:"response_format"`
+	ResponseFormat map[string]string `json:"response_format,omitempty"`
 }
 
 type chatReply struct {
@@ -333,10 +337,17 @@ type chatReply struct {
 }
 
 func (g *Gateway) post(ctx context.Context, cfg ModelConfig, msgs []Message) (Response, error) {
-	body, err := json.Marshal(chatBody{
+	apiKey, err := ResolveAPIKey(cfg.APIKey)
+	if err != nil {
+		return Response{}, err
+	}
+	payload := chatBody{
 		Model: cfg.Model, Messages: msgs, Temperature: cfg.Temperature, MaxTokens: cfg.MaxTokens,
-		ResponseFormat: map[string]string{"type": "json_object"},
-	})
+	}
+	if !cfg.DisableJSONMode {
+		payload.ResponseFormat = map[string]string{"type": "json_object"}
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return Response{}, err
 	}
@@ -347,8 +358,8 @@ func (g *Gateway) post(ctx context.Context, cfg ModelConfig, msgs []Message) (Re
 		return Response{}, err
 	}
 	hreq.Header.Set("Content-Type", "application/json")
-	if cfg.APIKey != "" {
-		hreq.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	if apiKey != "" {
+		hreq.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	hresp, err := g.http.Do(hreq)
 	if err != nil {
@@ -378,6 +389,36 @@ func (g *Gateway) post(ctx context.Context, cfg ModelConfig, msgs []Message) (Re
 		PromptTokens:     rep.Usage.PromptTokens,
 		CompletionTokens: rep.Usage.CompletionTokens,
 	}, nil
+}
+
+// ResolveAPIKey 把配置里的 api_key 解析成真实密钥（M13-T06）。
+//
+//	""           → ""，调用方不加鉴权头（本地 vLLM 现状）。
+//	"env:NAME"   → 读环境变量 NAME；未设置或为空属配置缺失，显式报错（数据纪律：缺失≠空密钥）。
+//	"enc:..."    → 预留密文形态；本迭代未接解密器，明确报错，绝不静默当明文发送。
+//	其他         → 原样返回（明文密钥，保持现状）。
+//
+// 解析失败统一按 ErrUnavailable 上报：在配置修复前该档模型不可用，调用方照常退回规则分。
+// 错误文案只带环境变量名，绝不带密钥值（会进 llm_call_log）。
+func ResolveAPIKey(raw string) (string, error) {
+	switch {
+	case raw == "":
+		return "", nil
+	case strings.HasPrefix(raw, "env:"):
+		name := strings.TrimSpace(strings.TrimPrefix(raw, "env:"))
+		if name == "" {
+			return "", fmt.Errorf("%w: api_key env: 前缀后缺少环境变量名", ErrUnavailable)
+		}
+		v, ok := os.LookupEnv(name)
+		if !ok || v == "" {
+			return "", fmt.Errorf("%w: api_key 引用的环境变量 %s 未设置或为空", ErrUnavailable, name)
+		}
+		return v, nil
+	case strings.HasPrefix(raw, "enc:"):
+		return "", fmt.Errorf("%w: api_key 为 enc: 密文但解密器未配置（M13 预留）", ErrUnavailable)
+	default:
+		return raw, nil
+	}
 }
 
 func digest(msgs []Message) (sum, excerpt string) {

@@ -134,6 +134,8 @@ var appAllowed = func() map[string]string {
 		}
 	}
 	add("bool", "ds.tushare.on ds.tavily.on ds.tdx_local.on ds.tdx_file.on ds.tdx_tcp.on ds.akshare.on ds.eastmoney.on ds.sina.on ds.tencent.on ds.cninfo.on ds.rss.on intel.enabled ds.openbb_fred.on ds.tdx_http_archive.on ds.sina7x24.on ds.baostock.on")
+	// LLM 底座治理（M13-T06）：关闭 JSON 模式以适配不支持 response_format 的模型网关。
+	add("bool", "brain.large.disable_json_mode brain.small.disable_json_mode intel.disable_json_mode")
 	add("text", "ds.tushare.token ds.tavily.token ds.tavily.feeds ds.rss.feeds ds.eastmoney.margin_reports ds.openbb_fred.key brain.large.model brain.large.key brain.small.model brain.small.key intel.key intel.small intel.large kb.model kb.key notify.webhook notify.secret")
 	add("url", "ds.pyworker brain.large.url brain.small.url intel.url kb.endpoint")
 	add("tier", "agent.technical agent.capital agent.news agent.external agent.synthesis agent.briefing agent.explain agent.ask")
@@ -231,6 +233,12 @@ func ValidatePatch(current, patch map[string]string) (map[string]string, error) 
 			case "bool":
 				if value != "true" && value != "false" {
 					return nil, fmt.Errorf("%s: 开关需为true/false", key)
+				}
+			case "text":
+				// M13-T06：密钥类键允许 env:VAR（运行期由 pkg/llm 解析）与 enc:（M13 预留密文）
+				// 前缀值；裸 env: 缺变量名在任何 text 键上都不完整，配置页即拦下。
+				if strings.HasPrefix(value, "env:") && strings.TrimSpace(strings.TrimPrefix(value, "env:")) == "" {
+					return nil, fmt.Errorf("%s: env: 后需跟环境变量名", key)
 				}
 			case "tier":
 				if value != "small" && value != "large" {

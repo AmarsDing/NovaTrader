@@ -21,6 +21,8 @@ func Classify(env events.Envelope) (Message, bool) {
 		msg, ok = fromRisk(m)
 	case events.SubjectIntelAlert:
 		msg, ok = fromIntel(m)
+	case events.SubjectMarketAlert:
+		msg, ok = fromMarket(m)
 	case events.SubjectTradeFill:
 		msg, ok = fromFill(m)
 	case events.SubjectBriefing:
@@ -103,6 +105,80 @@ func fromIntel(m map[string]any) (Message, bool) {
 		DedupKey: key,
 		Fields:   map[string]string{"level": level, "symbol": firstStock(m)},
 	}, true
+}
+
+func marketPriority(kind, severity string) string {
+	switch severity {
+	case "critical", "error":
+		return PriCritical
+	case "high", "warn", "warning":
+		return PriHigh
+	case "medium", "info", "low":
+		return PriMedium
+	}
+	// 缺分时按类别：价崩、闪崩这类下砸异动抬到 critical，其余盘中异动默认 high。
+	switch kind {
+	case "flash_crash", "crash", "plunge", "limit_down", "limit_break_down", "break_down":
+		return PriCritical
+	default:
+		return PriHigh
+	}
+}
+
+// market.alert 载荷 {"symbol","kind","time","price","pct","name"?}（M02 §6 / pkg/market.Alert），
+// 引擎侧同票同种异动已有 5 分钟去重窗；notify 合并窗口由 Windows["market"]=300s 对齐。
+func fromMarket(m map[string]any) (Message, bool) {
+	kind := str(m, "kind")
+	sym := str(m, "symbol")
+	if kind == "" || sym == "" {
+		return Message{}, false
+	}
+	title := str(m, "name")
+	if title == "" {
+		title = sym
+	}
+	title = strings.TrimSpace(title + " " + marketKindLabel(kind))
+	body := strings.TrimSpace(strings.Join(nonEmpty(str(m, "reason", "message", "body"), marketStat(m)), " "))
+	return Message{
+		Category: "market", Priority: marketPriority(kind, strings.ToLower(str(m, "severity", "level"))),
+		Title: title, Body: body,
+		DedupKey: "market:" + sym + ":" + kind,
+		Fields:   map[string]string{"symbol": sym, "kind": kind, "level": strings.ToLower(str(m, "severity", "level"))},
+	}, true
+}
+
+func marketKindLabel(kind string) string {
+	switch kind {
+	case "limit_up":
+		return "封板"
+	case "break":
+		return "炸板"
+	case "surge":
+		return "急拉"
+	default:
+		return kind
+	}
+}
+
+func marketStat(m map[string]any) string {
+	var parts []string
+	if price := num(m, "price"); price != "" {
+		parts = append(parts, "@"+price)
+	}
+	if pct := num(m, "pct"); pct != "" {
+		parts = append(parts, pct+"%")
+	}
+	return strings.Join(parts, " ")
+}
+
+func nonEmpty(vals ...string) []string {
+	out := vals[:0]
+	for _, v := range vals {
+		if strings.TrimSpace(v) != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func fromFill(m map[string]any) (Message, bool) {

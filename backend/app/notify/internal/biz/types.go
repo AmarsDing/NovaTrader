@@ -70,9 +70,12 @@ type DesktopNote struct {
 // Config 是运行参数。零值用默认。
 type Config struct {
 	MergeWindow time.Duration
-	RetryMax    int
-	RetryBase   time.Duration
-	Templates   map[string]string
+	// Windows 按 category 覆盖合并窗口（T07③ market.alert 5 分钟桶，对齐引擎侧
+	// 同票同种 5 分钟去重）；缺省全部走 MergeWindow。
+	Windows   map[string]time.Duration
+	RetryMax  int
+	RetryBase time.Duration
+	Templates map[string]string
 }
 
 func (c Config) window() time.Duration {
@@ -80,6 +83,15 @@ func (c Config) window() time.Duration {
 		return time.Minute
 	}
 	return c.MergeWindow
+}
+
+func (c Config) windowFor(category string) time.Duration {
+	if c.Windows != nil {
+		if d, ok := c.Windows[category]; ok && d > 0 {
+			return d
+		}
+	}
+	return c.window()
 }
 
 func (c Config) retries() int {

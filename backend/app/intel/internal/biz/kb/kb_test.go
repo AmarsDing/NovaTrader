@@ -113,6 +113,23 @@ func TestFuseRRF(t *testing.T) {
 	}
 }
 
+func TestAttributionWhitelist(t *testing.T) {
+	for _, v := range []string{"indicator_failed", "news_misread", "unfilled", "emotion_mismatch", "missed"} {
+		if !IsAttribution(v) {
+			t.Errorf("IsAttribution(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"", "win", "loss", "unknown", "Missed", " missed"} {
+		if IsAttribution(v) {
+			t.Errorf("IsAttribution(%q) = true, want false", v)
+		}
+	}
+	// missed 必须留在白名单（M13-T10），且案例正文有中文名。
+	if got := attributionNames["missed"]; got == "" {
+		t.Fatal("attributionNames lacks missed")
+	}
+}
+
 func TestOutcomeAndMarkdown(t *testing.T) {
 	up, down := 1.5, -0.3
 	for _, c := range []struct {

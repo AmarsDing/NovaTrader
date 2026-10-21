@@ -54,7 +54,7 @@ func (p *Pipeline) handle(ctx context.Context, msg Message) error {
 		}
 		return nil
 	}
-	since := msg.CreatedAt.Add(-p.cfg.window())
+	since := msg.CreatedAt.Add(-p.cfg.windowFor(msg.Category))
 	anchor, err := p.store.Recent(ctx, row.DedupKey, since, row.ID)
 	if err != nil {
 		return err

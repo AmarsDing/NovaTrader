@@ -29,15 +29,23 @@ const (
 	purgeSpec    = "30 3 1 * *"
 	// purgeWindow 比调度器的 48 小时回看略短，窗口外不调用 Tick。
 	purgeWindow = 47 * time.Hour
+	// 回填 job 每天 16:10 扫已投递落库的终态信号，给缺 kb_case 的补建案例（M13-T10）。
+	backfillJob     = "kb.case-backfill"
+	backfillSpec    = "10 16 * * *"
+	backfillMaxLate = 8 * time.Hour
+	// backfillWindow 是回填向前回看的事件窗口，覆盖停机追赶与周末。
+	backfillWindow = 7 * 24 * time.Hour
+	backfillBatch  = 500
 )
 
 // Runner 实现 kratos transport.Server，随服务启停。
 type Runner struct {
-	uc      *kb.KnowledgeUsecase
-	sched   *scheduler.Scheduler
-	bus     *events.Bus
-	consume bool
-	log     *log.Helper
+	uc            *kb.KnowledgeUsecase
+	sched         *scheduler.Scheduler
+	backfillSched *scheduler.Scheduler
+	bus           *events.Bus
+	consume       bool
+	log           *log.Helper
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -64,6 +72,27 @@ func New(uc *kb.KnowledgeUsecase, store scheduler.Store, bus *events.Bus, c *con
 			return err
 		},
 	})
+	// 回填与清理分两个调度器：Tick 对超出 48 小时回看的 spec 会报错，
+	// 各自的 Tick 只在各自的执行窗口里调用，互不拖累。
+	r.backfillSched = scheduler.New(tradecal.Default, store, scheduler.Job{
+		Name:     backfillJob,
+		Spec:     backfillSpec,
+		Timeout:  10 * time.Minute,
+		MaxDelay: backfillMaxLate,
+		Run: func(ctx context.Context) error {
+			// 信号消费关掉时连回填也不动：不替已关闭的功能补建案例。
+			if !r.consume {
+				return nil
+			}
+			res, err := uc.BackfillCases(ctx, events.SubjectSignal, time.Now().Add(-backfillWindow), backfillBatch)
+			if err != nil {
+				return err
+			}
+			r.log.Infof("case backfill: scanned=%d created=%d existing=%d skipped=%d failed=%d",
+				res.Scanned, res.Created, res.Existing, res.Skipped, res.Failed)
+			return nil
+		},
+	})
 	return r
 }
 
@@ -84,7 +113,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		r.sub = sub
 	}
 	r.loop(ctx, embedEvery, r.embedPending)
-	r.loop(ctx, tickEvery, r.tickPurge)
+	r.loop(ctx, tickEvery, r.tickJobs)
 	return nil
 }
 
@@ -124,13 +153,17 @@ func (r *Runner) embedPending(ctx context.Context) {
 	}
 }
 
-func (r *Runner) tickPurge(ctx context.Context) {
+func (r *Runner) tickJobs(ctx context.Context) {
 	now := time.Now().In(tradecal.Shanghai())
-	if !InPurgeWindow(now) {
-		return
+	if InPurgeWindow(now) {
+		if err := r.sched.Tick(ctx, now); err != nil && ctx.Err() == nil {
+			r.log.Errorf("purge: %v", err)
+		}
 	}
-	if err := r.sched.Tick(ctx, now); err != nil && ctx.Err() == nil {
-		r.log.Errorf("purge: %v", err)
+	if InBackfillWindow(now) {
+		if err := r.backfillSched.Tick(ctx, now); err != nil && ctx.Err() == nil {
+			r.log.Errorf("case backfill: %v", err)
+		}
 	}
 }
 
@@ -139,6 +172,16 @@ func InPurgeWindow(now time.Time) bool {
 	now = now.In(tradecal.Shanghai())
 	slot := time.Date(now.Year(), now.Month(), 1, 3, 30, 0, 0, tradecal.Shanghai())
 	return !now.Before(slot) && now.Sub(slot) < purgeWindow
+}
+
+// InBackfillWindow 判断 now 是否在今天（或昨天补跑）16:10 回填窗口内。
+func InBackfillWindow(now time.Time) bool {
+	now = now.In(tradecal.Shanghai())
+	slot := time.Date(now.Year(), now.Month(), now.Day(), 16, 10, 0, 0, tradecal.Shanghai())
+	if now.Before(slot) {
+		slot = slot.AddDate(0, 0, -1)
+	}
+	return now.Sub(slot) < backfillMaxLate
 }
 
 var payloadJSON = protojson.UnmarshalOptions{DiscardUnknown: true}

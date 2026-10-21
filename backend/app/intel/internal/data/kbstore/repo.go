@@ -14,6 +14,7 @@ import (
 	"server/ent/kbcase"
 	"server/ent/kbchunk"
 	"server/ent/kbdocument"
+	box "server/ent/outbox"
 	"server/ent/predicate"
 	"server/pkg/errcode"
 	"server/pkg/pgext"
@@ -524,6 +525,58 @@ func derefInt(p *int) int {
 		return 0
 	}
 	return *p
+}
+
+// ListPublishedSignalEvents 扫 outbox 里已投递的信号事件。outbox 是 strategy.signal.updated
+// 唯一持久落库的位置（事件生产端与业务同事务写入），回填据此等价重放消费侧输入。
+func (r *repo) ListPublishedSignalEvents(ctx context.Context, subject string, since time.Time, limit int) ([]kb.SignalEventRow, error) {
+	rows, err := r.client.Outbox.Query().
+		Where(
+			box.SubjectEQ(subject),
+			box.PublishedAtNotNil(),
+			box.PublishedAtGTE(since),
+		).
+		Order(box.ByPublishedAt(), box.ByID()).
+		Limit(limit).
+		Select(box.FieldEventID, box.FieldPayload, box.FieldPublishedAt).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]kb.SignalEventRow, 0, len(rows))
+	for _, row := range rows {
+		when := row.CreatedAt
+		if row.PublishedAt != nil {
+			when = *row.PublishedAt
+		}
+		out = append(out, kb.SignalEventRow{EventID: row.EventID, Payload: row.Payload, PublishedAt: when})
+	}
+	return out, nil
+}
+
+// ExistingSignalCases 按 book 分批查已建案例，返回命中的 (book, signal_id) 集合。
+func (r *repo) ExistingSignalCases(ctx context.Context, refs []kb.SignalRef) (map[kb.SignalRef]bool, error) {
+	out := map[kb.SignalRef]bool{}
+	if len(refs) == 0 {
+		return out, nil
+	}
+	byBook := map[string][]int64{}
+	for _, ref := range refs {
+		byBook[ref.Book] = append(byBook[ref.Book], ref.SignalID)
+	}
+	for book, ids := range byBook {
+		rows, err := r.client.KbCase.Query().
+			Where(kbcase.BookEQ(book), kbcase.SignalIDIn(ids...)).
+			Select(kbcase.FieldBook, kbcase.FieldSignalID).
+			All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out[kb.SignalRef{Book: row.Book, SignalID: row.SignalID}] = true
+		}
+	}
+	return out, nil
 }
 
 func (r *repo) FindCases(ctx context.Context, f kb.CaseFilter, limit int) ([]kb.Case, error) {

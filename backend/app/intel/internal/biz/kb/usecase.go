@@ -547,7 +547,7 @@ func (uc *KnowledgeUsecase) RecordCase(ctx context.Context, s SignalCase) (*Case
 		HoldingDays:  s.HoldingDays,
 		Outcome:      outcomeOf(s.Status, s.PnlPct),
 	}
-	if contains(Attributions, s.Attribution) {
+	if IsAttribution(s.Attribution) {
 		rec.Attribution = s.Attribution
 	}
 	body := []byte(caseMarkdown(s, rec))
@@ -601,7 +601,7 @@ var outcomeNames = map[string]string{
 
 var attributionNames = map[string]string{
 	"indicator_failed": "指标失效", "news_misread": "消息误判",
-	"unfilled": "买不进", "emotion_mismatch": "情绪周期不匹配",
+	"unfilled": "买不进", "emotion_mismatch": "情绪周期不匹配", "missed": "漏选",
 }
 
 func caseTitle(s SignalCase) string {

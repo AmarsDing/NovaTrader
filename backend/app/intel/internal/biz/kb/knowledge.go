@@ -15,7 +15,9 @@ var (
 	SourceTypes = []string{"file", "url", "signal", "manual"}
 	// TerminalStatuses 是信号走完的状态，只有这些会生成案例。
 	TerminalStatuses = []string{"closed", "expired", "cancelled"}
-	Attributions     = []string{"indicator_failed", "news_misread", "unfilled", "emotion_mismatch"}
+	// Attributions 是归因白名单。M13-T10 起 strategy 的 SignalUpdated 载荷会带
+	// attribution/pattern/emotion_phase/missed 四字段，missed 表示该信号被漏选。
+	Attributions = []string{"indicator_failed", "news_misread", "unfilled", "emotion_mismatch", "missed"}
 )
 
 const CategoryCase = "case"
@@ -28,6 +30,10 @@ func contains(list []string, v string) bool {
 	}
 	return false
 }
+
+// IsAttribution 校验归因值是否在白名单内。空串和未登记的值都算不合法，
+// 调用方对不合法值只能留空或跳过，禁止猜测（数据纪律）。
+func IsAttribution(v string) bool { return contains(Attributions, v) }
 
 // Document 是一份文档的一个版本。
 type Document struct {
@@ -186,6 +192,12 @@ type KnowledgeRepo interface {
 	// CreateCase 在一个事务里写案例和案例文档。(book, signal_id) 已存在时 created=false。
 	CreateCase(ctx context.Context, c CaseRecord, d NewDocument, chunks []ChunkRow) (caseID, docID int, chunkIDs []int, created bool, err error)
 	FindCases(ctx context.Context, f CaseFilter, limit int) ([]Case, error)
+
+	// ListPublishedSignalEvents 返回 since 以来已投递的指定主题持久事件（outbox），
+	// 按投递时间升序。供 kb_case 回填任务扫描落库的信号事件。
+	ListPublishedSignalEvents(ctx context.Context, subject string, since time.Time, limit int) ([]SignalEventRow, error)
+	// ExistingSignalCases 返回候选里已建案例的 (book, signal_id) 集合，供回填批量去重。
+	ExistingSignalCases(ctx context.Context, refs []SignalRef) (map[SignalRef]bool, error)
 
 	// Purge 把已过 expires_at 的在用文档标成 expired，再删除 cutoff 之前就已失效的文档。
 	Purge(ctx context.Context, now, cutoff time.Time) (int, error)

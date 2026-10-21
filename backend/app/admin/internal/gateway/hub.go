@@ -609,6 +609,11 @@ var natsRoutes = []natsRoute{
 	{events.SubjectStrategyReview, "alert", "alert", "admin_strategy_review", false},
 	{events.SubjectBriefing, "alert", "alert", "admin_briefing", false},
 	{events.SubjectMarketSnapshot, "market", "market", "", true},
+	// T13 行情主题上前端 WS：bar 经 onMarketBar 展开进合并键（≥1s/票尾随合并），
+	// limit/state 是量小的事件流，直通不合并（marketKey 对这两种 kind 不落键）。
+	{events.SubjectMarketBar, "market", "bar", "", true},
+	{events.SubjectMarketLimit, "market", "limit", "", true},
+	{events.SubjectMarketState, "market", "state", "", true},
 	{events.SubjectMarketAlert, "alert", "move", "", true},
 	{events.SubjectBrainProgress, "brain", "brain", "", true},
 }
@@ -616,8 +621,13 @@ var natsRoutes = []natsRoute{
 func (h *Hub) bind(bus *events.Bus) {
 	for _, item := range natsRoutes {
 		item := item
+		// market.bar.1m 的批量载荷要逐票展开+无 bar 兜底（T13），其余主题走默认通道。
+		handle := h.onRawSubject
+		if item.subject == events.SubjectMarketBar {
+			handle = h.onMarketBar
+		}
 		if item.core {
-			_, err := bus.Conn().Subscribe(item.subject, func(m *nats.Msg) { h.onRawSubject(m.Subject, item.topic, item.event, m.Data) })
+			_, err := bus.Conn().Subscribe(item.subject, func(m *nats.Msg) { handle(m.Subject, item.topic, item.event, m.Data) })
 			h.observations.binding(item.subject, err == nil, time.Now().UTC())
 			if err != nil {
 				h.log.Warnf("订阅 %s：%v", item.subject, err)
@@ -625,7 +635,7 @@ func (h *Hub) bind(bus *events.Bus) {
 			continue
 		}
 		_, err := bus.JetStream().Subscribe(item.subject, func(m *nats.Msg) {
-			h.onRawSubject(m.Subject, item.topic, item.event, m.Data)
+			handle(m.Subject, item.topic, item.event, m.Data)
 			_ = m.Ack()
 		}, nats.Durable(item.durable), nats.ManualAck(), nats.DeliverNew(),
 			nats.AckWait(10*time.Second), nats.MaxDeliver(5))
@@ -639,32 +649,80 @@ func (h *Hub) bind(bus *events.Bus) {
 
 func (h *Hub) onRaw(topic, event string, body []byte) { h.onRawSubject("", topic, event, body) }
 
-func (h *Hub) onRawSubject(subject, topic, event string, body []byte) {
+// acceptEnvelope 解析并记账事件信封，产出转发用的帧元数据；校验失败时返回 ok=false。
+func (h *Hub) acceptEnvelope(subject, topic string, body []byte) (env events.Envelope, metadata map[string]any, ok bool) {
 	at := h.observations.now().UTC()
 	env, err := events.Unmarshal(body)
 	if err != nil {
 		h.observations.reject(subject, topic, len(body), at)
 		h.log.Warnf("坏事件 %s：%v", topic, err)
-		return
+		return events.Envelope{}, nil, false
 	}
 	if subject != "" && env.Subject != subject {
 		h.observations.reject(subject, topic, len(body), at)
 		h.log.Warnf("事件主题不匹配：route=%s", subject)
-		return
+		return events.Envelope{}, nil, false
 	}
 	h.observations.receive(env, topic, len(body), at)
 	raw, marshalErr := json.Marshal(env)
 	if marshalErr != nil {
 		h.log.Warnf("坏信封 %s：%v", topic, marshalErr)
-		return
+		return events.Envelope{}, nil, false
 	}
-	metadata := map[string]any{}
+	metadata = map[string]any{}
 	if err := json.Unmarshal(raw, &metadata); err != nil {
-		return
+		return events.Envelope{}, nil, false
 	}
 	delete(metadata, "payload")
 	metadata["gateway_received_at"] = observationTime(at)
+	return env, metadata, true
+}
+
+func (h *Hub) onRawSubject(subject, topic, event string, body []byte) {
+	env, metadata, ok := h.acceptEnvelope(subject, topic, body)
+	if !ok {
+		return
+	}
 	h.publish(topic, event, env.Payload, metadata)
+}
+
+// onMarketBar 是 market.bar.1m 的专用入口（T13）：
+// {"bars":[...]} 批量载荷展开成单票 bar 帧，经 market 合并键落盘——同一 symbol 同一根线
+// 在 1s 刷出窗口内尾随合并，只发最新；载荷无 bar 行（停牌/非交易时段的 meta/控制帧）
+// 落成显式 {"meta":{"no_bar":true}} 控制帧，不静默丢弃。
+func (h *Hub) onMarketBar(subject, topic, event string, body []byte) {
+	env, metadata, ok := h.acceptEnvelope(subject, topic, body)
+	if !ok {
+		return
+	}
+	var batch struct {
+		Bars []json.RawMessage `json:"bars"`
+	}
+	if err := json.Unmarshal(env.Payload, &batch); err == nil && len(batch.Bars) > 0 {
+		for _, bar := range batch.Bars {
+			h.publish(topic, event, bar, metadata)
+		}
+		return
+	}
+	if looksLikeBar(env.Payload) {
+		h.publish(topic, event, env.Payload, metadata)
+		return
+	}
+	h.publish(topic, event, json.RawMessage(`{"meta":{"no_bar":true}}`), metadata)
+}
+
+// looksLikeBar 判定载荷带 OHLC 行；meta/控制帧（无 OHLC 字段）返回 false。
+func looksLikeBar(raw json.RawMessage) bool {
+	var payload map[string]any
+	if json.Unmarshal(raw, &payload) != nil {
+		return false
+	}
+	for _, field := range []string{"open", "high", "low", "close"} {
+		if _, ok := payload[field]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (f frame) response() *websocket.WResponse {

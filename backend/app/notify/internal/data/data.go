@@ -38,6 +38,8 @@ func NewPipeline(c *conf.Notify, store *Repo, desk *Desktop, fei *Feishu) *biz.P
 		}
 		cfg.Templates = c.GetTemplates()
 	}
+	// market.alert：同类合并窗口对齐引擎侧同票同种 5 分钟去重（T07③ dedup 桶 300s 档）。
+	cfg.Windows = map[string]time.Duration{"market": 5 * time.Minute}
 	return biz.NewPipeline(cfg, store, desk, fei)
 }
 

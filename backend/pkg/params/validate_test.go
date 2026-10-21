@@ -24,6 +24,42 @@ func TestStrictCatalogueAndRanges(t *testing.T) {
 	}
 }
 
+// TestLLMGovernanceKeys 锁 M13-T06 白名单：brain/intel 的 disable_json_mode 开关，
+// 以及密钥类键接受 env:/enc: 前缀值（裸 env: 不完整需 422）。
+func TestLLMGovernanceKeys(t *testing.T) {
+	good := map[string]string{
+		"app.brain.large.disable_json_mode": "true",
+		"app.brain.small.disable_json_mode": "false",
+		"app.intel.disable_json_mode":       "true",
+		"app.brain.large.key":               "env:DEEPSEEK_API_KEY",
+		"app.brain.small.key":               "enc:Y2lwaGVy",
+		"app.intel.key":                     "env:INTEL_LLM_KEY",
+		"app.kb.key":                        "env:KB_EMBED_KEY",
+	}
+	if _, err := ValidatePatch(nil, good); err != nil {
+		t.Fatal(err)
+	}
+	bads := []map[string]string{
+		{"app.brain.large.disable_json_mode": "yes"},
+		{"app.intel.disable_json_mode": "1"},
+		{"app.brain.large.key": "env:"},
+		// 嵌入无 JSON 模式概念，未登记的键必须仍被拦下。
+		{"app.kb.disable_json_mode": "true"},
+		{"app.brain.large.json_mode": "false"},
+	}
+	for _, v := range bads {
+		if _, e := ValidatePatch(nil, v); e == nil {
+			t.Errorf("accepted invalid patch %v", v)
+		}
+	}
+	if svc, _ := Target("app.brain.large.disable_json_mode"); svc != "brain" {
+		t.Fatal("brain disable_json_mode key not routed to brain")
+	}
+	if svc, _ := Target("app.intel.disable_json_mode"); svc != "intel" {
+		t.Fatal("intel disable_json_mode key not routed to intel")
+	}
+}
+
 func TestDatahubKeyFamily(t *testing.T) {
 	good := map[string]string{
 		"app.ds.eastmoney.qps":            "6",

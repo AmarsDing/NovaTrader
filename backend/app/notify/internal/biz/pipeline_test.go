@@ -96,6 +96,98 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// T07③ market.alert：level 映射沿用事件分类器（severity 优先于类别默认），
+// dedup_key=market:{sym}:{kind}，缺 symbol/kind 不落库。
+func TestClassifyMarket(t *testing.T) {
+	surge := mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{
+		"symbol": "600519.SH", "kind": "surge", "name": "贵州茅台", "price": 1688.5, "pct": 3.2,
+	})
+	msg, ok := Classify(surge)
+	if !ok || msg.Category != "market" || msg.Priority != PriHigh || msg.DedupKey != "market:600519.SH:surge" {
+		t.Fatalf("surge %+v", msg)
+	}
+	if msg.Title != "贵州茅台 急拉" || msg.Body != "@1688.5 3.2%" {
+		t.Fatalf("surge title/body %+v", msg)
+	}
+	// 价崩、闪崩类缺分抬 critical。
+	for _, kind := range []string{"flash_crash", "limit_down"} {
+		got, ok := Classify(mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{"symbol": "600519.SH", "kind": kind}))
+		if !ok || got.Priority != PriCritical {
+			t.Fatalf("%s must default critical, got %+v ok %v", kind, got, ok)
+		}
+	}
+	// payload 自带 severity 时用 severity 映射，不硬编码类别。
+	soft := mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{"symbol": "600519.SH", "kind": "surge", "severity": "info"})
+	if got, ok := Classify(soft); !ok || got.Priority != PriMedium {
+		t.Fatalf("severity override %+v", got)
+	}
+	hard := mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{"symbol": "600519.SH", "kind": "surge", "severity": "critical"})
+	if got, ok := Classify(hard); !ok || got.Priority != PriCritical {
+		t.Fatalf("severity critical %+v", got)
+	}
+	if _, ok := Classify(mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{"kind": "surge"})); ok {
+		t.Fatal("missing symbol must not notify")
+	}
+	if _, ok := Classify(mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{"symbol": "600519.SH"})); ok {
+		t.Fatal("missing kind must not notify")
+	}
+}
+
+// T07③ 合并窗口按 category 分档：market 用 300s 桶（对齐引擎侧去重），其余类别仍按 MergeWindow。
+func TestMarketMergeWindow(t *testing.T) {
+	st := &fakeStore{}
+	d := &fakeDesk{}
+	f := &fakeFei{skip: true}
+	p := NewPipeline(Config{MergeWindow: time.Minute, Windows: map[string]time.Duration{"market": 5 * time.Minute}, RetryMax: 1}, st, d, f)
+	now := time.Date(2026, 10, 9, 10, 0, 0, 0, tradecal.Shanghai())
+	at := now
+	p.now = func() time.Time { return at }
+	p.session = func(time.Time) (tradecal.Session, error) {
+		return tradecal.Session{Phase: tradecal.AMTrading, Trading: true}, nil
+	}
+	mk := func() events.Envelope {
+		return mustEnv(t, "market", events.SubjectMarketAlert, map[string]any{"symbol": "600519.SH", "kind": "surge", "pct": 3.5})
+	}
+	if err := p.Handle(context.Background(), mk()); err != nil {
+		t.Fatal(err)
+	}
+	if d.n.Load() != 1 {
+		t.Fatalf("first alert must deliver, desk=%d", d.n.Load())
+	}
+	// 4 分钟内的同票同种并入前一条（<=300s 桶），不再推。
+	at = now.Add(4 * time.Minute)
+	if err := p.Handle(context.Background(), mk()); err != nil {
+		t.Fatal(err)
+	}
+	if d.n.Load() != 1 || st.byID(2).Status != StatusMerged || st.byID(1).MergeCount != 1 {
+		t.Fatalf("4min alert must merge: desk=%d row2=%s count=%d", d.n.Load(), st.byID(2).Status, st.byID(1).MergeCount)
+	}
+	// 6 分钟后出了 300s 桶，新推送。
+	at = now.Add(6 * time.Minute)
+	if err := p.Handle(context.Background(), mk()); err != nil {
+		t.Fatal(err)
+	}
+	if d.n.Load() != 2 || st.byID(3).Status != StatusSent {
+		t.Fatalf("6min alert must deliver: desk=%d row3=%s", d.n.Load(), st.byID(3).Status)
+	}
+	// 非 market 类别不吃 300s 档：risk 用默认 60s，80 秒后仍算新。
+	if err := p.Handle(context.Background(), mustEnv(t, "risk", events.SubjectRiskAlert, map[string]any{"kind": "breaker", "message": "熔断"})); err != nil {
+		t.Fatal(err)
+	}
+	at = now.Add(6*time.Minute + 80*time.Second)
+	if err := p.Handle(context.Background(), mustEnv(t, "risk", events.SubjectRiskAlert, map[string]any{"kind": "breaker", "message": "还是熔断"})); err != nil {
+		t.Fatal(err)
+	}
+	if d.n.Load() != 4 {
+		t.Fatalf("risk beyond its own 60s window must deliver again, desk=%d", d.n.Load())
+	}
+	for i := range st.rows {
+		if st.rows[i].Category == "risk" && st.rows[i].Status == StatusMerged {
+			t.Fatalf("risk row must not merge across 300s tier: %+v", st.rows[i])
+		}
+	}
+}
+
 func TestRenderAndFeishuText(t *testing.T) {
 	msg := Message{Title: "贵州茅台", Body: "首板", Category: "signal", Fields: map[string]string{"symbol": "600519.SH"}, MergeCount: 2}
 	got := Render("{{title}} {{symbol}} x{{count}}\n{{body}}", msg)

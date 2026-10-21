@@ -269,6 +269,141 @@ func TestHubOnTextCompatibilityAndTopicFilter(t *testing.T) {
 	}
 }
 
+// T13：natsRoutes 必须登记 market.bar.1m / market.limit.changed / market.state 三个行情主题。
+func TestHubNatsRoutesRegisterMarketSubjects(t *testing.T) {
+	routes := map[string]natsRoute{}
+	for _, route := range natsRoutes {
+		routes[route.subject] = route
+	}
+	for _, want := range []struct {
+		subject string
+		event   string
+	}{
+		{events.SubjectMarketBar, "bar"},
+		{events.SubjectMarketLimit, "limit"},
+		{events.SubjectMarketState, "state"},
+	} {
+		route, ok := routes[want.subject]
+		if !ok {
+			t.Fatalf("natsRoutes missing %s", want.subject)
+		}
+		if route.topic != "market" || route.event != want.event || !route.core || route.durable != "" {
+			t.Fatalf("route %+v", route)
+		}
+	}
+}
+
+func barEnvelope(t *testing.T, payload any) string {
+	t.Helper()
+	env, err := events.New("market", events.SubjectMarketBar, "", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := env.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// T13：{"bars":[...]} 批量载荷展开为逐票帧；同一 symbol 同一线在刷出窗口内尾随合并只发最新，不同票/不同线各自保留。
+func TestHubMarketBarTailMergeWithinFlushWindow(t *testing.T) {
+	h := NewHub(log.DefaultLogger)
+	c := testClient(16)
+	subscribeReady(h, c, []string{"market"})
+	h.onMarketBar(events.SubjectMarketBar, "market", "bar", []byte(barEnvelope(t, map[string]any{"bars": []map[string]any{
+		{"symbol": "600000", "time": "2026-10-22T09:31:00+08:00", "open": 1, "high": 2, "low": 1, "close": 1},
+		{"symbol": "000001", "time": "2026-10-22T09:31:00+08:00", "open": 3, "high": 3, "low": 3, "close": 3},
+	}})))
+	h.onMarketBar(events.SubjectMarketBar, "market", "bar", []byte(barEnvelope(t, map[string]any{"bars": []map[string]any{
+		{"symbol": "600000", "time": "2026-10-22T09:31:00+08:00", "open": 1, "high": 2, "low": 1, "close": 2},
+	}})))
+	if len(c.Send) != 0 {
+		t.Fatal("bar escaped before flush")
+	}
+	h.flushMarket()
+	frames := framesOf(drain(c))
+	if len(frames) != 2 {
+		t.Fatalf("merged frames %+v", frames)
+	}
+	got := map[string]float64{}
+	for _, m := range frames {
+		payload := m.Payload.(map[string]any)
+		if m.Topic != "market" || m.Event != "bar" {
+			t.Fatalf("frame identity %+v", m)
+		}
+		got[payload["symbol"].(string)] = payload["close"].(float64)
+	}
+	if got["600000"] != 2 || got["000001"] != 3 {
+		t.Fatalf("tail merge kept old bar %+v", got)
+	}
+	// 窗口过后同一根线的后续更新照常发出（≥1s/票的最小间隔）。
+	h.onMarketBar(events.SubjectMarketBar, "market", "bar", []byte(barEnvelope(t, map[string]any{"bars": []map[string]any{
+		{"symbol": "600000", "time": "2026-10-22T09:31:00+08:00", "open": 1, "high": 2, "low": 1, "close": 5},
+	}})))
+	if len(c.Send) != 0 {
+		t.Fatal("bar escaped before second flush")
+	}
+	h.flushMarket()
+	frames = framesOf(drain(c))
+	if len(frames) != 1 || frames[0].Payload.(map[string]any)["close"].(float64) != 5 {
+		t.Fatalf("next-window frames %+v", frames)
+	}
+}
+
+// T13：停牌/非交易时段没有 bar 行的 meta/控制帧落成显式 {"meta":{"no_bar":true}}，不静默丢弃，也不进合并窗。
+func TestHubMarketBarMetaFallback(t *testing.T) {
+	for _, payload := range []map[string]any{
+		{"bars": []map[string]any{}},
+		{"reason": "suspended"},
+	} {
+		h := NewHub(log.DefaultLogger)
+		c := testClient(4)
+		subscribeReady(h, c, []string{"market"})
+		h.onMarketBar(events.SubjectMarketBar, "market", "bar", []byte(barEnvelope(t, payload)))
+		frames := framesOf(drain(c))
+		if len(frames) != 1 {
+			t.Fatalf("control frame dropped for %+v", payload)
+		}
+		meta, ok := frames[0].Payload.(map[string]any)["meta"].(map[string]any)
+		if !ok || meta["no_bar"] != true {
+			t.Fatalf("not a no_bar control frame %+v", frames[0].Payload)
+		}
+		if frames[0].Topic != "market" || frames[0].Event != "bar" {
+			t.Fatalf("control frame identity %+v", frames[0])
+		}
+		if len(h.market) != 0 {
+			t.Fatal("control frame entered coalesce window")
+		}
+	}
+}
+
+// T13：market.limit.changed / market.state 是量小的事件流，直通不合并。
+func TestHubMarketLimitAndStatePassThrough(t *testing.T) {
+	h := NewHub(log.DefaultLogger)
+	c := testClient(8)
+	subscribeReady(h, c, []string{"market"})
+	limitEnv, err := events.New("market", events.SubjectMarketLimit, "", map[string]any{"events": []map[string]any{{"symbol": "600000", "kind": "seal"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limitRaw, _ := limitEnv.Marshal()
+	stateEnv, err := events.New("market", events.SubjectMarketState, "", map[string]any{"trade_date": "2026-10-22", "phase": "warm"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateRaw, _ := stateEnv.Marshal()
+	h.onRawSubject(events.SubjectMarketLimit, "market", "limit", limitRaw)
+	h.onRawSubject(events.SubjectMarketState, "market", "state", stateRaw)
+	if len(h.market) != 0 {
+		t.Fatal("event frames entered coalesce window")
+	}
+	frames := framesOf(drain(c))
+	if len(frames) != 2 || frames[0].Event != "limit" || frames[1].Event != "state" {
+		t.Fatalf("frames %+v", frames)
+	}
+}
+
 func TestHubSlowClientClosesActualSocket(t *testing.T) {
 	accepted := make(chan *gorilla.Conn, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
