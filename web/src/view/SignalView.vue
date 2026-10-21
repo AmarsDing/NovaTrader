@@ -322,8 +322,8 @@ watch(
           <span v-if="stateBadge(item).remain" class="tm">{{ stateBadge(item).remain }}</span>
           <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
           <NtFreshness label="信号" :at="timeOf(item.time)" />
-        <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
         </header>
+        <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
           <h3>当前动作：{{ actionOf(item).title }}</h3>
           <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
           <p><strong>失效条件</strong>{{ actionOf(item).invalidation }}</p>

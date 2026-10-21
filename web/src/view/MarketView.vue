@@ -359,21 +359,6 @@ const snapshotLine = computed(() => {
   if (Number.isFinite(seq) && seq > 0) parts.push(`#${seq}`)
   return parts.join(' · ')
 })
-
-function onPushMessage(msg: WsPushMessage) {
-  if (msg.topic !== 'market') return
-  if (!msg.data || typeof msg.data !== 'object') return
-  const data = msg.data as Record<string, unknown>
-  const rows = pushBarRows(data)
-  // 快照批次帧（无 bar 行）：只刷新快照行，REST 对账交给对账定时器，不再整段重取。
-  if (!rows.length) {
-    snapshot.value = data as unknown as MarketSnapshotMeta
-    return
-  }
-  const code = symbol.value.trim()
-  if (!code) return
-  rows.forEach((row) => {
-    // bar 帧的 symbol/freq 可能在行内也可能在帧顶层；对不上当前图表的帧直接忽略。
 /** 面板头徽注（§7.2-2/§7.3）：时间证据优先取快照帧 asOf，退到末根 bar 时刻；
  *  均无则传 null 由组件显「时点未知」（数据纪律：不拿 0s/当前时刻冒充）。 */
 const freshAt = computed<number | null>(() => {
@@ -394,6 +379,21 @@ const freshCut = computed(() => !isLive())
 /** 分钟线推送节拍约一根一分钟（宽限 2 分钟）；日线一根一天（宽限 30h）。 */
 const freshStaleMs = computed(() => (freq.value === '1d' ? 30 * 3600 * 1000 : 120 * 1000))
 
+
+function onPushMessage(msg: WsPushMessage) {
+  if (msg.topic !== 'market') return
+  if (!msg.data || typeof msg.data !== 'object') return
+  const data = msg.data as Record<string, unknown>
+  const rows = pushBarRows(data)
+  // 快照批次帧（无 bar 行）：只刷新快照行，REST 对账交给对账定时器，不再整段重取。
+  if (!rows.length) {
+    snapshot.value = data as unknown as MarketSnapshotMeta
+    return
+  }
+  const code = symbol.value.trim()
+  if (!code) return
+  rows.forEach((row) => {
+    // bar 帧的 symbol/freq 可能在行内也可能在帧顶层；对不上当前图表的帧直接忽略。
     const rowSymbol = row.symbol ?? pick<string>(data, 'symbol', 'stockCode', 'stock_code', 'code')
     const rowFreq = row.freq ?? pick<string>(data, 'freq')
     if (rowSymbol != null && rowSymbol !== code) return
@@ -464,6 +464,7 @@ onBeforeUnmount(() => {
     </p>
 
     <div v-if="quote" class="quote-strip">
+      <SymbolName :code="symbol.trim()" mode="stacked" />
       <span class="q-item">最近一根{{ freq === '1d' ? '日 K' : '1 分钟 K' }} · 收</span>
       <span class="q-last" :class="[pnlClass(quote.change), qFlashClass]">{{ price(quote.last) }}</span>
       <span class="q-chg" :class="pnlClass(quote.change)">
@@ -505,7 +506,6 @@ onBeforeUnmount(() => {
             :markers="markers"
             :levels="klineLevels"
             :watermark="symbol.trim()"
-      <SymbolName :code="symbol.trim()" mode="stacked" />
             :freq="freq"
             height="100%"
           />
