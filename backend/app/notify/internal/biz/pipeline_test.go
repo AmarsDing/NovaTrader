@@ -318,6 +318,31 @@ func TestRecoverRespectsQuiet(t *testing.T) {
 	}
 }
 
+func TestPipelineMarkRead(t *testing.T) {
+	p, st, _, _ := newPipe(true)
+	st.next = 2
+	first := time.Date(2026, 10, 9, 3, 0, 0, 0, time.UTC)
+	st.rows = []Message{
+		{ID: 1, EventID: "a", Status: StatusSent, ReadAt: first},
+		{ID: 2, EventID: "b", Status: StatusSent},
+	}
+	at := time.Date(2026, 10, 9, 4, 0, 0, 0, time.UTC)
+	n, err := p.MarkRead(context.Background(), []int64{1, 2, 404}, at)
+	if err != nil || n != 1 {
+		t.Fatalf("first mark n=%d err=%v", n, err)
+	}
+	if !st.byID(1).ReadAt.Equal(first) {
+		t.Fatalf("首读时刻被覆盖 %+v", st.byID(1).ReadAt)
+	}
+	if !st.byID(2).ReadAt.Equal(at) {
+		t.Fatalf("落时刻 %+v", st.byID(2).ReadAt)
+	}
+	n, err = p.MarkRead(context.Background(), []int64{1, 2}, at.Add(time.Minute))
+	if err != nil || n != 0 {
+		t.Fatalf("重复回写 n=%d err=%v", n, err)
+	}
+}
+
 func newPipe(quiet bool) (*Pipeline, *fakeStore, *fakeDesk, *fakeFei) {
 	st := &fakeStore{}
 	d := &fakeDesk{}
@@ -437,6 +462,19 @@ func (s *fakeStore) Get(_ context.Context, id int) (Message, error) {
 }
 
 func (s *fakeStore) List(context.Context, int) ([]Message, error) { return s.rows, nil }
+
+func (s *fakeStore) MarkRead(_ context.Context, ids []int64, at time.Time) (int64, error) {
+	var n int64
+	for _, id := range ids {
+		for i := range s.rows {
+			if s.rows[i].ID == int(id) && s.rows[i].ReadAt.IsZero() {
+				s.rows[i].ReadAt = at
+				n++
+			}
+		}
+	}
+	return n, nil
+}
 
 func (s *fakeStore) ListStatus(_ context.Context, status string) ([]Message, error) {
 	var out []Message

@@ -148,6 +148,11 @@ func (p *Pipeline) Get(ctx context.Context, id int) (Message, error) {
 	return p.store.Get(ctx, id)
 }
 
+// MarkRead 通知中心逐条已读回写。校验在 service 层，这里只做透传。
+func (p *Pipeline) MarkRead(ctx context.Context, ids []int64, at time.Time) (int64, error) {
+	return p.store.MarkRead(ctx, ids, at)
+}
+
 func (p *Pipeline) quiet(at time.Time) (bool, error) {
 	s, err := p.session(at)
 	if err != nil {

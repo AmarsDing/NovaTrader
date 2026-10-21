@@ -161,6 +161,26 @@ func (r *Repo) ListStatus(ctx context.Context, status string) ([]biz.Message, er
 	return toBizList(rows), nil
 }
 
+// MarkRead 逐条已读回写：只对 read_at 仍为 NULL 的行落时刻，重复回写不覆盖首读时刻，
+// 返回实际翻转的行数（含不存在的 id 时不另计）。
+func (r *Repo) MarkRead(ctx context.Context, ids []int64, at time.Time) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	rows := make([]int, 0, len(ids))
+	for _, id := range ids {
+		rows = append(rows, int(id))
+	}
+	n, err := r.db.NotifyMessage.Update().
+		Where(notifymessage.IDIn(rows...), notifymessage.ReadAtIsNil()).
+		SetReadAt(at).
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
+}
+
 func toBizList(rows []*ent.NotifyMessage) []biz.Message {
 	out := make([]biz.Message, 0, len(rows))
 	for _, row := range rows {
@@ -183,6 +203,9 @@ func toBiz(row *ent.NotifyMessage) biz.Message {
 	}
 	if row.SentAt != nil {
 		msg.SentAt = *row.SentAt
+	}
+	if row.ReadAt != nil {
+		msg.ReadAt = *row.ReadAt
 	}
 	if msg.Fields == nil {
 		msg.Fields = map[string]string{}

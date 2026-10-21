@@ -57,6 +57,8 @@ const (
 	FieldCreatedAt = "created_at"
 	// FieldSentAt holds the string denoting the sent_at field in the database.
 	FieldSentAt = "sent_at"
+	// FieldReadAt holds the string denoting the read_at field in the database.
+	FieldReadAt = "read_at"
 	// Table holds the table name of the notifymessage in the database.
 	Table = "notify_message"
 )
@@ -86,6 +88,7 @@ var Columns = []string{
 	FieldFeishuError,
 	FieldCreatedAt,
 	FieldSentAt,
+	FieldReadAt,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -266,4 +269,9 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // BySentAt orders the results by the sent_at field.
 func BySentAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSentAt, opts...).ToFunc()
+}
+
+// ByReadAt orders the results by the read_at field.
+func ByReadAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReadAt, opts...).ToFunc()
 }

@@ -19,6 +19,14 @@ service Notify {
       get: "/notify/v1/messages/{id}"
     };
   }
+  // MarkRead 通知中心逐条已读回写（前端此前只落 localStorage，逐条已读 id 即消息行 id）。
+  // 幂等：只对未读行落 read_at（首读时刻保留），返回实际落行数，重复回写返回 0。
+  rpc MarkRead(MarkReadRequest) returns (MarkReadReply) {
+    option (google.api.http) = {
+      post: "/notify/v1/messages/read"
+      body: "*"
+    };
+  }
 }
 
 message ListMessagesRequest {
@@ -31,6 +39,16 @@ message ListMessagesReply {
 
 message GetMessageRequest {
   int64 id = 1;
+}
+
+message MarkReadRequest {
+  // 行 id 集，上限 500（与前端已读本存容量同口径）；空集/超界/含非正 id 一律拒。
+  repeated int64 ids = 1;
+}
+
+message MarkReadReply {
+  // 本次实际从「未读」翻「已读」的行数（权威行数，非请求数）。
+  int64 updated = 1;
 }
 
 message MessageReply {
@@ -55,4 +73,5 @@ message MessageReply {
   string feishu_error = 19;
   string created_at = 20;
   string sent_at = 21;
+  string read_at = 22;
 }

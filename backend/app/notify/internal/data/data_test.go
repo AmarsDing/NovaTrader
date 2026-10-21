@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -132,5 +134,55 @@ func TestRepoRoundTrip(t *testing.T) {
 	}
 	if _, err := repo.Get(ctx, 999999); !errors.Is(err, biz.ErrNotFound) {
 		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestRepoMarkRead(t *testing.T) {
+	port := 5432
+	if v := os.Getenv("NT_TEST_PG_PORT"); v != "" {
+		p, err := strconv.Atoi(v)
+		if err != nil {
+			t.Fatalf("invalid NT_TEST_PG_PORT: %v", err)
+		}
+		port = p
+	}
+	client, cleanup, err := NewEntClient(&conf.Postgres{
+		Host: "127.0.0.1", Port: int32(port), User: "postgres", Password: "postgres",
+		Database: "novatrader_notifytest", SslMode: "disable",
+	}, log.DefaultLogger)
+	if err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(cleanup)
+	ctx := context.Background()
+	if _, err := client.NotifyMessage.Delete().Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepo(client, log.DefaultLogger)
+	now := time.Date(2026, 10, 22, 2, 0, 0, 0, time.UTC)
+	ra, _, err := repo.Insert(ctx, biz.Message{EventID: "ra1", Category: "risk", Priority: biz.PriHigh, Title: "a", DedupKey: "risk:x:", CreatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rb, _, err := repo.Insert(ctx, biz.Message{EventID: "ra2", Category: "risk", Priority: biz.PriHigh, Title: "b", DedupKey: "risk:y:", CreatedAt: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC()
+	n, err := repo.MarkRead(ctx, []int64{int64(ra.ID), int64(rb.ID), 999999}, at)
+	if err != nil || n != 2 {
+		t.Fatalf("first mark n=%d err=%v", n, err)
+	}
+	got, err := repo.Get(ctx, ra.ID)
+	if err != nil || got.ReadAt.IsZero() {
+		t.Fatalf("read_at %+v err %v", got, err)
+	}
+	n, err = repo.MarkRead(ctx, []int64{int64(ra.ID), int64(rb.ID)}, at.Add(time.Minute))
+	if err != nil || n != 0 {
+		t.Fatalf("重复回写 n=%d err=%v", n, err)
+	}
+	again, err := repo.Get(ctx, ra.ID)
+	if err != nil || !again.ReadAt.Equal(got.ReadAt) {
+		t.Fatalf("首读时刻被覆盖 %+v -> %+v", got.ReadAt, again.ReadAt)
 	}
 }

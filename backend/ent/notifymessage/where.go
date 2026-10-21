@@ -159,6 +159,11 @@ func SentAt(v time.Time) predicate.NotifyMessage {
 	return predicate.NotifyMessage(sql.FieldEQ(FieldSentAt, v))
 }
 
+// ReadAt applies equality check predicate on the "read_at" field. It's identical to ReadAtEQ.
+func ReadAt(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldEQ(FieldReadAt, v))
+}
+
 // EventIDEQ applies the EQ predicate on the "event_id" field.
 func EventIDEQ(v string) predicate.NotifyMessage {
 	return predicate.NotifyMessage(sql.FieldEQ(FieldEventID, v))
@@ -1512,6 +1517,56 @@ func SentAtIsNil() predicate.NotifyMessage {
 // SentAtNotNil applies the NotNil predicate on the "sent_at" field.
 func SentAtNotNil() predicate.NotifyMessage {
 	return predicate.NotifyMessage(sql.FieldNotNull(FieldSentAt))
+}
+
+// ReadAtEQ applies the EQ predicate on the "read_at" field.
+func ReadAtEQ(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldEQ(FieldReadAt, v))
+}
+
+// ReadAtNEQ applies the NEQ predicate on the "read_at" field.
+func ReadAtNEQ(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldNEQ(FieldReadAt, v))
+}
+
+// ReadAtIn applies the In predicate on the "read_at" field.
+func ReadAtIn(vs ...time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldIn(FieldReadAt, vs...))
+}
+
+// ReadAtNotIn applies the NotIn predicate on the "read_at" field.
+func ReadAtNotIn(vs ...time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldNotIn(FieldReadAt, vs...))
+}
+
+// ReadAtGT applies the GT predicate on the "read_at" field.
+func ReadAtGT(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldGT(FieldReadAt, v))
+}
+
+// ReadAtGTE applies the GTE predicate on the "read_at" field.
+func ReadAtGTE(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldGTE(FieldReadAt, v))
+}
+
+// ReadAtLT applies the LT predicate on the "read_at" field.
+func ReadAtLT(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldLT(FieldReadAt, v))
+}
+
+// ReadAtLTE applies the LTE predicate on the "read_at" field.
+func ReadAtLTE(v time.Time) predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldLTE(FieldReadAt, v))
+}
+
+// ReadAtIsNil applies the IsNil predicate on the "read_at" field.
+func ReadAtIsNil() predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldIsNull(FieldReadAt))
+}
+
+// ReadAtNotNil applies the NotNil predicate on the "read_at" field.
+func ReadAtNotNil() predicate.NotifyMessage {
+	return predicate.NotifyMessage(sql.FieldNotNull(FieldReadAt))
 }
 
 // And groups predicates with the AND operator between them.

@@ -15,6 +15,8 @@ type Store interface {
 	Get(ctx context.Context, id int) (Message, error)
 	List(ctx context.Context, limit int) ([]Message, error)
 	ListStatus(ctx context.Context, status string) ([]Message, error)
+	// MarkRead 把 ids 中仍未读的行落 read_at（首读时刻保留），返回实际翻转的行数。
+	MarkRead(ctx context.Context, ids []int64, at time.Time) (int64, error)
 }
 
 // Desktop 把通知推到 admin。

@@ -48835,6 +48835,7 @@ type NotifyMessageMutation struct {
 	feishu_error        *string
 	created_at          *time.Time
 	sent_at             *time.Time
+	read_at             *time.Time
 	clearedFields       map[string]struct{}
 	done                bool
 	oldValue            func(context.Context) (*NotifyMessage, error)
@@ -49994,6 +49995,55 @@ func (m *NotifyMessageMutation) ResetSentAt() {
 	delete(m.clearedFields, notifymessage.FieldSentAt)
 }
 
+// SetReadAt sets the "read_at" field.
+func (m *NotifyMessageMutation) SetReadAt(t time.Time) {
+	m.read_at = &t
+}
+
+// ReadAt returns the value of the "read_at" field in the mutation.
+func (m *NotifyMessageMutation) ReadAt() (r time.Time, exists bool) {
+	v := m.read_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReadAt returns the old "read_at" field's value of the NotifyMessage entity.
+// If the NotifyMessage object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyMessageMutation) OldReadAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReadAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReadAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReadAt: %w", err)
+	}
+	return oldValue.ReadAt, nil
+}
+
+// ClearReadAt clears the value of the "read_at" field.
+func (m *NotifyMessageMutation) ClearReadAt() {
+	m.read_at = nil
+	m.clearedFields[notifymessage.FieldReadAt] = struct{}{}
+}
+
+// ReadAtCleared returns if the "read_at" field was cleared in this mutation.
+func (m *NotifyMessageMutation) ReadAtCleared() bool {
+	_, ok := m.clearedFields[notifymessage.FieldReadAt]
+	return ok
+}
+
+// ResetReadAt resets all changes to the "read_at" field.
+func (m *NotifyMessageMutation) ResetReadAt() {
+	m.read_at = nil
+	delete(m.clearedFields, notifymessage.FieldReadAt)
+}
+
 // Where appends a list predicates to the NotifyMessageMutation builder.
 func (m *NotifyMessageMutation) Where(ps ...predicate.NotifyMessage) {
 	m.predicates = append(m.predicates, ps...)
@@ -50028,7 +50078,7 @@ func (m *NotifyMessageMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotifyMessageMutation) Fields() []string {
-	fields := make([]string, 0, 22)
+	fields := make([]string, 0, 23)
 	if m.event_id != nil {
 		fields = append(fields, notifymessage.FieldEventID)
 	}
@@ -50095,6 +50145,9 @@ func (m *NotifyMessageMutation) Fields() []string {
 	if m.sent_at != nil {
 		fields = append(fields, notifymessage.FieldSentAt)
 	}
+	if m.read_at != nil {
+		fields = append(fields, notifymessage.FieldReadAt)
+	}
 	return fields
 }
 
@@ -50147,6 +50200,8 @@ func (m *NotifyMessageMutation) Field(name string) (ent.Value, bool) {
 		return m.CreatedAt()
 	case notifymessage.FieldSentAt:
 		return m.SentAt()
+	case notifymessage.FieldReadAt:
+		return m.ReadAt()
 	}
 	return nil, false
 }
@@ -50200,6 +50255,8 @@ func (m *NotifyMessageMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldCreatedAt(ctx)
 	case notifymessage.FieldSentAt:
 		return m.OldSentAt(ctx)
+	case notifymessage.FieldReadAt:
+		return m.OldReadAt(ctx)
 	}
 	return nil, fmt.Errorf("unknown NotifyMessage field %s", name)
 }
@@ -50363,6 +50420,13 @@ func (m *NotifyMessageMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetSentAt(v)
 		return nil
+	case notifymessage.FieldReadAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReadAt(v)
+		return nil
 	}
 	return fmt.Errorf("unknown NotifyMessage field %s", name)
 }
@@ -50486,6 +50550,9 @@ func (m *NotifyMessageMutation) ClearedFields() []string {
 	if m.FieldCleared(notifymessage.FieldSentAt) {
 		fields = append(fields, notifymessage.FieldSentAt)
 	}
+	if m.FieldCleared(notifymessage.FieldReadAt) {
+		fields = append(fields, notifymessage.FieldReadAt)
+	}
 	return fields
 }
 
@@ -50541,6 +50608,9 @@ func (m *NotifyMessageMutation) ClearField(name string) error {
 		return nil
 	case notifymessage.FieldSentAt:
 		m.ClearSentAt()
+		return nil
+	case notifymessage.FieldReadAt:
+		m.ClearReadAt()
 		return nil
 	}
 	return fmt.Errorf("unknown NotifyMessage nullable field %s", name)
@@ -50615,6 +50685,9 @@ func (m *NotifyMessageMutation) ResetField(name string) error {
 		return nil
 	case notifymessage.FieldSentAt:
 		m.ResetSentAt()
+		return nil
+	case notifymessage.FieldReadAt:
+		m.ResetReadAt()
 		return nil
 	}
 	return fmt.Errorf("unknown NotifyMessage field %s", name)

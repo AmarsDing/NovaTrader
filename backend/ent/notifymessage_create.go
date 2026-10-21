@@ -298,6 +298,20 @@ func (_c *NotifyMessageCreate) SetNillableSentAt(v *time.Time) *NotifyMessageCre
 	return _c
 }
 
+// SetReadAt sets the "read_at" field.
+func (_c *NotifyMessageCreate) SetReadAt(v time.Time) *NotifyMessageCreate {
+	_c.mutation.SetReadAt(v)
+	return _c
+}
+
+// SetNillableReadAt sets the "read_at" field if the given value is not nil.
+func (_c *NotifyMessageCreate) SetNillableReadAt(v *time.Time) *NotifyMessageCreate {
+	if v != nil {
+		_c.SetReadAt(*v)
+	}
+	return _c
+}
+
 // Mutation returns the NotifyMessageMutation object of the builder.
 func (_c *NotifyMessageCreate) Mutation() *NotifyMessageMutation {
 	return _c.mutation
@@ -594,6 +608,10 @@ func (_c *NotifyMessageCreate) createSpec() (*NotifyMessage, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.SentAt(); ok {
 		_spec.SetField(notifymessage.FieldSentAt, field.TypeTime, value)
 		_node.SentAt = &value
+	}
+	if value, ok := _c.mutation.ReadAt(); ok {
+		_spec.SetField(notifymessage.FieldReadAt, field.TypeTime, value)
+		_node.ReadAt = &value
 	}
 	return _node, _spec
 }
@@ -1016,6 +1034,24 @@ func (u *NotifyMessageUpsert) UpdateSentAt() *NotifyMessageUpsert {
 // ClearSentAt clears the value of the "sent_at" field.
 func (u *NotifyMessageUpsert) ClearSentAt() *NotifyMessageUpsert {
 	u.SetNull(notifymessage.FieldSentAt)
+	return u
+}
+
+// SetReadAt sets the "read_at" field.
+func (u *NotifyMessageUpsert) SetReadAt(v time.Time) *NotifyMessageUpsert {
+	u.Set(notifymessage.FieldReadAt, v)
+	return u
+}
+
+// UpdateReadAt sets the "read_at" field to the value that was provided on create.
+func (u *NotifyMessageUpsert) UpdateReadAt() *NotifyMessageUpsert {
+	u.SetExcluded(notifymessage.FieldReadAt)
+	return u
+}
+
+// ClearReadAt clears the value of the "read_at" field.
+func (u *NotifyMessageUpsert) ClearReadAt() *NotifyMessageUpsert {
+	u.SetNull(notifymessage.FieldReadAt)
 	return u
 }
 
@@ -1490,6 +1526,27 @@ func (u *NotifyMessageUpsertOne) UpdateSentAt() *NotifyMessageUpsertOne {
 func (u *NotifyMessageUpsertOne) ClearSentAt() *NotifyMessageUpsertOne {
 	return u.Update(func(s *NotifyMessageUpsert) {
 		s.ClearSentAt()
+	})
+}
+
+// SetReadAt sets the "read_at" field.
+func (u *NotifyMessageUpsertOne) SetReadAt(v time.Time) *NotifyMessageUpsertOne {
+	return u.Update(func(s *NotifyMessageUpsert) {
+		s.SetReadAt(v)
+	})
+}
+
+// UpdateReadAt sets the "read_at" field to the value that was provided on create.
+func (u *NotifyMessageUpsertOne) UpdateReadAt() *NotifyMessageUpsertOne {
+	return u.Update(func(s *NotifyMessageUpsert) {
+		s.UpdateReadAt()
+	})
+}
+
+// ClearReadAt clears the value of the "read_at" field.
+func (u *NotifyMessageUpsertOne) ClearReadAt() *NotifyMessageUpsertOne {
+	return u.Update(func(s *NotifyMessageUpsert) {
+		s.ClearReadAt()
 	})
 }
 
@@ -2128,6 +2185,27 @@ func (u *NotifyMessageUpsertBulk) UpdateSentAt() *NotifyMessageUpsertBulk {
 func (u *NotifyMessageUpsertBulk) ClearSentAt() *NotifyMessageUpsertBulk {
 	return u.Update(func(s *NotifyMessageUpsert) {
 		s.ClearSentAt()
+	})
+}
+
+// SetReadAt sets the "read_at" field.
+func (u *NotifyMessageUpsertBulk) SetReadAt(v time.Time) *NotifyMessageUpsertBulk {
+	return u.Update(func(s *NotifyMessageUpsert) {
+		s.SetReadAt(v)
+	})
+}
+
+// UpdateReadAt sets the "read_at" field to the value that was provided on create.
+func (u *NotifyMessageUpsertBulk) UpdateReadAt() *NotifyMessageUpsertBulk {
+	return u.Update(func(s *NotifyMessageUpsert) {
+		s.UpdateReadAt()
+	})
+}
+
+// ClearReadAt clears the value of the "read_at" field.
+func (u *NotifyMessageUpsertBulk) ClearReadAt() *NotifyMessageUpsertBulk {
+	return u.Update(func(s *NotifyMessageUpsert) {
+		s.ClearReadAt()
 	})
 }
 

@@ -21,16 +21,21 @@ const _ = http.SupportPackageIsVersion1
 
 const OperationNotifyGetMessage = "/api.notify.v1.Notify/GetMessage"
 const OperationNotifyListMessages = "/api.notify.v1.Notify/ListMessages"
+const OperationNotifyMarkRead = "/api.notify.v1.Notify/MarkRead"
 
 type NotifyHTTPServer interface {
 	GetMessage(context.Context, *GetMessageRequest) (*MessageReply, error)
 	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesReply, error)
+	// MarkRead MarkRead 通知中心逐条已读回写（前端此前只落 localStorage，逐条已读 id 即消息行 id）。
+	// 幂等：只对未读行落 read_at（首读时刻保留），返回实际落行数，重复回写返回 0。
+	MarkRead(context.Context, *MarkReadRequest) (*MarkReadReply, error)
 }
 
 func RegisterNotifyHTTPServer(s *http.Server, srv NotifyHTTPServer) {
 	r := s.Route("/")
 	r.GET("/notify/v1/messages", _Notify_ListMessages0_HTTP_Handler(srv))
 	r.GET("/notify/v1/messages/{id}", _Notify_GetMessage0_HTTP_Handler(srv))
+	r.POST("/notify/v1/messages/read", _Notify_MarkRead0_HTTP_Handler(srv))
 }
 
 func _Notify_ListMessages0_HTTP_Handler(srv NotifyHTTPServer) func(ctx http.Context) error {
@@ -74,9 +79,34 @@ func _Notify_GetMessage0_HTTP_Handler(srv NotifyHTTPServer) func(ctx http.Contex
 	}
 }
 
+func _Notify_MarkRead0_HTTP_Handler(srv NotifyHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in MarkReadRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationNotifyMarkRead)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.MarkRead(ctx, req.(*MarkReadRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*MarkReadReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type NotifyHTTPClient interface {
 	GetMessage(ctx context.Context, req *GetMessageRequest, opts ...http.CallOption) (rsp *MessageReply, err error)
 	ListMessages(ctx context.Context, req *ListMessagesRequest, opts ...http.CallOption) (rsp *ListMessagesReply, err error)
+	// MarkRead MarkRead 通知中心逐条已读回写（前端此前只落 localStorage，逐条已读 id 即消息行 id）。
+	// 幂等：只对未读行落 read_at（首读时刻保留），返回实际落行数，重复回写返回 0。
+	MarkRead(ctx context.Context, req *MarkReadRequest, opts ...http.CallOption) (rsp *MarkReadReply, err error)
 }
 
 type NotifyHTTPClientImpl struct {
@@ -107,6 +137,21 @@ func (c *NotifyHTTPClientImpl) ListMessages(ctx context.Context, in *ListMessage
 	opts = append(opts, http.Operation(OperationNotifyListMessages))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// MarkRead MarkRead 通知中心逐条已读回写（前端此前只落 localStorage，逐条已读 id 即消息行 id）。
+// 幂等：只对未读行落 read_at（首读时刻保留），返回实际落行数，重复回写返回 0。
+func (c *NotifyHTTPClientImpl) MarkRead(ctx context.Context, in *MarkReadRequest, opts ...http.CallOption) (*MarkReadReply, error) {
+	var out MarkReadReply
+	pattern := "/notify/v1/messages/read"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationNotifyMarkRead))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

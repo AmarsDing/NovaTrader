@@ -61,7 +61,9 @@ type NotifyMessage struct {
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// SentAt holds the value of the "sent_at" field.
-	SentAt       *time.Time `json:"sent_at,omitempty"`
+	SentAt *time.Time `json:"sent_at,omitempty"`
+	// ReadAt holds the value of the "read_at" field.
+	ReadAt       *time.Time `json:"read_at,omitempty"`
 	selectValues sql.SelectValues
 }
 
@@ -76,7 +78,7 @@ func (*NotifyMessage) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case notifymessage.FieldEventID, notifymessage.FieldTraceID, notifymessage.FieldSource, notifymessage.FieldSubject, notifymessage.FieldCategory, notifymessage.FieldPriority, notifymessage.FieldTitle, notifymessage.FieldBody, notifymessage.FieldDedupKey, notifymessage.FieldStatus, notifymessage.FieldRendered, notifymessage.FieldDesktopStatus, notifymessage.FieldDesktopError, notifymessage.FieldFeishuStatus, notifymessage.FieldFeishuError:
 			values[i] = new(sql.NullString)
-		case notifymessage.FieldCreatedAt, notifymessage.FieldSentAt:
+		case notifymessage.FieldCreatedAt, notifymessage.FieldSentAt, notifymessage.FieldReadAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -235,6 +237,13 @@ func (_m *NotifyMessage) assignValues(columns []string, values []any) error {
 				_m.SentAt = new(time.Time)
 				*_m.SentAt = value.Time
 			}
+		case notifymessage.FieldReadAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field read_at", values[i])
+			} else if value.Valid {
+				_m.ReadAt = new(time.Time)
+				*_m.ReadAt = value.Time
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -338,6 +347,11 @@ func (_m *NotifyMessage) String() string {
 	builder.WriteString(", ")
 	if v := _m.SentAt; v != nil {
 		builder.WriteString("sent_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ReadAt; v != nil {
+		builder.WriteString("read_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteByte(')')

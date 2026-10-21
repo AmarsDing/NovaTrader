@@ -1566,6 +1566,7 @@ var (
 		{Name: "feishu_error", Type: field.TypeString, Nullable: true, Size: 2147483647, Default: ""},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "sent_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "read_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 	}
 	// NotifyMessageTable holds the schema information for the "notify_message" table.
 	NotifyMessageTable = &schema.Table{

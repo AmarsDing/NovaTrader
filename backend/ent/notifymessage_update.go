@@ -440,6 +440,26 @@ func (_u *NotifyMessageUpdate) ClearSentAt() *NotifyMessageUpdate {
 	return _u
 }
 
+// SetReadAt sets the "read_at" field.
+func (_u *NotifyMessageUpdate) SetReadAt(v time.Time) *NotifyMessageUpdate {
+	_u.mutation.SetReadAt(v)
+	return _u
+}
+
+// SetNillableReadAt sets the "read_at" field if the given value is not nil.
+func (_u *NotifyMessageUpdate) SetNillableReadAt(v *time.Time) *NotifyMessageUpdate {
+	if v != nil {
+		_u.SetReadAt(*v)
+	}
+	return _u
+}
+
+// ClearReadAt clears the value of the "read_at" field.
+func (_u *NotifyMessageUpdate) ClearReadAt() *NotifyMessageUpdate {
+	_u.mutation.ClearReadAt()
+	return _u
+}
+
 // Mutation returns the NotifyMessageMutation object of the builder.
 func (_u *NotifyMessageUpdate) Mutation() *NotifyMessageMutation {
 	return _u.mutation
@@ -663,6 +683,12 @@ func (_u *NotifyMessageUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.SentAtCleared() {
 		_spec.ClearField(notifymessage.FieldSentAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ReadAt(); ok {
+		_spec.SetField(notifymessage.FieldReadAt, field.TypeTime, value)
+	}
+	if _u.mutation.ReadAtCleared() {
+		_spec.ClearField(notifymessage.FieldReadAt, field.TypeTime)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -1096,6 +1122,26 @@ func (_u *NotifyMessageUpdateOne) ClearSentAt() *NotifyMessageUpdateOne {
 	return _u
 }
 
+// SetReadAt sets the "read_at" field.
+func (_u *NotifyMessageUpdateOne) SetReadAt(v time.Time) *NotifyMessageUpdateOne {
+	_u.mutation.SetReadAt(v)
+	return _u
+}
+
+// SetNillableReadAt sets the "read_at" field if the given value is not nil.
+func (_u *NotifyMessageUpdateOne) SetNillableReadAt(v *time.Time) *NotifyMessageUpdateOne {
+	if v != nil {
+		_u.SetReadAt(*v)
+	}
+	return _u
+}
+
+// ClearReadAt clears the value of the "read_at" field.
+func (_u *NotifyMessageUpdateOne) ClearReadAt() *NotifyMessageUpdateOne {
+	_u.mutation.ClearReadAt()
+	return _u
+}
+
 // Mutation returns the NotifyMessageMutation object of the builder.
 func (_u *NotifyMessageUpdateOne) Mutation() *NotifyMessageMutation {
 	return _u.mutation
@@ -1349,6 +1395,12 @@ func (_u *NotifyMessageUpdateOne) sqlSave(ctx context.Context) (_node *NotifyMes
 	}
 	if _u.mutation.SentAtCleared() {
 		_spec.ClearField(notifymessage.FieldSentAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ReadAt(); ok {
+		_spec.SetField(notifymessage.FieldReadAt, field.TypeTime, value)
+	}
+	if _u.mutation.ReadAtCleared() {
+		_spec.ClearField(notifymessage.FieldReadAt, field.TypeTime)
 	}
 	_node = &NotifyMessage{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -47,6 +47,10 @@ func (NotifyMessage) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("sent_at").Optional().Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		// read_at 前端逐条已读的回写时刻（M10，G3 前端切片先行只落 localStorage）。
+		// 首次已读为准：回写只填 NULL 行，重复点击不覆盖；未读保持 NULL，不用零值冒充。
+		field.Time("read_at").Optional().Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

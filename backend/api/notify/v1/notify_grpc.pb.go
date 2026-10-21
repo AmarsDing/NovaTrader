@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	Notify_ListMessages_FullMethodName = "/api.notify.v1.Notify/ListMessages"
 	Notify_GetMessage_FullMethodName   = "/api.notify.v1.Notify/GetMessage"
+	Notify_MarkRead_FullMethodName     = "/api.notify.v1.Notify/MarkRead"
 )
 
 // NotifyClient is the client API for Notify service.
@@ -32,6 +33,9 @@ const (
 type NotifyClient interface {
 	ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*ListMessagesReply, error)
 	GetMessage(ctx context.Context, in *GetMessageRequest, opts ...grpc.CallOption) (*MessageReply, error)
+	// MarkRead 通知中心逐条已读回写（前端此前只落 localStorage，逐条已读 id 即消息行 id）。
+	// 幂等：只对未读行落 read_at（首读时刻保留），返回实际落行数，重复回写返回 0。
+	MarkRead(ctx context.Context, in *MarkReadRequest, opts ...grpc.CallOption) (*MarkReadReply, error)
 }
 
 type notifyClient struct {
@@ -62,6 +66,16 @@ func (c *notifyClient) GetMessage(ctx context.Context, in *GetMessageRequest, op
 	return out, nil
 }
 
+func (c *notifyClient) MarkRead(ctx context.Context, in *MarkReadRequest, opts ...grpc.CallOption) (*MarkReadReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MarkReadReply)
+	err := c.cc.Invoke(ctx, Notify_MarkRead_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NotifyServer is the server API for Notify service.
 // All implementations must embed UnimplementedNotifyServer
 // for forward compatibility.
@@ -71,6 +85,9 @@ func (c *notifyClient) GetMessage(ctx context.Context, in *GetMessageRequest, op
 type NotifyServer interface {
 	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesReply, error)
 	GetMessage(context.Context, *GetMessageRequest) (*MessageReply, error)
+	// MarkRead 通知中心逐条已读回写（前端此前只落 localStorage，逐条已读 id 即消息行 id）。
+	// 幂等：只对未读行落 read_at（首读时刻保留），返回实际落行数，重复回写返回 0。
+	MarkRead(context.Context, *MarkReadRequest) (*MarkReadReply, error)
 	mustEmbedUnimplementedNotifyServer()
 }
 
@@ -86,6 +103,9 @@ func (UnimplementedNotifyServer) ListMessages(context.Context, *ListMessagesRequ
 }
 func (UnimplementedNotifyServer) GetMessage(context.Context, *GetMessageRequest) (*MessageReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMessage not implemented")
+}
+func (UnimplementedNotifyServer) MarkRead(context.Context, *MarkReadRequest) (*MarkReadReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method MarkRead not implemented")
 }
 func (UnimplementedNotifyServer) mustEmbedUnimplementedNotifyServer() {}
 func (UnimplementedNotifyServer) testEmbeddedByValue()                {}
@@ -144,6 +164,24 @@ func _Notify_GetMessage_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Notify_MarkRead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkReadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NotifyServer).MarkRead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Notify_MarkRead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NotifyServer).MarkRead(ctx, req.(*MarkReadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Notify_ServiceDesc is the grpc.ServiceDesc for Notify service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -158,6 +196,10 @@ var Notify_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMessage",
 			Handler:    _Notify_GetMessage_Handler,
+		},
+		{
+			MethodName: "MarkRead",
+			Handler:    _Notify_MarkRead_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

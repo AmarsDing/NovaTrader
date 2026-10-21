@@ -53,6 +53,7 @@ type Message struct {
 	FeishuError     string
 	CreatedAt       time.Time
 	SentAt          time.Time
+	ReadAt          time.Time
 }
 
 // DesktopNote 是发给 admin 的桌面载荷。没有确认动作。

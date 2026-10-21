@@ -48,6 +48,29 @@ func (s *NotifyService) GetMessage(ctx context.Context, req *v1.GetMessageReques
 	return toReply(row), nil
 }
 
+// markReadMax 与前端已读本存容量同口径，超限一律拒，不做静默截断。
+const markReadMax = 500
+
+func (s *NotifyService) MarkRead(ctx context.Context, req *v1.MarkReadRequest) (*v1.MarkReadReply, error) {
+	ids := req.GetIds()
+	if len(ids) == 0 {
+		return nil, kerrors.BadRequest("NOTIFY_INVALID", "ids 为空")
+	}
+	if len(ids) > markReadMax {
+		return nil, kerrors.BadRequest("NOTIFY_INVALID", "ids 超过 500 上限")
+	}
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, kerrors.BadRequest("NOTIFY_INVALID", "id 必须为正")
+		}
+	}
+	n, err := s.p.MarkRead(ctx, ids, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	return &v1.MarkReadReply{Updated: n}, nil
+}
+
 func toReply(m biz.Message) *v1.MessageReply {
 	return &v1.MessageReply{
 		Id: int64(m.ID), EventId: m.EventID, TraceId: m.TraceID, Source: m.Source, Subject: m.Subject,
@@ -55,7 +78,7 @@ func toReply(m biz.Message) *v1.MessageReply {
 		MergeCount: int32(m.MergeCount), Status: m.Status, Rendered: m.Rendered,
 		DesktopStatus: m.DesktopStatus, DesktopAttempts: int32(m.DesktopAttempts), DesktopError: m.DesktopError,
 		FeishuStatus: m.FeishuStatus, FeishuAttempts: int32(m.FeishuAttempts), FeishuError: m.FeishuError,
-		CreatedAt: fmtTime(m.CreatedAt), SentAt: fmtTime(m.SentAt),
+		CreatedAt: fmtTime(m.CreatedAt), SentAt: fmtTime(m.SentAt), ReadAt: fmtTime(m.ReadAt),
 	}
 }
 
