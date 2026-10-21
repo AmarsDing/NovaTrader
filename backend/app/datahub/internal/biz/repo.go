@@ -62,6 +62,12 @@ type Repo interface {
 	UpdateBackfill(ctx context.Context, job BackfillJob) error
 	GetBackfill(ctx context.Context, id int) (BackfillJob, error)
 	PendingBackfills(ctx context.Context) ([]BackfillJob, error)
+	// ListBackfills 按域/状态/创建时间下界查补办任务（D10 sunk 确认与限频判断用；
+	// domain 空=不限域，statuses 空=不限状态）。含已终态任务，与 PendingBackfills 互补。
+	ListBackfills(ctx context.Context, domain string, statuses []string, since time.Time) ([]BackfillJob, error)
+	// DomainRows 读窗口内已落行数（D10 sunk 确认「真回补」用）。读口没有的域返回错误，
+	// 调用方一律视为未确认——「行数未知」绝不冒充 0。
+	DomainRows(ctx context.Context, domain string, from, to time.Time) (int, error)
 
 	SaveRaw(ctx context.Context, raw RawRecord) error
 	PurgeRaw(ctx context.Context, before time.Time) (int, error)

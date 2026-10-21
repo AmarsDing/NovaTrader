@@ -13,6 +13,7 @@ import (
 	"server/ent/backfilljob"
 	"server/ent/collectcursor"
 	"server/ent/dataqualityissue"
+	"server/ent/datasetrecord"
 	"server/ent/equityunlock"
 	"server/ent/financereport"
 	"server/ent/hotrank"
@@ -963,9 +964,47 @@ func (r *Repo) PendingBackfills(ctx context.Context) ([]biz.BackfillJob, error) 
 }
 
 func toJob(x *ent.BackfillJob) biz.BackfillJob {
-	return biz.BackfillJob{ID: x.ID, Domain: x.Domain, Symbols: x.Symbols, Start: x.StartDate, End: x.EndDate,
+	// date 列读回为 UTC 零点渲染，归上海日历日零点后与写入侧 day() 可逆（Equal 比价成立）。
+	return biz.BackfillJob{ID: x.ID, Domain: x.Domain, Symbols: x.Symbols, Start: day(x.StartDate), End: day(x.EndDate),
 		Source: x.Source, Status: x.Status, Total: x.Total, Done: x.Done, Rows: x.Rows, Error: x.Error,
 		RequestedBy: x.RequestedBy, CreatedAt: x.CreatedAt, StartedAt: x.StartedAt, FinishedAt: x.FinishedAt}
+}
+
+// ListBackfills 按域/状态/创建时间下界查补办任务（D10 sunk 确认；含终态）。
+func (r *Repo) ListBackfills(ctx context.Context, domain string, statuses []string, since time.Time) ([]biz.BackfillJob, error) {
+	q := r.client.BackfillJob.Query()
+	if domain != "" {
+		q = q.Where(backfilljob.DomainEQ(domain))
+	}
+	if len(statuses) > 0 {
+		q = q.Where(backfilljob.StatusIn(statuses...))
+	}
+	if !since.IsZero() {
+		q = q.Where(backfilljob.CreatedAtGTE(since))
+	}
+	rows, err := q.Order(backfilljob.ByCreatedAt()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.BackfillJob, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, toJob(x))
+	}
+	return out, nil
+}
+
+// DomainRows 读窗口内已落行数（D10 sunk 确认真回补；读口没有的域一律报错=未确认）。
+func (r *Repo) DomainRows(ctx context.Context, domain string, from, to time.Time) (int, error) {
+	switch domain {
+	case biz.DomainUnlock:
+		return r.client.EquityUnlock.Query().
+			Where(equityunlock.FreeDateGTE(day(from)), equityunlock.FreeDateLTE(day(to))).Count(ctx)
+	case biz.DomainBlockTrade:
+		return r.client.DatasetRecord.Query().
+			Where(datasetrecord.DomainEQ("block_trade"),
+				datasetrecord.EventTimeGTE(day(from)), datasetrecord.EventTimeLTE(day(to))).Count(ctx)
+	}
+	return 0, fmt.Errorf("datahub: %s 没有 sunk 行数读口", domain)
 }
 
 func (r *Repo) SaveRaw(ctx context.Context, raw biz.RawRecord) error {

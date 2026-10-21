@@ -74,7 +74,7 @@ func (w *Worker) jobs() []scheduler.Job {
 		{Name: "datahub.overseas", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: time.Minute, Retry: 2, Run: day(biz.DomainOverseas)},
 		{Name: "datahub.finance", Spec: "20 8 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainFinance)},
 		// 解禁窗口赶在 brain 15:50 复盘前滚一次：盘后前、避开收盘忙时；失败也有 T-1 窗口兜底。
-		{Name: "datahub.unlock", Spec: "25 15 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainUnlock)},
+		{Name: "datahub.unlock", Spec: "25 15 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.unlockDaily},
 		{Name: "datahub.daily_bar", Spec: "0 16 * * *", TradingDayOnly: true, Timeout: 20 * time.Minute, Retry: 2, Run: day(biz.DomainDailyBar)},
 		{Name: "datahub.adj_factor", Spec: "20 16 * * *", TradingDayOnly: true, DependsOn: []string{"datahub.daily_bar"}, Timeout: 20 * time.Minute, Retry: 2, Run: day(biz.DomainAdjFactor)},
 		{Name: "datahub.money_flow", Spec: "30 16 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: day(biz.DomainMoneyFlow)},
@@ -82,7 +82,7 @@ func (w *Worker) jobs() []scheduler.Job {
 		{Name: "datahub.hsgt", Spec: "50 16 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainHsgtTop10)},
 		{Name: "datahub.lhb", Spec: "30 17 * * *", TradingDayOnly: true, Timeout: 5 * time.Minute, Retry: 2, Run: day(biz.DomainLhb)},
 		// 大宗交易为盘后披露（东财 RPT_DATA_BLOCKTRADE 收盘后陆续出齐），排在龙虎榜之后入库。
-		{Name: "datahub.block_trade", Spec: "40 17 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: day(biz.DomainBlockTrade)},
+		{Name: "datahub.block_trade", Spec: "40 17 * * *", TradingDayOnly: true, Timeout: 3 * time.Minute, Retry: 2, Run: w.blockTradeDaily},
 		{Name: "datahub.reconcile", Spec: "0 18 * * *", TradingDayOnly: true, DependsOn: []string{"datahub.daily_bar"}, Timeout: 10 * time.Minute, Retry: 1, Run: w.reconcile},
 		{Name: "datahub.purge_raw", Spec: "0 3 * * *", Timeout: time.Minute, Retry: 1, Run: w.purgeRaw},
 	}
@@ -109,6 +109,46 @@ func (w *Worker) marginPrev(ctx context.Context) error {
 		return err
 	}
 	_, err = w.col.CollectMargin(ctx, day, "")
+	return err
+}
+
+// unlockDaily/blockTradeDaily 每日空运行 → D10 sunk 立即登记待补（不再等下一交易日）；
+// 有 pending 任务覆盖当日即跳过采集（手动/自动同规，避免重复开工——真正去重仍由 sunk 钩做）。
+func (w *Worker) unlockDaily(ctx context.Context) error {
+	ctx = biz.OpenRunTrace(ctx)
+	if !w.col.Pipeline().DomainEnabled(biz.DomainUnlock) {
+		return nil
+	}
+	day, err := w.col.LastOpenDay(time.Now())
+	if err != nil {
+		return err
+	}
+	if covered, cerr := w.col.BackfillCovered(ctx, biz.DomainUnlock, day); cerr == nil && covered {
+		return nil
+	}
+	r, err := w.col.CollectUnlock(ctx, day, "")
+	if err == nil {
+		w.col.SunkEmptyBackfill(ctx, biz.DomainUnlock, day, r)
+	}
+	return err
+}
+
+func (w *Worker) blockTradeDaily(ctx context.Context) error {
+	ctx = biz.OpenRunTrace(ctx)
+	if !w.col.Pipeline().DomainEnabled(biz.DomainBlockTrade) {
+		return nil
+	}
+	day, err := w.col.LastOpenDay(time.Now())
+	if err != nil {
+		return err
+	}
+	if covered, cerr := w.col.BackfillCovered(ctx, biz.DomainBlockTrade, day); cerr == nil && covered {
+		return nil
+	}
+	r, err := w.col.CollectBlockTrades(ctx, day, "")
+	if err == nil {
+		w.col.SunkEmptyBackfill(ctx, biz.DomainBlockTrade, day, r)
+	}
 	return err
 }
 
@@ -397,6 +437,8 @@ func (w *Worker) backfillLoop(ctx context.Context) {
 				w.bfMu.Unlock()
 				w.log.Infof("backfill %d %s %s rows=%d", done.ID, done.Domain, done.Status, done.Rows)
 			}
+			// D10 确认回执：已完成 sunk 任务按窗口行数复核真回补/登记重查（60s 节奏，内部短路）。
+			w.col.ConfirmSunkBackfills(ctx)
 		}
 	}
 }
