@@ -158,6 +158,12 @@ func (f *fakeRepo) ReportEstimateRows(_ context.Context, symbol string, since, a
 	f.estSym, f.estSince, f.estAsOf = symbol, since, asOf
 	return f.estRows, nil
 }
+
+// 并行会话加的名称字典接口：fakeRepo 统一兜底（N0 用例另行覆写桩）。
+func (f *fakeRepo) SecurityBasics(context.Context, []string) ([]SecurityBasicRow, time.Time, error) {
+	return nil, time.Time{}, nil
+}
+
 /* ---------- P2 测试桩 ---------- */
 
 func (f *fakeRepo) DailyBarDays(context.Context, time.Time, time.Time) ([]DailyBarDay, error) {

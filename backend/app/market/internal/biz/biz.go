@@ -48,6 +48,9 @@ type Repo interface {
 	LoadStocks(ctx context.Context) ([]market.StockInfo, error)
 	// StockBasic 读单券静态（报价侧）。库中无此证券时返回 Found=false 而不是错误。
 	StockBasic(ctx context.Context, symbol string) (StockBasicRow, error)
+	// SecurityBasics 读名称字典：codes 为空返回全量（上限 6000 行），非空按代码过滤。
+	// 返回行与结果内最大 update_time（版本戳）；无结果时 maxUpdate 为零值，不是错误。
+	SecurityBasics(ctx context.Context, codes []string) ([]SecurityBasicRow, time.Time, error)
 	// DailyHistory 返回每只股票 before 之前最近 n 根日线，按时间升序。
 	DailyHistory(ctx context.Context, before time.Time, n int) (map[string][]market.DayBar, error)
 	// SealedOn 返回某交易日收盘涨停股的连板数。
@@ -102,6 +105,7 @@ type Repo interface {
 	BreadthRange(ctx context.Context, from, to time.Time) ([]BreadthRecord, error)
 	// SaveBreadth upsert market_breadth（trade_date 唯一）。
 	SaveBreadth(ctx context.Context, rec BreadthDay) error
+
 	// 席位胜率时序（目录册增补 B2）
 	// LhbSeatRange 读 [from,to) 区间内的 lhb_seat 行（symbol+交易日+席位名）。
 	LhbSeatRange(ctx context.Context, from, to time.Time) ([]SeatRecord, error)
