@@ -16,12 +16,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"server/conf"
 	"server/pkg/brokerif"
 	"server/pkg/brokerif/remote"
+	"server/pkg/events"
 
 	"github.com/go-kratos/kratos/v2/log"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -78,14 +80,14 @@ func assertHonestDown(t *testing.T, lc *LiveChannel) {
 		t.Fatal("probe interval must have a default")
 	}
 	// 半件实例的 Probe 是幂等空操作：down 不因空探而迁移，也不 panic。
-	if err := lc.Probe(context.Background()); err != nil {
+	if _, err := lc.Probe(context.Background()); err != nil {
 		t.Fatalf("clientless probe must be a no-op, got %v", err)
 	}
 	if got, _ := lc.Tracker.Current(); got != brokerif.Down {
 		t.Fatalf("clientless probe must not move the state, got %s", got)
 	}
 	var nilChannel *LiveChannel
-	if err := nilChannel.Probe(context.Background()); err != nil || nilChannel.Interval() <= 0 {
+	if _, err := nilChannel.Probe(context.Background()); err != nil || nilChannel.Interval() <= 0 {
 		t.Fatalf("nil channel must be safe: probe %v interval %v", err, nilChannel.Interval())
 	}
 }
@@ -97,7 +99,7 @@ func assertHonestDown(t *testing.T, lc *LiveChannel) {
 func TestLiveProbeTransitions(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	fixture := newBrokerFixture(t)
+	fixture := newBrokerFixture(t, 0)
 
 	lc := NewLiveChannel(fixture.tradeConfig(), log.DefaultLogger)
 	if lc == nil || lc.Client == nil {
@@ -106,7 +108,7 @@ func TestLiveProbeTransitions(t *testing.T) {
 	if got, _ := lc.Tracker.Current(); got != brokerif.Idle {
 		t.Fatalf("fresh channel must start idle, got %s", got)
 	}
-	if err := lc.Probe(ctx); err != nil {
+	if _, err := lc.Probe(ctx); err != nil {
 		t.Fatalf("probe against healthy fixture: %v", err)
 	}
 	if got, _ := lc.Tracker.Current(); got != brokerif.Connected {
@@ -116,7 +118,7 @@ func TestLiveProbeTransitions(t *testing.T) {
 	// 连上之后服务端拉倒：第一次失败降 degraded，连败满阈值（3）→ down。
 	fixture.close()
 	for i := 0; i < brokerif.FailThreshold; i++ {
-		if err := lc.Probe(ctx); err == nil {
+		if _, err := lc.Probe(ctx); err == nil {
 			t.Fatalf("probe %d against dead fixture must fail", i+1)
 		}
 	}
@@ -131,7 +133,7 @@ func TestLiveProbeTransitions(t *testing.T) {
 		t.Fatal("valid config must build a probed client even against a dead gateway")
 	}
 	for i := 0; i < brokerif.FailThreshold; i++ {
-		_ = lc2.Probe(ctx)
+		_, _ = lc2.Probe(ctx)
 		if i < brokerif.FailThreshold-1 {
 			if got, _ := lc2.Tracker.Current(); got != brokerif.Idle {
 				t.Fatalf("idle channel before threshold must not degrade, probe %d → %s", i+1, got)
@@ -140,6 +142,84 @@ func TestLiveProbeTransitions(t *testing.T) {
 	}
 	if got, _ := lc2.Tracker.Current(); got != brokerif.Down {
 		t.Fatalf("idle channel must go down at the failure threshold, got %s", got)
+	}
+}
+
+// TestLiveProbeSurfacesTransportUnknown 是 D7 的数据出口：探测成功时 Probe 必须把
+// broker-gw 健康载荷原样带回来（告警边沿判定在 Runner 侧，本层不做任何折算）。
+func TestLiveProbeSurfacesTransportUnknown(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	fixture := newBrokerFixture(t, 2)
+	lc := NewLiveChannel(fixture.tradeConfig(), log.DefaultLogger)
+	if lc == nil || lc.Client == nil {
+		t.Fatal("valid config must build a probed client")
+	}
+	health, err := lc.Probe(ctx)
+	if err != nil {
+		t.Fatalf("probe against healthy fixture: %v", err)
+	}
+	if health.TransportUnknown != 2 {
+		t.Fatalf("probe must surface transport_unknown verbatim, got %d", health.TransportUnknown)
+	}
+}
+
+// TestNoteLiveUnknownEdge 锁定 transport_unknown 告警的边沿/转净纪律（D7，带件矩阵）：
+// 0 → 不告警；0→N 上升沿打一条；计数不变不重复打屏；继续上升再打；归零重新武装
+// 后再次上升仍可提醒。载荷合同对齐 notify classify.fromRequest 与前端 levelOf：
+// level=warn（→L2）、category=trade、dedup_key 稳定供 M10 合并。
+func TestNoteLiveUnknownEdge(t *testing.T) {
+	var envs []events.Envelope
+	r := &Runner{log: log.NewHelper(log.DefaultLogger)}
+	r.publish = func(_ context.Context, env events.Envelope) error {
+		envs = append(envs, env)
+		return nil
+	}
+	r.noteLiveUnknown(0)
+	if len(envs) != 0 {
+		t.Fatalf("zero unknowns must not alert, got %d envelopes", len(envs))
+	}
+	r.noteLiveUnknown(2)
+	r.noteLiveUnknown(2) // 同源滞留数不变：不重复打屏
+	if len(envs) != 1 {
+		t.Fatalf("rising edge must alert exactly once, got %d envelopes", len(envs))
+	}
+	r.noteLiveUnknown(3)
+	if len(envs) != 2 {
+		t.Fatalf("further rise must alert again, got %d envelopes", len(envs))
+	}
+	r.noteLiveUnknown(0) // 转净：重新武装
+	r.noteLiveUnknown(1)
+	if len(envs) != 3 {
+		t.Fatalf("re-arm after clearing must allow a fresh alert, got %d envelopes", len(envs))
+	}
+
+	env := envs[0]
+	if env.Subject != events.SubjectNotifyRequest || env.Source != "trade" {
+		t.Fatalf("alert must ride notify.request from trade, got %s/%s", env.Source, env.Subject)
+	}
+	var body struct {
+		Level    string `json:"level"`
+		Category string `json:"category"`
+		Title    string `json:"title"`
+		Body     string `json:"body"`
+		DedupKey string `json:"dedup_key"`
+	}
+	if err := json.Unmarshal(env.Payload, &body); err != nil {
+		t.Fatalf("alert payload must unmarshal: %v", err)
+	}
+	if body.Level != "warn" || body.Category != "trade" || body.DedupKey != "trade:live-transport-unknown" {
+		t.Fatalf("alert contract drifted: %+v", body)
+	}
+	if body.Title == "" || !strings.Contains(body.Body, "2 笔") || !strings.Contains(body.Body, "严禁重发") {
+		t.Fatalf("alert body must carry the count and the no-resubmit discipline: %+v", body)
+	}
+
+	// 无发布链的 Runner（未挂 bus）：边沿只翻基线，不 panic。
+	bare := &Runner{log: log.NewHelper(log.DefaultLogger)}
+	bare.noteLiveUnknown(5)
+	if bare.liveUnknownBaseline != 5 {
+		t.Fatalf("baseline must advance even without a publish chain, got %d", bare.liveUnknownBaseline)
 	}
 }
 
@@ -152,7 +232,7 @@ type brokerFixture struct {
 	closed bool
 }
 
-func newBrokerFixture(t *testing.T) *brokerFixture {
+func newBrokerFixture(t *testing.T, unknown int) *brokerFixture {
 	t.Helper()
 	caPEM, caPool, caCert, caKey := makeFixtureCA(t)
 	serverPair := makeFixtureLeaf(t, caCert, caKey, "nt-test-broker-gw", false)
@@ -161,7 +241,7 @@ func newBrokerFixture(t *testing.T) *brokerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := fixtureEnvelope(t)
+	env := fixtureEnvelope(t, unknown)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-NT-Protocol") != remote.Protocol || r.Header.Get("X-NT-Account") != fixtureAccount {
 			w.WriteHeader(http.StatusForbidden)
@@ -185,7 +265,7 @@ func newBrokerFixture(t *testing.T) *brokerFixture {
 // newDeadBrokerFixture 起服务立刻关掉：配置完全合法、通道从未建连。
 func newDeadBrokerFixture(t *testing.T) *brokerFixture {
 	t.Helper()
-	fixture := newBrokerFixture(t)
+	fixture := newBrokerFixture(t, 0)
 	fixture.close()
 	return fixture
 }
@@ -276,12 +356,13 @@ func fixtureSerial(t *testing.T) *big.Int {
 
 // fixtureEnvelope 是合法的隔离健康回包：信封与载荷双层的 protocol/账户必须回声，
 // 载荷须满足 remote.Health 语义（mode=ISOLATED 且无实盘授权旗标）。
-func fixtureEnvelope(t *testing.T) []byte {
+// unknown 参数化 transport_unknown 计数，供 D7 告警边沿用例模拟回执滞留。
+func fixtureEnvelope(t *testing.T, unknown int) []byte {
 	t.Helper()
 	payload, err := json.Marshal(map[string]any{
 		"protocol": remote.Protocol, "mode": "ISOLATED", "account_id": fixtureAccount,
 		"reports_ready": true, "reasons": []string{},
-		"file_published": 0, "transport_unknown": 0, "order_unknown": 0,
+		"file_published": 0, "transport_unknown": unknown, "order_unknown": 0,
 		"terminal_login_verified": false, "can_open_live": false,
 	})
 	if err != nil {

@@ -88,16 +88,16 @@ func (lc *LiveChannel) Interval() time.Duration {
 	return lc.interval
 }
 
-// Probe 做一次健康探测并返回错误（供运行循环做观测记账与限频日志）。
+// Probe 做一次健康探测并返回健康载荷与错误（供运行循环做观测记账、限频日志，
+// 以及 transport_unknown>0 的告警边沿判定）。
 // remote.Client.Health 内部已按记账矩阵记 Ok/Fail：传输与回包语义（protocol/
 // 账户回声/ISOLATED/隔离约束）任何一项不过关都算 Fail，本层不重复折算。
-// Client 未建成时（配置不合法的真实 down）是幂等空操作，返回 nil。
-func (lc *LiveChannel) Probe(ctx context.Context) error {
+// Client 未建成时（配置不合法的真实 down）是幂等空操作，返回零值健康与 nil。
+func (lc *LiveChannel) Probe(ctx context.Context) (remote.Health, error) {
 	if lc == nil || lc.Client == nil {
-		return nil
+		return remote.Health{}, nil
 	}
-	_, err := lc.Client.Health(ctx)
-	return err
+	return lc.Client.Health(ctx)
 }
 
 func liveCallTimeout(bc *conf.BrokerFile) time.Duration {

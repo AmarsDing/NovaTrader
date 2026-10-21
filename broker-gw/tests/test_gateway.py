@@ -9,11 +9,13 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 
 from novatrader_broker.gateway import Gateway
 from novatrader_broker.protocol import HEADERS, ProtocolError, order
 from novatrader_broker.reader import read_report
 from novatrader_broker.simulator import Simulator
+from novatrader_broker import storage
 from novatrader_broker.storage import initialize
 
 
@@ -274,6 +276,72 @@ Gateway(sys.argv[1], 'TEST_ACCOUNT').submit(json.loads(sys.argv[2]), fault=crash
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ProtocolError, "ISOLATED_ROOT_REQUIRED"):
                 Gateway(directory, "TEST_ACCOUNT")
+
+
+class AtomicReplaceRetryTests(unittest.TestCase):
+    """元数据 os.replace 限次重试矩阵（D7）：只对 winerror 5/32/33 退避，预算 ~2s 封顶。
+
+    其余错误码立即抛——重试无意义；重试预算参数化但有生产默认，测试里用
+    极小 sleep 验证次数语义，不打时间仗。"""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="novatrader-storage-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        initialize(self.root)
+        self.target = self.root / "spool" / "receipt.json"
+
+    def _blocking_replace(self, winerror, failures_before_success=None):
+        calls = {"n": 0}
+        real_replace = os.replace
+
+        def fake_replace(src, dst):
+            calls["n"] += 1
+            if failures_before_success is None or calls["n"] <= failures_before_success:
+                error = PermissionError("injected reader holding file")
+                error.winerror = winerror
+                raise error
+            return real_replace(src, dst)
+
+        return fake_replace, calls
+
+    def test_retryable_winerror_eventually_succeeds(self):
+        for winerror in (5, 32, 33):
+            with self.subTest(winerror=winerror):
+                fake, calls = self._blocking_replace(winerror, failures_before_success=3)
+                with unittest.mock.patch("novatrader_broker.storage.os.replace", fake), \
+                        unittest.mock.patch("novatrader_broker.storage.time.sleep", lambda _: None):
+                    storage.atomic_json(self.target, {"state": "PREPARED"}, retry_base_sleep=0)
+                self.assertEqual(calls["n"], 4)
+                self.assertEqual(json.loads(self.target.read_text("utf-8")), {"state": "PREPARED"})
+                self.target.unlink()
+
+    def test_retry_budget_exhaustion_raises_and_leaves_no_partial(self):
+        for winerror in (5, 32, 33):
+            with self.subTest(winerror=winerror):
+                fake, calls = self._blocking_replace(winerror)
+                with unittest.mock.patch("novatrader_broker.storage.os.replace", fake), \
+                        unittest.mock.patch("novatrader_broker.storage.time.sleep") as sleep_mock, \
+                        self.assertRaises(PermissionError):
+                    storage.atomic_json(self.target, {"state": "PREPARED"}, retry_base_sleep=0)
+                self.assertEqual(calls["n"], storage.REPLACE_RETRY_ATTEMPTS)
+                self.assertEqual(sleep_mock.call_count, storage.REPLACE_RETRY_ATTEMPTS - 1)
+                self.assertFalse(self.target.exists())
+                self.assertFalse(list(self.root.glob("spool/.state-*")))
+
+    def test_non_retryable_winerror_raises_immediately(self):
+        fake, calls = self._blocking_replace(87, failures_before_success=10)
+        with unittest.mock.patch("novatrader_broker.storage.os.replace", fake), \
+                unittest.mock.patch("novatrader_broker.storage.time.sleep") as sleep_mock, \
+                self.assertRaises(PermissionError):
+            storage.atomic_json(self.target, {"state": "PREPARED"}, retry_base_sleep=0)
+        self.assertEqual(calls["n"], 1)
+        sleep_mock.assert_not_called()
+
+    def test_backoff_budget_stays_under_two_seconds(self):
+        budget = sum(storage.REPLACE_RETRY_BASE_SLEEP * (attempt + 1)
+                     for attempt in range(storage.REPLACE_RETRY_ATTEMPTS - 1))
+        self.assertLessEqual(budget, 2.0)
 
 
 if __name__ == "__main__":

@@ -41,7 +41,10 @@ type Runner struct {
 	track      *brokerif.Tracker
 	obs        *brokerif.Observer
 	live       *LiveChannel
-	beater     *registry.Beater
+	// liveUnknownBaseline 是 transport_unknown 告警的边沿基线：只记探测循环一根
+	// goroutine，无需加锁。归零重武装、上升沿才打屏（告警转净纪律，同 U6 族）。
+	liveUnknownBaseline int
+	beater              *registry.Beater
 	addr       string
 	id         string
 	interval   time.Duration
@@ -213,13 +216,15 @@ func (r *Runner) liveProbeLoop(ctx context.Context) {
 		c, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		done := observe.ForService("trade").Op("live_probe").Begin()
-		if err := r.live.Probe(c); err != nil {
+		health, err := r.live.Probe(c)
+		if err != nil {
 			observe.FinishError(done, err)
 			if c.Err() == nil {
 				r.log.Warnf("emfile probe: %v", err)
 			}
 		} else {
 			done(observe.Succeeded)
+			r.noteLiveUnknown(health.TransportUnknown)
 		}
 	}
 	probe()
@@ -230,6 +235,49 @@ func (r *Runner) liveProbeLoop(ctx context.Context) {
 		case <-ticker.C:
 			probe()
 		}
+	}
+}
+
+// noteLiveUnknown 是 transport_unknown 的告警边沿纪律（D7）：回执滞留 PREPARED/UNKNOWN
+// 意味文件单到量化终端的结局未知，按决策 3 只能人工上机核对、严禁重发同一 SID。
+// 计数上升沿才告警（M10 再按 dedup_key 合并同义重复），计数归零重新武装——同源
+// 滞留数不变不重复打屏，恢复后新发能再次提醒。
+func (r *Runner) noteLiveUnknown(unknown int) {
+	if unknown <= 0 {
+		r.liveUnknownBaseline = 0
+		return
+	}
+	if unknown <= r.liveUnknownBaseline {
+		return
+	}
+	r.liveUnknownBaseline = unknown
+	r.publishLiveUnknown(unknown)
+}
+
+// publishLiveUnknown 把 transport_unknown 上升沿投递到 notify.request（L2=warn，
+// category=trade 与 alert-levels.ts levelOf 对齐）。与 publishChannel 同一链路纪律：
+// OpenTrace 幂等开根链、5s 发布上限、失败只记日志不反压探测循环。
+func (r *Runner) publishLiveUnknown(unknown int) {
+	if r.publish == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ctx = events.OpenTrace(ctx)
+	env, err := events.New("trade", events.SubjectNotifyRequest, events.TraceID(ctx), map[string]any{
+		"level":    "warn",
+		"category": "trade",
+		"title":    "东财文件单传输回执未知",
+		"body": fmt.Sprintf("broker-gw 报告 %d 笔委托/撤单回执处于 PREPARED/UNKNOWN：文件是否被量化终端执行结局未知。"+
+			"严禁重发同一 SID；先上机核对成交回报，再按原 SID 只读查询。", unknown),
+		"dedup_key": "trade:live-transport-unknown",
+	})
+	if err != nil {
+		r.log.Warnf("live unknown event: %v", err)
+		return
+	}
+	if err := r.publish(ctx, env); err != nil {
+		r.log.Warnf("publish live transport unknown: %v", err)
 	}
 }
 

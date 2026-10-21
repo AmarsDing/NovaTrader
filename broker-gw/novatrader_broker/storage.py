@@ -13,6 +13,16 @@ from .protocol import PROTOCOL, ProtocolError, identifier
 
 MARKER = ".novatrader-isolated.json"
 
+# 元数据 os.replace 重试预算：Windows 读方短暂持有回执文件不带 FILE_SHARE_DELETE
+# 是常态，重试只针对元数据替换，永不用于 CSV 发布（发布走 os.link 原子件）。
+# 预算封顶 ~2s：attempts=14、base=0.02 时最差累计退避 0.02×(1+…+13)≈1.8s。
+# 参数化是为测试与现场可调，默认值即生产口径，勿为提速调小。
+REPLACE_RETRY_ATTEMPTS = 14
+REPLACE_RETRY_BASE_SLEEP = 0.02
+# winerror 5/32/33 = ACCESS_DENIED / SHARING_VIOLATION / LOCK_VIOLATION，短暂占用可重试；
+# 其余错误码（如路径/卷错误）重试无意义，立即抛。
+REPLACE_RETRYABLE_WINERRORS = frozenset({5, 32, 33})
+
 
 def safe_path(path):
     path = Path(path).absolute()
@@ -28,7 +38,7 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
 
 
-def atomic_json(path, value):
+def atomic_json(path, value, *, retry_attempts=REPLACE_RETRY_ATTEMPTS, retry_base_sleep=REPLACE_RETRY_BASE_SLEEP):
     path = safe_path(path)
     fd, temp = tempfile.mkstemp(prefix=".state-", dir=path.parent)
     try:
@@ -36,16 +46,16 @@ def atomic_json(path, value):
             handle.write(canonical(value))
             handle.flush()
             os.fsync(handle.fileno())
-        for attempt in range(6):
+        for attempt in range(retry_attempts):
             try:
                 os.replace(temp, path)
                 break
             except PermissionError as error:
                 # Windows readers briefly hold an existing receipt without
                 # FILE_SHARE_DELETE. Only retry metadata replacement, never CSV publication.
-                if getattr(error, "winerror", None) not in {5, 32, 33} or attempt == 5:
+                if getattr(error, "winerror", None) not in REPLACE_RETRYABLE_WINERRORS or attempt == retry_attempts - 1:
                     raise
-                time.sleep(0.01 * (attempt + 1))
+                time.sleep(retry_base_sleep * (attempt + 1))
     finally:
         if os.path.exists(temp):
             os.unlink(temp)
