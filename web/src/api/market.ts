@@ -183,12 +183,17 @@ export async function listLimits(direction: 'UP' | 'DOWN' = 'UP'): Promise<Limit
 
 export interface AuctionRow {
   symbol: string
-  auctionPct: number
+  /** 竞价涨幅 %。「没取到≠0」：源缺键（新股无昨收等）为 null——0 是平开真值，必须可区分。 */
+  auctionPct: number | null
+  /** 键恒在（源无条件落键），0=竞价无成交真值；整日无截面看 summary.found。 */
   auctionAmount: number
-  auctionVolRatio: number
-  auctionTurnover: number
+  /** 无 5 日均量不可算为 null（新股前五日高发），禁止显 0.0 伪装读数。 */
+  auctionVolRatio: number | null
+  /** 无股本不可算为 null；0 换手虽真实存在但此时行已难入 topRush。 */
+  auctionTurnover: number | null
   auctionLimitUp: boolean
-  auctionUnmatched: number
+  /** 无 09:20-09:25 快照为 null；当前前端无展示位，保留贯通。 */
+  auctionUnmatched: number | null
 }
 
 export interface AuctionSummary {
@@ -201,19 +206,23 @@ export interface AuctionSummary {
   asOf: string
 }
 
+// 「没取到≠0」（P3-10c）：后端 proto optional 省略发送的字段归一为 null；
+// auctionAmount 键恒在，?? 0 是冗余哨兵（0=无成交真值，整日缺失看 summary.found）。
 function normalizeAuctionRow(raw: RawRecord): AuctionRow {
   return {
     symbol: pick<string>(raw, 'symbol') || '',
-    auctionPct: num(pick(raw, 'auctionPct', 'auction_pct')) ?? 0,
+    auctionPct: num(pick(raw, 'auctionPct', 'auction_pct')) ?? null,
     auctionAmount: num(pick(raw, 'auctionAmount', 'auction_amount')) ?? 0,
-    auctionVolRatio: num(pick(raw, 'auctionVolRatio', 'auction_vol_ratio')) ?? 0,
-    auctionTurnover: num(pick(raw, 'auctionTurnover', 'auction_turnover')) ?? 0,
+    auctionVolRatio: num(pick(raw, 'auctionVolRatio', 'auction_vol_ratio')) ?? null,
+    auctionTurnover: num(pick(raw, 'auctionTurnover', 'auction_turnover')) ?? null,
     auctionLimitUp: !!(raw.auctionLimitUp ?? raw.auction_limit_up),
-    auctionUnmatched: num(pick(raw, 'auctionUnmatched', 'auction_unmatched')) ?? 0,
+    auctionUnmatched: num(pick(raw, 'auctionUnmatched', 'auction_unmatched')) ?? null,
   }
 }
 
-/** 集合竞价截面（M02，09:25 落库）。found=false 表示当日还没有竞价因子。 */
+/** 集合竞价截面（M02，09:25 落库）。found=false 表示当日还没有竞价因子。
+ * 哨兵钉死（P3-10c）：totalAmount/limitUpCount 的 ?? 0 冗余——整日缺失由 found=false 表达且三处消费全先判 found；
+ * found=true 时 totalAmount 仅正额行入和（0=真 0），limitUpCount 是真计数（0 家=真实市况）。 */
 export async function getAuction(top = 10): Promise<AuctionSummary> {
   const data = await request('/api/market/auction', { query: { top } })
   const raw = (data ?? {}) as RawRecord
@@ -245,6 +254,8 @@ export interface LadderSummary {
   total: LadderStep[]
 }
 
+// 哨兵钉死（P3-10c）：fromHeight 后端固定 steps map 恒为 1/2/3；sample/succeeded 真计数（0=基准日无 N 板/次日无一封住）；
+// rate 的 0 哨兵仅存于 sample=0，消费方（detail.ts）恒先判 sample===0 写「无样本」——四字段 ?? 0 冗余，勿改 ?? null。
 function normalizeLadderStep(raw: RawRecord): LadderStep {
   return {
     fromHeight: num(pick(raw, 'fromHeight', 'from_height')) ?? 0,
@@ -289,12 +300,18 @@ export interface PremiumRow {
 export interface PremiumDay {
   tradeDate: string
   baseDate: string
+  /** 真计数：0=昨日涨停 0 只的真实市况。 */
   sample: number
+  /** 真计数：0=今日无一只再板。 */
   limitAgain: number
-  openAvg: number
+  /** 开盘溢价均值（分数）。「没取到≠0」：开盘口径样本空（竞价整批缺）为 null——0 是真均值无法冒充。 */
+  openAvg: number | null
+  /** 缺失口径由 hasClose=false 表达，消费方先判 hasClose；0=全体收平真值。 */
   closeAvg: number
+  /** 同 closeAvg 的 hasClose 口径。 */
   closeWin: number
-  highAvg: number
+  /** 最高溢价均值（分数）。快照行收盘补齐前 High 全缺为 null。 */
+  highAvg: number | null
   hasClose: boolean
 }
 
@@ -308,16 +325,18 @@ export interface PremiumSummary {
   asOf: string
 }
 
+// sample/limitAgain 真计数（0 是真实市况）；openAvg/highAvg 后端 optional 省略→null 贯通；
+// closeAvg/closeWin 缺失口径由 hasClose 表达（P3-10c 哨兵钉链）。
 function normalizePremiumDay(raw: RawRecord): PremiumDay {
   return {
     tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
     baseDate: pick<string>(raw, 'baseDate', 'base_date') || '',
     sample: num(pick(raw, 'sample')) ?? 0,
     limitAgain: num(pick(raw, 'limitAgain', 'limit_again')) ?? 0,
-    openAvg: num(pick(raw, 'openAvg', 'open_avg')) ?? 0,
+    openAvg: num(pick(raw, 'openAvg', 'open_avg')) ?? null,
     closeAvg: num(pick(raw, 'closeAvg', 'close_avg')) ?? 0,
     closeWin: num(pick(raw, 'closeWin', 'close_win')) ?? 0,
-    highAvg: num(pick(raw, 'highAvg', 'high_avg')) ?? 0,
+    highAvg: num(pick(raw, 'highAvg', 'high_avg')) ?? null,
     hasClose: !!raw.hasClose,
   }
 }
@@ -326,28 +345,31 @@ function normalizePremiumDay(raw: RawRecord): PremiumDay {
 export async function getLimitPremium(days = 5, top = 50): Promise<PremiumSummary> {
   const data = await request('/api/market/limit-premium', { query: { days, top } })
   const raw = (data ?? {}) as RawRecord
+  const rows = asList<RawRecord>(raw, 'rows').map((r) => ({
+    symbol: pick<string>(r, 'symbol') || '',
+    name: pick<string>(r, 'name') || '',
+    tradeDate: pick<string>(r, 'tradeDate', 'trade_date') || '',
+    baseDate: pick<string>(r, 'baseDate', 'base_date') || '',
+    consecutive: num(pick(r, 'consecutive')) ?? 0,
+    baseClose: num(pick(r, 'baseClose', 'base_close')) ?? 0,
+    open: num(pick(r, 'open')) ?? 0,
+    close: num(pick(r, 'close')) ?? 0,
+    openPremium: num(pick(r, 'openPremium', 'open_premium')) ?? 0,
+    closePremium: num(pick(r, 'closePremium', 'close_premium')) ?? 0,
+    highPremium: num(pick(r, 'highPremium', 'high_premium')) ?? 0,
+    limitAgain: !!r.limitAgain,
+    hasClose: !!r.hasClose,
+    source: pick<string>(r, 'source') || '',
+  }))
+  // 附录 B-5 回填：行内 symbol/name 顺手进名称字典。
+  backfillSecurityBasics(rows.map((r) => ({ code: r.symbol, name: r.name || null })))
   return {
     tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
     found: !!raw.found,
     live: !!raw.live,
     summary: raw.summary ? normalizePremiumDay(raw.summary as RawRecord) : null,
     days: asList<RawRecord>(raw, 'days').map(normalizePremiumDay),
-    rows: asList<RawRecord>(raw, 'rows').map((r) => ({
-      symbol: pick<string>(r, 'symbol') || '',
-      name: pick<string>(r, 'name') || '',
-      tradeDate: pick<string>(r, 'tradeDate', 'trade_date') || '',
-      baseDate: pick<string>(r, 'baseDate', 'base_date') || '',
-      consecutive: num(pick(r, 'consecutive')) ?? 0,
-      baseClose: num(pick(r, 'baseClose', 'base_close')) ?? 0,
-      open: num(pick(r, 'open')) ?? 0,
-      close: num(pick(r, 'close')) ?? 0,
-      openPremium: num(pick(r, 'openPremium', 'open_premium')) ?? 0,
-      closePremium: num(pick(r, 'closePremium', 'close_premium')) ?? 0,
-      highPremium: num(pick(r, 'highPremium', 'high_premium')) ?? 0,
-      limitAgain: !!r.limitAgain,
-      hasClose: !!r.hasClose,
-      source: pick<string>(r, 'source') || '',
-    })),
+    rows,
     asOf: pick<string>(raw, 'asOf', 'as_of') || '',
   }
 }
@@ -371,7 +393,9 @@ export interface BreadthSummary {
   days: BreadthDay[]
 }
 
-/** 20 日均线上占比（市场广度）。ratio 为分数。 */
+/** 20 日均线上占比（市场广度）。ratio 为分数。
+ * 哨兵钉死（P3-10c）：window 恒 20（后端口径常量，?? 20 是约定兜底）；above/below/flat/total 真计数
+ * （后端保证出现的行 total>0）；ratio=0 是真实市况（全市场在 MA20 下方），空态由 found=false 表达，勿改 ?? null。 */
 export async function getBreadth(days = 10): Promise<BreadthSummary> {
   const data = await request('/api/market/breadth', { query: { days } })
   const raw = (data ?? {}) as RawRecord
@@ -412,7 +436,9 @@ export interface KlineGapsSummary {
   asOf: string
 }
 
-/** K 线连续性检查（交易日历开市但无 1d 收盘行的缺口日）。 */
+/** K 线连续性检查（交易日历开市但无 1d 收盘行的缺口日）。
+ * 哨兵钉死（P3-10c）：universe/missing/present/missingTotal 全部真计数（0=无缺口真值），
+ * 缺口有无由 found 先行表达（hud found=false 显「K 线无缺口」），?? 0 冗余勿改 ?? null。 */
 export async function getKlineGaps(days = 5): Promise<KlineGapsSummary> {
   const data = await request('/api/market/kline-gaps', { query: { days } })
   const raw = (data ?? {}) as RawRecord
@@ -478,8 +504,15 @@ function quoteLevels(list: QuoteLevel[]): QuoteLevel[] {
 }
 
 export async function getQuote(symbol: string): Promise<QuoteView> {
+  // 哨兵钉死（P3-10c）：全字段遵守接口契约「0=未知」（proto 零值不猜，消费面板逐处 truthy/比较守卫显「未知」）；
+  // prevClose=0 还是 chg/pctChg/amplitude/limit 派生的不可算总闸门。?? 0 即契约实现，勿改 ?? null（会把真 0 吞成「—」）。
   const data = await request('/api/market/quote', { query: { symbol } })
   const raw = (data ?? {}) as RawRecord
+  const quoteSymbol = pick<string>(raw, 'symbol') || symbol
+  const quoteName = pick<string>(raw, 'name') || ''
+  const quoteMarket = pick<string>(raw, 'market') || ''
+  // 附录 B-5 回填：单券快照的 name/market 顺手进名称字典。
+  backfillSecurityBasics([{ code: quoteSymbol, name: quoteName || null, market: quoteMarket || undefined }])
   return {
     symbol: quoteSymbol,
     name: quoteName,
@@ -517,8 +550,3 @@ export async function getQuote(symbol: string): Promise<QuoteView> {
     found: !!raw.found,
   }
 }
-  const quoteSymbol = pick<string>(raw, 'symbol') || symbol
-  const quoteName = pick<string>(raw, 'name') || ''
-  const quoteMarket = pick<string>(raw, 'market') || ''
-  // 附录 B-5 回填：单券快照的 name/market 顺手进名称字典。
-  backfillSecurityBasics([{ code: quoteSymbol, name: quoteName || null, market: quoteMarket || undefined }])

@@ -10,6 +10,7 @@
  */
 import { dimVotes, ticketRisk } from '@/view/decision-desk'
 import type { BreadthSummary, PremiumSummary } from '@/api/market'
+import { serverNow } from '@/utils/server-clock'
 import { useSecurityStore } from '@/stores/security'
 import {
   amount,
@@ -116,7 +117,6 @@ export const GAP_DB = '未接入：需要 GET /api/ops/db（PG 连接池/库体�
 export const GAP_NATS = '未接入：需要 GET /api/ops/nats（NATS 积压与 lag）'
 export const GAP_DAY_PNL = '未返回：trade Account 没有当日盈亏字段（需要 GET /v1/trade/account 补 day_pnl）'
 
-/* ---------- 入口 ---------- */
 /** §10-27 名称列：证券名只认 stores/security 名称字典（resolve），不用行内别的字段冒充。
  * - 无代码显「—」（该行本就没有标的，不是取数缺失）；有代码无名显「名称未返回」（§6.1 缺名回退，
  *   数据纪律：缺失非空串冒充），并 ensure 让字典后台补——渲染期反复调用经字典四重去重 +
@@ -131,6 +131,7 @@ function nameCell(symbol: string): string {
   return '名称未返回'
 }
 
+/* ---------- 入口 ---------- */
 
 /** 这张牌的深化类型；返回 null 表示该 id 没有六张深化牌，详情窗退回原有卡片网格 */
 export function detailKindFor(input: MonitorInput, id: string): Exclude<DetailPanel['kind'], 'edge'> | null {
@@ -350,9 +351,9 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
       }
     }
     posRows.push([
-      row.symbol,
       /* §10-27：名称列为首列（字典缺名显「名称未返回」并后台补）、代码列随其后 */
       nameCell(row.symbol),
+      row.symbol,
       intText(row.quantity),
       amount(row.avgCost),
       amount(row.lastPrice),
@@ -388,8 +389,8 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
       const vwap = fillVwap(order.id, fills)
       const bp = slippageBp(order.side, order.price, vwap)
       orderRows.push([
-        order.symbol,
         nameCell(order.symbol),
+        order.symbol,
         order.side || '—',
         order.status || '—',
         amount(order.price),
@@ -894,6 +895,7 @@ function sourcePanel(input: MonitorInput, id: string, now: number): DetailPanel 
     /* §10-27：名称列为首列（无代码行显「—」）、代码列随其后 */
     nameCell(issue.symbol),
     issue.symbol || '—',
+    issue.checkName || '—',
     issue.tradeDate || '—',
     issue.severity || '—',
     issue.hits == null ? '未返回' : String(issue.hits),
@@ -991,8 +993,9 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
   const latencyRows: DetailRow[] = latency
     ? [
         { key: 'win', label: '窗口', value: `近 ${latency.windowMinutes} 分钟，${latency.total} 次成功调用` },
-        { key: 'p50', label: 'P50', value: `${Math.round(latency.p50Ms)} ms` },
-        { key: 'p95', label: 'P95', value: `${Math.round(latency.p95Ms)} ms` },
+        // 「没取到≠0」（P3-10c）：空窗分位为 null，写「样本不足」，不得显 0ms 伪装极速
+        { key: 'p50', label: 'P50', value: latency.p50Ms != null ? `${Math.round(latency.p50Ms)} ms` : '样本不足' },
+        { key: 'p95', label: 'P95', value: latency.p95Ms != null ? `${Math.round(latency.p95Ms)} ms` : '样本不足' },
       ]
     : [{ key: 'hist', label: '近 1 小时 8 桶（桶宽按 P95 自适应）', value: GAP_LATENCY_HIST, tone: 'warn' }]
   const latencySection: DetailSection = {
@@ -1063,7 +1066,8 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
 function tokensPerSecond(usage: { window: string; since: string; total: { completionTokens: number } }): string {
   const since = Date.parse(usage.since)
   if (!Number.isFinite(since)) return '未返回'
-  const seconds = (Date.now() - since) / 1000
+  /* P2-10：since 是服务端戳——窗口长度与后端时源对齐（未校准回退本地钟），漂移不污染速率。 */
+  const seconds = (serverNow() - since) / 1000
   if (seconds <= 0) return '未返回'
   return `${(usage.total.completionTokens / seconds).toFixed(1)} tok/s`
 }
@@ -1301,11 +1305,12 @@ function scanSections(input: MonitorInput): DetailSection[] {
             /* §10-27：名称列为首列、代码列随其后（接名称字典） */
             columns: ['名称', '代码', '竞价涨幅', '竞价金额', '竞价量比', '竞价换手'],
             rows: auction.topRush.map((row) => [
+              nameCell(row.symbol),
               row.symbol,
               pctText(row.auctionPct, 2),
               compactAmount(row.auctionAmount),
-              row.auctionVolRatio.toFixed(1),
-              nameCell(row.symbol),
+              // 「没取到≠0」：无 5 日均量时量比为 null，显「—」不得显 0.0
+              row.auctionVolRatio != null ? row.auctionVolRatio.toFixed(1) : '—',
               pctText(row.auctionTurnover, 2),
             ]),
             empty: '当日没有竞价截面行',
@@ -1356,7 +1361,11 @@ function premiumSectionsOf(premium: PremiumSummary | null): DetailSection[] {
       key: 'open',
       label: '开盘均溢',
       value: ratioPct(summary.openAvg),
-      note: `${summary.baseDate || '基准日'} 涨停 ${summary.sample} 只 → ${summary.tradeDate || '当日'} 开盘`,
+      // 「没取到≠0」（P3-10c）：openAvg 为 null = 该批开盘价整批没取到，显「—」并写明原因
+      note:
+        summary.openAvg != null
+          ? `${summary.baseDate || '基准日'} 涨停 ${summary.sample} 只 → ${summary.tradeDate || '当日'} 开盘`
+          : '无竞价开盘数据（09:27 premium.open 任务未取到开盘价快照）',
       tone: toneOf(summary.openAvg),
     },
     summary.hasClose
@@ -1368,7 +1377,12 @@ function premiumSectionsOf(premium: PremiumSummary | null): DetailSection[] {
           tone: toneOf(summary.closeAvg),
         }
       : { key: 'close', label: '收盘均溢', value: '尚未定稿', note: '收盘溢价 16:45 的 market.premium.close 任务补齐' },
-    { key: 'high', label: '盘中最高均溢', value: ratioPct(summary.highAvg), note: '按最高价算，是打板次日的兑现上限口径' },
+    {
+      key: 'high',
+      label: '盘中最高均溢',
+      value: ratioPct(summary.highAvg),
+      note: summary.highAvg != null ? '按最高价算，是打板次日的兑现上限口径' : '最高价整批缺失（快照行收盘补齐前 High 全缺）',
+    },
     { key: 'again', label: '今日再板', value: `${summary.limitAgain} / ${summary.sample} 只`, note: '连板高度延续的家数' },
   ]
   const table: DetailTable = {

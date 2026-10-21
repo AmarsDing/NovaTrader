@@ -46,7 +46,8 @@ export const useAlertsStore = defineStore('alerts', () => {
 
   function pushToast(kind: ToastItem['kind'], title: string, body = ''): number {
     const id = ++toastSeq
-    toasts.value.push({ id, kind, title, body, at: Date.now() })
+    /* P2-10：toast 时刻与底栏时段钟同走服务端钟（未校准回退本地）。 */
+    toasts.value.push({ id, kind, title, body, at: serverNow() })
     if (toasts.value.length > MAX_TOASTS) toasts.value.splice(0, toasts.value.length - MAX_TOASTS)
     return id
   }
