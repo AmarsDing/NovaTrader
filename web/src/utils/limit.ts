@@ -14,6 +14,18 @@ export function limitRatio(symbol: string): number {
   return 0.1
 }
 
+/** 板块角标册键（status-map board.* 三键）：与 limitRatio 同一份代码前缀口径（单源共存）。
+ * 主板返回 null——主板是默认态，不打角标防视觉噪声。 */
+export type BoardKey = 'board.cyb' | 'board.kcb' | 'board.bj'
+
+export function boardTag(symbol: string): BoardKey | null {
+  const digits = /^\d+/.exec(symbol.trim())?.[0] ?? ''
+  if (/^920|^[48]/.test(digits)) return 'board.bj'
+  if (/^30[012]/.test(digits)) return 'board.cyb'
+  if (/^68/.test(digits)) return 'board.kcb'
+  return null
+}
+
 export type LimitState = 'up' | 'down'
 
 const round2 = (value: number) => Math.round(value * 100) / 100

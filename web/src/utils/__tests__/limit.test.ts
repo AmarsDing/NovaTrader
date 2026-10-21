@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { limitRatio, limitState } from '../limit'
+import { boardTag, limitRatio, limitState } from '../limit'
 
 describe('limitRatio：代码前缀 → 涨跌幅档', () => {
   it('主板代码为 10%（含带后缀与裸码）', () => {
@@ -53,5 +53,77 @@ describe('limitState：封板判定', () => {
     expect(limitState(11, 11, 10.5, null, '600519.SH')).toBeNull()
     expect(limitState(11, 11, 10.5, 0, '600519.SH')).toBeNull()
     expect(limitState(NaN, 11, 10.5, 10, '600519.SH')).toBeNull()
+  })
+})
+
+describe('boardTag：板块角标册键（status-map board.* 三键）', () => {
+  it('创业板 300/301/302 → board.cyb', () => {
+    expect(boardTag('300750.SZ')).toBe('board.cyb')
+    expect(boardTag('301269.SZ')).toBe('board.cyb')
+    expect(boardTag('302132.SZ')).toBe('board.cyb')
+  })
+
+  it('科创板 68x（含 689）→ board.kcb', () => {
+    expect(boardTag('688981.SH')).toBe('board.kcb')
+    expect(boardTag('689009.SH')).toBe('board.kcb')
+  })
+
+  it('北交所（920 段与老 4/8 段）→ board.bj', () => {
+    expect(boardTag('920001.BJ')).toBe('board.bj')
+    expect(boardTag('430090.BJ')).toBe('board.bj')
+    expect(boardTag('830799.BJ')).toBe('board.bj')
+  })
+
+  it('主板与无法判定一律 null（默认态不打标）', () => {
+    expect(boardTag('600519.SH')).toBeNull()
+    expect(boardTag('000001.SZ')).toBeNull()
+    expect(boardTag('002594.SZ')).toBeNull()
+    expect(boardTag('')).toBeNull()
+    expect(boardTag('HK.00700')).toBeNull()
+  })
+
+  it('与 limitRatio 同前缀口径（单源共存）：非主板档恰好全打标', () => {
+    for (const sym of ['600519.SH', '000001.SZ', '300750.SZ', '688981.SH', '689009.SH', '920001.BJ', '430090.BJ', '830799.BJ', '']) {
+      expect(boardTag(sym) !== null).toBe(limitRatio(sym) !== 0.1)
+    }
+  })
+})
+
+describe('boardTag：板块角标册键（status-map board.* 三键）', () => {
+  it('创业板 300/301/302 → board.cyb', () => {
+    expect(boardTag('300750.SZ')).toBe('board.cyb')
+    expect(boardTag('301269.SZ')).toBe('board.cyb')
+    expect(boardTag('302132.SZ')).toBe('board.cyb')
+  })
+
+  it('科创板 68x（含 689）→ board.kcb', () => {
+    expect(boardTag('688981.SH')).toBe('board.kcb')
+    expect(boardTag('689009.SH')).toBe('board.kcb')
+  })
+
+  it('北交所（920 段与老 4/8 段）→ board.bj', () => {
+    expect(boardTag('920001.BJ')).toBe('board.bj')
+    expect(boardTag('430090.BJ')).toBe('board.bj')
+    expect(boardTag('830799.BJ')).toBe('board.bj')
+    expect(boardTag('871981.BJ')).toBe('board.bj')
+  })
+
+  it('主板与无法判定一律 null（默认态不打标）', () => {
+    expect(boardTag('600519.SH')).toBeNull()
+    expect(boardTag('000001.SZ')).toBeNull()
+    expect(boardTag('002594.SZ')).toBeNull()
+    expect(boardTag('')).toBeNull()
+    expect(boardTag('HK.00700')).toBeNull()
+  })
+
+  it('与 limitRatio 同前缀口径：角标键恰好落在 20%/30% 非常规档', () => {
+    for (const sym of ['300750.SZ', '688981.SH', '689009.SH', '920001.BJ', '430090.BJ']) {
+      expect(boardTag(sym), sym).not.toBeNull()
+      expect(limitRatio(sym), sym).toBeGreaterThan(0.1)
+    }
+    for (const sym of ['600519.SH', '000001.SZ', '002594.SZ']) {
+      expect(boardTag(sym), sym).toBeNull()
+      expect(limitRatio(sym), sym).toBe(0.1)
+    }
   })
 })

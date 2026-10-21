@@ -35,7 +35,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -102,6 +102,12 @@ export const STATUS_MAP = Object.freeze({
   'order.cancelled': { text: '已撤', tone: 'neutral' },
   'order.rejected': { text: '已拒绝', tone: 'danger' },
   'order.expired': { text: '已过期', tone: 'warn' },
+  // —— 第三批（board 板块标识域，3 键；U4 梯队角标经 display/NtBoardTag 消费）——
+  // tone 即波动档语义：20% 档（创业板/科创板）accent，30% 档（北交所）warn。
+  // 主板无键不打标——主板是默认态，角标只标记非常规档。
+  'board.cyb': { text: '创业板', tone: 'accent' },
+  'board.kcb': { text: '科创板', tone: 'accent' },
+  'board.bj': { text: '北交所', tone: 'warn' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP

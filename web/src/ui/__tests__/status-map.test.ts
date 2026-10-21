@@ -1,7 +1,7 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
@@ -133,5 +133,35 @@ describe('业务状态册（第二批 36 键，一字不差）', () => {
   it('同文案双键分级：quote.suspended=行情域 danger，security.suspended=档案域 neutral', () => {
     expect(statusOf('quote.suspended').tone).toBe('danger')
     expect(statusOf('security.suspended').tone).toBe('neutral')
+  })
+})
+
+describe('业务状态册（第三批 board 板块标识域 3 键，一字不差）', () => {
+  const EXPECTED_BATCH3: Record<string, { text: string; tone: StatusTone }> = {
+    'board.cyb': { text: '创业板', tone: 'accent' },
+    'board.kcb': { text: '科创板', tone: 'accent' },
+    'board.bj': { text: '北交所', tone: 'warn' },
+  }
+
+  it('第三批 3 键全在册内（不多不少）', () => {
+    expect(Object.keys(EXPECTED_BATCH3).length).toBe(3)
+    for (const key of Object.keys(EXPECTED_BATCH3)) expect(STATUS_MAP).toHaveProperty(key)
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH3))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('tone 即波动档语义：20% 档（创/科）accent、30% 档（北交所）warn；主板不入册不打标', () => {
+    expect(statusOf('board.cyb').tone).toBe('accent')
+    expect(statusOf('board.kcb').tone).toBe('accent')
+    expect(statusOf('board.bj').tone).toBe('warn')
+    expect(STATUS_MAP).not.toHaveProperty('board.main')
+  })
+
+  it('回归抽样：第二批旧键未被扩册改动（抽 3 键）', () => {
+    expect(statusOf('risk.killswitch')).toEqual({ text: '已触发', tone: 'danger' })
+    expect(statusOf('quote.stale')).toEqual({ text: '已过期', tone: 'warn' })
+    expect(statusOf('order.filled')).toEqual({ text: '已成', tone: 'success' })
   })
 })
