@@ -467,29 +467,6 @@ em {
   font-weight: 600;
 }
 
-.badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--nt-border-2);
-  color: var(--nt-text-2);
-}
-
-.badge.active {
-  color: var(--nt-accent);
-  border-color: var(--nt-accent-border);
-}
-
-.badge.expired {
-  color: var(--nt-warn);
-  border-color: color-mix(in srgb, var(--nt-warn) 45%, var(--nt-border-1));
-}
-
-.badge.closed {
-  color: var(--nt-text-3);
-}
-
 .body {
   display: grid;
   grid-template-columns: 56px 84px 1fr;

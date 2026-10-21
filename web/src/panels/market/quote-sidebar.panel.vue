@@ -8,7 +8,7 @@
  * 纪律：
  * - 恒随全局 symbol store——切代码只换数据，布局不动；
  * - 数据面：切代码 REST 首刷 → subscribe('market', {symbol}) 推送防抖触发再刷 → 手动刷新兜底；
- *   WS 断连显「非实时」，快照过期显琥珀「已过期」；
+ *   WS 断连 → NtFreshness cut 显「断 · 最后时刻」（warn，非实时语义唯一承载，2026-10-21 评审撤除重复徽标），快照过期显琥珀「已过期」；
  * - 算不出的字段显「未知」（后端零值不猜），无源字段显「—」（数据纪律「没取到≠0」，禁虚构禁派生），
  *   无盘口时五档区显占位，逐笔/异动入口显「P1 待接入」。
  */
@@ -304,7 +304,6 @@ onBeforeUnmount(() => {
                阈值走组件默认 30s。下方 .asof 绝对时点保留为第二读数。 -->
           <NtFreshness label="行情" :at="freshAt" :cut="!liveNow" />
           <span v-for="b in statusBadges" :key="b.text"><NtBadge :tone="b.tone">{{ b.text }}</NtBadge></span>
-          <NtBadge v-if="!liveNow" tone="warn">非实时</NtBadge>
           <span class="asof">{{ quote.asOf ? clock(quote.asOf) : '时间未知' }}<template v-if="quote.source"> · {{ quote.source === 'snap' ? '盘中快照' : '日线回退' }}</template></span>
         </div>
       </header>

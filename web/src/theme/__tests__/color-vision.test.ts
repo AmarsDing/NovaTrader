@@ -3,6 +3,7 @@
  * ① 默认红涨绿跌与色觉安全（朱红/钴蓝）在 protanopia/deuteranopia/tritanopia
  *    模拟下 up/down、danger/success 的 OKLab 距离都必须 ≥0.15；
  * ② 安全模式相对默认只允许提升（涨跌幅可辨度 ≥1.3×），不允许劣化 warn 关系。
+ * ③ 跨角色归并钉档：dark down-success 棘轮 + 亮/safe 设计归并契约 + 双红 up-danger 地板。
  * 令牌解析走 css-vars.ts 共享件——测的是 tokens.css 发布值，与对比度审计同一口径。
  */
 import { describe, expect, it } from 'vitest'
@@ -20,8 +21,8 @@ import {
 const { dark, light, darkSafe, lightSafe } = THEME_VARS
 
 describe('color-vision 基础换算', () => {
-  it('hex 解析与非法输入', () => {
-    expect(hexToSrgb('#f95738')).toEqual([249, 87, 56])
+  it('hex 解析与非法输入（夹具用与令牌无关的任意 hex，防 grep 假阳性）', () => {
+    expect(hexToSrgb('#123abc')).toEqual([18, 58, 188])
     expect(hexToSrgb('#fff')).toEqual([255, 255, 255])
     expect(() => hexToSrgb('#zzzzzz')).toThrow()
   })
@@ -36,7 +37,7 @@ describe('color-vision 基础换算', () => {
   it('黑白 OKLab 距离约为 1 且对称', () => {
     const d = oklabDistance('#ffffff', '#000000')
     expect(Math.abs(d - 1)).toBeLessThan(0.01)
-    expect(oklabDistance('#ff6b81', '#35dfb1')).toBeCloseTo(oklabDistance('#35dfb1', '#ff6b81'), 10)
+    expect(oklabDistance('#112233', '#a5b6c7')).toBeCloseTo(oklabDistance('#a5b6c7', '#112233'), 10)
   })
 })
 
@@ -125,4 +126,35 @@ describe('色觉安全模式只允许提升不允许劣化', () => {
       }
     })
   }
+})
+
+describe('跨角色归并钉档（down-success / up-danger）', () => {
+  /**
+   * 2026-10-21 棘轮实测定题（gap.mjs 复算）：
+   * - 亮默认 down==success #066c4c、两 safe 档 up==danger / down==success 同源——同色章承担双语义，
+   *   属设计归并契约（安全档以可辨度×1.3 兜底来回交叉角色），拆并必须显式过评改测，钉相等防连环回归。
+   * - 暗默认明度调和（690de3b）后 down #60b296 与 success #35dfb1 分裂：实测 minCVD 0.0562(deut)/OKLab 0.1206；
+   *   双绿同族且亮/safe 归并=0，充分性阈值物理不可立足 → 只钉防劣化棘轮（实测扣余量），允许改善放开。
+   * - up-danger 双红贴色：暗 #ff6b81/#ff5c7c minCVD 0.0085、亮 #b52548/#b92249 0.0078，同钉地板。
+   */
+  const tcase = (name: string, vars: Record<string, string>) => ({ name, vars })
+  it('亮默认与两 safe 档 down==success、两 safe 档 up==danger（设计归并契约）', () => {
+    expect(requireVar(tcase('亮色', light), 'down')).toBe(requireVar(tcase('亮色', light), 'success'))
+    for (const [name, vars] of [['暗色安全', darkSafe], ['亮色安全', lightSafe]] as const) {
+      const t = tcase(name, vars)
+      expect(requireVar(t, 'down')).toBe(requireVar(t, 'success'))
+      expect(requireVar(t, 'up')).toBe(requireVar(t, 'danger'))
+    }
+  })
+
+  it('暗默认 down-success 棘轮（minCVD≥0.05、OKLab≥0.11，实测 0.0562/0.1206 扣余量）', () => {
+    const t = tcase('暗色', dark)
+    expect(minDichromacyDistance(requireVar(t, 'down'), requireVar(t, 'success'))).toBeGreaterThanOrEqual(0.05)
+    expect(oklabDistance(requireVar(t, 'down'), requireVar(t, 'success'))).toBeGreaterThanOrEqual(0.11)
+  })
+
+  it('暗/亮默认 up-danger 双红地板（minCVD 暗≥0.007、亮≥0.006）', () => {
+    expect(minDichromacyDistance(requireVar(tcase('暗色', dark), 'up'), requireVar(tcase('暗色', dark), 'danger'))).toBeGreaterThanOrEqual(0.007)
+    expect(minDichromacyDistance(requireVar(tcase('亮色', light), 'up'), requireVar(tcase('亮色', light), 'danger'))).toBeGreaterThanOrEqual(0.006)
+  })
 })

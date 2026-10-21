@@ -6,6 +6,7 @@ import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import QuoteSidebar from '../market/quote-sidebar.panel.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import { useSymbolStore } from '@/stores/symbol'
 
@@ -78,22 +79,22 @@ describe('quote sidebar（视频落地 P0）', () => {
     expect(text).toContain('买2')
     expect(text).toContain('1,705.01')
     expect(text).toContain('1,704.99')
-    // WS 在线 → 不显示非实时徽标。
-    expect(text).not.toContain('非实时')
+    // WS 在线 → cut=false（非实时语义由 NtFreshness cut 唯一承载；shallowMount 下子件桩化，断言接线而非子件渲染）。
+    expect(wrapper!.findComponent(NtFreshness).props('cut')).toBe(false)
     // 快讯占位页签：逐笔/异动流显式标「P1 待接入」，不造假数据。
     wrapper!.findComponent(NtTabs).vm.$emit('update:modelValue', 'flash')
     await wrapper!.vm.$nextTick()
     expect(wrapper!.text()).toContain('P1 待接入')
   })
 
-  it('WS 断连显「非实时」，ST 停牌外 noLimit 显「无涨跌幅」且涨跌停价显「无」', async () => {
+  it('WS 断连 NtFreshness 收 cut（「断 ·」渲染由子件自测担保），ST 停牌外 noLimit 显「无涨跌幅」且涨跌停价显「无」', async () => {
     mock.live.push(false)
     mock.quote.mockResolvedValue({ ...QUOTE, tradeStatus: 'TRADE', noLimit: true, limitUp: 0, limitDown: 0 })
     await mountPanel()
     useSymbolStore().setSymbol('920001', 'QL')
     await flushPromises()
     const text = wrapper!.text()
-    expect(text).toContain('非实时')
+    expect(wrapper!.findComponent(NtFreshness).props('cut')).toBe(true)
     expect(text).toContain('无涨跌幅')
     expect(text).not.toContain('1,881.00')
   })
