@@ -368,8 +368,9 @@ export interface MonitorInput {
     latency?: {
       windowMinutes: number
       total: number
-      p50Ms: number
-      p95Ms: number
+      /** 「没取到≠0」（P3-10c）：total=0 空窗时分位为 null，界面显「样本不足」。 */
+      p50Ms: number | null
+      p95Ms: number | null
       buckets: { leMs: number; count: number }[]
     } | null
   } | null
@@ -398,8 +399,9 @@ export interface MonitorInput {
       found: boolean
       totalAmount: number
       limitUpCount: number
-      limitUps: { symbol: string; auctionPct: number; auctionAmount: number; auctionVolRatio: number; auctionTurnover: number; auctionLimitUp: boolean; auctionUnmatched: number }[]
-      topRush: { symbol: string; auctionPct: number; auctionAmount: number; auctionVolRatio: number; auctionTurnover: number; auctionLimitUp: boolean; auctionUnmatched: number }[]
+      // 「没取到≠0」（P3-10c）：auctionPct/VolRatio/Turnover/Unmatched 源缺键为 null（0=平开等真值）；auctionAmount 键恒在。
+      limitUps: { symbol: string; auctionPct: number | null; auctionAmount: number; auctionVolRatio: number | null; auctionTurnover: number | null; auctionLimitUp: boolean; auctionUnmatched: number | null }[]
+      topRush: { symbol: string; auctionPct: number | null; auctionAmount: number; auctionVolRatio: number | null; auctionTurnover: number | null; auctionLimitUp: boolean; auctionUnmatched: number | null }[]
       asOf: string
     } | null
     ladder?: {

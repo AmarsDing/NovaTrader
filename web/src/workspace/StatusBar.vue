@@ -9,6 +9,7 @@ import { useAccountStore } from '@/stores/account'
 import { useNotifyStore } from '@/stores/notify'
 import { useRiskStore } from '@/stores/risk'
 import { clock } from '@/utils/format'
+import { serverDate } from '@/utils/server-clock'
 import { formatClock, SESSION_TEXT, sessionOf } from '@/utils/time'
 import { desiredTopics, isLive, link } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
@@ -17,19 +18,20 @@ const risk = useRiskStore()
 const account = useAccountStore()
 const notify = useNotifyStore()
 
-const now = ref(new Date())
+/** 底栏时段钟走 P2-10 服务端钟（未校准回退本地）：时段文案与时钟同上海历。 */
+const now = ref(serverDate())
 let timer: ReturnType<typeof setInterval> | undefined
 
 const sessionText = computed(() => SESSION_TEXT[sessionOf(now.value)])
 const clockText = computed(() => formatClock(now.value))
-const recoveryText = computed(() => {
-  if (link.sync === 'ready') return '同步已完成'
 /** 链路文案只从链路五态册取（§7.1/§10 全局 chrome，一字锁定）：色调与状态词同源。 */
 const healthStatus = computed<DotStatus>(() => (link.health === 'ok' ? 'ok' : link.health === 'down' ? 'down' : 'off'))
 /** 推送通道全 live（心跳证据齐）取「在线」呼吸态；open/connecting 未就绪记陈旧；idle 记关闭。 */
 const wsStatus = computed<DotStatus>(() =>
   isLive() ? 'live' : link.ws === 'open' || link.ws === 'connecting' ? 'stale' : link.ws === 'idle' ? 'off' : 'down',
 )
+const recoveryText = computed(() => {
+  if (link.sync === 'ready') return '同步已完成'
   if (link.sync === 'syncing') return '权威状态同步中'
   if (link.sync === 'required') return '待恢复 · 未完成核对'
   return '尚未同步'
@@ -72,7 +74,7 @@ const stopTitleWatch = watch(
 onMounted(() => {
   baseTitle = document.title || 'NovaTrader'
   timer = setInterval(() => {
-    now.value = new Date()
+    now.value = serverDate()
   }, 1000)
   notify.start()
 })

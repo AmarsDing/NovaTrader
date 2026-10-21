@@ -33,6 +33,7 @@ import {
   signed,
   validRemainText,
 } from '@/utils/format'
+import { serverNow } from '@/utils/server-clock'
 import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
 import { createPageRefresh } from './page-refresh'
 import { getWorkbench } from '@/workspace/inject'
@@ -79,7 +80,8 @@ const selectedId = ref('')
 /** 异议点到的维，四维行高亮 */
 const focusDim = ref('')
 const decisionContext = ref<DecisionContext | null>(null)
-const nowTick = ref(Date.now())
+/** 有效期/动作判定同一时钟（P2-10 服务端钟，未校准回退本地）。 */
+const nowTick = ref(serverNow())
 
 let timer: ReturnType<typeof setInterval> | null = null
 let actionTimer: ReturnType<typeof setInterval> | null = null
@@ -164,8 +166,6 @@ function pnlRatio(position: Position): number | null {
   return (position.lastPrice - position.avgCost) / position.avgCost
 }
 
-function wordClickable(word: HotWord): boolean {
-  return word.type === 'stock'
 /** R3 浮盈额：(现价-成本)×数量；任一字段缺/0 隐显「—」（没取到≠0）。 */
 function pnlAmount(position: { quantity: number | null; avgCost: number | null; lastPrice: number | null }): number | null {
   if (!position.quantity || !position.avgCost || !position.lastPrice) return null
@@ -184,6 +184,8 @@ function priceText(value: number | null): string {
   return value != null && value > 0 ? price(value) : '—'
 }
 
+function wordClickable(word: HotWord): boolean {
+  return word.type === 'stock'
 }
 
 function openPulse() {
@@ -202,7 +204,7 @@ function openMarket(symbol: string) {
 /** 下单仍进交易面板，带上这张票的代码、方向和入场价。交易面板在 P4 才拦截 */
 function openTrade(ticket: DeskTicket) {
   if (
-    !buildDecisionAction(ticket, decisionContext.value && { ...decisionContext.value, live: isLive() }, Date.now())
+    !buildDecisionAction(ticket, decisionContext.value && { ...decisionContext.value, live: isLive() }, serverNow())
       .canOpenTrade
   )
     return
@@ -266,7 +268,7 @@ async function readPage(key: string): Promise<boolean> {
   ])
 
   if (disposed || key !== refreshKey() || sequence !== loadSequence || account.book !== checkedBook) return false
-  nowTick.value = Date.now()
+  nowTick.value = serverNow()
   candidatesReady.value = candidateRes.status === 'fulfilled'
   candidates.value = candidateRes.status === 'fulfilled' ? candidateRes.value : []
   words.value = wordRes.status === 'fulfilled' ? wordRes.value.slice(0, 8) : []
@@ -337,7 +339,7 @@ async function onPushMessage(msg: WsPushMessage) {
 }
 
 function onVisible() {
-  if (!document.hidden) { nowTick.value = Date.now(); void load(false) }
+  if (!document.hidden) { nowTick.value = serverNow(); void load(false) }
 }
 
 onMounted(() => {
@@ -345,7 +347,7 @@ onMounted(() => {
   void loadRiskParams()
   timer = setInterval(() => { if (!document.hidden) void load(false) }, REFRESH_MS)
   actionTimer = setInterval(() => {
-    if (!document.hidden) nowTick.value = Date.now()
+    if (!document.hidden) nowTick.value = serverNow()
   }, 1000)
   offPush = onPush(onPushMessage)
   offResync = onResync(['signal', 'position', 'alert'], async () => {
@@ -416,9 +418,9 @@ watch(
         label="权益"
         :value="amount(account.accountOk ? account.equity : null)"
         :sub="account.accountOk ? `可用 ${amount(account.cash)}${usedPct != null ? ` · 已用 ${(usedPct * 100).toFixed(0)}%` : ''}` : '账户读取未核对'"
+        hero
       />
       <NtStatCard
-        hero
         label="情绪"
         :value="noTape ? '无快照' : phaseName(market.phase)"
         :sub="
@@ -538,7 +540,7 @@ watch(
                 止盈 {{ price(selected.take) }}
               </p>
               <p class="valid" :class="{ warn: !selected.validUntil }">
-                {{ selected.validUntil ? validRemainText(selected.validUntil) || '已过期' : '无有效期' }}
+                {{ selected.validUntil ? validRemainText(selected.validUntil, nowTick) || '已过期' : '无有效期' }}
                 <template v-if="selected.risk.requestedPct != null">
                   · 请求仓位 {{ (selected.risk.requestedPct * 100).toFixed(0) }}%</template
                 >
@@ -646,17 +648,17 @@ watch(
         <p v-if="!account.positionsOk" class="nt-err">持仓接口没有应答，账面不当作空仓。</p>
         <p v-else-if="!account.positions.length" class="nt-empty">暂无持仓。</p>
         <div v-else class="pos-table">
+          <!-- §6.3 R3 持仓行列序：证券|数量|可用|成本|现价|浮盈额|浮盈%|今日可卖|权重 -->
           <div class="pos-row pos-row--head">
             <span>证券</span>
-          <!-- §6.3 R3 持仓行列序：证券|数量|可用|成本|现价|浮盈额|浮盈%|今日可卖|权重 -->
             <span>数量</span>
-            <span>权重</span>
             <span>可用</span>
             <span>成本</span>
             <span>现价</span>
             <span>浮盈额</span>
             <span>浮盈%</span>
             <span>今日可卖</span>
+            <span>权重</span>
           </div>
           <div v-for="item in account.positions" :key="item.symbol" class="pos-row">
             <!-- §6.3 R3 持仓行：SymbolName(stacked) 名称上行代码下行，缺名走「名称未返回」占位 -->
@@ -667,11 +669,11 @@ watch(
             <b>{{ priceText(item.lastPrice) }}</b>
             <i :class="pnlClass(pnlAmount(item))">{{ pnlAmount(item) != null ? amount(pnlAmount(item)) : '—' }}</i>
             <i :class="pnlClass(pnlRatio(item))">{{ pnlRatio(item) != null ? ratioPct(pnlRatio(item), 1) : '—' }}</i>
-          </div>
-        </div>
             <!-- 今日可卖：available 即 T+1 可卖口径；0 显「T+1 不可卖」text-3，缺显「—」 -->
             <em class="sellable" :class="{ 'sellable--hold': sellable(item).hold }">{{ sellable(item).text }}</em>
             <em>{{ weight(item) || '—' }}</em>
+          </div>
+        </div>
         <h3 class="sub">板块涨跌（全市场）</h3>
         <p v-if="!chartRows.length" class="nt-empty">板块快照未返回。</p>
         <NtSectorBar v-else :rows="chartRows" height="220px" />
@@ -804,20 +806,20 @@ watch(
   flex-direction: column;
   gap: 4px;
   font-size: 12.5px;
+  overflow-x: auto;
 }
 
-  overflow-x: auto;
+/* R3 持仓表：证券 1.2fr + 8 个数值列；窄屏整体横向滚动，不挤扁证券列。 */
 .pos-row {
   display: grid;
-/* R3 持仓表：证券 1.2fr + 8 个数值列；窄屏整体横向滚动，不挤扁证券列。 */
   grid-template-columns:
     minmax(96px, 1.2fr) minmax(48px, 0.6fr) minmax(48px, 0.6fr) minmax(56px, 0.7fr) minmax(56px, 0.7fr)
     minmax(72px, 0.8fr) minmax(56px, 0.6fr) minmax(88px, 0.8fr) minmax(48px, 0.5fr);
   gap: 8px;
   align-items: baseline;
+  min-width: 560px;
 }
 
-  min-width: 560px;
 .pos-row--head {
   color: var(--nt-text-3);
   font-size: 11px;
@@ -841,8 +843,6 @@ watch(
   color: var(--nt-down);
 }
 
-.brief {
-  margin: 0;
 /* R3 今日可卖：数值常态 text-2；0 →「T+1 不可卖」text-3（方案 §6.3 R3）。 */
 .pos-row .sellable {
   color: var(--nt-text-2);
@@ -853,6 +853,8 @@ watch(
   color: var(--nt-text-3);
 }
 
+.brief {
+  margin: 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--nt-text-1);
