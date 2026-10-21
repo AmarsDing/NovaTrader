@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells, isTradingDay } from './timeband'
 
-/** 2026-10-12 是周一（交易日）；2026-10-17 周六、2026-10-18 周日。 */
+/** 2026-10-12 是周一（交易日）；2026-10-17 周六、2026-10-18 周日。
+ *  时刻一律写成 +08:00 固定偏移串：时段语义钉市场钟后，测试也必须与跑测机时区无关
+ * （UTC 的 CI 与东八区的本机应得到同一组 epoch）。 */
 function at(day: number, hour: number, minute: number): Date {
-  return new Date(2026, 9, day, hour, minute, 0, 0)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return new Date(`2026-10-${pad(day)}T${pad(hour)}:${pad(minute)}:00+08:00`)
 }
 
 describe('isTradingDay', () => {
@@ -43,6 +46,19 @@ describe('detectBand', () => {
     expect(detectBand(at(17, 10, 0))).toBe('offday')
     expect(detectBand(at(18, 15, 0))).toBe('offday')
     expect(detectBand(at(18, 3, 0))).toBe('offday')
+  })
+
+  it('时区无关：同一瞬时的 Z 写法与 +08:00 写法判定一致', () => {
+    /* 市场钟 10:00 上午盘：UTC 写法换个时区读应得同一段（UTC 机器上跑测一样通过）。 */
+    expect(detectBand(new Date('2026-10-12T02:00:00Z'))).toBe('morning')
+    expect(isTradingDay(new Date('2026-10-12T02:00:00Z'))).toBe(true)
+    /* UTC 日历上还是周日深夜，但上海已周一 00:30：交易日以市场钟日历为准。 */
+    expect(isTradingDay(new Date('2026-10-18T16:30:00Z'))).toBe(true)
+    /* UTC 周五 16:05 已是上海周六 00:05：日历日跨界后按休市判定。 */
+    expect(isTradingDay(new Date('2026-10-16T16:05:00Z'))).toBe(false)
+    expect(detectBand(new Date('2026-10-16T16:05:00Z'))).toBe('offday')
+    /* 上海 23:59 仍算盘后段（17:00 后并入盘后），不随 UTC 日历翻页。 */
+    expect(detectBand(new Date('2026-10-12T15:59:00Z'))).toBe('postmarket')
   })
 
   it('交易时段之外的边界分钟稳定', () => {

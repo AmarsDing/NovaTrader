@@ -5,7 +5,44 @@
  * 交易日判定：周六/周日为休市。法定节假日暂无只读日历接口
  * （M00 的 trade_calendar 未对前端暴露），节假日按交易日走，
  * 数据静默由活动条/新鲜度角标（S2）兜底，不在这里编假日表。
+ *
+ * 时段语义钉市场钟（Asia/Shanghai），与设备时区脱钩：传入的 Date 一律按瞬时理解，
+ * 判定时取上海墙钟字段。实现用固定 +8h 偏移 + UTC 读数，不走 Intl.DateTimeFormat ——
+ * 域限定等价：上海 1991 年夏令时终止后恒定 UTC+8（更早的 1986–1991 夏令时 UTC+9、
+ * 1940 年代战时夏令时均不在域内），而本模块只面对现代交易日瞬时（行情纪元 ≥2019），
+ * 故固定 +8h 与 Asia/Shanghai 在域内严格等价；同时躲开 ICU 边角（hourCycle 缺省时
+ * 午夜可读作 24 点之类）与环境的 ICU 版本差异。
+ * 消费方多半喂 serverNow()（P2-10 服务端钟），即使在海外/UTC 机上打开，
+ * 页面焦点仍跟随 A 股时段而不是旅客的本地钟。
  */
+
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000
+
+export interface ShanghaiWall {
+  year: number
+  /** 1–12 */
+  month: number
+  /** 1–31 */
+  day: number
+  /** 0=周日 … 6=周六 */
+  weekday: number
+  second: number
+  /** 自上海当日 00:00 起的分钟数 */
+  minuteOfDay: number
+}
+
+/** 把瞬时 Date 按市场钟拆墙钟字段；NaN 输入透传 NaN（与本地 getDay() 同病，不另造语义）。 */
+export function shanghaiWall(date: Date): ShanghaiWall {
+  const shifted = new Date(date.getTime() + SHANGHAI_OFFSET_MS)
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    weekday: shifted.getUTCDay(),
+    second: shifted.getUTCSeconds(),
+    minuteOfDay: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
+  }
+}
 
 export type BandKey = 'preopen' | 'auction' | 'morning' | 'lunch' | 'afternoon' | 'closing' | 'postmarket' | 'offday'
 
@@ -125,13 +162,13 @@ const SWAP: Partial<Record<BandKey, HudCellDef[]>> = {
 }
 
 export function isTradingDay(date: Date): boolean {
-  const day = date.getDay()
+  const day = shanghaiWall(date).weekday
   return day >= 1 && day <= 5
 }
 
 export function detectBand(date: Date, tradingDay = isTradingDay(date)): BandKey {
   if (!tradingDay) return 'offday'
-  const minutes = date.getHours() * 60 + date.getMinutes()
+  const minutes = shanghaiWall(date).minuteOfDay
   for (const segment of SEGMENTS) {
     if (minutes >= segment.from && minutes < segment.to) return segment.key
   }
@@ -164,7 +201,7 @@ export function bandCountdown(date: Date, key: BandKey): string {
   }
   const anchor = anchors[key]
   if (!anchor) return ''
-  const left = anchor.to - (date.getHours() * 60 + date.getMinutes())
+  const left = anchor.to - shanghaiWall(date).minuteOfDay
   return left > 0 ? `${anchor.label} ${left} 分` : ''
 }
 
