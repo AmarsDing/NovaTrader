@@ -46,7 +46,7 @@ func closureFixture(t *testing.T, d *Data, book, symbol string, volume int, pric
 	if !ok {
 		t.Fatal("signalRepo must implement biz.ClosureProjectionRepo")
 	}
-	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
+	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
 	return uc, cpr, repo, row, prefix
 }
 

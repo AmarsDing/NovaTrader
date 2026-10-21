@@ -38,6 +38,8 @@ type Settings struct {
 	AnalyzeTimeout time.Duration
 	MaxBatch       int
 	BriefingCron   string
+	// KBEnabled：事实包是否接 M04 知识库案例检索（M13-T09），默认 true，appcfg 键 app.brain.kb.enabled 可关。
+	KBEnabled bool
 }
 
 // NewSettings 用配置覆盖默认值。权重和不为 1 时按比例归一。
@@ -49,6 +51,7 @@ func NewSettings(c *conf.Brain) Settings {
 		AnalyzeTimeout: defaultAnalyzeTimeout,
 		MaxBatch:       defaultMaxBatch,
 		BriefingCron:   defaultBriefingCron,
+		KBEnabled:      true,
 	}
 	for k, v := range defaultRoutes {
 		s.Routes[k] = v
@@ -117,6 +120,13 @@ func ApplyApp(s Settings, rows map[string]string) Settings {
 	}
 	if changed {
 		s = normalizeWeights(s)
+	}
+	// M13-T09：知识库案例检索开关。键值非法时保持现状。
+	switch strings.TrimSpace(rows["app.brain.kb.enabled"]) {
+	case "true":
+		s.KBEnabled = true
+	case "false":
+		s.KBEnabled = false
 	}
 	return s
 }

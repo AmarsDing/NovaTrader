@@ -139,7 +139,7 @@ func (uc *Usecase) ReconcileExecutionOrder(ctx context.Context, clientOrderID st
 	if err != nil || id == 0 {
 		return false, err
 	}
-	_, changed, err := repo.ProjectExecution(ctx, id, planExecution, executionEnvelope(ctx))
+	_, changed, err := repo.ProjectExecution(ctx, id, planExecution, uc.executionEnvelope(ctx))
 	return changed, err
 }
 
@@ -162,7 +162,7 @@ func (uc *Usecase) ReconcileExecutionsPage(ctx context.Context, after, limit int
 			return next, changed, errors.Join(err, ctx.Err())
 		}
 		next = id
-		_, updated, e := repo.ProjectExecution(ctx, id, planExecution, executionEnvelope(ctx))
+		_, updated, e := repo.ProjectExecution(ctx, id, planExecution, uc.executionEnvelope(ctx))
 		if e != nil {
 			err = errors.Join(err, fmt.Errorf("signal %d: %w", id, e))
 			continue
@@ -177,9 +177,12 @@ func (uc *Usecase) ReconcileExecutionsPage(ctx context.Context, after, limit int
 	return next, changed, err
 }
 
-func executionEnvelope(ctx context.Context) EnvelopeFunc {
+// executionEnvelope 投影路径的事件构造：终态（done/cancelled）经 uc.signalEnv 补
+// M13-T10 归因四键，非终态与旧行为一致。
+func (uc *Usecase) executionEnvelope(ctx context.Context) EnvelopeFunc {
+	decorate := uc.signalEnv(ctx)
 	return func(s *Signal, from Status) (events.Envelope, error) {
-		base, err := signalEnvelope(s, from)
+		base, err := decorate(s, from)
 		if err != nil {
 			return base, err
 		}

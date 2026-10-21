@@ -94,6 +94,63 @@ var askPrompt = Prompt{
 evidence 至少1个。`,
 }
 
+// 分段式 AI 复盘（P1-7 起五段；P2-8 扩为六段）：每段只看自己那块数据、独立模型会话。
+const reviewRules = commonRules + `
+
+本次写盘后复盘的一段：只解读【事实包】里这一块数据，不评论其它块；写清读数背后的含义，不做买卖建议。`
+
+func reviewSegPrompt(name, version, focus string) Prompt {
+	return Prompt{
+		Name:    name,
+		Version: version,
+		System: reviewRules + "\n\n" + focus + `
+输出格式：
+{"text": "复盘正文，不超过240字", "points": ["要点，不超过80字"], "evidence": ["F:xxx"]}
+points 写2到4条；evidence 至少1个，只能引用本段事实包里的编号。`,
+	}
+}
+
+var reviewSegmentPrompts = map[aiSegment]Prompt{
+	segEmotion: reviewSegPrompt("review.emotion", "v1", "本段评【短线情绪】：涨停/跌停/炸板结构、封板率、连板高度与断层、晋级率、昨日梯队今日表现、封板质量。"),
+	segCapital: reviewSegPrompt("review.capital", "v1", "本段评【资金】：两市成交额与 20/60 日均值对照、涨跌家数、两融余额。"),
+	segTheme:   reviewSegPrompt("review.theme", "v1", "本段评【题材】：涨停归并出的题材及其家数、最高板与代表股，判断题材轮动与持续性。"),
+	// P2-8：席位明细已补齐，换掉「只看北向」口径升 v2（M05 §7 改动须升版本）。
+	segLHB:    reviewSegPrompt("review.lhb", "v2", "本段评【龙虎榜】：上榜席位的净买/净卖与席位画像（机构/游资/量化/北向）。知名游资席位大额净买是强势信号，机构席位集中净卖是减仓信号；北向十大成交作补充参考。"),
+	segLeader: reviewSegPrompt("review.leader", "v1", "本段评【龙头】：连板天梯梯队、昨日涨停今日再涨停的强势股，判断龙头确认与掉队。"),
+	// P2-8：解禁/减持视角。90 天窗口是 A 股供给冲击的标准观察窗。
+	segSupply: reviewSegPrompt("review.supply", "v1", "本段评【筹码供给】：未来 90 天解禁（合计、峰值日、重大占比、当日涨停股与解禁重叠）与近 90 天减持公告，判断筹码供给冲击与股东行为信号。"),
+}
+
+var reviewSynthesisPrompt = Prompt{
+	Name:    "review.synthesis",
+	Version: "v2", // v2: 段数由五扩六（P2-8），文案去数字防下次再改
+	System: commonRules + `
+
+本次读后附的【今日分段复盘结论】，写一段总评和给明天的教训。
+规则：
+1. 总评只用各段结论里出现过的数字与事实；
+2. 教训写可执行的观察动作或纪律，不写空泛口号。
+输出格式：
+{"summary": "总评，不超过300字", "lessons": ["教训，不超过80字"]}
+lessons 写2到6条。`,
+}
+
+// AI 周报（P1-7b）：单次会话读本 ISO 周逐日读数与周聚合，写总评与教训。
+var reviewWeeklyPrompt = Prompt{
+	Name:    "review.weekly",
+	Version: "v1",
+	System: commonRules + `
+
+本次写【本周复盘】。事实包里是本周各交易日的关键读数（F:week.dayN）与周内聚合（F:week.*）。
+规则：
+1. 总评只复盘本周已经发生的事，不预测下周涨跌；
+2. 指出本周情绪的转折点与主线题材的持续性，依据只能是事实包里的读数；
+3. 教训写下周可执行的观察动作或纪律，不写空泛口号。
+输出格式：
+{"summary": "本周总评，不超过300字", "lessons": ["教训，不超过80字"]}
+lessons 写2到6条。`,
+}
+
 var dataTag = regexp.MustCompile(`(?i)<\s*/?\s*data`)
 
 // escapeData 让外部正文无法提前闭合数据块。
@@ -134,8 +191,13 @@ func renderPack(p *FactPack) string {
 		b.WriteString("（无）\n")
 	}
 	for _, n := range p.Intel {
+		// 「没取到≠0」：情感分未知输出 unknown，禁止冒充「中性 0」喂给模型。
+		sentiment := "unknown"
+		if n.SentimentOK {
+			sentiment = formatValue(n.Sentiment)
+		}
 		fmt.Fprintf(&b, "<data id=\"%s\" source=\"%s\" time=\"%s\" importance=\"%d\" sentiment=\"%s\"",
-			n.ID, escapeAttr(n.Source), n.Time.In(tradecal.Shanghai()).Format("2006-01-02 15:04"), n.Importance, formatValue(n.Sentiment))
+			n.ID, escapeAttr(n.Source), n.Time.In(tradecal.Shanghai()).Format("2006-01-02 15:04"), n.Importance, sentiment)
 		if n.Symbol != "" {
 			fmt.Fprintf(&b, " symbol=\"%s\"", n.Symbol)
 		}

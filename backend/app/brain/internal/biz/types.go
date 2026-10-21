@@ -31,14 +31,17 @@ type Fact struct {
 }
 
 type Intel struct {
-	ID         string    `json:"id"`
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	Source     string    `json:"source,omitempty"`
-	Time       time.Time `json:"time"`
-	Sentiment  float64   `json:"sentiment"`
-	Importance int       `json:"importance"`
-	Symbol     string    `json:"symbol,omitempty"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	Source    string    `json:"source,omitempty"`
+	Time      time.Time `json:"time"`
+	Sentiment float64   `json:"sentiment"`
+	// SentimentOK 标记 Sentiment 是否真取到。「没取到≠0」：false 时 Sentiment 无意义，
+	// 渲染/计算方必须按缺失处理（prompts 里输出 unknown），不得当「中性 0」。
+	SentimentOK bool   `json:"sentiment_ok,omitempty"`
+	Importance  int    `json:"importance"`
+	Symbol      string `json:"symbol,omitempty"`
 }
 
 type FactPack struct {
@@ -48,6 +51,8 @@ type FactPack struct {
 	Phase  string    `json:"phase,omitempty"`
 	Facts  []Fact    `json:"facts"`
 	Intel  []Intel   `json:"intel"`
+	// Meta 承载「没取到≠0」的显式缺失标记，如 kb_missing（M13-T09 检索不可用/降级时必须标出）。
+	Meta map[string]any `json:"meta,omitempty"`
 }
 
 func (p *FactPack) ids() map[string]bool {
@@ -136,6 +141,9 @@ type Briefing struct {
 	DecisionID int            `json:"decision_id"`
 	CreatedAt  time.Time      `json:"created_at"`
 	Reason     string         `json:"reason,omitempty"`
+	// P1-5 数字三档核对留痕与「（略※）」略掉计数；nil = 未核对（降级产出或核对落地前生成的旧晨报）。
+	Evidence     []EvidenceItem `json:"evidence,omitempty"`
+	OmittedCount *int           `json:"omitted_count,omitempty"`
 }
 
 type ExplainInput struct {

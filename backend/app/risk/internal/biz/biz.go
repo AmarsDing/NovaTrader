@@ -34,6 +34,9 @@ type Repo interface {
 	RestoreDay(ctx context.Context, from time.Time) (DayState, error)
 	// RefData 读 stock_basic 和 day 那天的日线成交额。
 	RefData(ctx context.Context, day time.Time) (map[string]RefInfo, error)
+	// Blacklist 读 stock_blacklist 在 now 仍有效的代码（expires_at 为空为永久），
+	// 返回 Tongdaxin 形式（600000.SH）的集合。M13-T11：R03 判定集 = 本集合 ∪ risk.blacklist 参数集。
+	Blacklist(ctx context.Context, now time.Time) (map[string]bool, error)
 }
 
 // DayState 是需要跨重启保留的当日状态。

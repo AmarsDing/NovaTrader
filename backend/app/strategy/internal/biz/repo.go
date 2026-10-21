@@ -34,6 +34,21 @@ type MarketSource interface {
 	DailyCloses(ctx context.Context, symbol string, from, to time.Time) (map[string]float64, error)
 }
 
+// SentimentSource 是 M13-T01 接上的 M02 情绪端口：当日情绪阶段。
+// ok=false 是显式缺失（源端没取到或未配置），与任一阶段都不同——消费方必须
+// 按数据纪律处理：融合系数按 1.0、标记 sentiment_missing，禁止把缺失误认 WARM。
+type SentimentSource interface {
+	// Stage 返回 asOf 当日最新情绪阶段。
+	Stage(ctx context.Context, asOf time.Time) (stage rules.Stage, ok bool, err error)
+}
+
+// NewsSource 是 M13-T01 接上的 M03 情报端口：当日突发利空。
+// set 命中的代码当天有生效利空；missing 覆盖的代码是没查成（地址未配置或单只查询
+// 失败），这些代码不得按「无利空」推断——空集（确无利空）与未取到严格区分。
+type NewsSource interface {
+	Negative(ctx context.Context, symbols []string, asOf time.Time) (set map[string]bool, missing map[string]bool, err error)
+}
+
 // Fact 是交给 M05 的一条因子。
 type Fact struct {
 	ID    string

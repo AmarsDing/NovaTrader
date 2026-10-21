@@ -30,7 +30,7 @@ func day(s string) time.Time {
 
 func TestPerformance(t *testing.T) {
 	yes, no := true, false
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{rows: []FeedbackRow{
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{rows: []FeedbackRow{
 		{TradeDate: day("2026-10-09"), Symbol: "A", ActualReturn: 0.05, SignalCorrect: &yes, Attribution: ""},
 		{TradeDate: day("2026-10-10"), Symbol: "B", ActualReturn: -0.02, SignalCorrect: &no, Attribution: "indicator_failed"},
 		{TradeDate: day("2026-10-12"), Symbol: "C", ActualReturn: 0.01, SignalCorrect: &yes, Attribution: "unfilled"},
@@ -60,7 +60,7 @@ func TestPerformance(t *testing.T) {
 }
 
 func TestPerformanceEmpty(t *testing.T) {
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{}, log.DefaultLogger)
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{}, log.DefaultLogger)
 	p, err := uc.Performance(context.Background(), 0, "")
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestPerformanceEmpty(t *testing.T) {
 }
 
 func TestScoreVsPnlPearson(t *testing.T) {
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{points: []ScorePnlPoint{
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, &fakeFeedback{points: []ScorePnlPoint{
 		{SignalID: 1, Score: 90, ActualReturn: 0.09},
 		{SignalID: 2, Score: 80, ActualReturn: 0.07},
 		{SignalID: 3, Score: 70, ActualReturn: 0.04},
@@ -104,7 +104,7 @@ func TestPearsonInsufficient(t *testing.T) {
 // strategy 过滤词必须原样透传到 repo（空串 = 不过滤同样逐字透传），两层之间不许改写。
 func TestStrategyFilterForward(t *testing.T) {
 	fb := &fakeFeedback{}
-	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, fb, log.DefaultLogger)
+	uc := NewUsecase(NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, fb, log.DefaultLogger)
 	if _, err := uc.Performance(context.Background(), 20, "breakout_ref"); err != nil {
 		t.Fatal(err)
 	}

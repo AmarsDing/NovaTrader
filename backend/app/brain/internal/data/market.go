@@ -50,6 +50,11 @@ func (r *marketRepo) DailyBars(ctx context.Context, symbol string, asOf time.Tim
 			marketdata.SymbolEQ(symbol),
 			marketdata.FreqEQ("1d"),
 			marketdata.BarTimeLTE(asOf),
+			// 「没取到≠0」：OHLC 缺一即不完整（写入侧已拦非正价，NULL 价=写入不完整），
+			// SQL 层挡掉，不完整行不进指标序列，禁止 deref 成 0 价。
+			marketdata.OpenNotNil(),
+			marketdata.HighNotNil(),
+			marketdata.LowNotNil(),
 			marketdata.CloseNotNil(),
 		).
 		Order(marketdata.ByBarTime(entsql.OrderDesc())).
@@ -190,13 +195,14 @@ func toIntel(rows []*ent.NewsSentiment) []biz.Intel {
 	out := make([]biz.Intel, 0, len(rows))
 	for _, row := range rows {
 		n := biz.Intel{
-			ID:         "N:" + strconv.Itoa(row.ID),
-			Title:      derefStr(row.NewsTitle),
-			Body:       derefStr(row.Content),
-			Source:     derefStr(row.Source),
-			Sentiment:  deref(row.SentimentScore),
-			Importance: row.Importance,
-			Symbol:     derefStr(row.StockCode),
+			ID:          "N:" + strconv.Itoa(row.ID),
+			Title:       derefStr(row.NewsTitle),
+			Body:        derefStr(row.Content),
+			Source:      derefStr(row.Source),
+			SentimentOK: row.SentimentScore != nil,
+			Sentiment:   deref(row.SentimentScore),
+			Importance:  row.Importance,
+			Symbol:      derefStr(row.StockCode),
 		}
 		if row.PublishTime != nil {
 			n.Time = *row.PublishTime
@@ -206,6 +212,8 @@ func toIntel(rows []*ent.NewsSentiment) []biz.Intel {
 	return out
 }
 
+// deref 哨兵转换：NULL → 0，仅容许在字段语义上 0=缺失的消费方使用（见 dataformat 纪律）。
+// 情感分不在此列——0 是「中性」，不是「没取到」，请用 SentimentOK（toIntel 已迁）。
 func deref(p *float64) float64 {
 	if p == nil {
 		return 0

@@ -32,7 +32,7 @@ func executionSignal(t *testing.T, d *Data, status biz.Status) (*biz.Usecase, bi
 		_, _ = d.client.TradeFill.Delete().Where(tradefill.ClientOrderID(id)).Exec(ctx)
 		_, _ = d.client.TradeOrder.Delete().Where(tradeorder.ClientOrderID(id)).Exec(ctx)
 	})
-	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
+	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
 	return uc, repo, s, id
 }
 

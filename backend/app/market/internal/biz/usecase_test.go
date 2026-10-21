@@ -45,6 +45,10 @@ type fakeRepo struct {
 	estSym   string
 	estSince time.Time
 	estAsOf  time.Time
+	// M13-T12 外围/板块桩数据（默认 nil = 取不到，走缺键缺失路径）
+	members map[string][]string
+	names   map[string]string
+	quotes  []market.Quote
 }
 
 func (f *fakeRepo) LoadStocks(context.Context) ([]market.StockInfo, error) { return f.stocks, nil }
@@ -103,7 +107,7 @@ func (f *fakeRepo) SaveSectorHeat(context.Context, time.Time, time.Time, []marke
 	return nil
 }
 func (f *fakeRepo) SectorMembers(context.Context, time.Time) (map[string][]string, map[string]string, error) {
-	return nil, nil, nil
+	return f.members, f.names, nil
 }
 func (f *fakeRepo) MoneyFlows(context.Context, time.Time, int) (map[string][]market.Flow, error) {
 	return nil, nil
@@ -117,7 +121,7 @@ func (f *fakeRepo) LhbSeats(context.Context, time.Time) (map[string][]market.Sea
 func (f *fakeRepo) SeatTags(context.Context) (map[string]string, error) { return nil, nil }
 func (f *fakeRepo) EnsureDefaults(context.Context) error                { return nil }
 func (f *fakeRepo) OverseasQuotes(context.Context, time.Time) ([]market.Quote, error) {
-	return nil, nil
+	return f.quotes, nil
 }
 func (f *fakeRepo) OverseasMappings(context.Context) ([]market.Mapping, error) { return nil, nil }
 func (f *fakeRepo) Bars(context.Context, string, string, time.Time, time.Time, int) ([]BarRow, error) {

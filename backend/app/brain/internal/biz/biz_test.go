@@ -200,7 +200,7 @@ func newEnv(reply func(llm.Request) (string, error)) *env {
 		briefings: &fakeBriefings{},
 		progress:  &fakeProgress{},
 	}
-	e.uc = NewUsecase(NewSettings(nil), e.llm, e.market, e.decisions, e.briefings, stubLlmCalls{}, e.progress, log.DefaultLogger)
+	e.uc = NewUsecase(NewSettings(nil), e.llm, e.market, e.decisions, e.briefings, nil, stubLlmCalls{}, e.progress, nil, log.DefaultLogger)
 	e.uc.now = func() time.Time { return time.Date(2026, 10, 8, 10, 0, 0, 0, tradecal.Shanghai()) }
 	return e
 }

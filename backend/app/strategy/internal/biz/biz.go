@@ -129,6 +129,8 @@ func LoadParams(values map[string]string, version *int) Params {
 type Usecase struct {
 	cfg        Settings
 	market     MarketSource
+	sentiment  SentimentSource
+	news       NewsSource
 	analyzer   Analyzer
 	params     ParamRepo
 	signals    SignalRepo
@@ -143,10 +145,11 @@ type Usecase struct {
 	killed atomic.Bool
 }
 
-func NewUsecase(cfg Settings, market MarketSource, analyzer Analyzer, params ParamRepo, signals SignalRepo,
-	candidates CandidateRepo, blacklist BlacklistRepo, positions PositionRepo, feedback FeedbackRepo, logger log.Logger) *Usecase {
+func NewUsecase(cfg Settings, market MarketSource, sentiment SentimentSource, news NewsSource, analyzer Analyzer,
+	params ParamRepo, signals SignalRepo, candidates CandidateRepo, blacklist BlacklistRepo, positions PositionRepo,
+	feedback FeedbackRepo, logger log.Logger) *Usecase {
 	return &Usecase{
-		cfg: cfg, market: market, analyzer: analyzer, params: params, signals: signals,
+		cfg: cfg, market: market, sentiment: sentiment, news: news, analyzer: analyzer, params: params, signals: signals,
 		candidates: candidates, blacklist: blacklist, positions: positions, feedback: feedback,
 		cal: tradecal.Default, log: log.NewHelper(log.With(logger, "module", "strategy/biz")),
 	}

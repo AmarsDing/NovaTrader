@@ -69,7 +69,7 @@ func (r *closureFakeRepo) Transition(_ context.Context, id int, from, to biz.Sta
 
 func newClosureRunner(t *testing.T, repo biz.SignalRepo, now time.Time) *Runner {
 	t.Helper()
-	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
+	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, repo, nil, nil, nil, nil, log.DefaultLogger)
 	r := NewRunner(uc, &data.Data{}, nil, nil, nil, log.DefaultLogger)
 	r.now = func() time.Time { return now }
 	return r

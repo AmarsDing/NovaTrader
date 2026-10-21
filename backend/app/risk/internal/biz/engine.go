@@ -22,10 +22,11 @@ import (
 )
 
 const (
-	reservationTTL = 60 * time.Second
-	exitCooldown   = 60 * time.Second
-	quoteCacheTTL  = time.Second
-	refRefresh     = 10 * time.Minute
+	reservationTTL   = 60 * time.Second
+	exitCooldown     = 60 * time.Second
+	quoteCacheTTL    = time.Second
+	refRefresh       = 10 * time.Minute
+	blacklistRefresh = 30 * time.Second
 )
 
 // ErrInvalid 是参数错误，service 层转成 400。
@@ -74,6 +75,8 @@ type Engine struct {
 	ref           map[string]RefInfo
 	refAt         time.Time
 	market        risk.Market
+	blacklist     map[string]bool
+	blacklistAt   time.Time
 
 	lastQuoteAt  time.Time
 	tradingSince time.Time
@@ -102,6 +105,7 @@ func NewEngine(repo Repo, quotes QuoteSource, audit Auditor, pub Publisher, logg
 		accountStates: map[risk.AccountType]accountstate.Snapshot{},
 		cache:         map[string]cachedQuote{},
 		ref:           map[string]RefInfo{},
+		blacklist:     map[string]bool{},
 		reservations:  map[string]reservation{},
 		buys:          map[risk.AccountType]int{},
 		rates:         map[risk.AccountType]*risk.Rate{risk.SIM: {}, risk.LIVE: {}},
@@ -164,6 +168,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 	e.mu.Unlock()
 	e.refreshRef(ctx)
+	e.refreshBlacklist(ctx)
 	snapshots, err := e.repo.LoadAccountSnapshots(ctx)
 	if err != nil {
 		return fmt.Errorf("risk: restore accounts: %w", err)
@@ -288,7 +293,20 @@ func (e *Engine) input(o risk.Order, now time.Time, snap Snapshot, haveSnap bool
 		}
 	}
 	sort.Slice(in.Reservations, func(i, j int) bool { return in.Reservations[i].At.Before(in.Reservations[j].At) })
-	return in, e.params
+	return in, e.paramsWithBlacklist()
+}
+
+// paramsWithBlacklist 把 stock_blacklist 内存集并入参数黑名单，R03 的判定集 = 两源并集。
+// 内存集为空时直接复用 e.params，不开销拷贝。调用方持有读锁。
+func (e *Engine) paramsWithBlacklist() risk.Params {
+	if len(e.blacklist) == 0 {
+		return e.params
+	}
+	p := e.params.Clone()
+	for s := range e.blacklist {
+		p.Blacklist[s] = true
+	}
+	return p
 }
 
 // marketView 把人工风险度下限叠加到 M02 的风险度上。调用方持有读锁。
@@ -642,6 +660,7 @@ func (e *Engine) Tick(ctx context.Context) {
 	// An elapsed TTL is not proof an order was rejected. Keep unresolved
 	// reservations and block new buys until a full ledger observes the order ID.
 	refDue := now.Sub(e.refAt) > refRefresh
+	blacklistDue := now.Sub(e.blacklistAt) > blacklistRefresh
 	down := false
 	var since time.Duration
 	if !sess.Trading {
@@ -668,6 +687,9 @@ func (e *Engine) Tick(ctx context.Context) {
 	}
 	if refDue {
 		e.refreshRef(ctx)
+	}
+	if blacklistDue {
+		e.refreshBlacklist(ctx)
 	}
 	if down {
 		reason := fmt.Sprintf("交易时段 %d 秒没有行情且有持仓", int(since.Seconds()))
@@ -720,6 +742,20 @@ func (e *Engine) refreshRef(ctx context.Context) {
 		return
 	}
 	e.ref = ref
+}
+
+// refreshBlacklist 按 30s 节拍把 stock_blacklist 读进内存。读取失败只显式告警，
+// 保留上一次成功的内存集与参数集继续生效，绝不静默降级成空集（数据纪律）。
+func (e *Engine) refreshBlacklist(ctx context.Context) {
+	set, err := e.repo.Blacklist(ctx, e.now())
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.blacklistAt = e.now()
+	if err != nil {
+		e.log.Warnf("load stock_blacklist failed, keep last known set (%d entries) and param blacklist: %v", len(e.blacklist), err)
+		return
+	}
+	e.blacklist = set
 }
 
 // TriggerKill 触发 Kill Switch：先在内存里停止放行，再落库发事件。

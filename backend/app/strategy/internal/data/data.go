@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"server/app/strategy/internal/biz"
 	"server/conf"
 	"server/ent"
 	"server/pkg/dbinit"
@@ -20,7 +21,8 @@ import (
 
 var ProviderSet = wire.NewSet(
 	NewData, NewEntClient, NewParamRepo, NewSignalRepo, NewCandidateRepo, NewBlacklistRepo, NewPositionRepo,
-	NewMarketSource, NewAnalyzer, NewFeedbackRepo, registry.NewBeater,
+	NewMarketClient, NewMarketSource, NewNewsClient, NewAnalyzer, NewFeedbackRepo, registry.NewBeater,
+	wire.Bind(new(biz.SentimentSource), new(*marketClient)),
 )
 
 type Data struct {

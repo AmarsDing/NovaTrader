@@ -269,6 +269,11 @@ var factorCatalog = map[string]factorSpec{
 	"auction_amount_prev": spec("竞价额相对昨日", "%", Capital, 2),
 	"auction_unmatched": spec("竞价未匹配量", "股", Capital, 0),
 	"auction_limit_up":  spec("竞价涨停", "", Technical, 0),
+	// M13-T12 外围/情绪量化因子：键由 market 截面实算写入 stock_factor（缺键=缺失，无 0 冒充）。
+	"sector.heat":         spec("板块热度", "", External, 2),
+	"sector.pct_chg":      spec("板块平均涨幅", "%", External, 2),
+	"external.usdcnh_chg": spec("离岸人民币涨跌幅", "%", External, 3),
+	"external.gold_chg":   spec("黄金涨跌幅", "%", External, 2),
 }
 
 func factorFacts(values map[string]float64) []Fact {

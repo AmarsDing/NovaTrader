@@ -16,7 +16,7 @@ import (
 )
 
 func TestHTTPObservationMountedWithClosedStrategyContract(t *testing.T) {
-	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, log.DefaultLogger)
+	uc := biz.NewUsecase(biz.NewSettings(nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, log.DefaultLogger)
 	srv := NewHTTPServer(&conf.Strategy{}, service.NewStrategyService(uc), log.DefaultLogger)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/observability", nil))

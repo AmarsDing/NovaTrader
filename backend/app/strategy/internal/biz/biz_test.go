@@ -333,14 +333,41 @@ type fakePositions struct{ list []Holding }
 
 func (p *fakePositions) Holdings(context.Context, string) ([]Holding, error) { return p.list, nil }
 
+// fakeSentiment 是 SentimentSource 假件：默认当日情绪 WARM（与旧恒 WARM 口径留住
+// 存量断言），各用例按需覆盖 stage/ok/err 打降级路径。
+type fakeSentiment struct {
+	fn func(time.Time) (rules.Stage, bool, error)
+}
+
+func (f *fakeSentiment) Stage(_ context.Context, asOf time.Time) (rules.Stage, bool, error) {
+	if f.fn != nil {
+		return f.fn(asOf)
+	}
+	return rules.StageWarm, true, nil
+}
+
+// fakeNews 是 NewsSource 假件：默认空集（查成了、确无利空），missing 为空。
+type fakeNews struct {
+	fn func([]string, time.Time) (map[string]bool, map[string]bool, error)
+}
+
+func (f *fakeNews) Negative(_ context.Context, symbols []string, asOf time.Time) (map[string]bool, map[string]bool, error) {
+	if f.fn != nil {
+		return f.fn(symbols, asOf)
+	}
+	return map[string]bool{}, map[string]bool{}, nil
+}
+
 type env struct {
-	uc      *Usecase
-	market  *fakeMarket
-	ai      *fakeAnalyzer
-	signals *fakeSignals
-	cands   *fakeCandidates
-	black   *fakeBlacklist
-	pos     *fakePositions
+	uc        *Usecase
+	market    *fakeMarket
+	ai        *fakeAnalyzer
+	signals   *fakeSignals
+	cands     *fakeCandidates
+	black     *fakeBlacklist
+	pos       *fakePositions
+	sentiment *fakeSentiment
+	news      *fakeNews
 }
 
 func newEnv(t *testing.T, ai *fakeAnalyzer, values map[string]string, snaps ...rules.Snapshot) *env {
@@ -349,12 +376,13 @@ func newEnv(t *testing.T, ai *fakeAnalyzer, values map[string]string, snaps ...r
 		market: &fakeMarket{snaps: snaps, closes: map[string]map[string]float64{}}, ai: ai,
 		signals: newFakeSignals(), cands: newFakeCandidates(),
 		black: &fakeBlacklist{codes: map[string]bool{}}, pos: &fakePositions{},
+		sentiment: &fakeSentiment{}, news: &fakeNews{},
 	}
 	var analyzer Analyzer
 	if ai != nil {
 		analyzer = ai
 	}
-	e.uc = NewUsecase(NewSettings(nil), e.market, analyzer, fakeParams{values: values}, e.signals,
+	e.uc = NewUsecase(NewSettings(nil), e.market, e.sentiment, e.news, analyzer, fakeParams{values: values}, e.signals,
 		e.cands, e.black, e.pos, nil, log.DefaultLogger)
 	return e
 }

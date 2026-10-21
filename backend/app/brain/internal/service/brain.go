@@ -3,7 +3,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	v1 "server/api/brain/v1"
@@ -139,6 +141,13 @@ func toBriefing(b *biz.Briefing) *v1.Briefing {
 	if !b.CreatedAt.IsZero() {
 		out.CreatedAt = b.CreatedAt.Format(time.RFC3339)
 	}
+	if b.OmittedCount != nil {
+		omitted := int32(*b.OmittedCount)
+		out.OmittedCount = &omitted
+	}
+	for _, e := range b.Evidence {
+		out.Evidence = append(out.Evidence, &v1.EvidenceItem{Field: e.Field, Span: e.Span, Verdict: e.Verdict, Match: e.Match})
+	}
 	for _, w := range b.Watchlist {
 		out.Watchlist = append(out.Watchlist, &v1.WatchItem{Symbol: w.Symbol, Reason: w.Reason, Evidence: w.Evidence})
 	}
@@ -268,4 +277,144 @@ func (s *BrainService) LatencyHistogram(ctx context.Context, req *v1.LatencyHist
 		out.Buckets = append(out.Buckets, &v1.LatencyBucket{LeMs: b.LeMs, Count: b.Count})
 	}
 	return out, nil
+}
+
+/* ---------- 复盘体系 ---------- */
+
+func (s *BrainService) GetProgramReview(ctx context.Context, req *v1.GetProgramReviewRequest) (*v1.ProgramReview, error) {
+	day, err := s.uc.ParseDay(req.GetDate())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	kind := strings.TrimSpace(req.GetKind())
+	if kind == "" {
+		kind = "program"
+	}
+	content, stats, lessons, model, effDay, err := s.uc.Review(ctx, day, kind)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	raw, err := json.Marshal(stats)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &v1.ProgramReview{
+		Date: effDay.Format("2006-01-02"), Content: content, StatsJson: string(raw),
+		Lessons: lessons, Model: model,
+	}, nil
+}
+
+// GenerateAIReview 手动生成或重新生成 AI 复盘：kind 空或 ai = 分段式日复盘；ai_week = 周报（行落在本周最后交易日）。
+func (s *BrainService) GenerateAIReview(ctx context.Context, req *v1.GenerateAIReviewRequest) (*v1.ProgramReview, error) {
+	day, err := s.uc.ParseDay(req.GetDate())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	kind := strings.TrimSpace(req.GetKind())
+	if err := s.uc.GenerateAIReviewOf(ctx, day, kind); err != nil {
+		return nil, mapErr(err)
+	}
+	if kind == "" {
+		kind = "ai"
+	}
+	return s.GetProgramReview(ctx, &v1.GetProgramReviewRequest{Date: day.Format("2006-01-02"), Kind: kind})
+}
+
+func (s *BrainService) GetFrozenEmotion(ctx context.Context, req *v1.GetFrozenEmotionRequest) (*v1.FrozenEmotion, error) {
+	day, err := s.uc.ParseDay(req.GetDate())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	f, err := s.uc.FrozenEmotionData(ctx, day)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.FrozenEmotion{
+		Date: day.Format("2006-01-02"), UpCount: opti32(f.UpCount), DownCount: opti32(f.DownCount),
+		BrokenCount: opti32(f.BrokenCount), MaxHeight: opti32(f.MaxHeight),
+		SealRate: f.SealRate, Promo_12: f.Promo12, Promo_23: f.Promo23, PromoHigh: f.PromoHigh,
+		TierAvg: f.TierAvg, TierMedian: f.TierMedian, TierRedRate: f.TierRedRate, TierRelimit: f.TierRelimit,
+		Partial: f.Partial, Missing: f.Missing, Source: f.Source,
+	}
+	for _, g := range f.StructureGaps {
+		out.StructureGaps = append(out.StructureGaps, int32(g))
+	}
+	if !f.CapturedAt.IsZero() {
+		out.CapturedAt = f.CapturedAt.Format(time.RFC3339)
+	}
+	if out.LadderJson, err = jsonStr(f.Ladder); err != nil {
+		return nil, mapErr(err)
+	}
+	if out.FirstBoardJson, err = jsonStr(f.FirstBoard); err != nil {
+		return nil, mapErr(err)
+	}
+	if out.ThemeTreeJson, err = jsonStr(f.ThemeTree); err != nil {
+		return nil, mapErr(err)
+	}
+	if out.PrevTierJson, err = jsonStr(f.PrevTier); err != nil {
+		return nil, mapErr(err)
+	}
+	if out.SealQualityJson, err = jsonStr(f.SealQ); err != nil {
+		return nil, mapErr(err)
+	}
+	return out, nil
+}
+
+func (s *BrainService) ListPredictionChecks(ctx context.Context, req *v1.ListChecksRequest) (*v1.PredictionCheckList, error) {
+	items, err := s.uc.ListPredictionChecks(ctx, int(req.GetLimit()))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.PredictionCheckList{}
+	for _, c := range items {
+		out.Items = append(out.Items, toCheck(c))
+	}
+	return out, nil
+}
+
+func (s *BrainService) RunPredictionCheck(ctx context.Context, req *v1.RunCheckRequest) (*v1.PredictionCheck, error) {
+	day, err := s.uc.ParseDay(req.GetDate())
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	c, err := s.uc.RunPredictionCheck(ctx, day)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return toCheck(c), nil
+}
+
+func toCheck(c *biz.Check) *v1.PredictionCheck {
+	out := &v1.PredictionCheck{
+		SignalDate: c.SignalDate.Format("2006-01-02"), CheckDate: c.CheckDate.Format("2006-01-02"),
+		Source: c.Source, CandidateCount: opti32(c.CandidateCount), HitCount: opti32(c.HitCount),
+		RelimitCount: opti32(c.RelimitCount), HitRate: c.HitRate, AvgPct: c.AvgPct, MaxPct: c.MaxPct,
+		Partial: c.Partial, Missing: c.Missing,
+	}
+	for _, cd := range c.Candidates {
+		out.Candidates = append(out.Candidates, &v1.CheckCandidateRow{Symbol: cd.Symbol, Name: cd.Name, Reason: cd.Reason, Text: cd.Text})
+	}
+	for _, r := range c.Results {
+		out.Results = append(out.Results, &v1.CheckResultRow{Symbol: r.Symbol, Name: r.Name, Pct: r.Pct, Relimit: r.Relimit, Hit: r.Hit})
+	}
+	return out
+}
+
+func opti32(p *int) *int32 {
+	if p == nil {
+		return nil
+	}
+	v := int32(*p)
+	return &v
+}
+
+func jsonStr(v any) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }

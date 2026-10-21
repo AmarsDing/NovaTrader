@@ -8,9 +8,6 @@ import (
 
 	"server/app/strategy/internal/biz"
 	"server/ent"
-	"server/ent/marketdata"
-	"server/ent/marketsentiment"
-	"server/ent/newssentiment"
 	"server/ent/stockbasic"
 	"server/pkg/market"
 	"server/pkg/rules"
@@ -21,26 +18,30 @@ import (
 )
 
 const (
-	historyDays  = 120 // 往前取多少个自然日的日线，约 80 个交易日
-	keepBars     = 60
-	snapMaxAge   = 2 * time.Minute
-	stageMaxAge  = 7 * 24 * time.Hour
-	badNewsLevel = 4    // 重要度达到即算突发利空
-	badNewsScore = -0.5 // 情感不高于此值
-	badNewsHours = 24
-	symbolFilter = 1000 // 代码数超过这个就不加 IN 条件，直接按时间取全市场
+	historyDays     = 120 // 往前取多少个自然日的日线，约 80 个交易日
+	keepBars        = 60
+	snapMaxAge      = 2 * time.Minute
+	symbolFilter    = 1000 // 代码数超过这个就不加 IN 条件，直接按时间取全市场
+	barsConcurrency = 8    // 全市场日线经 market HTTP 按代码拉取时的并发上限
 )
 
-// marketSource 用库里的日线、Redis 最新快照、情绪截面和情报拼出 rules.Snapshot。
+// marketSource 用库里的证券字典、market 服务日线、Redis 最新快照拼出 rules.Snapshot。
 // 只读 asOf 之前的数据；asOf 不是今天时不读 Redis，避免把现在的价格混进过去的快照。
+//
+// M13-T01：行情数据归 M01/M02 所有，日线经 market(2021) 只读 HTTP 按代码取，
+// 本服务不再直读 market_data 表（横切越权清理）。情绪与利空也在 biz 层改成
+// SentimentSource / NewsSource 端口，本结构不再回填 Stage / NegativeNews——
+// 未挂上阶段时 Stage 为空，融合系数按 1.0 且显式标记，恒 WARM 的编造口径已去除。
 type marketSource struct {
 	d        *Data
+	bars     *marketClient
 	log      *log.Helper
 	barCache dayBarsCache
 }
 
-func NewMarketSource(d *Data, logger log.Logger) biz.MarketSource {
-	return &marketSource{d: d, log: log.NewHelper(log.With(logger, "module", "strategy/market"))}
+// NewMarketSource 装配行情源。bars 为 nil 时日线查询显式失败（不编数）。
+func NewMarketSource(d *Data, bars *marketClient, logger log.Logger) biz.MarketSource {
+	return &marketSource{d: d, bars: bars, log: log.NewHelper(log.With(logger, "module", "strategy/market"))}
 }
 
 // dayBarsCache 按交易日缓存全市场日线。已收盘日线盘内视为不可变：盘后自动采集
@@ -143,17 +144,11 @@ func (m *marketSource) build(ctx context.Context, basics []*ent.StockBasic, asOf
 		return nil, err
 	}
 	today := m.todayBars(ctx, codes, asOf)
-	stage := m.stage(ctx, asOf)
-	bad, err := m.badNews(ctx, codes, asOf)
-	if err != nil {
-		return nil, err
-	}
 	out := make([]rules.Snapshot, 0, len(basics))
 	for _, b := range basics {
 		s := rules.Snapshot{
 			Symbol: b.StockCode, Name: b.StockName, ST: b.StFlag, Suspended: b.SuspendFlag,
-			AsOf: asOf, Bars: bars[b.StockCode], Today: today[b.StockCode], Stage: stage,
-			NegativeNews: bad[b.StockCode],
+			AsOf: asOf, Bars: bars[b.StockCode], Today: today[b.StockCode],
 		}
 		if b.ListDate != nil {
 			s.ListDate = localDate(*b.ListDate)
@@ -163,9 +158,9 @@ func (m *marketSource) build(ctx context.Context, basics []*ent.StockBasic, asOf
 	return out, nil
 }
 
-// dailyBars 取 asOf 当天之前的日线。小批量（≤symbolFilter）按代码 IN 查询、每次集合
-// 不同不走缓存；全市场调研（>symbolFilter）省略 IN、结果与代码集无关，按交易日缓存
-// 最多两天——陈腐窗口与失效口径见 dayBarsCache 注释，记录见 M06 开发进度。
+// dailyBars 取 asOf 当天之前的日线。小批量（≤symbolFilter）按代码逐只拉取、不走缓存；
+// 全市场调研（>symbolFilter）结果按交易日缓存最多两天——陈腐窗口与失效口径见
+// dayBarsCache 注释，记录见 M06 开发进度。任一代码取不到都显式失败，不缺口交付。
 func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.Time) (map[string][]rules.Bar, error) {
 	day := dayStart(asOf)
 	if len(codes) > symbolFilter {
@@ -173,7 +168,7 @@ func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.
 		if cached, ok := m.barCache.get(key); ok {
 			return cached, nil
 		}
-		bars, err := m.queryDailyBars(ctx, day, nil)
+		bars, err := m.fetchBars(ctx, codes, day)
 		if err != nil {
 			return nil, err
 		}
@@ -182,58 +177,51 @@ func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.
 		// 若 key 恰被第三日并发 put 挤出 keep-2 窗口，回读会把 nil 静默交付成空仓。
 		return cloneDayBars(bars), nil
 	}
-	return m.queryDailyBars(ctx, day, codes)
+	return m.fetchBars(ctx, codes, day)
 }
 
-// queryDailyBars 查 day 之前的日线并按复权因子换成以最后一根为基准的前复权价。
-// codes 为空（nil）时省略 IN 条件、按时间取全市场。
-func (m *marketSource) queryDailyBars(ctx context.Context, day time.Time, codes []string) (map[string][]rules.Bar, error) {
-	q := m.d.client.MarketData.Query().Where(
-		marketdata.Freq("1d"),
-		marketdata.BarTimeGTE(day.AddDate(0, 0, -historyDays)),
-		marketdata.BarTimeLT(day),
+// fetchBars 经 market HTTP 按代码并发拉日线（M13-T01：替代旧直读 market_data）。
+// 任何一只失败整体返回错误：缺代码的候选集若静默放行，漏斗的分就不是全集可比的分。
+func (m *marketSource) fetchBars(ctx context.Context, codes []string, day time.Time) (map[string][]rules.Bar, error) {
+	if m.bars == nil {
+		return nil, fmt.Errorf("daily bars: %w", errNoMarketAddr)
+	}
+	out := make(map[string][]rules.Bar, len(codes))
+	sem := make(chan struct{}, barsConcurrency)
+	var (
+		mu   sync.Mutex
+		wg   sync.WaitGroup
+		fail error
 	)
-	if len(codes) > 0 {
-		q = q.Where(marketdata.SymbolIn(codes...))
+	for _, code := range codes {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		mu.Lock()
+		if fail != nil {
+			mu.Unlock()
+			break
+		}
+		mu.Unlock()
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(code string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			bars, err := m.bars.dailyBars(ctx, code, day)
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err != nil && fail == nil:
+				fail = fmt.Errorf("daily bars %s: %w", code, err)
+			case err == nil && len(bars) > 0:
+				out[code] = bars
+			}
+		}(code)
 	}
-	rows, err := q.Order(marketdata.BySymbol(), marketdata.ByBarTime()).All(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("daily bars: %w", err)
-	}
-	raw := map[string][]*ent.MarketData{}
-	for _, r := range rows {
-		if r.Close == nil || r.Open == nil || r.High == nil || r.Low == nil {
-			continue
-		}
-		raw[r.Symbol] = append(raw[r.Symbol], r)
-	}
-	out := make(map[string][]rules.Bar, len(raw))
-	for sym, list := range raw {
-		if len(list) > keepBars {
-			list = list[len(list)-keepBars:]
-		}
-		base := list[len(list)-1].AdjFactor
-		if base <= 0 {
-			base = 1
-		}
-		bars := make([]rules.Bar, len(list))
-		for i, r := range list {
-			k := 1.0
-			if r.AdjFactor > 0 {
-				k = r.AdjFactor / base
-			}
-			b := rules.Bar{
-				Time: r.BarTime, Open: *r.Open * k, High: *r.High * k, Low: *r.Low * k, Close: *r.Close * k,
-			}
-			if r.Volume != nil {
-				b.Volume = *r.Volume
-			}
-			if r.Amount != nil {
-				b.Amount = *r.Amount
-			}
-			bars[i] = b
-		}
-		out[sym] = bars
+	wg.Wait()
+	if fail != nil {
+		return nil, fail
 	}
 	return out, nil
 }
@@ -269,73 +257,34 @@ func (m *marketSource) todayBars(ctx context.Context, codes []string, asOf time.
 	return out
 }
 
-// stage 取 asOf 之前最近一次未过期的情绪截面。没有时按 WARM。
-func (m *marketSource) stage(ctx context.Context, asOf time.Time) rules.Stage {
-	row, err := m.d.client.MarketSentiment.Query().
-		Where(marketsentiment.AsOfLTE(asOf), marketsentiment.AsOfGT(asOf.Add(-stageMaxAge)), marketsentiment.Stale(false)).
-		Order(marketsentiment.ByAsOf(sql.OrderDesc())).
-		First(ctx)
-	if err != nil {
-		if !ent.IsNotFound(err) {
-			m.log.Warnf("market sentiment: %v", err)
-		}
-		return rules.StageWarm
-	}
-	return rules.Stage(row.Phase)
-}
-
-func (m *marketSource) badNews(ctx context.Context, codes []string, asOf time.Time) (map[string]bool, error) {
-	q := m.d.client.NewsSentiment.Query().Where(
-		newssentiment.PublishTimeGTE(asOf.Add(-badNewsHours*time.Hour)),
-		newssentiment.PublishTimeLTE(asOf),
-		newssentiment.ImportanceGTE(badNewsLevel),
-		newssentiment.SentimentScoreLTE(badNewsScore),
-		newssentiment.StockCodeNotNil(),
-	)
-	if len(codes) <= symbolFilter {
-		q = q.Where(newssentiment.StockCodeIn(codes...))
-	}
-	hit, err := q.Unique(true).Select(newssentiment.FieldStockCode).Strings(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("bad news: %w", err)
-	}
-	out := make(map[string]bool, len(hit))
-	for _, c := range hit {
-		out[c] = true
-	}
-	return out, nil
-}
-
 // DailyCloses 按 from 前最后一根日线的复权因子折算，除权日落在区间内也不会算出假涨跌。
+// 日线经 market HTTP（M13-T01），原来直读 market_data 的口径不变。
 func (m *marketSource) DailyCloses(ctx context.Context, symbol string, from, to time.Time) (map[string]float64, error) {
-	rows, err := m.d.client.MarketData.Query().
-		Where(marketdata.Symbol(symbol), marketdata.Freq("1d"),
-			marketdata.BarTimeGTE(dayStart(from)), marketdata.BarTimeLT(dayStart(to).AddDate(0, 0, 1))).
-		All(ctx)
+	rows, err := m.bars.closesRaw(ctx, symbol, from, to)
 	if err != nil {
 		return nil, err
 	}
 	base := 0.0
-	prev, err := m.d.client.MarketData.Query().
-		Where(marketdata.Symbol(symbol), marketdata.Freq("1d"), marketdata.BarTimeLT(dayStart(from))).
-		Order(marketdata.ByBarTime(sql.OrderDesc())).
-		First(ctx)
-	switch {
-	case err == nil:
-		base = prev.AdjFactor
-	case !ent.IsNotFound(err):
-		return nil, err
-	}
-	out := make(map[string]float64, len(rows))
+	lo, hi := dayStart(from), dayStart(to)
+	out := make(map[string]float64)
 	for _, r := range rows {
-		if r.Close == nil {
+		t, err := time.Parse(time.RFC3339, r.GetTime())
+		if err != nil {
+			return nil, fmt.Errorf("market bars %s time %q: %w", symbol, r.GetTime(), err)
+		}
+		day := dayStart(t)
+		if day.Before(lo) {
+			base = r.GetAdjFactor()
 			continue
 		}
-		px := *r.Close
-		if base > 0 && r.AdjFactor > 0 {
-			px *= r.AdjFactor / base
+		if day.After(hi) {
+			continue
 		}
-		out[dayStart(r.BarTime).Format("2006-01-02")] = px
+		px := r.GetClose()
+		if base > 0 && r.GetAdjFactor() > 0 {
+			px *= r.GetAdjFactor() / base
+		}
+		out[day.Format("2006-01-02")] = px
 	}
 	return out, nil
 }

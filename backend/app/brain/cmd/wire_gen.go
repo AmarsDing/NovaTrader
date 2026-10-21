@@ -31,6 +31,7 @@ func wireApp(brain *conf.Brain, postgres *conf.Postgres, nats *conf.Nats, logger
 	marketRepo := data.NewMarketRepo(client)
 	decisionRepo := data.NewDecisionRepo(client)
 	briefingRepo := data.NewBriefingRepo(client)
+	reviewRepo := data.NewReviewRepo(client)
 	llmCallRepo := data.NewLlmCallRepo(client)
 	bus, cleanup2, err := data.NewBus(nats)
 	if err != nil {
@@ -38,7 +39,13 @@ func wireApp(brain *conf.Brain, postgres *conf.Postgres, nats *conf.Nats, logger
 		return nil, nil, err
 	}
 	progress := data.NewProgress(bus, logger)
-	usecase := biz.NewUsecase(settings, gateway, marketRepo, decisionRepo, briefingRepo, llmCallRepo, progress, logger)
+	knowledgeClient, cleanup3, err := data.NewKnowledgeClient(brain, logger)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	usecase := biz.NewUsecase(settings, gateway, marketRepo, decisionRepo, briefingRepo, reviewRepo, llmCallRepo, progress, knowledgeClient, logger)
 	brainService := service.NewBrainService(usecase)
 	httpServer := server.NewHTTPServer(brain, brainService, logger)
 	grpcServer := server.NewGRPCServer(brain, brainService, logger)
@@ -47,6 +54,7 @@ func wireApp(brain *conf.Brain, postgres *conf.Postgres, nats *conf.Nats, logger
 	runner := core.NewRunner(usecase, store, dispatcher, logger)
 	app := newApp(logger, httpServer, grpcServer, runner)
 	return app, func() {
+		cleanup3()
 		cleanup2()
 		cleanup()
 	}, nil

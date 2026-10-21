@@ -70,7 +70,8 @@ func (uc *Usecase) GenerateBriefing(ctx context.Context, day time.Time) (result 
 	defer cancel()
 	day = dayOf(day)
 	prev := uc.prevTradingDay(day)
-	since := time.Date(prev.Year(), prev.Month(), prev.Day(), 15, 0, 0, 0, tradecal.Shanghai())
+	// 窗口 = 上一交易日封盘 → 今日 09:15（P1-6：封盘后数据算下一周期，不进今日晨报资料包）。
+	since := sealOf(prev)
 	until := time.Date(day.Year(), day.Month(), day.Day(), 9, 15, 0, 0, tradecal.Shanghai())
 	if now := uc.now(); now.Before(until) {
 		until = now
@@ -116,11 +117,17 @@ func (uc *Usecase) GenerateBriefing(ctx context.Context, day time.Time) (result 
 		nums := newNumberSet(pack.Facts, briefingPrompt.System, user)
 		out, resp, err := callJSON(ctx, uc, callSpec{
 			task: "briefing", prompt: briefingPrompt, prio: llm.Briefing, trace: trace, decision: id, user: user,
-		}, func(o *briefOut) error { return o.check(ids, nums, known, held) })
+		}, func(o *briefOut) error { return o.check(ids, known, held) })
 		model = resp.Model
 		switch {
 		case err == nil:
 			b.Headline, b.MarketView, b.Risks, b.Watchlist, b.Positions = out.Headline, out.MarketView, out.Risks, out.Watchlist, out.Positions
+			var omitted int
+			b.Evidence, omitted = scrubBriefing(nums, b)
+			b.OmittedCount = &omitted
+			if omitted > 0 {
+				uc.log.Warnf("briefing %s 数字核对：%d 个无出处数字已替换为「（略※）」", day.Format("2006-01-02"), omitted)
+			}
 		case errors.Is(err, llm.ErrInvalid):
 			uc.degradeBriefing(b, holdings, "模型输出两次不合格："+invalidReason(err))
 		default:

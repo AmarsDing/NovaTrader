@@ -533,7 +533,7 @@ func (r *Repo) OverseasQuotes(ctx context.Context, since time.Time) ([]market.Qu
 	}
 	out := make([]market.Quote, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, market.Quote{Code: row.Code, TradeDate: fromPgDay(row.TradeDate), PctChg: row.PctChg, AsOf: row.AsOf})
+		out = append(out, market.Quote{Code: row.Code, TradeDate: fromPgDay(row.TradeDate), Close: row.Close, PctChg: row.PctChg, AsOf: row.AsOf})
 	}
 	return out, nil
 }

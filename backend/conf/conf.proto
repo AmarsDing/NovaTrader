@@ -453,6 +453,8 @@ message Brain {
   google.protobuf.Duration analyze_timeout = 8;
   // 批量上限，默认 30
   int32 max_batch = 9;
+  // M04 知识库检索（intel 服务 HTTP 地址，M13-T09）。空表示未配置，kb 段按 kb_missing 显式缺失
+  string intel_addr = 10;
 }
 
 // vLLM 的 OpenAI 兼容接口
@@ -490,6 +492,12 @@ message Strategy {
   google.protobuf.Duration ai_timeout = 8;
   // 此后不再出买入信号，HH:MM，默认 14:50
   string buy_cutoff = 9;
+  // market 服务地址，例如 http://127.0.0.1:2021。M13-T01：情绪截面与日线都走它；
+  // 为空时情绪按显式缺失处理（sentiment_missing，不误认 WARM），日线取不到则扫描失败不编数
+  string market_addr = 10;
+  // intel 服务地址，例如 http://127.0.0.1:2031。M13-T01：当日利空按代码查询；
+  // 为空或失败按显式缺失处理（与「确无利空」区分），利空出口本轮不触发
+  string intel_addr = 11;
 }
 
 // -----------------------------------------------------------------------------

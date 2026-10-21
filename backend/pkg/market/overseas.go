@@ -2,10 +2,13 @@ package market
 
 import "time"
 
-// Quote 是一条外围收盘。TradeDate 为当地交易日。
+// Quote 是一条外围收盘。TradeDate 为当地交易日。Close 为源端收盘价（可空——
+// 部分源只报涨跌幅）；PctChg 为源端涨跌幅%。注意 M01 部分上游对汇率 PctChg
+// 写死 0（M13-T12），涨跌幅应以 Close 相邻两日实算，禁止继承该列当 0 冒充。
 type Quote struct {
 	Code      string
 	TradeDate time.Time
+	Close     *float64
 	PctChg    float64
 	AsOf      time.Time
 }

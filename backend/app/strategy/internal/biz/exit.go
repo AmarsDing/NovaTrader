@@ -40,6 +40,10 @@ func (uc *Usecase) ScanExits(ctx context.Context, asOf time.Time) ([]int, error)
 	if err != nil {
 		return nil, fmt.Errorf("strategy: snapshots: %w", err)
 	}
+	// M13-T01：情绪阶段与当日利空挂到快照上。情绪缺失 → Stage 留空，情绪退潮出口
+	// 本轮不触发（缺失非 FADE）；利空缺失 → 对应代码利空出口抑制，不当「无利空」。
+	uc.attachStage(ctx, snaps, asOf, nil)
+	uc.attachNews(ctx, snaps, symbols, asOf, nil)
 	p := uc.loadParams(ctx)
 	day := tradeDay(asOf)
 	var ids []int

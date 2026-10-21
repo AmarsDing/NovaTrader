@@ -37,6 +37,8 @@ func normalizeSymbol(raw string) (string, error) {
 
 // loadPack 从库里取数据并与调用方的因子合并。库出错时返回空包和错误，调用方降级。
 func (uc *Usecase) loadPack(ctx context.Context, sym string, asOf time.Time, in AnalyzeInput) (FactPack, error) {
+	// 所有读取都以 asOf 为窗口终点。P1-6 纪律（复盘日后数据不进资料包，防未来函数）
+	// 由调用方传入按 beforeSeal 裁剪的 asOf 保证；本函数不做现值兜底。
 	if strings.TrimSpace(in.Phase) == "" {
 		phase, err := uc.market.Phase(ctx, asOf)
 		if err != nil {
@@ -64,7 +66,7 @@ func (uc *Usecase) loadPack(ctx context.Context, sym string, asOf time.Time, in 
 	if err != nil {
 		return buildPack(sym, asOf, info, bars, factors, nil, in), fmt.Errorf("news_sentiment: %w", err)
 	}
-	return buildPack(sym, asOf, info, bars, factors, news, in), nil
+	return uc.attachKBCases(ctx, buildPack(sym, asOf, info, bars, factors, news, in)), nil
 }
 
 // Analyze 对单只候选做四维研判（FR-05-02～05）。

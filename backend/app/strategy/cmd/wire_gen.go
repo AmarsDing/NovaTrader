@@ -26,7 +26,9 @@ func wireApp(strategy *conf.Strategy, postgres *conf.Postgres, redis *conf.Redis
 	if err != nil {
 		return nil, nil, err
 	}
-	marketSource := data.NewMarketSource(dataData, logger)
+	marketClient := data.NewMarketClient(strategy, logger)
+	marketSource := data.NewMarketSource(dataData, marketClient, logger)
+	newsSource := data.NewNewsClient(strategy, logger)
 	analyzer, cleanup2, err := data.NewAnalyzer(strategy, logger)
 	if err != nil {
 		cleanup()
@@ -38,7 +40,7 @@ func wireApp(strategy *conf.Strategy, postgres *conf.Postgres, redis *conf.Redis
 	blacklistRepo := data.NewBlacklistRepo(dataData)
 	positionRepo := data.NewPositionRepo(dataData)
 	feedbackRepo := data.NewFeedbackRepo(dataData)
-	usecase := biz.NewUsecase(settings, marketSource, analyzer, paramRepo, signalRepo, candidateRepo, blacklistRepo, positionRepo, feedbackRepo, logger)
+	usecase := biz.NewUsecase(settings, marketSource, marketClient, newsSource, analyzer, paramRepo, signalRepo, candidateRepo, blacklistRepo, positionRepo, feedbackRepo, logger)
 	strategyService := service.NewStrategyService(usecase)
 	httpServer := server.NewHTTPServer(strategy, strategyService, logger)
 	grpcServer := server.NewGRPCServer(strategy, strategyService, logger)

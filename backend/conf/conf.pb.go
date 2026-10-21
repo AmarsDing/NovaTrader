@@ -2510,7 +2510,9 @@ type Brain struct {
 	// 单只研判总超时，默认 30s
 	AnalyzeTimeout *durationpb.Duration `protobuf:"bytes,8,opt,name=analyze_timeout,json=analyzeTimeout,proto3" json:"analyze_timeout,omitempty"`
 	// 批量上限，默认 30
-	MaxBatch      int32 `protobuf:"varint,9,opt,name=max_batch,json=maxBatch,proto3" json:"max_batch,omitempty"`
+	MaxBatch int32 `protobuf:"varint,9,opt,name=max_batch,json=maxBatch,proto3" json:"max_batch,omitempty"`
+	// M04 知识库检索（intel 服务 HTTP 地址，M13-T09）。空表示未配置，kb 段按 kb_missing 显式缺失
+	IntelAddr     string `protobuf:"bytes,10,opt,name=intel_addr,json=intelAddr,proto3" json:"intel_addr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2606,6 +2608,13 @@ func (x *Brain) GetMaxBatch() int32 {
 		return x.MaxBatch
 	}
 	return 0
+}
+
+func (x *Brain) GetIntelAddr() string {
+	if x != nil {
+		return x.IntelAddr
+	}
+	return ""
 }
 
 // vLLM 的 OpenAI 兼容接口
@@ -2727,7 +2736,13 @@ type Strategy struct {
 	// 单只研判超时，默认 30s
 	AiTimeout *durationpb.Duration `protobuf:"bytes,8,opt,name=ai_timeout,json=aiTimeout,proto3" json:"ai_timeout,omitempty"`
 	// 此后不再出买入信号，HH:MM，默认 14:50
-	BuyCutoff     string `protobuf:"bytes,9,opt,name=buy_cutoff,json=buyCutoff,proto3" json:"buy_cutoff,omitempty"`
+	BuyCutoff string `protobuf:"bytes,9,opt,name=buy_cutoff,json=buyCutoff,proto3" json:"buy_cutoff,omitempty"`
+	// market 服务地址，例如 http://127.0.0.1:2021。M13-T01：情绪截面与日线都走它；
+	// 为空时情绪按显式缺失处理（sentiment_missing，不误认 WARM），日线取不到则扫描失败不编数
+	MarketAddr string `protobuf:"bytes,10,opt,name=market_addr,json=marketAddr,proto3" json:"market_addr,omitempty"`
+	// intel 服务地址，例如 http://127.0.0.1:2031。M13-T01：当日利空按代码查询；
+	// 为空或失败按显式缺失处理（与「确无利空」区分），利空出口本轮不触发
+	IntelAddr     string `protobuf:"bytes,11,opt,name=intel_addr,json=intelAddr,proto3" json:"intel_addr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2821,6 +2836,20 @@ func (x *Strategy) GetAiTimeout() *durationpb.Duration {
 func (x *Strategy) GetBuyCutoff() string {
 	if x != nil {
 		return x.BuyCutoff
+	}
+	return ""
+}
+
+func (x *Strategy) GetMarketAddr() string {
+	if x != nil {
+		return x.MarketAddr
+	}
+	return ""
+}
+
+func (x *Strategy) GetIntelAddr() string {
+	if x != nil {
+		return x.IntelAddr
 	}
 	return ""
 }
@@ -3369,7 +3398,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x11query_instruction\x18\b \x01(\tR\x10queryInstruction\x12\"\n" +
 	"\rmax_upload_mb\x18\t \x01(\x05R\vmaxUploadMb\x12'\n" +
 	"\x0fconsume_signals\x18\n" +
-	" \x01(\bR\x0econsumeSignals\"\xa0\x05\n" +
+	" \x01(\bR\x0econsumeSignals\"\xbf\x05\n" +
 	"\x05Brain\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +
@@ -3382,7 +3411,10 @@ const file_conf_conf_proto_rawDesc = "" +
 	"phase_coef\x18\x06 \x03(\v2\x1a.conf.Brain.PhaseCoefEntryR\tphaseCoef\x12#\n" +
 	"\rbriefing_cron\x18\a \x01(\tR\fbriefingCron\x12B\n" +
 	"\x0fanalyze_timeout\x18\b \x01(\v2\x19.google.protobuf.DurationR\x0eanalyzeTimeout\x12\x1b\n" +
-	"\tmax_batch\x18\t \x01(\x05R\bmaxBatch\x1aK\n" +
+	"\tmax_batch\x18\t \x01(\x05R\bmaxBatch\x12\x1d\n" +
+	"\n" +
+	"intel_addr\x18\n" +
+	" \x01(\tR\tintelAddr\x1aK\n" +
 	"\vModelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12&\n" +
 	"\x05value\x18\x02 \x01(\v2\x10.conf.BrainModelR\x05value:\x028\x01\x1a9\n" +
@@ -3405,7 +3437,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\tmax_queue\x18\x06 \x01(\x05R\bmaxQueue\x12 \n" +
 	"\vtemperature\x18\a \x01(\x01R\vtemperature\x12\x1d\n" +
 	"\n" +
-	"max_tokens\x18\b \x01(\x05R\tmaxTokens\"\x86\x03\n" +
+	"max_tokens\x18\b \x01(\x05R\tmaxTokens\"\xc6\x03\n" +
 	"\bStrategy\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +
@@ -3420,7 +3452,12 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\n" +
 	"ai_timeout\x18\b \x01(\v2\x19.google.protobuf.DurationR\taiTimeout\x12\x1d\n" +
 	"\n" +
-	"buy_cutoff\x18\t \x01(\tR\tbuyCutoff\"\xfd\x02\n" +
+	"buy_cutoff\x18\t \x01(\tR\tbuyCutoff\x12\x1f\n" +
+	"\vmarket_addr\x18\n" +
+	" \x01(\tR\n" +
+	"marketAddr\x12\x1d\n" +
+	"\n" +
+	"intel_addr\x18\v \x01(\tR\tintelAddr\"\xfd\x02\n" +
 	"\x06Market\x12\x1e\n" +
 	"\x04http\x18\x01 \x01(\v2\n" +
 	".conf.HTTPR\x04http\x12\x1e\n" +

@@ -394,6 +394,8 @@ brain:
   briefing_cron: "30 8 * * *"
   analyze_timeout: 30s
   max_batch: 30
+  # M04 知识库检索入口（M13-T09 RAG）。留空 = 未配置，brain 研判按 kb_missing 显式降级
+  intel_addr: http://127.0.0.1:2031
 
 # M06 选股与信号。选股阈值在 strategy_config 表里，这里只放运行参数
 strategy:
@@ -404,6 +406,9 @@ strategy:
     addr: 0.0.0.0:2062
     timeout: 10s
   brain_addr: http://127.0.0.1:2051
+  # M13-T01 四上游端口：情绪截面与日线走 market，当日利空走 intel（只读 HTTP）
+  market_addr: http://127.0.0.1:2021
+  intel_addr: http://127.0.0.1:2031
   book: paper
   scan_interval: 60s
   full_scan_interval: 600s

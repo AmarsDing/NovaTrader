@@ -33,16 +33,18 @@ type Usecase struct {
 	market    MarketRepo
 	decisions DecisionRepo
 	briefings BriefingRepo
+	reviews   ReviewRepo
 	llmCalls  LlmCallRepo
 	progress  Progress
+	knowledge KnowledgeClient // M13-T09：M04 知识库检索；nil = 未配置，kb 段按 kb_missing 处理
 	cal       *tradecal.Calendar
 	log       *log.Helper
 	now       func() time.Time
 }
 
-func NewUsecase(cfg Settings, l LLM, market MarketRepo, decisions DecisionRepo, briefings BriefingRepo, llmCalls LlmCallRepo, progress Progress, logger log.Logger) *Usecase {
+func NewUsecase(cfg Settings, l LLM, market MarketRepo, decisions DecisionRepo, briefings BriefingRepo, reviews ReviewRepo, llmCalls LlmCallRepo, progress Progress, knowledge KnowledgeClient, logger log.Logger) *Usecase {
 	return &Usecase{
-		cfg: cfg, llm: l, market: market, decisions: decisions, briefings: briefings, llmCalls: llmCalls, progress: progress,
+		cfg: cfg, llm: l, market: market, decisions: decisions, briefings: briefings, reviews: reviews, llmCalls: llmCalls, progress: progress, knowledge: knowledge,
 		cal: tradecal.Default, log: log.NewHelper(log.With(logger, "module", "brain/biz")), now: time.Now,
 	}
 }

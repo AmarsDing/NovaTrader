@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -124,6 +125,8 @@ type Signal struct {
 }
 
 // SignalUpdated 是 strategy.signal.updated 的载荷。前半部分字段名与 M04 设计第 6 节的约定一致，M04 靠它建案例。
+// attribution 四键（M13-T10）只在终态事件携带：与 intel kb 白名单和回填消费契约
+// （hasAttributionBundle 要求四键全部在场）严格对齐；非终态事件四键缺省。
 type SignalUpdated struct {
 	SignalID       int        `json:"signal_id"`
 	Book           string     `json:"book"`
@@ -150,7 +153,23 @@ type SignalUpdated struct {
 	ClosedAt       *time.Time `json:"closed_at,omitempty"`
 	ExecutedPrice  *float64   `json:"executed_price,omitempty"`
 	ExecutedVolume *int       `json:"executed_volume,omitempty"`
+	// M13-T10 归因四键。指针表达「键在场」：attribution 可为空串（盈利无失败归因，
+	// 白名单刻意不含 win）；非终态事件四键整体缺省。
+	Attribution  *string `json:"attribution,omitempty"`
+	Pattern      *string `json:"pattern,omitempty"`
+	EmotionPhase *string `json:"emotion_phase,omitempty"`
+	Missed       *bool   `json:"missed,omitempty"`
 }
+
+// 终态归因枚举，与 intel kb.Attributions 白名单严格一致（win/loss 是结果口径，
+// 刻意不在其中；策略侧产出信号永不为「漏选」，AttrMissed 仅为对齐保留）。
+const (
+	AttrIndicatorFailed = "indicator_failed"
+	AttrNewsMisread     = "news_misread"
+	AttrUnfilled        = "unfilled"
+	AttrEmotionMismatch = "emotion_mismatch"
+	AttrMissed          = "missed"
+)
 
 // Close 是买入信号平仓结果。PnlPct 用百分比，和 M04 案例一致。
 type Close struct {
@@ -187,6 +206,67 @@ func signalEnvelope(s *Signal, from Status) (events.Envelope, error) {
 	return events.New(eventSource, events.SubjectSignal, s.TraceID, p)
 }
 
+// signalEnv 是迁移/过期路径的事件构造：终态事件补 M13-T10 归因四键，非终态复用
+// 基础载荷。phase 经 SentimentSource 现取（短超时，取不到记空串——缺失不猜，
+// emotion 分支自然不命中）；归因取值与 backtest evolve.go 的口径一致。
+func (uc *Usecase) signalEnv(ctx context.Context) EnvelopeFunc {
+	return func(s *Signal, from Status) (events.Envelope, error) {
+		env, err := signalEnvelope(s, from)
+		if err != nil || !s.Status.Terminal() {
+			return env, err
+		}
+		pctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		phase, ok, perr := uc.stageAt(pctx, time.Now())
+		cancel()
+		if perr != nil {
+			uc.log.Warnf("signal envelope phase for %s#%d: %v（emotion_phase 按缺失记空）", s.Symbol, s.ID, perr)
+			phase, ok = "", false
+		}
+		phaseStr := ""
+		if ok {
+			phaseStr = string(phase)
+		}
+		attr := terminalAttribution(s, phase, ok)
+		pattern := s.Strategy
+		missed := false
+		var p SignalUpdated
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return env, fmt.Errorf("strategy: signal payload: %w", err)
+		}
+		p.Attribution, p.Pattern, p.EmotionPhase, p.Missed = &attr, &pattern, &phaseStr, &missed
+		raw, err := json.Marshal(p)
+		if err != nil {
+			return env, fmt.Errorf("strategy: signal payload: %w", err)
+		}
+		env.Payload = raw
+		return env, nil
+	}
+}
+
+// terminalAttribution 是终态归因映射，与 backtest evolve.go 的 attribute() 同一口径：
+// 未成交（expired/rejected/cancelled）→ unfilled；亏损 closed 先看情绪（ICE/FADE）
+// → emotion_mismatch，再看消息面（bad_news 出口或 news 维≥70）→ news_misread，
+// 其余 → indicator_failed；盈利/持平无失败归因，记空串（白名单刻意不含 win/loss）。
+func terminalAttribution(s *Signal, phase rules.Stage, phaseOK bool) string {
+	switch s.Status {
+	case StatusExpired, StatusRejected, StatusCancelled:
+		return AttrUnfilled
+	case StatusClosed:
+		if s.PnlPct == nil || *s.PnlPct >= 0 {
+			return ""
+		}
+		switch {
+		case phaseOK && (phase == rules.StageIce || phase == rules.StageFade):
+			return AttrEmotionMismatch
+		case s.ExitKind == rules.ExitBadNews || s.Dims["news"] >= 70:
+			return AttrNewsMisread
+		default:
+			return AttrIndicatorFailed
+		}
+	}
+	return ""
+}
+
 // Transition 改信号状态。M08、M09 和客户端都走这里，不直接写表。
 // close 只在迁到 closed 时必填：出场价和收益率。仓位还没归零时不要调，否则这只票不再按原止损止盈检查。
 func (uc *Usecase) Transition(ctx context.Context, id int, to Status, reason, actor string, close *Close) (*Signal, error) {
@@ -208,7 +288,7 @@ func (uc *Usecase) Transition(ctx context.Context, id int, to Status, reason, ac
 	if trace == "" {
 		trace = cur.TraceID
 	}
-	return uc.signals.Transition(ctx, id, cur.Status, to, reason, actor, trace, signalEnvelope, patch)
+	return uc.signals.Transition(ctx, id, cur.Status, to, reason, actor, trace, uc.signalEnv(ctx), patch)
 }
 
 func (uc *Usecase) closePatch(cur *Signal, to Status, close *Close) (*SignalPatch, error) {
@@ -240,7 +320,7 @@ func (uc *Usecase) ExpireDue(ctx context.Context, now time.Time) (int, error) {
 	}
 	n := 0
 	for _, s := range due {
-		_, err := uc.signals.Transition(ctx, s.ID, s.Status, StatusExpired, "超过有效期", ActorStrategy, s.TraceID, signalEnvelope, nil)
+		_, err := uc.signals.Transition(ctx, s.ID, s.Status, StatusExpired, "超过有效期", ActorStrategy, s.TraceID, uc.signalEnv(ctx), nil)
 		if errors.Is(err, ErrConflict) || errors.Is(err, ErrExecutionProtected) {
 			continue
 		}

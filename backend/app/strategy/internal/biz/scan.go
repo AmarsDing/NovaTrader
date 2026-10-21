@@ -36,6 +36,15 @@ const (
 	MissNoQuote    = "no_quote"
 )
 
+// 扫描取数缺失标记（数据纪律「没取到≠0」，M13-T01）。出现在 ScanReport.Missing
+// 与扫描日志里：本轮相应上游没取到，下游按降级口径处理，不冒充有数据。
+const (
+	// MissSentiment 是本轮情绪截面没取到：快照 Stage 留空，融合系数按 1.0（不误认 WARM）。
+	MissSentiment = "sentiment_missing"
+	// MissNegativeNews 是本轮当日利空没取到：利空出口对这些代码不触发（不当「无利空」）。
+	MissNegativeNews = "negative_news_missing"
+)
+
 // ScanRequest 描述一次扫描。Full 为真扫全市场；否则只扫 Symbols 加上当日盘前池。
 type ScanRequest struct {
 	Pool    string
@@ -56,6 +65,8 @@ type ScanReport struct {
 	Degraded  int
 	Signals   []int
 	Misses    map[string]int
+	// Missing 是本轮上游取数缺失标记（MissSentiment 等），显式表达「没取到」。
+	Missing   []string
 	Elapsed   time.Duration
 	KillState bool
 }
@@ -92,6 +103,9 @@ func (uc *Usecase) Scan(ctx context.Context, req ScanRequest) (*ScanReport, erro
 		return nil, err
 	}
 	rep.Universe = len(snaps)
+	// M13-T01：情绪阶段挂到快照上再进漏斗。取不到是显式缺失（sentiment_missing），
+	// Stage 留空 → Fuse 系数按 1.0，恒 WARM 的旧编造口径已去除。
+	uc.attachStage(ctx, snaps, req.AsOf, rep)
 	black, err := uc.blacklist.Active(ctx, req.AsOf)
 	if err != nil {
 		return nil, fmt.Errorf("strategy: blacklist: %w", err)

@@ -16,19 +16,21 @@ import (
 )
 
 type fakeRepo struct {
-	mu         sync.Mutex
-	params     map[string]string
-	kill       risk.KillState
-	mode       risk.Mode
-	haveMode   bool
-	failKill   bool
-	alerts     []string
-	day        DayState
-	kills      []risk.KillState
-	modes      []risk.Mode
-	breakers   []string
-	snapshots  []accountstate.Snapshot
-	accountErr error
+	mu           sync.Mutex
+	params       map[string]string
+	kill         risk.KillState
+	mode         risk.Mode
+	haveMode     bool
+	failKill     bool
+	alerts       []string
+	day          DayState
+	kills        []risk.KillState
+	modes        []risk.Mode
+	breakers     []string
+	snapshots    []accountstate.Snapshot
+	accountErr   error
+	blacklist    map[string]bool
+	blacklistErr error
 }
 
 func (f *fakeRepo) LoadAccountSnapshots(context.Context) ([]accountstate.Snapshot, error) {
@@ -88,6 +90,18 @@ func (f *fakeRepo) RestoreDay(context.Context, time.Time) (DayState, error) {
 }
 func (f *fakeRepo) RefData(context.Context, time.Time) (map[string]RefInfo, error) {
 	return map[string]RefInfo{"000001.SZ": {PrevAmount: 3e8, ListDate: time.Date(1991, 4, 3, 0, 0, 0, 0, time.UTC)}}, nil
+}
+func (f *fakeRepo) Blacklist(context.Context, time.Time) (map[string]bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.blacklistErr != nil {
+		return nil, f.blacklistErr
+	}
+	out := make(map[string]bool, len(f.blacklist))
+	for s := range f.blacklist {
+		out[s] = true
+	}
+	return out, nil
 }
 
 type fakeQuotes struct{ m map[string]Snapshot }
@@ -160,6 +174,10 @@ func (r *rig) snap(last float64) Snapshot {
 }
 
 func (r *rig) account(equity, avail float64, holdings ...risk.Holding) {
+	r.accountWithOrders(equity, avail, nil, holdings...)
+}
+
+func (r *rig) accountWithOrders(equity, avail float64, observed []string, holdings ...risk.Holding) {
 	r.generation++
 	if holdings == nil {
 		holdings = []risk.Holding{}
@@ -173,11 +191,14 @@ func (r *rig) account(equity, avail float64, holdings ...risk.Holding) {
 	for _, h := range holdings {
 		cash -= h.MarketValue
 	}
+	if observed == nil {
+		observed = []string{}
+	}
 	if err := r.e.OnAccount(context.Background(), AccountPayload{
 		Version: 1, Kind: "full", AccountID: "default", SnapshotID: fmt.Sprint(r.generation), Generation: r.generation,
 		TradingDay: r.clock.In(tradecal.Shanghai()).Format("2006-01-02"), Cash: cash, FrozenCash: cash - avail, DayStartKnown: true,
 		AccountType: risk.SIM, Equity: equity, Available: avail, DayStartEquity: 1_000_000,
-		Holdings: holdings, AsOf: r.clock, OpenOrders: []risk.OpenOrder{}, ObservedOrders: []string{},
+		Holdings: holdings, AsOf: r.clock, OpenOrders: []risk.OpenOrder{}, ObservedOrders: observed,
 		Reconciliation: accountstate.Reconciliation{Status: "matched", AsOf: r.clock},
 	}); err != nil {
 		panic(err)

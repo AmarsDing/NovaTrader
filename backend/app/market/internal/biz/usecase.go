@@ -380,6 +380,13 @@ func (u *Usecase) persistCross(ctx context.Context, eng *market.Engine, kind str
 	for i := range rows {
 		rows[i].AsOf = asOf
 	}
+	// 板块热度先算一次：既落 sector_heat，也同源挂到因子截面（M13-T12），
+	// 两边数值必然一致，不再二次读表。
+	u.mu.Lock()
+	u.heat = nil
+	u.mu.Unlock()
+	heat := u.SectorHeatLive(asOf)
+	u.attachExternal(ctx, eng.Day(), asOf, heat, rows)
 	if err := u.repo.SaveFactors(ctx, eng.Day(), kind, rows); err != nil {
 		return fmt.Errorf("%s factors: %w", kind, err)
 	}
@@ -393,10 +400,7 @@ func (u *Usecase) persistCross(ctx context.Context, eng *market.Engine, kind str
 	if err := u.repo.SaveSentiment(ctx, eng.Sentiment(asOf)); err != nil {
 		return fmt.Errorf("%s sentiment: %w", kind, err)
 	}
-	u.mu.Lock()
-	u.heat = nil
-	u.mu.Unlock()
-	if err := u.repo.SaveSectorHeat(ctx, eng.Day(), asOf, u.SectorHeatLive(asOf)); err != nil {
+	if err := u.repo.SaveSectorHeat(ctx, eng.Day(), asOf, heat); err != nil {
 		return fmt.Errorf("%s sector heat: %w", kind, err)
 	}
 	return nil

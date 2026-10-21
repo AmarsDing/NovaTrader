@@ -16,29 +16,60 @@ var numberToken = regexp.MustCompile(`\d+(?:,\d{3})*(?:\.\d+)?%?`)
 
 const relTolerance = 0.005
 
-// numberSet 是本次输入里出现过的数字。输出正文里的数字必须能在这里找到（FR-05-04）。
+// numberSet 是本次输入里出现过的数字及其出处。输出正文里的数字按三档判定（P1-5，
+// vibe-astock verifier 口径）：①事实包内有出处（sourced）②算式重算通过（recomputed）
+// ③无出处（omitted，正文替换为「（略※）」）。本地判定只在事实包以外纯文本数字时发生。
 type numberSet struct {
-	vals []float64
+	vals    []float64
+	srcs    []string       // 与 vals 同长：事实标签或含该数字的文本片段
+	closure []closureEntry // 由事实原始值两两四则运算预生成（算式重算档）
 }
 
-// newNumberSet 收集输入文本里的数字，并给数值因子补上常见换算（×100、÷100、÷1万、÷1亿）。
+// newNumberSet 收集输入文本里的数字并记下出处，给数值因子补上常见换算（×100、÷100、÷1万、÷1亿），
+// 再用事实原始值两两运算生成算式重算档的校验池。
 func newNumberSet(facts []Fact, texts ...string) numberSet {
 	var s numberSet
 	for _, t := range texts {
-		for _, m := range numberToken.FindAllString(t, -1) {
-			if v, _, _, ok := parseNumber(m); ok {
+		for _, loc := range numberToken.FindAllStringIndex(t, -1) {
+			if v, _, _, ok := parseNumber(t[loc[0]:loc[1]]); ok {
 				s.vals = append(s.vals, v)
+				s.srcs = append(s.srcs, excerpt(t, loc))
 			}
 		}
 	}
+	var base []float64
 	for _, f := range facts {
 		if f.Text != "" {
 			continue
 		}
 		v := math.Abs(f.Value)
+		base = append(base, v)
 		s.vals = append(s.vals, v, v*100, v/100, v/1e4, v/1e8)
+		for range 5 {
+			s.srcs = append(s.srcs, f.Label)
+		}
 	}
+	s.closure = buildClosure(base)
 	return s
+}
+
+// excerpt 截取 token 前后的文本片段（前后各 excerptRunes 个字符），作为文本数字的出处。
+const excerptRunes = 18
+
+func excerpt(text string, loc []int) string {
+	runes := []rune(text)
+	start := len([]rune(text[:loc[0]]))
+	end := start + len([]rune(text[loc[0]:loc[1]]))
+	from := max(0, start-excerptRunes)
+	to := min(len(runes), end+excerptRunes)
+	snip := string(runes[from:to])
+	if from > 0 {
+		snip = "…" + snip
+	}
+	if to < len(runes) {
+		snip += "…"
+	}
+	return strings.TrimSpace(snip)
 }
 
 func parseNumber(tok string) (v float64, decimals int, pct bool, ok bool) {
@@ -54,13 +85,20 @@ func parseNumber(tok string) (v float64, decimals int, pct bool, ok bool) {
 	return v, decimals, pct, true
 }
 
-func (s numberSet) has(x float64, decimals int, pct bool) bool {
-	for _, v := range s.vals {
+// matchOf 按输出的小数位匹配数字，返回出处（事实标签或文本片段）。
+// 百分比文本允许按 ×100 命中（事实常以系数存、正文以 % 写）。
+func (s numberSet) matchOf(x float64, decimals int, pct bool) (string, bool) {
+	for i, v := range s.vals {
 		if matches(x, decimals, v) || (pct && matches(x, decimals, v*100)) {
-			return true
+			return s.srcs[i], true
 		}
 	}
-	return false
+	return "", false
+}
+
+func (s numberSet) has(x float64, decimals int, pct bool) bool {
+	_, ok := s.matchOf(x, decimals, pct)
+	return ok
 }
 
 // matches：按输出的小数位四舍五入后相等，或相对误差不超过 0.5%。
@@ -239,8 +277,9 @@ type briefOut struct {
 	Positions  []PositionView `json:"positions"`
 }
 
-// check 额外要求：关注股必须在事实包里出现过，持仓看法只能针对持仓。
-func (o *briefOut) check(ids map[string]bool, nums numberSet, known, held map[string]bool) error {
+// check 做结构与证据编号校验（长度、编号、关注股在事实包、持仓看法只针对持仓）。
+// 数字三档核对不在本步拦截——结构合格后由 scrubBriefing 原地修复并留痕（P1-5）。
+func (o *briefOut) check(ids map[string]bool, known, held map[string]bool) error {
 	if err := checkLen(o.Headline, 80, "headline"); err != nil {
 		return err
 	}
@@ -253,12 +292,10 @@ func (o *briefOut) check(ids map[string]bool, nums numberSet, known, held map[st
 	if len(o.Watchlist) > 10 {
 		return fmt.Errorf("watchlist 不超过 10 只")
 	}
-	texts := []string{o.Headline, o.MarketView}
 	for i, r := range o.Risks {
 		if err := checkLen(r, 120, fmt.Sprintf("第 %d 条风险", i+1)); err != nil {
 			return err
 		}
-		texts = append(texts, r)
 	}
 	for _, w := range o.Watchlist {
 		if !known[w.Symbol] {
@@ -270,7 +307,6 @@ func (o *briefOut) check(ids map[string]bool, nums numberSet, known, held map[st
 		if err := checkEvidence(ids, w.Evidence, 1, "watchlist "+w.Symbol); err != nil {
 			return err
 		}
-		texts = append(texts, w.Reason)
 	}
 	for _, p := range o.Positions {
 		if !held[p.Symbol] {
@@ -282,7 +318,6 @@ func (o *briefOut) check(ids map[string]bool, nums numberSet, known, held map[st
 		if err := checkEvidence(ids, p.Evidence, 1, "positions "+p.Symbol); err != nil {
 			return err
 		}
-		texts = append(texts, p.View)
 	}
-	return nums.check(texts...)
+	return nil
 }

@@ -48,3 +48,34 @@ func TestActualAnalysisObservationDistinguishesFallbackInvalidAndSuccessfulOutpu
 		t.Fatalf("before=%v after=%v", before, after)
 	}
 }
+
+func TestReviewFallbacksNeverIncreaseSuccessfulModelResults(t *testing.T) {
+	counters := func(key string) *v1.ConsumerCounters {
+		for _, op := range observe.ForService("brain").Snapshot().Operations {
+			if op.Key == key {
+				return op.Total
+			}
+		}
+		t.Fatalf("missing %s", key)
+		return nil
+	}
+	for _, key := range []string{"review_ai", "review_ai_week"} {
+		before := counters(key)
+		unavailable := func(llm.Request) (string, error) { return "", llm.ErrUnavailable }
+		var err error
+		if key == "review_ai" {
+			uc, _, _ := newReviewEnv(t, unavailable)
+			err = uc.GenerateAIReview(context.Background(), uc.now())
+		} else {
+			uc, _, _ := newWeeklyEnv(t, unavailable)
+			err = uc.GenerateWeeklyReview(context.Background(), uc.now())
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		after := counters(key)
+		if after.Skipped != before.Skipped+1 || after.Succeeded != before.Succeeded || after.Failed != before.Failed {
+			t.Fatalf("%s before=%v after=%v", key, before, after)
+		}
+	}
+}

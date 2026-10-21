@@ -249,28 +249,22 @@ func TestMarketSource(t *testing.T) {
 	d.client.StockBasic.Create().SetStockCode("600001.SH").SetStockName("已退市").SetMarket("SH").
 		SetListDate(list).SetDelistDate(asOf.AddDate(0, -1, 0)).ExecX(ctx)
 
-	// 三根日线，第三根除权：不复权价腰斩，后复权因子翻倍。
-	bars := []struct {
-		day   time.Time
-		close float64
-		adj   float64
-	}{
-		{time.Date(2026, 9, 29, 0, 0, 0, 0, sh), 20, 1},
-		{time.Date(2026, 9, 30, 0, 0, 0, 0, sh), 22, 1},
-		{time.Date(2026, 10, 9, 0, 0, 0, 0, sh), 11.5, 2}, // asOf 当天，不能进 Bars
-	}
-	for _, b := range bars {
-		d.client.MarketData.Create().SetSymbol("600000.SH").SetFreq("1d").SetBarTime(b.day).
-			SetOpen(b.close).SetHigh(b.close).SetLow(b.close).SetClose(b.close).SetVolume(1000).SetAmount(1e8).
-			SetAdjFactor(b.adj).ExecX(ctx)
-	}
-	ms := NewMarketSource(d, log.DefaultLogger)
+	// M13-T01：日线走 market(2021) 只读 HTTP。三根日线，第三根除权：不复权价腰斩，
+	// 以窗口末根为基准换算后 9/30 的 22 不变。
+	stub := newStubMarket()
+	defer stub.Close()
+	stub.setBars("600000.SH",
+		bar("2026-09-29", 20, 1), bar("2026-09-30", 22, 1),
+		bar("2026-10-09", 11.5, 2), // asOf 当天，不能进 Bars
+	)
+	ms := NewMarketSource(d, NewMarketClient(&conf.Strategy{MarketAddr: stub.URL}, log.DefaultLogger), log.DefaultLogger)
 	snaps, err := ms.Snapshots(ctx, []string{"600000.SH", "600001.SH", "999999.SH"}, asOf)
 	if err != nil || len(snaps) != 1 {
 		t.Fatalf("snaps %v err=%v", snaps, err)
 	}
 	s := snaps[0]
-	if len(s.Bars) != 2 || s.Bars[1].Close != 22 || s.Today != nil || s.Stage != rules.StageWarm || !s.ListDate.Equal(list) {
+	// Stage 不再由 data 层编造：未挂情绪截面时保持空（恒 WARM 旧口径已去除，见 M13-T01）。
+	if len(s.Bars) != 2 || s.Bars[1].Close != 22 || s.Today != nil || s.Stage != "" || !s.ListDate.Equal(list) {
 		t.Fatalf("snapshot %+v", s)
 	}
 	uni, err := ms.Universe(ctx, asOf)
@@ -278,7 +272,8 @@ func TestMarketSource(t *testing.T) {
 		t.Fatalf("universe %d err=%v", len(uni), err)
 	}
 
-	closes, err := ms.DailyCloses(ctx, "600000.SH", bars[2].day, bars[2].day)
+	closes, err := ms.DailyCloses(ctx, "600000.SH",
+		time.Date(2026, 10, 9, 0, 0, 0, 0, sh), time.Date(2026, 10, 9, 0, 0, 0, 0, sh))
 	if err != nil {
 		t.Fatal(err)
 	}
