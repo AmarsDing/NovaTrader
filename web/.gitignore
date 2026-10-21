@@ -26,3 +26,6 @@ dist-ssr
 # P6 工程化产物
 bundle-stats.html
 coverage
+
+# P2-12 图形回归运行产物（golden 基线图入库，diff/actual 不入库）
+graphics/test-results

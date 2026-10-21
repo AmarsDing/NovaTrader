@@ -1,5 +1,5 @@
 # NovaTrader CI（P6 工程化）
-# 三道门：web 前端（typecheck/lint/test/build）、Tauri 桌面壳冒烟、Go 后端（build/vet/test）。
+# 四道门：web 前端（typecheck/lint/test/build+产物校验）、viz 图形回归（P2-12 golden 比对，windows）、Tauri 桌面壳冒烟、Go 后端（build/vet/test）。
 name: ci
 
 on:
@@ -43,6 +43,43 @@ jobs:
           test -f dist/index.html
           test -f dist/popout.html
           ! ls dist/assets | grep -i gallery   # gallery 仅 DEV，不得进生产包
+
+  graphics:
+    name: viz 图形回归（P2-12）
+    # golden 权威源 = 本镜像：重刷走 graphics-update.yml（workflow_dispatch 同镜像产出后提交）。
+    # 镜像 tag 钉死 windows-2025（浮动 latest 会把字体渲染栈静默升级成红线事件）；勿换 ubuntu。
+    runs-on: windows-2025
+    needs: web
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: 安装 Playwright Chromium
+        run: npx playwright install chromium
+      - name: 字体先决条件断言（Cascadia Code 缺失即 fail-fast，别送去比像素）
+        shell: pwsh
+        run: |
+          $fonts = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+          if (-not ($fonts.PSObject.Properties.Name -match 'Cascadia Code')) {
+            Write-Error '缺 Cascadia Code：golden 定格态等宽字形钉在它上面（装 Windows Terminal 或换镜像）'
+            exit 1
+          }
+      - name: golden 比对（用例×主题×密度）
+        run: npm run test:graphics
+      - name: 失败时上传 diff/actual 图
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphics-diff
+          path: web/graphics/test-results/
+          retention-days: 7
 
   tauri-smoke:
     name: Tauri 桌面壳冒烟

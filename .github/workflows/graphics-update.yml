@@ -1,0 +1,43 @@
+# NovaTrader golden 重刷通道（P2-12 评审收口）
+# golden 唯一权威源 = 本工作流所在的 CI 镜像（与 ci.yml graphics job 同钉 windows-2025）。
+# 触发方式：手动 workflow_dispatch（必要时可挂 PR label）。产出经 artifact 下发后人工提交。
+# 本机（Win10 等非 CI 镜像）test:graphics:update 只能当 smoke，产物不入库——字体渲染栈与 CI 不同源，
+# 本机恒绿而 CI 恒红是这类 golden 机制的立项陷阱（详见 doc/开发文档/参考-tradingview.md §7 P2-12）。
+name: graphics-update
+
+on:
+  workflow_dispatch:
+
+jobs:
+  regen:
+    name: 重刷 golden（用例×主题×密度全量）
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: 安装 Playwright Chromium
+        run: npx playwright install chromium
+      - name: 字体先决条件断言（Cascadia Code）
+        shell: pwsh
+        run: |
+          $fonts = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+          if (-not ($fonts.PSObject.Properties.Name -match 'Cascadia Code')) {
+            Write-Error '缺 Cascadia Code：golden 定格态等宽字形钉在它上面（装 Windows Terminal 或换镜像）'
+            exit 1
+          }
+      - name: 全量重刷 golden
+        run: npm run test:graphics:update
+      - name: 下发 golden（下载后与本地 diff 核对再提交）
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphics-golden
+          path: web/graphics/golden/
+          retention-days: 14
