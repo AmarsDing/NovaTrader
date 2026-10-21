@@ -75,6 +75,7 @@ type Collector struct {
 
 	seq       atomic.Int64
 	staleOnce sync.Map
+	selfheal  selfhealState // D2 对账自修复窗口（内存近似，见 reconcile_selfheal.go）
 }
 
 func NewCollector(p *Pipeline, repo Repo, snap SnapshotStore, bus Publisher, cal *tradecal.Calendar,

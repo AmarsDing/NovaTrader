@@ -13,6 +13,9 @@ type ReconcileOptions struct {
 	Sample   int
 	PriceTol float64 // 收盘价绝对差，元
 	VolTol   float64 // 成交量相对差
+	// SelfHealDays 对账自修复连击上限（D2）：0=默认 3，<0 关闭。
+	// 连续 N 个带差异交易日每日自动登记单日 scoped 回补，第 N+1 日升级 error 停环。
+	SelfHealDays int
 }
 
 // Reconcile 抽样对账某日日线：入库值与另一个源的值比较，不一致写 reconcile 问题并标出两个来源。FR-01-15。
@@ -95,6 +98,8 @@ func (c *Collector) Reconcile(ctx context.Context, day time.Time, opt ReconcileO
 		}
 	}
 	c.saveIssues(ctx, DomainDailyBar, "", day, issues)
+	// D2：逐标的差异 warn 驱动单日 scoped 回补自修复（滤域/计数/停环保留在 selfHealReconcile）。
+	c.selfHealReconcile(ctx, DomainDailyBar, day, issues, opt.SelfHealDays)
 	if checked == 0 && lastErr != nil {
 		return CollectSummary{Domain: DomainDailyBar}, lastErr
 	}
