@@ -23,10 +23,15 @@ const OperationBrainAnalyze = "/brain.v1.Brain/Analyze"
 const OperationBrainAnalyzeBatch = "/brain.v1.Brain/AnalyzeBatch"
 const OperationBrainAsk = "/brain.v1.Brain/Ask"
 const OperationBrainExplain = "/brain.v1.Brain/Explain"
+const OperationBrainGenerateAIReview = "/brain.v1.Brain/GenerateAIReview"
 const OperationBrainGenerateBriefing = "/brain.v1.Brain/GenerateBriefing"
 const OperationBrainGetBriefing = "/brain.v1.Brain/GetBriefing"
+const OperationBrainGetFrozenEmotion = "/brain.v1.Brain/GetFrozenEmotion"
+const OperationBrainGetProgramReview = "/brain.v1.Brain/GetProgramReview"
 const OperationBrainLatencyHistogram = "/brain.v1.Brain/LatencyHistogram"
+const OperationBrainListPredictionChecks = "/brain.v1.Brain/ListPredictionChecks"
 const OperationBrainReasoning = "/brain.v1.Brain/Reasoning"
+const OperationBrainRunPredictionCheck = "/brain.v1.Brain/RunPredictionCheck"
 const OperationBrainStats = "/brain.v1.Brain/Stats"
 const OperationBrainUsage = "/brain.v1.Brain/Usage"
 
@@ -39,13 +44,25 @@ type BrainHTTPServer interface {
 	Ask(context.Context, *AskRequest) (*AskReply, error)
 	// Explain 持仓或候选异动解读。
 	Explain(context.Context, *ExplainRequest) (*Explanation, error)
+	// GenerateAIReview 手动生成/重新生成 AI 复盘：kind 空或 ai = 五段式日复盘（同日覆盖）；
+	// kind=ai_week = AI 周报，行落在该周最后一个交易日（P1-7b，同事务发 strategy.review 通知）。
+	GenerateAIReview(context.Context, *GenerateAIReviewRequest) (*ProgramReview, error)
 	// GenerateBriefing 生成或重新生成某日晨报。
 	GenerateBriefing(context.Context, *GenerateBriefingRequest) (*Briefing, error)
 	GetBriefing(context.Context, *GetBriefingRequest) (*Briefing, error)
+	// GetFrozenEmotion 收盘定稿读数（情绪冻结存档）。没取到的标量不返回（proto3 optional）。
+	GetFrozenEmotion(context.Context, *GetFrozenEmotionRequest) (*FrozenEmotion, error)
+	// GetProgramReview 每日/每周复盘。kind=program（默认）八格程序版；kind=ai（P1-7）五段式 AI 复盘；
+	// kind=ai_week（P1-7b）AI 周报，date 传该周任意一天，自动对齐到本周最后一个交易日。
+	GetProgramReview(context.Context, *GetProgramReviewRequest) (*ProgramReview, error)
 	// LatencyHistogram 近 1 小时调用延迟直方图（8 桶）。
 	LatencyHistogram(context.Context, *LatencyHistogramRequest) (*LatencyHistogramReply, error)
+	// ListPredictionChecks 明日验证对账列表，按对账日倒序。
+	ListPredictionChecks(context.Context, *ListChecksRequest) (*PredictionCheckList, error)
 	// Reasoning 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
 	Reasoning(context.Context, *ReasoningRequest) (*ReasoningReply, error)
+	// RunPredictionCheck 补跑某日（对账日）明日验证对账。
+	RunPredictionCheck(context.Context, *RunCheckRequest) (*PredictionCheck, error)
 	// Stats 各档模型的延迟、排队和 KV 缓存占用。
 	Stats(context.Context, *StatsRequest) (*StatsReply, error)
 	// Usage 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
@@ -64,6 +81,11 @@ func RegisterBrainHTTPServer(s *http.Server, srv BrainHTTPServer) {
 	r.GET("/v1/brain/usage", _Brain_Usage0_HTTP_Handler(srv))
 	r.GET("/v1/brain/reasoning", _Brain_Reasoning0_HTTP_Handler(srv))
 	r.GET("/v1/brain/latency-histogram", _Brain_LatencyHistogram0_HTTP_Handler(srv))
+	r.GET("/v1/brain/review/{date}", _Brain_GetProgramReview0_HTTP_Handler(srv))
+	r.POST("/v1/brain/review/ai", _Brain_GenerateAIReview0_HTTP_Handler(srv))
+	r.GET("/v1/brain/emotion-frozen/{date}", _Brain_GetFrozenEmotion0_HTTP_Handler(srv))
+	r.GET("/v1/brain/prediction-checks", _Brain_ListPredictionChecks0_HTTP_Handler(srv))
+	r.POST("/v1/brain/prediction-checks/run", _Brain_RunPredictionCheck0_HTTP_Handler(srv))
 }
 
 func _Brain_Analyze0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
@@ -274,6 +296,113 @@ func _Brain_LatencyHistogram0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Co
 	}
 }
 
+func _Brain_GetProgramReview0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetProgramReviewRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainGetProgramReview)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetProgramReview(ctx, req.(*GetProgramReviewRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ProgramReview)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Brain_GenerateAIReview0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GenerateAIReviewRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainGenerateAIReview)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GenerateAIReview(ctx, req.(*GenerateAIReviewRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ProgramReview)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Brain_GetFrozenEmotion0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetFrozenEmotionRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainGetFrozenEmotion)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetFrozenEmotion(ctx, req.(*GetFrozenEmotionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*FrozenEmotion)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Brain_ListPredictionChecks0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListChecksRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainListPredictionChecks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListPredictionChecks(ctx, req.(*ListChecksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PredictionCheckList)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Brain_RunPredictionCheck0_HTTP_Handler(srv BrainHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RunCheckRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationBrainRunPredictionCheck)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.RunPredictionCheck(ctx, req.(*RunCheckRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*PredictionCheck)
+		return ctx.Result(200, reply)
+	}
+}
+
 type BrainHTTPClient interface {
 	// Analyze 单只候选四维研判。模型不可用时返回 rule_score 并标 ai_degraded。
 	Analyze(ctx context.Context, req *AnalyzeRequest, opts ...http.CallOption) (rsp *Analysis, err error)
@@ -283,13 +412,25 @@ type BrainHTTPClient interface {
 	Ask(ctx context.Context, req *AskRequest, opts ...http.CallOption) (rsp *AskReply, err error)
 	// Explain 持仓或候选异动解读。
 	Explain(ctx context.Context, req *ExplainRequest, opts ...http.CallOption) (rsp *Explanation, err error)
+	// GenerateAIReview 手动生成/重新生成 AI 复盘：kind 空或 ai = 五段式日复盘（同日覆盖）；
+	// kind=ai_week = AI 周报，行落在该周最后一个交易日（P1-7b，同事务发 strategy.review 通知）。
+	GenerateAIReview(ctx context.Context, req *GenerateAIReviewRequest, opts ...http.CallOption) (rsp *ProgramReview, err error)
 	// GenerateBriefing 生成或重新生成某日晨报。
 	GenerateBriefing(ctx context.Context, req *GenerateBriefingRequest, opts ...http.CallOption) (rsp *Briefing, err error)
 	GetBriefing(ctx context.Context, req *GetBriefingRequest, opts ...http.CallOption) (rsp *Briefing, err error)
+	// GetFrozenEmotion 收盘定稿读数（情绪冻结存档）。没取到的标量不返回（proto3 optional）。
+	GetFrozenEmotion(ctx context.Context, req *GetFrozenEmotionRequest, opts ...http.CallOption) (rsp *FrozenEmotion, err error)
+	// GetProgramReview 每日/每周复盘。kind=program（默认）八格程序版；kind=ai（P1-7）五段式 AI 复盘；
+	// kind=ai_week（P1-7b）AI 周报，date 传该周任意一天，自动对齐到本周最后一个交易日。
+	GetProgramReview(ctx context.Context, req *GetProgramReviewRequest, opts ...http.CallOption) (rsp *ProgramReview, err error)
 	// LatencyHistogram 近 1 小时调用延迟直方图（8 桶）。
 	LatencyHistogram(ctx context.Context, req *LatencyHistogramRequest, opts ...http.CallOption) (rsp *LatencyHistogramReply, err error)
+	// ListPredictionChecks 明日验证对账列表，按对账日倒序。
+	ListPredictionChecks(ctx context.Context, req *ListChecksRequest, opts ...http.CallOption) (rsp *PredictionCheckList, err error)
 	// Reasoning 某条信号对应的研判正文摘录（首段 ≤200 字）+ 耗时。
 	Reasoning(ctx context.Context, req *ReasoningRequest, opts ...http.CallOption) (rsp *ReasoningReply, err error)
+	// RunPredictionCheck 补跑某日（对账日）明日验证对账。
+	RunPredictionCheck(ctx context.Context, req *RunCheckRequest, opts ...http.CallOption) (rsp *PredictionCheck, err error)
 	// Stats 各档模型的延迟、排队和 KV 缓存占用。
 	Stats(ctx context.Context, req *StatsRequest, opts ...http.CallOption) (rsp *StatsReply, err error)
 	// Usage 令牌用量：prompt/completion/合计，按档聚合（监控驾驶舱 P1，只读）。
@@ -360,6 +501,21 @@ func (c *BrainHTTPClientImpl) Explain(ctx context.Context, in *ExplainRequest, o
 	return &out, nil
 }
 
+// GenerateAIReview 手动生成/重新生成 AI 复盘：kind 空或 ai = 五段式日复盘（同日覆盖）；
+// kind=ai_week = AI 周报，行落在该周最后一个交易日（P1-7b，同事务发 strategy.review 通知）。
+func (c *BrainHTTPClientImpl) GenerateAIReview(ctx context.Context, in *GenerateAIReviewRequest, opts ...http.CallOption) (*ProgramReview, error) {
+	var out ProgramReview
+	pattern := "/v1/brain/review/ai"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationBrainGenerateAIReview))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GenerateBriefing 生成或重新生成某日晨报。
 func (c *BrainHTTPClientImpl) GenerateBriefing(ctx context.Context, in *GenerateBriefingRequest, opts ...http.CallOption) (*Briefing, error) {
 	var out Briefing
@@ -387,12 +543,55 @@ func (c *BrainHTTPClientImpl) GetBriefing(ctx context.Context, in *GetBriefingRe
 	return &out, nil
 }
 
+// GetFrozenEmotion 收盘定稿读数（情绪冻结存档）。没取到的标量不返回（proto3 optional）。
+func (c *BrainHTTPClientImpl) GetFrozenEmotion(ctx context.Context, in *GetFrozenEmotionRequest, opts ...http.CallOption) (*FrozenEmotion, error) {
+	var out FrozenEmotion
+	pattern := "/v1/brain/emotion-frozen/{date}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBrainGetFrozenEmotion))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetProgramReview 每日/每周复盘。kind=program（默认）八格程序版；kind=ai（P1-7）五段式 AI 复盘；
+// kind=ai_week（P1-7b）AI 周报，date 传该周任意一天，自动对齐到本周最后一个交易日。
+func (c *BrainHTTPClientImpl) GetProgramReview(ctx context.Context, in *GetProgramReviewRequest, opts ...http.CallOption) (*ProgramReview, error) {
+	var out ProgramReview
+	pattern := "/v1/brain/review/{date}"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBrainGetProgramReview))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // LatencyHistogram 近 1 小时调用延迟直方图（8 桶）。
 func (c *BrainHTTPClientImpl) LatencyHistogram(ctx context.Context, in *LatencyHistogramRequest, opts ...http.CallOption) (*LatencyHistogramReply, error) {
 	var out LatencyHistogramReply
 	pattern := "/v1/brain/latency-histogram"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationBrainLatencyHistogram))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListPredictionChecks 明日验证对账列表，按对账日倒序。
+func (c *BrainHTTPClientImpl) ListPredictionChecks(ctx context.Context, in *ListChecksRequest, opts ...http.CallOption) (*PredictionCheckList, error) {
+	var out PredictionCheckList
+	pattern := "/v1/brain/prediction-checks"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationBrainListPredictionChecks))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -409,6 +608,20 @@ func (c *BrainHTTPClientImpl) Reasoning(ctx context.Context, in *ReasoningReques
 	opts = append(opts, http.Operation(OperationBrainReasoning))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RunPredictionCheck 补跑某日（对账日）明日验证对账。
+func (c *BrainHTTPClientImpl) RunPredictionCheck(ctx context.Context, in *RunCheckRequest, opts ...http.CallOption) (*PredictionCheck, error) {
+	var out PredictionCheck
+	pattern := "/v1/brain/prediction-checks/run"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationBrainRunPredictionCheck))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

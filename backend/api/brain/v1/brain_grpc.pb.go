@@ -19,16 +19,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Brain_Analyze_FullMethodName          = "/brain.v1.Brain/Analyze"
-	Brain_AnalyzeBatch_FullMethodName     = "/brain.v1.Brain/AnalyzeBatch"
-	Brain_GenerateBriefing_FullMethodName = "/brain.v1.Brain/GenerateBriefing"
-	Brain_GetBriefing_FullMethodName      = "/brain.v1.Brain/GetBriefing"
-	Brain_Explain_FullMethodName          = "/brain.v1.Brain/Explain"
-	Brain_Ask_FullMethodName              = "/brain.v1.Brain/Ask"
-	Brain_Stats_FullMethodName            = "/brain.v1.Brain/Stats"
-	Brain_Usage_FullMethodName            = "/brain.v1.Brain/Usage"
-	Brain_Reasoning_FullMethodName        = "/brain.v1.Brain/Reasoning"
-	Brain_LatencyHistogram_FullMethodName = "/brain.v1.Brain/LatencyHistogram"
+	Brain_Analyze_FullMethodName              = "/brain.v1.Brain/Analyze"
+	Brain_AnalyzeBatch_FullMethodName         = "/brain.v1.Brain/AnalyzeBatch"
+	Brain_GenerateBriefing_FullMethodName     = "/brain.v1.Brain/GenerateBriefing"
+	Brain_GetBriefing_FullMethodName          = "/brain.v1.Brain/GetBriefing"
+	Brain_Explain_FullMethodName              = "/brain.v1.Brain/Explain"
+	Brain_Ask_FullMethodName                  = "/brain.v1.Brain/Ask"
+	Brain_Stats_FullMethodName                = "/brain.v1.Brain/Stats"
+	Brain_Usage_FullMethodName                = "/brain.v1.Brain/Usage"
+	Brain_Reasoning_FullMethodName            = "/brain.v1.Brain/Reasoning"
+	Brain_LatencyHistogram_FullMethodName     = "/brain.v1.Brain/LatencyHistogram"
+	Brain_GetProgramReview_FullMethodName     = "/brain.v1.Brain/GetProgramReview"
+	Brain_GenerateAIReview_FullMethodName     = "/brain.v1.Brain/GenerateAIReview"
+	Brain_GetFrozenEmotion_FullMethodName     = "/brain.v1.Brain/GetFrozenEmotion"
+	Brain_ListPredictionChecks_FullMethodName = "/brain.v1.Brain/ListPredictionChecks"
+	Brain_RunPredictionCheck_FullMethodName   = "/brain.v1.Brain/RunPredictionCheck"
 )
 
 // BrainClient is the client API for Brain service.
@@ -56,6 +61,18 @@ type BrainClient interface {
 	Reasoning(ctx context.Context, in *ReasoningRequest, opts ...grpc.CallOption) (*ReasoningReply, error)
 	// 近 1 小时调用延迟直方图（8 桶）。
 	LatencyHistogram(ctx context.Context, in *LatencyHistogramRequest, opts ...grpc.CallOption) (*LatencyHistogramReply, error)
+	// 每日/每周复盘。kind=program（默认）八格程序版；kind=ai（P1-7）五段式 AI 复盘；
+	// kind=ai_week（P1-7b）AI 周报，date 传该周任意一天，自动对齐到本周最后一个交易日。
+	GetProgramReview(ctx context.Context, in *GetProgramReviewRequest, opts ...grpc.CallOption) (*ProgramReview, error)
+	// 手动生成/重新生成 AI 复盘：kind 空或 ai = 五段式日复盘（同日覆盖）；
+	// kind=ai_week = AI 周报，行落在该周最后一个交易日（P1-7b，同事务发 strategy.review 通知）。
+	GenerateAIReview(ctx context.Context, in *GenerateAIReviewRequest, opts ...grpc.CallOption) (*ProgramReview, error)
+	// 收盘定稿读数（情绪冻结存档）。没取到的标量不返回（proto3 optional）。
+	GetFrozenEmotion(ctx context.Context, in *GetFrozenEmotionRequest, opts ...grpc.CallOption) (*FrozenEmotion, error)
+	// 明日验证对账列表，按对账日倒序。
+	ListPredictionChecks(ctx context.Context, in *ListChecksRequest, opts ...grpc.CallOption) (*PredictionCheckList, error)
+	// 补跑某日（对账日）明日验证对账。
+	RunPredictionCheck(ctx context.Context, in *RunCheckRequest, opts ...grpc.CallOption) (*PredictionCheck, error)
 }
 
 type brainClient struct {
@@ -166,6 +183,56 @@ func (c *brainClient) LatencyHistogram(ctx context.Context, in *LatencyHistogram
 	return out, nil
 }
 
+func (c *brainClient) GetProgramReview(ctx context.Context, in *GetProgramReviewRequest, opts ...grpc.CallOption) (*ProgramReview, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProgramReview)
+	err := c.cc.Invoke(ctx, Brain_GetProgramReview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brainClient) GenerateAIReview(ctx context.Context, in *GenerateAIReviewRequest, opts ...grpc.CallOption) (*ProgramReview, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProgramReview)
+	err := c.cc.Invoke(ctx, Brain_GenerateAIReview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brainClient) GetFrozenEmotion(ctx context.Context, in *GetFrozenEmotionRequest, opts ...grpc.CallOption) (*FrozenEmotion, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FrozenEmotion)
+	err := c.cc.Invoke(ctx, Brain_GetFrozenEmotion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brainClient) ListPredictionChecks(ctx context.Context, in *ListChecksRequest, opts ...grpc.CallOption) (*PredictionCheckList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PredictionCheckList)
+	err := c.cc.Invoke(ctx, Brain_ListPredictionChecks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *brainClient) RunPredictionCheck(ctx context.Context, in *RunCheckRequest, opts ...grpc.CallOption) (*PredictionCheck, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PredictionCheck)
+	err := c.cc.Invoke(ctx, Brain_RunPredictionCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BrainServer is the server API for Brain service.
 // All implementations must embed UnimplementedBrainServer
 // for forward compatibility.
@@ -191,6 +258,18 @@ type BrainServer interface {
 	Reasoning(context.Context, *ReasoningRequest) (*ReasoningReply, error)
 	// 近 1 小时调用延迟直方图（8 桶）。
 	LatencyHistogram(context.Context, *LatencyHistogramRequest) (*LatencyHistogramReply, error)
+	// 每日/每周复盘。kind=program（默认）八格程序版；kind=ai（P1-7）五段式 AI 复盘；
+	// kind=ai_week（P1-7b）AI 周报，date 传该周任意一天，自动对齐到本周最后一个交易日。
+	GetProgramReview(context.Context, *GetProgramReviewRequest) (*ProgramReview, error)
+	// 手动生成/重新生成 AI 复盘：kind 空或 ai = 五段式日复盘（同日覆盖）；
+	// kind=ai_week = AI 周报，行落在该周最后一个交易日（P1-7b，同事务发 strategy.review 通知）。
+	GenerateAIReview(context.Context, *GenerateAIReviewRequest) (*ProgramReview, error)
+	// 收盘定稿读数（情绪冻结存档）。没取到的标量不返回（proto3 optional）。
+	GetFrozenEmotion(context.Context, *GetFrozenEmotionRequest) (*FrozenEmotion, error)
+	// 明日验证对账列表，按对账日倒序。
+	ListPredictionChecks(context.Context, *ListChecksRequest) (*PredictionCheckList, error)
+	// 补跑某日（对账日）明日验证对账。
+	RunPredictionCheck(context.Context, *RunCheckRequest) (*PredictionCheck, error)
 	mustEmbedUnimplementedBrainServer()
 }
 
@@ -230,6 +309,21 @@ func (UnimplementedBrainServer) Reasoning(context.Context, *ReasoningRequest) (*
 }
 func (UnimplementedBrainServer) LatencyHistogram(context.Context, *LatencyHistogramRequest) (*LatencyHistogramReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method LatencyHistogram not implemented")
+}
+func (UnimplementedBrainServer) GetProgramReview(context.Context, *GetProgramReviewRequest) (*ProgramReview, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetProgramReview not implemented")
+}
+func (UnimplementedBrainServer) GenerateAIReview(context.Context, *GenerateAIReviewRequest) (*ProgramReview, error) {
+	return nil, status.Error(codes.Unimplemented, "method GenerateAIReview not implemented")
+}
+func (UnimplementedBrainServer) GetFrozenEmotion(context.Context, *GetFrozenEmotionRequest) (*FrozenEmotion, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetFrozenEmotion not implemented")
+}
+func (UnimplementedBrainServer) ListPredictionChecks(context.Context, *ListChecksRequest) (*PredictionCheckList, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPredictionChecks not implemented")
+}
+func (UnimplementedBrainServer) RunPredictionCheck(context.Context, *RunCheckRequest) (*PredictionCheck, error) {
+	return nil, status.Error(codes.Unimplemented, "method RunPredictionCheck not implemented")
 }
 func (UnimplementedBrainServer) mustEmbedUnimplementedBrainServer() {}
 func (UnimplementedBrainServer) testEmbeddedByValue()               {}
@@ -432,6 +526,96 @@ func _Brain_LatencyHistogram_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Brain_GetProgramReview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProgramReviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).GetProgramReview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_GetProgramReview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).GetProgramReview(ctx, req.(*GetProgramReviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Brain_GenerateAIReview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateAIReviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).GenerateAIReview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_GenerateAIReview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).GenerateAIReview(ctx, req.(*GenerateAIReviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Brain_GetFrozenEmotion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFrozenEmotionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).GetFrozenEmotion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_GetFrozenEmotion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).GetFrozenEmotion(ctx, req.(*GetFrozenEmotionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Brain_ListPredictionChecks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListChecksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).ListPredictionChecks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_ListPredictionChecks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).ListPredictionChecks(ctx, req.(*ListChecksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Brain_RunPredictionCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BrainServer).RunPredictionCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Brain_RunPredictionCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BrainServer).RunPredictionCheck(ctx, req.(*RunCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Brain_ServiceDesc is the grpc.ServiceDesc for Brain service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -478,6 +662,26 @@ var Brain_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LatencyHistogram",
 			Handler:    _Brain_LatencyHistogram_Handler,
+		},
+		{
+			MethodName: "GetProgramReview",
+			Handler:    _Brain_GetProgramReview_Handler,
+		},
+		{
+			MethodName: "GenerateAIReview",
+			Handler:    _Brain_GenerateAIReview_Handler,
+		},
+		{
+			MethodName: "GetFrozenEmotion",
+			Handler:    _Brain_GetFrozenEmotion_Handler,
+		},
+		{
+			MethodName: "ListPredictionChecks",
+			Handler:    _Brain_ListPredictionChecks_Handler,
+		},
+		{
+			MethodName: "RunPredictionCheck",
+			Handler:    _Brain_RunPredictionCheck_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

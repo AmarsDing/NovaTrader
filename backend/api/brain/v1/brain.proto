@@ -47,6 +47,28 @@ service Brain {
   rpc LatencyHistogram(LatencyHistogramRequest) returns (LatencyHistogramReply) {
     option (google.api.http) = {get: "/v1/brain/latency-histogram"};
   }
+  // 每日/每周复盘。kind=program（默认）八格程序版；kind=ai（P1-7）五段式 AI 复盘；
+  // kind=ai_week（P1-7b）AI 周报，date 传该周任意一天，自动对齐到本周最后一个交易日。
+  rpc GetProgramReview(GetProgramReviewRequest) returns (ProgramReview) {
+    option (google.api.http) = {get: "/v1/brain/review/{date}"};
+  }
+  // 手动生成/重新生成 AI 复盘：kind 空或 ai = 五段式日复盘（同日覆盖）；
+  // kind=ai_week = AI 周报，行落在该周最后一个交易日（P1-7b，同事务发 strategy.review 通知）。
+  rpc GenerateAIReview(GenerateAIReviewRequest) returns (ProgramReview) {
+    option (google.api.http) = {post: "/v1/brain/review/ai" body: "*"};
+  }
+  // 收盘定稿读数（情绪冻结存档）。没取到的标量不返回（proto3 optional）。
+  rpc GetFrozenEmotion(GetFrozenEmotionRequest) returns (FrozenEmotion) {
+    option (google.api.http) = {get: "/v1/brain/emotion-frozen/{date}"};
+  }
+  // 明日验证对账列表，按对账日倒序。
+  rpc ListPredictionChecks(ListChecksRequest) returns (PredictionCheckList) {
+    option (google.api.http) = {get: "/v1/brain/prediction-checks"};
+  }
+  // 补跑某日（对账日）明日验证对账。
+  rpc RunPredictionCheck(RunCheckRequest) returns (PredictionCheck) {
+    option (google.api.http) = {post: "/v1/brain/prediction-checks/run" body: "*"};
+  }
 }
 
 enum Priority {
@@ -158,6 +180,14 @@ message NewsLine {
   string symbol = 4;
 }
 
+// P1-5 数字三档核对留痕：sourced 事实包有出处 / recomputed 算式重算通过 / omitted 无出处已替换为「（略※）」。
+message EvidenceItem {
+  string field = 1;   // 字段归属：headline / market_view / risks[0] / watchlist.600519 / positions.000002
+  string span = 2;    // 正文中的数字 token
+  string verdict = 3;
+  string match = 4;   // sourced=出处（事实标签或文本片段）；recomputed=算式；omitted 为空
+}
+
 message Briefing {
   string date = 1;
   bool degraded = 2;
@@ -170,6 +200,8 @@ message Briefing {
   int64 decision_id = 9;
   string created_at = 10;
   string reason = 11;
+  repeated EvidenceItem evidence = 12; // P1-5 数字核对明细；核对落地前的旧晨报为空
+  optional int32 omitted_count = 13;   // 被替换为「（略※）」的数字个数；旧晨报/降级晨报 = null
 }
 
 message ExplainRequest {
@@ -285,4 +317,97 @@ message LatencyHistogramReply {
   double p50_ms = 3;
   double p95_ms = 4;
   repeated LatencyBucket buckets = 5; // 固定 8 桶
+}
+
+/* ---------- 复盘体系：程序版复盘、收盘定稿、明日验证对账 ---------- */
+
+message GetProgramReviewRequest {
+  string date = 1; // YYYY-MM-DD；kind=ai_week 时传该周任意一天即可
+  string kind = 2; // program（默认）/ ai（P1-7 五段式）/ ai_week（P1-7b 周报）
+}
+
+message ProgramReview {
+  string date = 1;             // 实际落行的日期（ai_week 对齐到本周最后交易日，可能与请求不同）
+  string content = 2;          // program：八格文本；ai/ai_week：汇总段总评
+  string stats_json = 3;       // program：八格读数；ai：五段+留痕；ai_week：逐日读数+周聚合+留痕
+  repeated string lessons = 4; // ai/ai_week：教训要点；program 为空
+  string model = 5;            // ai/ai_week：参与模型（逗号拼接）；program 为空
+}
+
+message GenerateAIReviewRequest {
+  string date = 1; // YYYY-MM-DD，空为今天；ai_week 时传该周任意一天
+  string kind = 2; // 空或 ai = 五段式日复盘；ai_week = 周报
+}
+
+message GetFrozenEmotionRequest {
+  string date = 1; // YYYY-MM-DD
+}
+
+message FrozenEmotion {
+  string date = 1;
+  optional int32 up_count = 2;
+  optional int32 down_count = 3;
+  optional int32 broken_count = 4;
+  optional double seal_rate = 5;    // %
+  optional int32 max_height = 6;
+  optional double promo_12 = 7;     // 1进2 晋级率 %
+  optional double promo_23 = 8;     // 2进3 晋级率 %
+  optional double promo_high = 9;   // 高位晋级率 %
+  optional double tier_avg = 10;    // 昨日梯队今日平均涨幅 %
+  optional double tier_median = 11;
+  optional double tier_red_rate = 12;
+  optional double tier_relimit = 13;
+  string ladder_json = 14;      // 连板天梯 {height:[{symbol,name,reason,open_count,first_seal_at}]}
+  string first_board_json = 15; // 首板名单
+  string theme_tree_json = 16;  // 题材归并 top
+  string prev_tier_json = 17;   // 昨日梯队今日表现
+  string seal_quality_json = 18;
+  repeated int32 structure_gaps = 19; // 梯队断层板位
+  bool partial = 20;
+  repeated string missing = 21;
+  string source = 22;
+  string captured_at = 23; // RFC3339
+}
+
+message ListChecksRequest {
+  int32 limit = 1; // 默认 20，上限 120
+}
+
+message CheckResultRow {
+  string symbol = 1;
+  string name = 2;
+  optional double pct = 3; // 次日涨幅 %，没取到不返回
+  bool relimit = 4;        // 次日再涨停
+  bool hit = 5;            // 次日收涨
+}
+
+message CheckCandidateRow {
+  string symbol = 1;
+  string name = 2;
+  string reason = 3;
+  string text = 4; // 入选逻辑摘录
+}
+
+message PredictionCheck {
+  string signal_date = 1;
+  string check_date = 2;
+  string source = 3;
+  optional int32 candidate_count = 4;
+  optional int32 hit_count = 5;
+  optional int32 relimit_count = 6;
+  optional double hit_rate = 7; // %
+  optional double avg_pct = 8;  // %
+  optional double max_pct = 9;  // %
+  bool partial = 10;
+  repeated string missing = 11;
+  repeated CheckCandidateRow candidates = 12;
+  repeated CheckResultRow results = 13;
+}
+
+message PredictionCheckList {
+  repeated PredictionCheck items = 1;
+}
+
+message RunCheckRequest {
+  string date = 1; // YYYY-MM-DD，对账日；空为当日
 }
