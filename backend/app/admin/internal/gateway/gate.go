@@ -319,7 +319,10 @@ func (g *Gate) forward(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := strings.TrimPrefix(r.URL.Path, item.trim)
 	r.URL.Path = item.join + rest
+	// 身份与角色都由网关重写（Header.Set 覆盖浏览器直连伪造），
+	// 下游敏感写操作据此做 Owner 判定（T7-02：backtest 审批三件套）。
 	r.Header.Set("X-User", principal.Name)
+	r.Header.Set("X-User-Role", principal.Role)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), item.timeout)
 	defer cancel()
 	proxy.ServeHTTP(w, r.WithContext(ctx))

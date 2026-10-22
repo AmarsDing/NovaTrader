@@ -2,17 +2,21 @@ package llm
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"server/pkg/secret"
 )
 
 type memRecorder struct {
@@ -172,8 +176,8 @@ func TestResolveAPIKey(t *testing.T) {
 					t.Fatalf("want ErrUnavailable, got %v", err)
 				}
 			case "enc":
-				if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "解密器未配置") {
-					t.Fatalf("want 解密器未配置, got %v", err)
+				if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "未配置密钥文件") {
+					t.Fatalf("want 未配置密钥文件, got %v", err)
 				}
 				// 错误会进 llm_call_log，绝不回显密文本身。
 				if strings.Contains(err.Error(), "Y2lwaGVydGV4dA==") {
@@ -181,6 +185,44 @@ func TestResolveAPIKey(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResolveAPIKeyEnc(t *testing.T) {
+	keyFile := filepath.Join(t.TempDir(), "llm.key")
+	key, err := secret.LoadKey(keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := secret.Encrypt(key, []byte("sk-real"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := "enc:" + base64.StdEncoding.EncodeToString(sealed)
+
+	got, err := ResolveAPIKeyWithFile(enc, keyFile)
+	if err != nil || got != "sk-real" {
+		t.Fatalf("round trip: got=%q err=%v", got, err)
+	}
+	// NT_LLM_SECRET_KEY_FILE 沟通 ResolveAPIKey 的默认取钥路径。
+	t.Setenv(EncKeyFileEnv, keyFile)
+	if got, err := ResolveAPIKey(enc); err != nil || got != "sk-real" {
+		t.Fatalf("env key file: got=%q err=%v", got, err)
+	}
+	t.Setenv(EncKeyFileEnv, "")
+	if _, err := ResolveAPIKeyWithFile(enc, ""); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("空密钥文件必须按配置缺失报错, got %v", err)
+	}
+	if _, err := ResolveAPIKeyWithFile("enc:!!!", keyFile); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("非法 base64 必须报错, got %v", err)
+	}
+	// 错密钥必须解密失败，且不回显密文。
+	other := filepath.Join(t.TempDir(), "other.key")
+	if _, err := secret.LoadKey(other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveAPIKeyWithFile(enc, other); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("错密钥必须报错, got %v", err)
 	}
 }
 
@@ -252,8 +294,8 @@ func TestEncKeyFailsBeforeRequest(t *testing.T) {
 	rec := &memRecorder{}
 	g := New(map[Tier]ModelConfig{Small: {BaseURL: srv.URL + "/v1", Model: "qwen", APIKey: "enc:ciphertext"}}, rec)
 	_, err := g.Chat(context.Background(), Request{Task: "x", Tier: Small, Messages: []Message{{Role: "user", Content: "hi"}}})
-	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "解密器未配置") {
-		t.Fatalf("want unavailable+解密器未配置, got %v", err)
+	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "未配置密钥文件") {
+		t.Fatalf("want unavailable+未配置密钥文件, got %v", err)
 	}
 	if hits.Load() != 0 {
 		t.Fatalf("enc: key was sent as plaintext, server hits = %d", hits.Load())

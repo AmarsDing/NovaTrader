@@ -107,7 +107,7 @@ func TestHashEmbedderDeterministic(t *testing.T) {
 }
 
 // TestEmbedderResolvesAPIKey 钉测试（M13-T06b）：embed 客户端复用 pkg/llm.ResolveAPIKey——
-// env: 前缀运行期取真值鉴权；env 缺变量显式报错不发请求；enc: 解密器未配置报错且不回显密文原文。
+// env: 前缀运行期取真值鉴权；env 缺变量显式报错不发请求；enc: 未配置密钥文件报错且不回显密文原文。
 func TestEmbedderResolvesAPIKey(t *testing.T) {
 	t.Setenv("NT_KB_TEST_KEY", "sk-env-real")
 	var hits atomic.Int32
@@ -145,7 +145,7 @@ func TestEmbedderResolvesAPIKey(t *testing.T) {
 		t.Fatalf("want unavailable+变量名, got %v", err)
 	}
 	// enc: 密文未接解密器：显式报错，错误绝不回显密文原文（会进错误留痕）。
-	if err := embed(t, "enc:Y2lwaGVydGV4dA=="); !errors.Is(err, llm.ErrUnavailable) || !strings.Contains(err.Error(), "解密器未配置") {
+	if err := embed(t, "enc:Y2lwaGVydGV4dA=="); !errors.Is(err, llm.ErrUnavailable) || !strings.Contains(err.Error(), "未配置密钥文件") {
 		t.Fatalf("want 解密器未配置, got %v", err)
 	} else if strings.Contains(err.Error(), "Y2lwaGVydGV4dA==") {
 		t.Fatalf("error must not echo the ciphertext: %v", err)

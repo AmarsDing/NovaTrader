@@ -7,7 +7,7 @@ import (
 	"entgo.io/ent/schema/field"
 )
 
-// StrategyLibrary 策略库。对齐 sql/init_db.sql。
+// StrategyLibrary 策略库。
 type StrategyLibrary struct {
 	ent.Schema
 }

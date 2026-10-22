@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 
+	"server/app/admin/internal/core"
 	"server/app/admin/internal/gateway"
 	"server/app/admin/internal/server"
 	"server/conf"
@@ -31,13 +32,13 @@ func init() {
 	flag.StringVar(&flagconf, "conf", "../../../configs", "config path, eg: -conf config.yaml")
 }
 
-func newApp(logger log.Logger, hs *http.Server, gs *grpc.Server, rr registry.Registrar, ws *server.WebsocketServer) *kratos.App {
+func newApp(logger log.Logger, hs *http.Server, gs *grpc.Server, rr registry.Registrar, ws *server.WebsocketServer, runner *core.Runner) *kratos.App {
 	return kratos.New(
 		kratos.ID(id),
 		kratos.Name(Name),
 		kratos.Version(Version),
 		kratos.Logger(logger),
-		kratos.Server(hs, gs, ws),
+		kratos.Server(hs, gs, ws, runner),
 		kratos.Registrar(rr),
 	)
 }

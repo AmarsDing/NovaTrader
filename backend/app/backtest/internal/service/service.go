@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	v1 "server/api/backtest/v1"
@@ -55,6 +56,8 @@ func mapErr(err error) error {
 	switch {
 	case err == nil:
 		return nil
+	case errors.Is(err, errOwnerOnly):
+		return kerrors.Forbidden("FORBIDDEN", err.Error())
 	case errors.Is(err, biz.ErrNotFound):
 		return kerrors.NotFound("NOT_FOUND", err.Error())
 	case errors.Is(err, biz.ErrBadRequest):
@@ -72,6 +75,23 @@ func operator(ctx context.Context) string {
 		return ""
 	}
 	return tr.RequestHeader().Get("X-User")
+}
+
+// errOwnerOnly 表示调用方不是 owner（T7-02：M11 到位后审批三件套收口）。
+// admin 网关转发时重写 X-User-Role；未经过网关注入角色或角色非 owner 的
+// 调用一律 PermissionDenied，堵住「能连本服务端口即可批准参数变更」的默认开放面。
+// 直连端口仍可自填头部，本层是纵深防御与默认闭合，真实拓扑仍要求 backtest 端口不对桌面网开放。
+var errOwnerOnly = errors.New("参数审批仅 owner 可操作，请经 admin 网关以 owner 身份调用")
+
+func requireOwner(ctx context.Context) error {
+	tr, ok := transport.FromServerContext(ctx)
+	if !ok {
+		return errOwnerOnly
+	}
+	if !strings.EqualFold(tr.RequestHeader().Get("X-User-Role"), "owner") {
+		return errOwnerOnly
+	}
+	return nil
 }
 
 func day(s string) (time.Time, error) {
@@ -349,6 +369,9 @@ func (s *BacktestService) ListProposals(ctx context.Context, req *v1.ListProposa
 }
 
 func (s *BacktestService) ApproveProposal(ctx context.Context, req *v1.DecideProposalRequest) (*v1.Proposal, error) {
+	if err := requireOwner(ctx); err != nil {
+		return nil, mapErr(err)
+	}
 	p, err := s.uc.Approve(ctx, int(req.GetId()), operator(ctx))
 	if err != nil {
 		return nil, mapErr(err)
@@ -357,6 +380,9 @@ func (s *BacktestService) ApproveProposal(ctx context.Context, req *v1.DecidePro
 }
 
 func (s *BacktestService) RejectProposal(ctx context.Context, req *v1.DecideProposalRequest) (*v1.Proposal, error) {
+	if err := requireOwner(ctx); err != nil {
+		return nil, mapErr(err)
+	}
 	p, err := s.uc.Reject(ctx, int(req.GetId()), operator(ctx), req.GetNote())
 	if err != nil {
 		return nil, mapErr(err)
@@ -365,6 +391,9 @@ func (s *BacktestService) RejectProposal(ctx context.Context, req *v1.DecideProp
 }
 
 func (s *BacktestService) RollbackStrategy(ctx context.Context, req *v1.RollbackStrategyRequest) (*v1.Proposal, error) {
+	if err := requireOwner(ctx); err != nil {
+		return nil, mapErr(err)
+	}
 	p, err := s.uc.Rollback(ctx, req.GetName(), operator(ctx))
 	if err != nil {
 		return nil, mapErr(err)

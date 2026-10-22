@@ -9,7 +9,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// MarketData 不复权 K 线。由 sql/init_db.sql 的日线表扩展为日线与 1 分钟线，对应 M02 FR-02-01。
+// MarketData 不复权 K 线。由初期方案日线表扩展为日线与 1 分钟线，对应 M02 FR-02-01。
 // 价格单位是元，成交量是股，成交额是元。复权在查询时用 adj_factor 计算。
 type MarketData struct {
 	ent.Schema

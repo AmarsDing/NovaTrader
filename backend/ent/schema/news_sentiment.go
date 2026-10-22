@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// NewsSentiment 新闻与舆情。对齐 sql/init_db.sql，M03 追加了去重、归簇和评分字段。
+// NewsSentiment 新闻与舆情。初期方案表，M03 追加了去重、归簇和评分字段。
 // 一条原始情报一行。sentiment_score 取值 [-1, 1]，importance 取值 0–5。
 // content 存规范化后的正文，intel_fact 的字符下标指向它。
 type NewsSentiment struct {

@@ -16,6 +16,11 @@ func TestTraceCoverageOnIsolatedPostgres(t *testing.T) {
 	client := adminContractClient(t, "novatrader_admin_coverage_test")
 	s := &AuditStore{client: client}
 	ctx := context.Background()
+	// 专用库在开发机上跨轮持久，读口窗口不按来源过滤：先清表再断言，
+	// 否则上一轮的行混入窗口让 WindowRows 随运行轮数漂移。
+	if _, err := client.Outbox.Delete().Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
 	tag := uuid.NewString()[:8]
 
 	base := time.Now().UTC().Add(-time.Minute)

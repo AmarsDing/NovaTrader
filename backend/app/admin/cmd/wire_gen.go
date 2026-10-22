@@ -9,6 +9,7 @@ package main
 import (
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	"server/app/admin/internal/core"
 	"server/app/admin/internal/data"
 	"server/app/admin/internal/gateway"
 	"server/app/admin/internal/server"
@@ -27,8 +28,12 @@ func wireApp(admin *conf.Admin, nats *conf.Nats, settings gateway.Settings, post
 	grpcServer := server.NewGRPCServer(admin, logger)
 	registrar := server.NewRegistrar()
 	websocketServer := server.NewWebsocketServer(admin, nats, settings, hub, logger)
-	app := newApp(logger, httpServer, grpcServer, registrar, websocketServer)
+	store := data.NewSchedulerStore(auditStore)
+	bus, cleanup2 := data.NewBus(nats, logger)
+	runner := core.NewRunner(auditStore, store, bus, logger)
+	app := newApp(logger, httpServer, grpcServer, registrar, websocketServer, runner)
 	return app, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }

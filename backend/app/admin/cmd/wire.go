@@ -4,6 +4,7 @@
 package main
 
 import (
+	"server/app/admin/internal/core"
 	"server/app/admin/internal/data"
 	"server/app/admin/internal/gateway"
 	"server/app/admin/internal/server"
@@ -15,5 +16,5 @@ import (
 )
 
 func wireApp(*conf.Admin, *conf.Nats, gateway.Settings, *conf.Postgres, log.Logger) (*kratos.App, func(), error) {
-	panic(wire.Build(server.ProviderSet, data.NewAuditStore, gateway.NewHub, newApp))
+	panic(wire.Build(server.ProviderSet, data.NewAuditStore, data.NewBus, data.NewSchedulerStore, gateway.NewHub, core.ProviderSet, newApp))
 }

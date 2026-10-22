@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// MorningBriefing 盘前晨报。对齐 sql/init_db.sql。
+// MorningBriefing 盘前晨报。
 type MorningBriefing struct {
 	ent.Schema
 }

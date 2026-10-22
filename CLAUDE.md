@@ -18,7 +18,7 @@
   - 启动流程：连接 postgres 系统库 → 创建业务库 → `CREATE EXTENSION vector` → 建议锁下执行 ent 自动迁移（`client.Schema.Create`）→ 打开 `*ent.Client`。这一整段写在 `backend/pkg/entclient.Open`，各服务 `internal/data` 的 `NewEntClient` / `NewData` 只做配置映射和 Wire 清理。
 - **物理位置**：Schema-as-Code 与生成代码在 `backend/ent/`（`schema/` 手写，其余在 `backend/` 下 `go generate ./ent`）。多服务共用这一份包，禁止挪到 `app/*/internal/data/ent`，也禁止按服务复制 schema。
 - **逻辑归属**：说「ent 在数据层」指访问权，不是目录。业务读写只走各服务 `internal/data` 的仓储。`*ent.Client` 还可以由横切基础设施持有（`pkg/dbinit`、`pkg/migrate`、`pkg/entclient`，以及 outbox、调度记录、心跳、参数、交易日历同步这类共享表）。`service` / `biz` / `core` 不查询 ent；`core` 使用 `scheduler.Store`、`outbox.Dispatcher` 等端口。
-- `sql/init_db.sql` 仅为**历史参考**，其中的表结构需要逐一翻译为 ent Schema，禁止继续维护该 SQL 文件。
+- `sql/init_db.sql` 已删除（2026-10-22 实施批次：T0-13 翻译早已完成，残留的是 MySQL 方言僵尸）；新表一律 ent Schema。
 - 向量用 PostgreSQL 扩展 **pgvector**，不单独部署 ChromaDB。不引入 TDengine、Neo4j、SQLite 业务库。
 - `CREATE DATABASE`、迁移锁、`CREATE EXTENSION vector` 只允许写在 `backend/pkg/dbinit`。业务代码不写裸 SQL。
 
@@ -88,7 +88,7 @@ NovaTrader/
 │   ├── popout.html           ← dockview 弹窗宿主页（多页入口，无脚本）
 │   ├── eslint.config.js      ← flat config（js/ts/vue + prettier 兼容）
 │   └── src-tauri/            ← Tauri 2 Rust 桌面壳（托盘/通知/凭据/popout capability/CSP）
-├── sql/init_db.sql           ← 历史 PG 建表脚本（仅参考，已被决策 2 取代）
+├── pyworker/  source-worker/  broker-gw/  ← Python 边车（行情采集 / 多源数据 / 东财文件单）
 └── doc/                      ← 需求与设计文档（中文）
 ```
 
@@ -136,7 +136,7 @@ backend/ent/
   - 后端地址运行时可配（设置面板），拼接集中在 `web/src/utils/endpoint.ts`，HTTP 只走 `web/src/api/http.ts`；
   - popout 多屏：`core:webview:allow-create-webview-window` capability + `popout.html` 宿主页 + `POPOUT_ALLOWED` 白名单（trade/settings/ops 禁弹）。
 - 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`：**红涨绿跌**、主题/密度与统一token保持；2026-10-15用户要求更强毛玻璃/半透明/霓虹，使用范围以第七节取代第五节旧限制；材质与完整/节能/减少动态模式已实现，完整视觉/硬件压力仍待验收。保留原监控画布/HUD/终端带与dockview一张票，真实性/对比度/性能共同验收；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
-- CI 四道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、graphics（viz 图形回归 golden 比对，windows，P2-12）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test）。
+- CI 五道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、graphics（viz 图形回归 golden 比对，windows，P2-12）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test 全服务，带隔离 PG+JetStream NATS 集成）、sidecars（pyworker/source-worker/broker-gw 的 pytest）。
 
 ## 7. 配置与端口
 

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"server/pkg/secret"
 )
 
 type Tier string
@@ -397,16 +400,25 @@ func (g *Gateway) post(ctx context.Context, cfg ModelConfig, msgs []Message) (Re
 	}, nil
 }
 
+// EncKeyFileEnv 指向 enc: 密文所用 AES-GCM 密钥文件（pkg/secret.LoadKey 的路径）。
+// 未设置时 enc: 值按配置缺失显式报错，绝不静默当明文发送。
+const EncKeyFileEnv = "NT_LLM_SECRET_KEY_FILE"
+
 // ResolveAPIKey 把配置里的 api_key 解析成真实密钥（M13-T06）。
 //
 //	""           → ""，调用方不加鉴权头（本地 vLLM 现状）。
 //	"env:NAME"   → 读环境变量 NAME；未设置或为空属配置缺失，显式报错（数据纪律：缺失≠空密钥）。
-//	"enc:..."    → 预留密文形态；本迭代未接解密器，明确报错，绝不静默当明文发送。
+//	"enc:..."    → base64(pkg/secret.Encrypt) 密文，用 EncKeyFileEnv 指向的密钥文件解密。
 //	其他         → 原样返回（明文密钥，保持现状）。
 //
 // 解析失败统一按 ErrUnavailable 上报：在配置修复前该档模型不可用，调用方照常退回规则分。
-// 错误文案只带环境变量名，绝不带密钥值（会进 llm_call_log）。
+// 错误文案只带环境变量名与密钥文件路径，绝不带密钥值或密文（会进 llm_call_log）。
 func ResolveAPIKey(raw string) (string, error) {
+	return ResolveAPIKeyWithFile(raw, os.Getenv(EncKeyFileEnv))
+}
+
+// ResolveAPIKeyWithFile 同 ResolveAPIKey，但密钥文件路径显式传入（调用方自管配置时使用）。
+func ResolveAPIKeyWithFile(raw, keyFile string) (string, error) {
 	switch {
 	case raw == "":
 		return "", nil
@@ -421,7 +433,22 @@ func ResolveAPIKey(raw string) (string, error) {
 		}
 		return v, nil
 	case strings.HasPrefix(raw, "enc:"):
-		return "", fmt.Errorf("%w: api_key 为 enc: 密文但解密器未配置（M13 预留）", ErrUnavailable)
+		if strings.TrimSpace(keyFile) == "" {
+			return "", fmt.Errorf("%w: api_key 为 enc: 密文但未配置密钥文件（设置 %s 或经 ResolveAPIKeyWithFile 传入）", ErrUnavailable, EncKeyFileEnv)
+		}
+		key, err := secret.LoadKey(keyFile)
+		if err != nil {
+			return "", fmt.Errorf("%w: api_key 密钥文件不可读", ErrUnavailable)
+		}
+		b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(strings.TrimPrefix(raw, "enc:")))
+		if err != nil || len(b) == 0 {
+			return "", fmt.Errorf("%w: api_key enc: 密文不是合法 base64", ErrUnavailable)
+		}
+		plain, err := secret.Decrypt(key, b)
+		if err != nil {
+			return "", fmt.Errorf("%w: api_key enc: 解密失败（密钥文件与密文不匹配）", ErrUnavailable)
+		}
+		return string(plain), nil
 	default:
 		return raw, nil
 	}

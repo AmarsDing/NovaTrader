@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// DailyReview 盘后复盘。对齐 sql/init_db.sql。
+// DailyReview 盘后复盘。
 type DailyReview struct {
 	ent.Schema
 }

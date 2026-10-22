@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// Position 持仓。对齐 sql/init_db.sql，并补上可卖数量，供 T+1 使用。
+// Position 持仓。初期方案表，并补上可卖数量，供 T+1 使用。
 type Position struct {
 	ent.Schema
 }

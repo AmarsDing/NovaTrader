@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// AgentDecision 模型调用与研判审计。对齐 sql/init_db.sql。模型不下单，这里只留痕。
+// AgentDecision 模型调用与研判审计。模型不下单，这里只留痕。
 // trace_id 之后的字段由 M05 追加；content 存事实包和结论，追问时取回。
 type AgentDecision struct {
 	ent.Schema

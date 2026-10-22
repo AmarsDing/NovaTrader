@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"server/ent"
+	"server/ent/taskrun"
 	"server/pkg/dbinit"
 	"server/pkg/migrate"
 	"server/pkg/params"
@@ -79,6 +80,11 @@ func TestHeartbeatParamsAndTasks(t *testing.T) {
 	}
 
 	store := scheduler.EntStore{Client: client}
+	// 探测任务名固定但测试直连开发库重复跑：跨轮先清旧执行记录，
+	// 否则上一轮的 success 行让本轮补跑被跳过（与 coverage 测试同一口径）。
+	if _, err := client.TaskRun.Delete().Where(taskrun.TaskNameEQ("m00-probe")).Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
 	ran := 0
 	s := scheduler.New(tradecal.Default, store, scheduler.Job{
 		Name: "m00-probe", Spec: "0 10 * * *", TradingDayOnly: true,
