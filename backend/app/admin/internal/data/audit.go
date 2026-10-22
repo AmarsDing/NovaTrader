@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"server/app/admin/internal/gateway"
 	"server/conf"
@@ -255,9 +256,15 @@ func (s *AuditStore) SaveParams(ctx context.Context, values map[string]string) e
 	return err
 }
 
+// clip 按字节截到 n，且顺着 UTF-8 边界落刀不切碎多字节字符。
+// audit_log 的 MaxLen 按字节校验；中文内容若在多字节中间落刀会得到非法串，写库必失败。
 func clip(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n]
+	s = s[:n]
+	for !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
 }

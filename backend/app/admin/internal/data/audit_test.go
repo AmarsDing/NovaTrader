@@ -2,12 +2,29 @@ package data
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"server/app/admin/internal/gateway"
 	"server/conf"
 )
+
+// TestClipUTF8Boundary：长中文串必须按字节裁且不切碎字符。
+// 30 个三字节汉字 = 90 字节，n=64 落刀在字中间，应退到 21 字（63 字节）。
+func TestClipUTF8Boundary(t *testing.T) {
+	got := clip(strings.Repeat("用", 30), 64)
+	if len(got) > 64 || !utf8.ValidString(got) {
+		t.Fatalf("clip = %d bytes valid=%v", len(got), utf8.ValidString(got))
+	}
+	if n := len([]rune(got)); n != 21 {
+		t.Fatalf("runes = %d, want 21", n)
+	}
+	if s := clip("ada", 64); s != "ada" {
+		t.Fatalf("short = %q", s)
+	}
+}
 
 func TestAuditRoundTrip(t *testing.T) {
 	store, cleanup, err := connectAudit(context.Background(), &conf.Postgres{
