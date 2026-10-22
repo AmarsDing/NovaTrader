@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"server/app/backtest/internal/biz"
 	"server/ent"
@@ -844,6 +846,36 @@ func toProposals(rows []*ent.ParamProposal) []*biz.Proposal {
 		out[i] = toProposal(row)
 	}
 	return out
+}
+
+// RecordApproval 把审批动作写进 audit_log（M07：策略批准在这里留痕，与 admin 网关审计同表同口径）。
+// 字段裁剪到列上限（字节级且顺着 UTF-8 边界落刀——ent MaxLen 按字节校验）；写库带短超时，不给审批链路拖尾。
+func (r *Repo) RecordApproval(ctx context.Context, a biz.ApprovalAudit) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	_, err := r.client.AuditLog.Create().
+		SetActor(clipBytes(a.Actor, 64)).
+		SetRole(clipBytes(a.Role, 16)).
+		SetAction(clipBytes(a.Action, 64)).
+		SetTarget(clipBytes(a.Target, 256)).
+		SetDetail(a.Detail).
+		SetOk(a.OK).
+		Save(ctx)
+	return err
+}
+
+// clipBytes 把字符串裁到 max 字节以内且不切碎多字节字符：
+// ent 的 MaxLen 按字节校验（见 schema/field MaxLen），而 PG varchar 按字符存，取两者最严。
+func clipBytes(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= max {
+		return s
+	}
+	s = s[:max]
+	for !utf8.ValidString(s) {
+		s = s[:len(s)-1]
+	}
+	return s
 }
 
 func toProposal(row *ent.ParamProposal) *biz.Proposal {

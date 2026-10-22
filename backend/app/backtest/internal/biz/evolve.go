@@ -319,8 +319,8 @@ func (uc *Usecase) Proposals(ctx context.Context, f ProposalFilter) ([]*Proposal
 	return uc.repo.ListProposals(ctx, f)
 }
 
-// Approve 把提案参数一次写入参数表并生成新版本。
-func (uc *Usecase) Approve(ctx context.Context, id int, user string) (*Proposal, error) {
+// Approve 把提案参数一次写入参数表并生成新版本。role 来自网关身份头，随审计落库。
+func (uc *Usecase) Approve(ctx context.Context, id int, user, role string) (*Proposal, error) {
 	p, err := uc.repo.GetProposal(ctx, id)
 	if err != nil {
 		return nil, err
@@ -339,19 +339,70 @@ func (uc *Usecase) Approve(ctx context.Context, id int, user string) (*Proposal,
 	for k, v := range p.Params {
 		values[spec.ParamKey(k)] = strconv.FormatFloat(v, 'f', -1, 64)
 	}
-	return uc.repo.ApproveProposal(ctx, id, values, userOr(user))
+	out, err := uc.repo.ApproveProposal(ctx, id, values, userOr(user))
+	detail := fmt.Sprintf("strategy=%s proposal=%d", p.Strategy, id)
+	if err == nil {
+		detail = fmt.Sprintf("strategy=%s proposal=%d version=%s", out.Strategy, out.ID, verStr(out.VersionID))
+	}
+	if aerr := uc.auditApproval(ctx, ApprovalAudit{Actor: userOr(user), Role: role, Action: AuditActionApprove, Target: proposalTarget(id), Detail: detail}, err); aerr != nil {
+		return nil, aerr
+	}
+	return out, err
 }
 
-func (uc *Usecase) Reject(ctx context.Context, id int, user, note string) (*Proposal, error) {
-	return uc.repo.RejectProposal(ctx, id, userOr(user), note)
+func (uc *Usecase) Reject(ctx context.Context, id int, user, role, note string) (*Proposal, error) {
+	out, err := uc.repo.RejectProposal(ctx, id, userOr(user), note)
+	if aerr := uc.auditApproval(ctx, ApprovalAudit{Actor: userOr(user), Role: role, Action: AuditActionReject, Target: proposalTarget(id), Detail: note}, err); aerr != nil {
+		return nil, aerr
+	}
+	return out, err
 }
 
 // Rollback 回到该策略最近一次批准前的参数版本。
-func (uc *Usecase) Rollback(ctx context.Context, strategy, user string) (*Proposal, error) {
+func (uc *Usecase) Rollback(ctx context.Context, strategy, user, role string) (*Proposal, error) {
 	if _, ok := rules.Find(strategy); !ok {
 		return nil, fmt.Errorf("%w: 策略 %s 未注册", ErrBadRequest, strategy)
 	}
-	return uc.repo.RollbackProposal(ctx, strategy, userOr(user))
+	out, err := uc.repo.RollbackProposal(ctx, strategy, userOr(user))
+	detail := fmt.Sprintf("strategy=%s", strategy)
+	if err == nil {
+		detail = fmt.Sprintf("strategy=%s proposal=%d version=%s->%s", strategy, out.ID, verStr(out.PrevVersionID), verStr(out.VersionID))
+	}
+	if aerr := uc.auditApproval(ctx, ApprovalAudit{Actor: userOr(user), Role: role, Action: AuditActionRollback, Target: strategy, Detail: detail}, err); aerr != nil {
+		return nil, aerr
+	}
+	return out, err
+}
+
+// proposalTarget 是审计行 target 的稳定格式，与 param_proposal 主键对应。
+func proposalTarget(id int) string { return fmt.Sprintf("param_proposal/%d", id) }
+
+// verStr 把可空版本号渲进审计 detail；未置位如实为 '-'，不用 0 冒充。
+func verStr(id *int) string {
+	if id == nil {
+		return "-"
+	}
+	return strconv.Itoa(*id)
+}
+
+// auditApproval 落审批审计行。opErr 非空表示决定未生效，审计记 OK=false 并附错误。
+// 决定已生效但审计写库失败时显式报错：宁让操作员看到失败去重查，也不留一条
+// 没有审计同行的成功审批（数据纪律：失败显式表达）；决定本身失败时审计仅尽力而为。
+func (uc *Usecase) auditApproval(ctx context.Context, a ApprovalAudit, opErr error) error {
+	a.OK = opErr == nil
+	if opErr != nil {
+		if a.Detail != "" {
+			a.Detail += "; "
+		}
+		a.Detail += "error: " + opErr.Error()
+	}
+	if err := uc.repo.RecordApproval(ctx, a); err != nil {
+		uc.log.Warnf("approval audit: %v", err)
+		if opErr == nil {
+			return fmt.Errorf("审批已生效但审计落库失败: %w", err)
+		}
+	}
+	return nil
 }
 
 func userOr(u string) string {

@@ -1401,9 +1401,11 @@ func (x *Explanation) GetReason() string {
 }
 
 type AskRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DecisionId    int64                  `protobuf:"varint,1,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
-	Question      string                 `protobuf:"bytes,2,opt,name=question,proto3" json:"question,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	DecisionId int64                  `protobuf:"varint,1,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	Question   string                 `protobuf:"bytes,2,opt,name=question,proto3" json:"question,omitempty"`
+	// 追问发起的驾驶舱面板（G5 后端窗口：供追问来源归因与面板级分析；空 = 未标注）。
+	Pane          string `protobuf:"bytes,3,opt,name=pane,proto3" json:"pane,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1448,6 +1450,13 @@ func (x *AskRequest) GetDecisionId() int64 {
 func (x *AskRequest) GetQuestion() string {
 	if x != nil {
 		return x.Question
+	}
+	return ""
+}
+
+func (x *AskRequest) GetPane() string {
+	if x != nil {
+		return x.Pane
 	}
 	return ""
 }
@@ -3282,12 +3291,13 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\vai_degraded\x18\x06 \x01(\bR\n" +
 	"aiDegraded\x12\x1c\n" +
 	"\tdiscarded\x18\a \x01(\bR\tdiscarded\x12\x16\n" +
-	"\x06reason\x18\b \x01(\tR\x06reason\"I\n" +
+	"\x06reason\x18\b \x01(\tR\x06reason\"]\n" +
 	"\n" +
 	"AskRequest\x12\x1f\n" +
 	"\vdecision_id\x18\x01 \x01(\x03R\n" +
 	"decisionId\x12\x1a\n" +
-	"\bquestion\x18\x02 \x01(\tR\bquestion\"\xb6\x01\n" +
+	"\bquestion\x18\x02 \x01(\tR\bquestion\x12\x12\n" +
+	"\x04pane\x18\x03 \x01(\tR\x04pane\"\xb6\x01\n" +
 	"\bAskReply\x12\x1f\n" +
 	"\vdecision_id\x18\x01 \x01(\x03R\n" +
 	"decisionId\x12\x16\n" +

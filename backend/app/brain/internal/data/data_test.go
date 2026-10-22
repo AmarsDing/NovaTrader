@@ -198,7 +198,7 @@ func TestBrainAgainstPostgres(t *testing.T) {
 		t.Fatalf("fact pack excerpt:\n%s", excerpt)
 	}
 
-	ans, err := uc.Ask(ctx, res.DecisionID, "技术面依据？")
+	ans, err := uc.Ask(ctx, res.DecisionID, "技术面依据？", "decision-desk")
 	if err != nil || ans.Degraded {
 		t.Fatalf("ask = %+v, %v", ans, err)
 	}

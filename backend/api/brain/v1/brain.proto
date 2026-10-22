@@ -226,6 +226,8 @@ message Explanation {
 message AskRequest {
   int64 decision_id = 1;
   string question = 2;
+  // 追问发起的驾驶舱面板（G5 后端窗口：供追问来源归因与面板级分析；空 = 未标注）。
+  string pane = 3;
 }
 
 message AskReply {

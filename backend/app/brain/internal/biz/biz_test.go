@@ -518,14 +518,17 @@ func TestExplainAndAsk(t *testing.T) {
 		t.Fatalf("explain = %+v, %v", ex, err)
 	}
 
-	ans, err := e.uc.Ask(context.Background(), res.DecisionID, "技术面依据是什么？")
+	ans, err := e.uc.Ask(context.Background(), res.DecisionID, "技术面依据是什么？", "decision-desk")
 	if err != nil || ans.Discarded || ans.Answer == "" || ans.DecisionID == res.DecisionID {
 		t.Fatalf("ask = %+v, %v", ans, err)
 	}
 	if rec := e.decisions.rows[ans.DecisionID]; rec.Kind != "ask" || rec.TraceID != res.TraceID {
 		t.Fatalf("ask decision = %+v", rec)
 	}
-	if _, err := e.uc.Ask(context.Background(), 999, "?"); !errors.Is(err, ErrNotFound) {
+	if got := e.decisions.rows[ans.DecisionID].Content["pane"]; got != "decision-desk" {
+		t.Fatalf("ask pane = %v, want decision-desk", got)
+	}
+	if _, err := e.uc.Ask(context.Background(), 999, "?", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing decision: %v", err)
 	}
 }

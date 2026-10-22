@@ -265,6 +265,25 @@ type Repo interface {
 	ApproveProposal(ctx context.Context, id int, values map[string]string, user string) (*Proposal, error)
 	RejectProposal(ctx context.Context, id int, user, note string) (*Proposal, error)
 	RollbackProposal(ctx context.Context, strategy, user string) (*Proposal, error)
+	RecordApproval(ctx context.Context, a ApprovalAudit) error
+}
+
+// 审批动作名，写 audit_log 供管理网关集中查阅（M07：策略批准记在这里，T7-02 收口配套）。
+const (
+	AuditActionApprove  = "backtest.proposal.approve"
+	AuditActionReject   = "backtest.proposal.reject"
+	AuditActionRollback = "backtest.proposal.rollback"
+)
+
+// ApprovalAudit 是一条审批审计行。OK=false 表示动作未生效（提案状态冲突等），
+// Detail 附原始错误——审批无论成败都留痕，失败不能当没发生过。
+type ApprovalAudit struct {
+	Actor  string
+	Role   string
+	Action string
+	Target string
+	Detail string
+	OK     bool
 }
 
 // ProgressPayload 是 backtest.progress 的内容。

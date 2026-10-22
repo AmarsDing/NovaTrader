@@ -77,6 +77,15 @@ func operator(ctx context.Context) string {
 	return tr.RequestHeader().Get("X-User")
 }
 
+// role 取网关注入的调用方角色，随审批审计落库（M07 审批 audit_log）。
+func role(ctx context.Context) string {
+	tr, ok := transport.FromServerContext(ctx)
+	if !ok {
+		return ""
+	}
+	return tr.RequestHeader().Get("X-User-Role")
+}
+
 // errOwnerOnly 表示调用方不是 owner（T7-02：M11 到位后审批三件套收口）。
 // admin 网关转发时重写 X-User-Role；未经过网关注入角色或角色非 owner 的
 // 调用一律 PermissionDenied，堵住「能连本服务端口即可批准参数变更」的默认开放面。
@@ -372,7 +381,7 @@ func (s *BacktestService) ApproveProposal(ctx context.Context, req *v1.DecidePro
 	if err := requireOwner(ctx); err != nil {
 		return nil, mapErr(err)
 	}
-	p, err := s.uc.Approve(ctx, int(req.GetId()), operator(ctx))
+	p, err := s.uc.Approve(ctx, int(req.GetId()), operator(ctx), role(ctx))
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -383,7 +392,7 @@ func (s *BacktestService) RejectProposal(ctx context.Context, req *v1.DecideProp
 	if err := requireOwner(ctx); err != nil {
 		return nil, mapErr(err)
 	}
-	p, err := s.uc.Reject(ctx, int(req.GetId()), operator(ctx), req.GetNote())
+	p, err := s.uc.Reject(ctx, int(req.GetId()), operator(ctx), role(ctx), req.GetNote())
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -394,7 +403,7 @@ func (s *BacktestService) RollbackStrategy(ctx context.Context, req *v1.Rollback
 	if err := requireOwner(ctx); err != nil {
 		return nil, mapErr(err)
 	}
-	p, err := s.uc.Rollback(ctx, req.GetName(), operator(ctx))
+	p, err := s.uc.Rollback(ctx, req.GetName(), operator(ctx), role(ctx))
 	if err != nil {
 		return nil, mapErr(err)
 	}

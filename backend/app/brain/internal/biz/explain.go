@@ -18,6 +18,8 @@ var ErrNotFound = errors.New("not found")
 const (
 	maxEventRunes    = 300
 	maxQuestionRunes = 500
+	// maxPaneRunes 是追问来源面板标识的上限（G5：面板注册名，短标签级）。
+	maxPaneRunes = 64
 )
 
 // Explain 解读持仓或候选的异动（FR-05-07）。持仓走最高优先级。
@@ -89,12 +91,17 @@ func (uc *Usecase) Explain(ctx context.Context, in ExplainInput) (result *Explan
 }
 
 // Ask 针对某次研判追问（FR-05-11）。回答里的数字要能在原事实包或此前结论里找到。
-func (uc *Usecase) Ask(ctx context.Context, decisionID int, question string) (result *AskReply, retErr error) {
+// pane 标记追问发起的驾驶舱面板（G5 后端窗口），随记录落库供来源归因；空 = 未标注。
+func (uc *Usecase) Ask(ctx context.Context, decisionID int, question, pane string) (result *AskReply, retErr error) {
 	finish := observe.ForService("brain").Op("ask").Begin()
 	defer func() {
 		finishObservation(finish, retErr, result != nil, result != nil && result.Degraded, result != nil && result.Discarded)
 	}()
 	question = strings.TrimSpace(question)
+	pane = strings.TrimSpace(pane)
+	if utf8.RuneCountInString(pane) > maxPaneRunes {
+		pane = string([]rune(pane)[:maxPaneRunes])
+	}
 	if question == "" || utf8.RuneCountInString(question) > maxQuestionRunes {
 		return nil, badRequest("question 不能为空，且不超过 %d 字", maxQuestionRunes)
 	}
@@ -137,7 +144,7 @@ func (uc *Usecase) Ask(ctx context.Context, decisionID int, question string) (re
 	defer pcancel()
 	if err := uc.decisions.Finish(pctx, id, DecisionRecord{
 		Kind: "ask", Symbol: parent.Symbol, TraceID: parent.TraceID,
-		Content:       toMap(map[string]any{"parent_id": decisionID, "question": question, "result": res}),
+		Content:       toMap(map[string]any{"parent_id": decisionID, "question": question, "pane": pane, "result": res}),
 		PromptVersion: askPrompt.Tag(), Model: resp.Model,
 		Degraded: res.Degraded, Discarded: res.Discarded, LatencyMS: int(uc.now().Sub(start).Milliseconds()),
 	}); err != nil {

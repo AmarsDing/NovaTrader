@@ -199,7 +199,7 @@ func (s *BrainService) Explain(ctx context.Context, req *v1.ExplainRequest) (*v1
 }
 
 func (s *BrainService) Ask(ctx context.Context, req *v1.AskRequest) (*v1.AskReply, error) {
-	res, err := s.uc.Ask(ctx, int(req.GetDecisionId()), req.GetQuestion())
+	res, err := s.uc.Ask(ctx, int(req.GetDecisionId()), req.GetQuestion(), req.GetPane())
 	if err != nil {
 		return nil, mapErr(err)
 	}
