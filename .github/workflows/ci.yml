@@ -112,8 +112,10 @@ jobs:
       run:
         working-directory: backend
     env:
-      # 隔离 PG 走服务容器默认口；显式设置让连不上时 FAIL 而不是 SKIP 冒充验收。
-      NT_TEST_PG_PORT: "5432"
+      # 隔离 PG 服务容器同时出 5432/15432 两个宿主口：老套件硬编码 127.0.0.1:5432 直连；
+      # NT_TEST_PG_PORT 哨兵套件（pkg/params、pkg/appcfg、risk/datahub 集成）合同=「非默认口才跑，
+      # 5432 一律 FAIL 不 SKIP」故指向 15432。显式设置让连不上时 FAIL 而不是 SKIP 冒充验收。
+      NT_TEST_PG_PORT: "15432"
       # 隔离 NATS 独立测试口（守卫禁止生产 4222，见 pkg/events/bus_test.go）。
       NT_TEST_NATS_URL: "nats://127.0.0.1:14222"
     services:
@@ -124,6 +126,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
         ports:
           - 5432:5432
+          - 15432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
