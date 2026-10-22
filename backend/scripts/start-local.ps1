@@ -34,8 +34,27 @@ function Quote-Argument([string]$Value) {
 function Get-Identity([int]$ProcessId) {
     $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if ($null -eq $process) { return $null }
-    $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
-    if ($null -eq $cim -or [string]::IsNullOrWhiteSpace($cim.ExecutablePath)) { throw "Cannot verify process identity: $ProcessId" }
+    # Freshly spawned PIDs can take a moment to appear in CIM; retry briefly before giving up.
+    $cim = $null
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+        if ($null -ne $cim -and -not [string]::IsNullOrWhiteSpace($cim.ExecutablePath)) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if ($null -eq $cim -or [string]::IsNullOrWhiteSpace($cim.ExecutablePath)) {
+        # WMI also blanks ExecutablePath for some long-lived processes (observed on a minutes-old
+        # market.exe while wmic read it fine). Get-Process.Path uses a different query route.
+        # command_line stays empty there: still enough for specs with no markers.
+        $fallbackPath = ''
+        try { $fallbackPath = [string]$process.Path } catch { $fallbackPath = '' }
+        if ([string]::IsNullOrWhiteSpace($fallbackPath)) { throw "Cannot verify process identity: $ProcessId" }
+        return [pscustomobject]@{
+            pid = $ProcessId
+            executable = $fallbackPath
+            started_utc_ticks = $process.StartTime.ToUniversalTime().Ticks.ToString()
+            command_line = ''
+        }
+    }
     return [pscustomobject]@{
         pid = $ProcessId
         executable = [string]$cim.ExecutablePath
@@ -48,11 +67,34 @@ function Matches-Record($Identity, $Record) {
         $Identity.started_utc_ticks -eq [string]$Record.started_utc_ticks
 }
 function Matches-Spec($Identity, $Spec) {
-    if ($null -eq $Identity -or -not (Same-Path $Identity.executable $Spec.executable)) { return $false }
+    if ($null -eq $Identity) { return $false }
+    $exeOk = (Same-Path $Identity.executable $Spec.executable)
+    if (-not $exeOk -and $Spec.executable -match '(?i)python(?:w)?\.exe$') {
+        # Python 3.14 install-manager venvs ship a redirector as Scripts\python.exe: the script
+        # actually runs in a re-exec'd base-interpreter child (ExecutablePath=base, argv0=venv path).
+        # Accept such kin via "command line contains spec executable + every marker"; foreigners still fail.
+        $exeOk = $Identity.command_line.IndexOf($Spec.executable, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    }
+    if (-not $exeOk) { return $false }
     foreach ($marker in $Spec.markers) {
         if ($Identity.command_line.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -lt 0) { return $false }
     }
     return $true
+}
+function Test-SelfOrDescendant([int]$OwnerPid, [int]$AncestorPid) {
+    # A listening socket may legitimately belong to a descendant of the tracked process
+    # (venv redirector / supervisor re-exec). Walk parents with a cycle guard.
+    if ($OwnerPid -eq $AncestorPid) { return $true }
+    $current = $OwnerPid
+    for ($depth = 0; $depth -lt 32; $depth++) {
+        $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $current" -ErrorAction SilentlyContinue
+        if ($null -eq $cim) { return $false }
+        $parent = [int]$cim.ParentProcessId
+        if ($parent -eq $AncestorPid) { return $true }
+        if ($parent -le 4 -or $parent -eq $current) { return $false }
+        $current = $parent
+    }
+    return $false
 }
 function Get-PortOwners([int[]]$Ports) {
     if ($Ports.Count -eq 0) { return @() }
@@ -73,8 +115,10 @@ function Save-Manifest {
     $manifest = [ordered]@{ schema_version = 1; project_root = $projectRoot; updated_at = [DateTime]::UtcNow.ToString('o'); processes = @($script:records) }
     $temporaryPath = Join-Path $runtimeRoot '.env.local-processes.pending.json'
     [IO.File]::WriteAllText($temporaryPath, ($manifest | ConvertTo-Json -Depth 8), $utf8)
-    if (Test-Path -LiteralPath $manifestPath) { [IO.File]::Replace($temporaryPath, $manifestPath, $null) }
-    else { [IO.File]::Move($temporaryPath, $manifestPath) }
+    # PS 5.1 binds literal $null to "" for the string param; File.Replace(,, "") throws
+    # 'The path is not of a legal form.'. Delete+Move behaves identically here and works on 5.1.
+    if (Test-Path -LiteralPath $manifestPath) { [IO.File]::Delete($manifestPath) }
+    [IO.File]::Move($temporaryPath, $manifestPath)
 }
 function Record-Process($Spec, $Identity, [bool]$Owned) {
     $script:records = @($script:records | Where-Object { $_.name -ne $Spec.name })
@@ -90,7 +134,7 @@ function Wait-ProcessPorts($Spec, $Identity) {
     do {
         if (-not (Matches-Record (Get-Identity $Identity.pid) $Identity)) { throw "$($Spec.name) exited during startup. See $($Spec.log_directory)" }
         $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.LocalPort -in $Spec.ports })
-        $wrong = @($listeners | Where-Object { $_.OwningProcess -ne $Identity.pid })
+        $wrong = @($listeners | Where-Object { -not (Test-SelfOrDescendant -OwnerPid $_.OwningProcess -AncestorPid $Identity.pid) })
         if ($wrong.Count -gt 0) { throw "$($Spec.name) has a competing port owner; no other process was stopped." }
         $listeningPorts = @($listeners | Select-Object -ExpandProperty LocalPort -Unique)
         if (@($Spec.ports | Where-Object { $_ -notin $listeningPorts }).Count -eq 0) { return }
@@ -211,8 +255,18 @@ try {
         $process = Start-Process @launch
         $identity = Get-Identity $process.Id
         if (-not (Matches-Spec $identity $spec)) { throw "Started process identity did not match $($spec.name); inspect PID $($process.Id)." }
-        Record-Process $spec $identity $true
         Wait-ProcessPorts $spec $identity
+        # Record the process that actually owns the port: a venv redirector puts the listener
+        # on a child, and recording the shim would leave stop-local unable to free the port.
+        foreach ($ownerPid in @(Get-PortOwners $spec.ports)) {
+            if ($ownerPid -ne $identity.pid -and (Test-SelfOrDescendant -OwnerPid $ownerPid -AncestorPid $identity.pid)) {
+                $ownerIdentity = Get-Identity $ownerPid
+                if ($null -ne $ownerIdentity -and (Matches-Spec $ownerIdentity $spec)) {
+                    $identity = $ownerIdentity
+                }
+            }
+        }
+        Record-Process $spec $identity $true
         Write-Output "started $($spec.name) PID=$($identity.pid)"
     }
     Write-Output "Application processes are listening; business readiness requires acceptance checks. Manifest: $manifestPath"
