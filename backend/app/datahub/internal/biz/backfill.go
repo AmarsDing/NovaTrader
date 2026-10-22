@@ -33,6 +33,13 @@ func (c *Collector) SubmitBackfill(ctx context.Context, job BackfillJob) (Backfi
 	if job.End.Before(job.Start) {
 		return BackfillJob{}, fmt.Errorf("datahub: 结束日期早于开始日期")
 	}
+	if job.Domain == DomainUnlock {
+		// CollectUnlock 窗口写死 [start, start+90d)：End 超出意味着尾部区间永远不会被拉取，
+		// 但 Total 却按 [Start,End] 计——必须钳到采集口径，否则任务以假上(success, Done=Total)掩盖欠采。
+		if maxEnd := job.Start.AddDate(0, 0, 89); job.End.After(maxEnd) {
+			job.End = maxEnd
+		}
+	}
 	if job.End.Sub(job.Start) > 366*24*time.Hour {
 		return BackfillJob{}, fmt.Errorf("datahub: 一次补数不超过一年")
 	}
@@ -143,7 +150,11 @@ func (c *Collector) RunBackfill(ctx context.Context, job BackfillJob) BackfillJo
 		job.Status = JobFailed
 		msg := strings.Join(errs, "\n")
 		if len(msg) > 4000 {
+			// 按字节截必须回退到 rune 边界：劈断 UTF-8 会让 PG 拒写终态 Update，任务卡 running 假死。
 			msg = msg[:4000]
+			for len(msg) > 0 && msg[len(msg)-1]&0xC0 == 0x80 {
+				msg = msg[:len(msg)-1]
+			}
 		}
 		job.Error = msg
 	}

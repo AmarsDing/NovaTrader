@@ -203,6 +203,55 @@ func TestSunkBlockTradeRetriesUntilConfirmed(t *testing.T) {
 	}
 }
 
+// 风暴护盾（链路级）：retry 真源仍零行跑成 success 终态后，原 sunk 任务在 7 天回望窗内
+// 不得触发重登记（旧实现 terminal 护盾消失 → 热环重登记）。跨进程裁决集兜住。
+func TestSunkBlockTradeTerminalRetryNeverReRegisters(t *testing.T) {
+	client := sunkPG(t, "novatrader_sunk_bt_storm_test")
+	repo := NewRepo(client)
+	ctx := context.Background()
+	wipeSunkTables(t, client)
+	day := time.Date(2026, 10, 20, 0, 0, 0, 0, tradecal.Shanghai())
+
+	ts := &flipBlock{name: biz.SourceTushare}
+	cfg := biz.Config{
+		AllowUnofficial: true,
+		Sources:         map[string]biz.SourceConfig{biz.SourceTushare: {Enabled: true, Official: true, Timeout: 30 * time.Second}},
+		Domains:         map[string]biz.DomainConfig{biz.DomainBlockTrade: {Enabled: true, Sources: []string{biz.SourceTushare}}},
+	}
+	p, _ := biz.NewPipeline(cfg, []biz.Source{ts}, nil)
+
+	// 第一进程：原链走完整——sunk 登记 → 跑空 → Confirm 登记 retry。
+	col1 := biz.NewCollector(p, repo, nil, nil, nil, nil, biz.Options{}, log.DefaultLogger)
+	run, _ := col1.CollectBlockTrades(ctx, day, "")
+	col1.SunkEmptyBackfill(ctx, biz.DomainBlockTrade, day, run)
+	pending, _ := repo.PendingBackfills(ctx)
+	done := col1.RunBackfill(ctx, pending[0])
+	if done.Status != biz.JobSuccess || done.Rows != 0 {
+		t.Fatalf("sunk backfill %+v", done)
+	}
+	col1.ConfirmSunkBackfills(ctx)
+	pending1, _ := repo.PendingBackfills(ctx)
+	if len(pending1) != 1 || pending1[0].RequestedBy != "retry:block_trade:"+day.Format("20060102") {
+		t.Fatalf("应登记 retry: %v", pending1)
+	}
+
+	// retry 跑空（真源仍零行）→ success 终态。
+	doneRetry := col1.RunBackfill(ctx, pending1[0])
+	if doneRetry.Status != biz.JobSuccess || doneRetry.Rows != 0 {
+		t.Fatalf("retry backfill %+v", doneRetry)
+	}
+
+	// 新进程（fresh Collector，sunkDone 空）：原 sunk 任务在 7d 回望窗内，
+	// 终态 retry 必须兜住——不再登记。
+	col2 := biz.NewCollector(p, repo, nil, nil, nil, nil, biz.Options{}, log.DefaultLogger)
+	col2.ConfirmSunkBackfills(ctx)
+	col2.ConfirmSunkBackfills(ctx)
+	pending2, _ := repo.PendingBackfills(ctx)
+	if len(pending2) != 0 {
+		t.Fatalf("终态 retry 护盾：不应再登记 %+v", pending2)
+	}
+}
+
 func sunkPG(t *testing.T, db string) *ent.Client {
 	t.Helper()
 	raw := os.Getenv("NT_TEST_PG_PORT")

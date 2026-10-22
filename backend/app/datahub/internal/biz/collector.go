@@ -76,6 +76,28 @@ type Collector struct {
 	seq       atomic.Int64
 	staleOnce sync.Map
 	selfheal  selfhealState // D2 对账自修复窗口（内存近似，见 reconcile_selfheal.go）
+	sunkDone  sunkDoneState // D10 确认回执的进程级已裁决集（见 backfill_sunk.go）
+}
+
+// sunkDoneState 记录已经裁决过的 sunk 任务 ID（确认/登记重查/终止周期均终态）。
+// 进程生命周期内一份即可：裁决依据是任务终态+窗口行数，不会因复查翻案；
+// 进程重启后重判一次，代价是有界的一轮复查，可接受。
+type sunkDoneState struct {
+	mu sync.Mutex
+	m  map[int]bool
+}
+
+func (s *sunkDoneState) mark(id int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.m == nil {
+		s.m = map[int]bool{}
+	}
+	if s.m[id] {
+		return false
+	}
+	s.m[id] = true
+	return true
 }
 
 func NewCollector(p *Pipeline, repo Repo, snap SnapshotStore, bus Publisher, cal *tradecal.Calendar,

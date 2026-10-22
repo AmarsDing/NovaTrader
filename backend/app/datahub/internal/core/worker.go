@@ -42,6 +42,8 @@ type Worker struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	bfMu   sync.Mutex
+	bfMu2  sync.Mutex // 确认回执节流独立锁：不与回补消费抢 bfMu
+	lastConfirm time.Time
 }
 
 func NewWorker(col *biz.Collector, store scheduler.Store, beat *registry.Beater, bus *events.Bus, cfg *conf.Datahub, logger log.Logger) (*Worker, error) {
@@ -112,8 +114,9 @@ func (w *Worker) marginPrev(ctx context.Context) error {
 	return err
 }
 
-// unlockDaily/blockTradeDaily 每日空运行 → D10 sunk 立即登记待补（不再等下一交易日）；
-// 有 pending 任务覆盖当日即跳过采集（手动/自动同规，避免重复开工——真正去重仍由 sunk 钩做）。
+// unlockDaily/blockTradeDaily 每日调度入口空运行 → D10 sunk 立即登记待补（不再等下一交易日）；
+// 有 pending 任务覆盖当日即跳过采集（仅本调度入口接守卫与钩子；手动 RPC 链 service.Collect→RunDomain
+// 本批未接——补入口时守同一规约）。
 func (w *Worker) unlockDaily(ctx context.Context) error {
 	ctx = biz.OpenRunTrace(ctx)
 	if !w.col.Pipeline().DomainEnabled(biz.DomainUnlock) {
@@ -437,8 +440,21 @@ func (w *Worker) backfillLoop(ctx context.Context) {
 				w.bfMu.Unlock()
 				w.log.Infof("backfill %d %s %s rows=%d", done.ID, done.Domain, done.Status, done.Rows)
 			}
-			// D10 确认回执：已完成 sunk 任务按窗口行数复核真回补/登记重查（60s 节奏，内部短路）。
-			w.col.ConfirmSunkBackfills(ctx)
+			// D10 确认回执：已完成 sunk 任务按窗口行数复核真回补/登记重查。
+			// tick 2s 为回补消费节奏；确认链重库读（2 域 ListBackfills + 逐任务 DomainRows），
+			// 走 60s 节流——每条任务进程内只裁决一次，跑快了只是空转库。
+			w.maybeConfirmSunk(ctx)
 		}
 	}
+}
+
+func (w *Worker) maybeConfirmSunk(ctx context.Context) {
+	w.bfMu2.Lock()
+	if time.Since(w.lastConfirm) < 60*time.Second {
+		w.bfMu2.Unlock()
+		return
+	}
+	w.lastConfirm = time.Now()
+	w.bfMu2.Unlock()
+	w.col.ConfirmSunkBackfills(ctx)
 }

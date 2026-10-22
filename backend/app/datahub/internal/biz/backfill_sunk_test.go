@@ -9,7 +9,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// D10 零行数据页终态提醒：sunk 登记 / 同日去重与失败停环 / 窗口形状 / 确认回执与重查。
+// D10 零行数据页终态提醒：sunk 登记 / 同日去重与失败停环 / 窗口形状 / 滤域 / 确认回执与重查护盾。
 
 type fakeUnlockSrc struct{ name string }
 
@@ -30,12 +30,12 @@ func (f *fakeBlockSrc) BlockTrades(context.Context, time.Time) ([]BlockTrade, er
 
 type sunkRepo struct {
 	Repo
-	issues   []Issue
-	created  []BackfillJob
-	pending  []BackfillJob
+	issues    []Issue
+	created   []BackfillJob
+	pending   []BackfillJob
 	succeeded []BackfillJob
-	rows     int
-	rowsErr  error
+	rows      int
+	rowsErr   error
 }
 
 func (r *sunkRepo) SaveIssues(_ context.Context, issues []Issue) error {
@@ -117,8 +117,8 @@ func TestSunkEmptyRegistersWindowJobAndDeduplicates(t *testing.T) {
 	if !job.Start.Equal(day) || !job.End.Equal(day.AddDate(0, 0, 89)) {
 		t.Fatalf("窗口 %v..%v（应为整窗 %v..%v）", job.Start, job.End, day, day.AddDate(0, 0, 89))
 	}
-	if job.Total < 60 {
-		t.Fatalf("total %d（预期 90 天窗口交易日数）", job.Total)
+	if job.Total != 90 {
+		t.Fatalf("total %d（unlock Total=窗口日历天数，应为 90）", job.Total)
 	}
 	var warned bool
 	for _, is := range repo.issues {
@@ -174,6 +174,38 @@ func TestSunkEmptyBlockTradeDailyJobAndFailedStop(t *testing.T) {
 	c2 := testSunkCollector(t, repo2)
 	if c2.SunkEmptyBackfill(context.Background(), DomainBlockTrade, day2, CollectSummary{Domain: DomainBlockTrade, Rows: 0}) {
 		t.Fatal("同日已失败不应再登记")
+	}
+}
+
+// 滤域门类：BackfillDomains 外域与未启用域一律不登记。
+func TestSunkEmptyFiltersNonBackfillAndDisabledDomains(t *testing.T) {
+	repo := &sunkRepo{}
+	c := testSunkCollector(t, repo)
+	day := time.Date(2026, 10, 20, 0, 0, 0, 0, shanghai())
+	run := CollectSummary{Domain: DomainSnapshot, Rows: 0}
+
+	if c.SunkEmptyBackfill(context.Background(), DomainSnapshot, day, run) {
+		t.Fatal("BackfillDomains 外域（snapshot）不应登记 sunk")
+	}
+	if len(repo.created) != 0 {
+		t.Fatalf("滤域不应创建任务：%+v", repo.created)
+	}
+
+	// 域在白名单但 DomainEnabled=false（snapshot 未在测试配置里启用即此形态）。
+	cfg := Config{
+		AllowUnofficial: true,
+		Sources:         map[string]SourceConfig{SourceEastmoney: {Enabled: true, Official: true, Timeout: time.Second}},
+		Domains:         map[string]DomainConfig{}, // unlock 未启用
+	}
+	p, _ := NewPipeline(cfg, []Source{&fakeUnlockSrc{name: SourceEastmoney}}, nil)
+	c2 := NewCollector(p, &sunkRepo{}, nil, nil, nil, nil, Options{}, log.DefaultLogger)
+	repo2 := &sunkRepo{}
+	c2 = NewCollector(p, repo2, nil, nil, nil, nil, Options{}, log.DefaultLogger)
+	if c2.SunkEmptyBackfill(context.Background(), DomainUnlock, day, CollectSummary{Domain: DomainUnlock, Rows: 0}) {
+		t.Fatal("未启用域不应登记 sunk")
+	}
+	if len(repo2.created) != 0 {
+		t.Fatalf("未启用域不应创建任务：%+v", repo2.created)
 	}
 }
 
@@ -233,5 +265,47 @@ func TestConfirmSunkBackfillsRetryTerminatesAndRearms(t *testing.T) {
 	cErr.ConfirmSunkBackfills(context.Background())
 	if len(repoErr.created) != 1 {
 		t.Fatalf("读口未知必填域应登记重查：%+v", repoErr.created)
+	}
+}
+
+// 风暴护盾：retry 跑成终态（真空页以 0 行 success 是常态）后，7 天回望窗里的原 sunk 任务
+// 不得触发重登记。旧实现只查 pending/running active 表——终态即护盾消失，2s 热环重登记。
+func TestConfirmSunkBackfillsTerminalRetryNeverReRegisters(t *testing.T) {
+	now := time.Date(2026, 10, 22, 9, 0, 0, 0, shanghai())
+	day := time.Date(2026, 10, 20, 0, 0, 0, 0, shanghai())
+	sunkDone := BackfillJob{ID: 7, Domain: DomainBlockTrade, Status: JobSuccess,
+		RequestedBy: "sunk:block_trade", CreatedAt: now.AddDate(0, 0, -2), Start: day, End: day}
+	// retry 已成功收官（真空页 0 行亦记 success）。
+	terminalRetry := BackfillJob{ID: 8, Domain: DomainBlockTrade, Status: JobSuccess,
+		RequestedBy: "retry:block_trade:20261020", CreatedAt: now.AddDate(0, 0, -1), Start: day, End: day}
+
+	repo := &sunkRepo{succeeded: []BackfillJob{sunkDone, terminalRetry}, rows: 0}
+	c := testSunkCollector(t, repo)
+	c.now = func() time.Time { return now }
+	// 新一轮裁决：sunkDone 未裁决过（fresh collector），但 retry 已存在 → markerExists 护盾生效，不登记。
+	c.ConfirmSunkBackfills(context.Background())
+	if len(repo.created) != 0 {
+		t.Fatalf("终态 retry 护盾：不应再登记 %+v", repo.created)
+	}
+
+	// 进程内重复裁决同一任务也只走一次（sunkDone 标记）：
+	repo2 := &sunkRepo{succeeded: []BackfillJob{sunkDone}, rows: 0}
+	c2 := testSunkCollector(t, repo2)
+	c2.now = func() time.Time { return now }
+	c2.ConfirmSunkBackfills(context.Background())
+	c2.ConfirmSunkBackfills(context.Background()) // 第二遍：sunkDone 已裁决，markerExists 也挡住了
+	if len(repo2.created) != 1 {
+		t.Fatalf("进程内重复裁决应只登记一次：%+v", repo2.created)
+	}
+	// unlock 域：sunkDone 同样防复判。
+	sunkUn := BackfillJob{ID: 11, Domain: DomainUnlock, Status: JobSuccess,
+		RequestedBy: "sunk:unlock", CreatedAt: now.AddDate(0, 0, -1), Start: day, End: day.AddDate(0, 0, 89)}
+	repo3 := &sunkRepo{succeeded: []BackfillJob{sunkUn}, rows: 0}
+	c3 := testSunkCollector(t, repo3)
+	c3.now = func() time.Time { return now }
+	c3.ConfirmSunkBackfills(context.Background())
+	c3.ConfirmSunkBackfills(context.Background())
+	if len(repo3.created) != 0 {
+		t.Fatalf("unlock 复判不应登记：%+v", repo3.created)
 	}
 }
