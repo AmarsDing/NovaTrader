@@ -349,6 +349,27 @@
   inset: 0;
 }
 
+/* 画布尺寸回路订稳（P2-12 图形回归揪出，探针实证）：canvas 默认 inline，下方留一行 strut 空隙，
+ * host 若塌成 intrinsic 高度（容器没钉高时），measure 把 clientHeight 写回 canvas style 高，
+ * strut 又把 host 撑高几像素 → ResizeObserver 无限自激（实测每帧 +4px 无界增长）、位图每帧被清。
+ * display:block 消掉 strut，定高容器用 100% 传高度；权重保持 (0,1,0)，
+ * 与上方 (0,2,0) 的 absolute+inset:0 是同文件内的显式覆盖关系，不依赖样式注入顺序。 */
+.nt-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.nt-stage > canvas {
+  display: block;
+}
+
+/* getContext('2d') 失败兜底：canvas display:none 后 host 在未定高容器会塌成 0 高，
+ * absolute overlay 落在 0 高盒上被裁/乱溢——失败态给 host 一个最小锚高 */
+.nt-stage.is-failed {
+  min-height: 120px;
+}
+
 .nt-stage__failed {
   position: absolute;
   inset: 0;

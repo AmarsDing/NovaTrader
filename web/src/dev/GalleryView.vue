@@ -3,8 +3,13 @@
  * /dev/gallery —— 组件矩阵走查页（仅 DEV 构建）。
  * Nt* 全组件 × 主题（暗/亮）× 密度（标准/紧凑），静态示例数据，零后端依赖。
  * 每阶段收尾跑一遍，保证令牌与组件改动可视。
+ *
+ * P2-12 用例定格态：?case=<id>（登记表 graphics-cases.ts）只渲染该用例 section，
+ * 关掉全部动态源（S6 脉冲定时器、画布脉冲与环境流向点、Modal 自动打开），
+ * 供 web/graphics/gallery.spec.ts 固定视口截图做主题×密度 golden 比对。
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtIcon from '@/ui/NtIcon.vue'
@@ -33,6 +38,7 @@ import NtFunnel, { type FunnelStage } from '@/display/NtFunnel.vue'
 import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
+import SymbolName, { type SymbolNameMode } from '@/display/SymbolName.vue'
 import CanvasStage from '@/monitor/CanvasStage.vue'
 import DetailSheet from '@/monitor/DetailSheet.vue'
 import { demoActivityCells } from '@/monitor/activity'
@@ -46,16 +52,36 @@ import { TapeSession } from '@/monitor/tape'
 import TerminalStrip from '@/monitor/TerminalStrip.vue'
 import { bandCountdown, bandSegments, bandSpec, hudCells } from '@/monitor/timeband'
 import '@/monitor/monitor.css'
+import { graphicsCaseOf } from './graphics-cases'
 import type { Bar } from '@/api/market'
 import type { EquityPoint } from '@/api/backtest'
 import type { HealthPart, HealthScore } from '@/monitor/health'
 import type { EdgeFlow } from '@/monitor/flow'
 import type { MonitorInput, Pulse, SceneGraph } from '@/monitor/types'
 import { useSettingsStore, type DensityName, type ThemeName } from '@/stores/settings'
+import { useSecurityStore } from '@/stores/security'
 import { pnlClass, pnlSign } from '@/utils/format'
 
 const settings = useSettingsStore()
 const toast = useToast()
+
+/* ---------- P2-12 用例定格态 ---------- */
+const route = useRoute()
+const graphicsCase = graphicsCaseOf(route.query.case)
+const caseId = graphicsCase ? graphicsCase.id : ''
+/** 无参 = 全走查页；带登记用例则只显示该 section（组用例见每处 ids 列表）。 */
+function show(...ids: string[]): boolean {
+  return !caseId || ids.includes(caseId)
+}
+/** S3/S6 两块画布定格：剥脉冲（否则亮度随采样时刻漂）、停环境流向点。 */
+const caseCalm = caseId !== ''
+if (graphicsCase) {
+  /* P2-12 定格态钉死等宽字形：产品令牌前两顺位（JetBrains Mono/IBM Plex Mono）是没钉死的机器依赖——
+   * 装了这两款字体的机器跑 test:graphics:update 会污染全部 golden（mono 含 canvas fillText 在内约百处）。
+   * :root 级覆盖（不放进 .g-casemode CSS）：同时要罩住 teleport 出树的 modal 与画布的运行时取字。
+   * 取舍：golden 永远落 Cascadia Code（Windows Terminal 自带，本机与 CI 同有），不再检验产品的 JetBrains 优先回退。 */
+  document.documentElement.style.setProperty('--nt-font-mono', "'Cascadia Code', Consolas, monospace")
+}
 
 const iconNames = Object.keys(ICONS) as IconName[]
 
@@ -184,9 +210,15 @@ const tiers: LadderTier[] = [
 ]
 
 /* ---------- 令牌色板 ---------- */
-const tokenGroups: Array<{ title: string; tokens: string[] }> = [
+const tokenGroups: Array<{ title: string; tokens: string[]; note?: string }> = [
   { title: '背景阶梯', tokens: ['--nt-bg-0', '--nt-bg-1', '--nt-bg-2', '--nt-bg-3', '--nt-bg-glass'] },
-  { title: '文本阶梯', tokens: ['--nt-text-1', '--nt-text-2', '--nt-text-3'] },
+  /* gallery-batch：文本阶梯补 hero 档一行（token --nt-text-0 / 用途 hero 焦点大数字 / 预算 单面板 ≤1 组，§5.1）。
+   * 'tokens' 是已定帧 golden 用例（P2-12），新增档只进全走查页，定格用例保持原三档，不改 golden。 */
+  {
+    title: '文本阶梯',
+    tokens: caseId ? ['--nt-text-1', '--nt-text-2', '--nt-text-3'] : ['--nt-text-0', '--nt-text-1', '--nt-text-2', '--nt-text-3'],
+    note: '--nt-text-0 = hero 焦点大数字档（现价/权益/评分，§5.1）；预算 单面板 ≤1 组大数字，禁用于段落/表格正文。',
+  },
   { title: '边框', tokens: ['--nt-border-1', '--nt-border-2'] },
   {
     title: '语义色',
@@ -194,6 +226,21 @@ const tokenGroups: Array<{ title: string; tokens: string[] }> = [
   },
   { title: '涨跌（红涨绿跌）', tokens: ['--nt-up', '--nt-down'] },
 ]
+
+/* ---------- SymbolName 走查（方案 §6.1，gallery-batch 新增卡） ---------- */
+/* 有名样例：往名称字典注入一条真名（600519.SH 贵州茅台，与本页表格/梯队既有示例同码同名）；
+ * 缺名样例：609999.SH 字典查不到、后端也查无此名，演示弱化「名称未返回」——不留空白、不拿代码冒充名称。 */
+const symbolNameDemos: Array<{ label: string; code: string; mode: SymbolNameMode }> = [
+  { label: 'inline · 有名', code: '600519.SH', mode: 'inline' },
+  { label: 'inline · 缺名', code: '609999.SH', mode: 'inline' },
+  { label: 'stacked · 有名', code: '600519.SH', mode: 'stacked' },
+  { label: 'stacked · 缺名', code: '609999.SH', mode: 'stacked' },
+  { label: 'compact · 有名', code: '600519.SH', mode: 'compact' },
+  { label: 'compact · 缺名', code: '609999.SH', mode: 'compact' },
+  { label: 'code（豁免位）· 有名', code: '600519.SH', mode: 'code' },
+  { label: 'code（豁免位）· 缺名', code: '609999.SH', mode: 'code' },
+]
+useSecurityStore().put([{ code: '600519.SH', name: '贵州茅台' }])
 
 /* ---------- 监控画布（静态场景） ---------- */
 const stageSelected = ref('')
@@ -293,6 +340,8 @@ const stageGraphS2 = {
     return node
   }),
 }
+/* P2-12 定格态：剥脉冲——脉冲亮度按 serverNow 衰减随采样时刻漂，不进 golden。 */
+const stageGraphS2Case = { ...stageGraphS2, pulses: [] }
 
 /* S2 原语对照表：活动条三态 × 角标三档 */
 const demoActivityRows = [
@@ -327,6 +376,9 @@ let s6Timer = 0
 let s6Flip = false
 
 onMounted(() => {
+  /* P2-12：用例定格态不起脉冲定时器（动态源零残留，截图确定性）；Modal 用例自动打开。 */
+  if (caseId === 'modal') modalOpen.value = true
+  if (caseId) return
   s6Timer = window.setInterval(() => {
     const at = Date.now()
     s6Flip = !s6Flip
@@ -345,7 +397,7 @@ onBeforeUnmount(() => {
 })
 
 /* ---------- 监控 S1 原语：时段带 / 健康分 / 十格 HUD（静态） ---------- */
-const demoNow = new Date(2026, 9, 12, 10, 24).getTime()
+const demoNow = new Date('2026-10-12T10:24:00+08:00').getTime()
 const demoInput = {
   ...emptyMonitorInput(),
   now: demoNow,
@@ -690,8 +742,8 @@ const demoTapeRows = demoTapeSession.absorb(
 </script>
 
 <template>
-  <div class="gallery">
-    <header class="g-head">
+  <div class="gallery" :class="{ 'g-casemode': caseId }" :style="graphicsCase ? { '--case-w': graphicsCase.w + 'px' } : undefined">
+    <header v-if="!caseId" class="g-head">
       <div>
         <h1>组件矩阵</h1>
         <p class="g-note">/dev/gallery · 仅 DEV 构建 · 静态数据，零后端依赖</p>
@@ -716,7 +768,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </header>
 
-    <section class="g-sec">
+    <section v-if="show('tokens')" class="g-sec">
       <h2>设计令牌</h2>
       <div v-for="group in tokenGroups" :key="group.title" class="g-tokens">
         <span class="g-tokens__title">{{ group.title }}</span>
@@ -726,10 +778,11 @@ const demoTapeRows = demoTapeSession.absorb(
             <code>{{ token }}</code>
           </div>
         </div>
+        <p v-if="group.note && !caseId" class="g-tokens__note">{{ group.note }}</p>
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('buttons')" class="g-sec">
       <h2>按钮</h2>
       <div class="g-row">
         <NtButton variant="primary">primary</NtButton>
@@ -744,7 +797,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('forms')" class="g-sec">
       <h2>表单</h2>
       <div class="g-form">
         <NtInput v-model="input" label="代码/名称" placeholder="搜索" icon="search" />
@@ -779,7 +832,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('feedback', 'modal')" class="g-sec">
       <h2>徽标 / 状态 / 反馈</h2>
       <div class="g-row">
         <NtBadge>neutral</NtBadge>
@@ -815,7 +868,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('icons')" class="g-sec">
       <h2>图标（{{ iconNames.length }} 枚）</h2>
       <div class="g-icons">
         <span v-for="name in iconNames" :key="name" class="g-icon" :title="name">
@@ -825,7 +878,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('table')" class="g-sec">
       <h2>表格（sticky 表头 + cell 插槽 + 密度）</h2>
       <NtTable :columns="columns" :rows="rows" row-key="symbol" clickable>
         <template #cell-pct="{ row }">
@@ -842,7 +895,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </NtTable>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('viz-svg')" class="g-sec">
       <h2>viz · 轻量 SVG</h2>
       <div class="g-viz">
         <div class="g-card">
@@ -879,48 +932,48 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('kline', 'equity', 'sector-bar', 'heatmap', 'indicator', 'depth')" class="g-sec">
       <h2>viz · ECharts / 图表</h2>
       <div class="g-viz">
-        <div class="g-card g-card--wide">
+        <div v-if="show('kline')" class="g-card g-card--wide">
           <h3>NtKline（40 根示例日线）</h3>
           <NtKline :bars="bars" freq="1d" height="280px" />
         </div>
-        <div class="g-card g-card--wide">
+        <div v-if="show('equity')" class="g-card g-card--wide">
           <h3>NtEquityCurve</h3>
           <NtEquityCurve :points="equity" height="240px" />
         </div>
-        <div class="g-card">
+        <div v-if="show('sector-bar')" class="g-card">
           <h3>NtSectorBar</h3>
           <NtSectorBar :rows="sectors" height="200px" />
         </div>
-        <div class="g-card">
+        <div v-if="show('heatmap')" class="g-card">
           <h3>NtHeatmap</h3>
           <NtHeatmap :cells="cells" :x-labels="xLabels" :y-labels="yLabels" height="200px" />
         </div>
-        <div class="g-card g-card--wide">
+        <div v-if="show('indicator')" class="g-card g-card--wide">
           <h3>NtIndicatorChart（MACD / RSI6）</h3>
           <NtIndicatorChart :points="indicators" height="180px" />
         </div>
-        <div class="g-card">
+        <div v-if="show('depth')" class="g-card">
           <h3>NtDepthBoard（五档，卖红买绿）</h3>
           <NtDepthBoard :asks="asks" :bids="bids" />
         </div>
-        <div class="g-card">
+        <div v-if="show('depth')" class="g-card">
           <h3>NtDepthBoard · 合成兜底（无档占位）</h3>
           <NtDepthBoard :last-price="10.35" symbol="600519.SH" :pre-close="10" />
         </div>
-        <div class="g-card">
+        <div v-if="show('depth')" class="g-card">
           <h3>NtDepthBoard · 合成兜底（涨停封板）</h3>
           <NtDepthBoard :last-price="11" symbol="600519.SH" :pre-close="10" />
         </div>
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('display-cards', 'display-lists')" class="g-sec">
       <h2>display</h2>
       <div class="g-viz">
-        <div class="g-card g-card--wide">
+        <div v-if="show('display-cards')" class="g-card g-card--wide">
           <h3>NtStatCard</h3>
           <div class="g-stats">
             <NtStatCard label="账户权益" value="1,284,902.44" sub="模拟盘 · D12" tone="neutral" hero />
@@ -931,22 +984,35 @@ const demoTapeRows = demoTapeSession.absorb(
             <NtStatCard label="风控拦截" value="3" sub="今日" tone="danger" />
           </div>
         </div>
-        <div class="g-card">
+        <div v-if="show('display-lists')" class="g-card">
           <h3>NtTimeline</h3>
           <NtTimeline :items="timeline" />
         </div>
-        <div class="g-card">
+        <div v-if="show('display-lists')" class="g-card">
           <h3>NtFunnel</h3>
           <NtFunnel :stages="funnel" />
         </div>
-        <div class="g-card">
+        <div v-if="show('display-lists')" class="g-card">
           <h3>NtLadderTiers（涨停梯队）</h3>
           <NtLadderTiers :tiers="tiers" />
+        </div>
+        <div v-if="!caseId" class="g-card g-card--wide">
+          <h3>SymbolName（§6.1 · 四模式 × 有名/缺名）</h3>
+          <div class="g-symname">
+            <div v-for="demo in symbolNameDemos" :key="demo.label" class="g-symname__row">
+              <span class="g-symname__label">{{ demo.label }}</span>
+              <SymbolName :code="demo.code" :mode="demo.mode" />
+            </div>
+          </div>
+          <p class="g-symname__note">
+            缺名一律显弱化「名称未返回」（text-3），不留空白、不拿代码冒充名称（数据纪律）；inline/stacked/compact 缺省可点
+            → 选股 + 打开 quote-sidebar；code 为豁免位（TAPE 跑马/K 线水印/逐笔队列）缺省不可点
+          </p>
         </div>
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('monitor-band-hud')" class="g-sec">
       <h2>监控 S1 原语（时段带 / 健康分 / 十格 HUD · 静态）</h2>
       <div class="g-monitor nt-monitor">
         <nav class="nt-band" data-band="morning" aria-label="交易时段（示例）">
@@ -1002,7 +1068,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('monitor-activity')" class="g-sec">
       <h2>监控 S2 原语（活动条 60 格 / 新鲜度角标 · 静态）</h2>
       <div class="g-activity">
         <div v-for="demo in demoActivityRows" :key="demo.label" class="g-activity__row">
@@ -1016,10 +1082,10 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('monitor-stage')" class="g-sec">
       <h2>监控画布（CanvasStage · 静态场景，可拖拽/缩放，已贴 S2 角标活动条 + S3 漏斗光带）</h2>
       <div class="g-stage">
-        <CanvasStage :graph="stageGraphS2" :selected-id="stageSelected" :hot-ids="[]" :paused="false" @select="stageSelected = $event" />
+        <CanvasStage :graph="caseId ? stageGraphS2Case : stageGraphS2" :calm="caseCalm" :selected-id="stageSelected" :hot-ids="[]" :paused="false" @select="stageSelected = $event" />
       </div>
       <p class="g-activity__note">
         S3 漏斗光带：六层「全市场→初筛→AI≥70→风控通过→已下单→成交」横贯 02/03 之间，主干厚 = sqrt(数量) 12..96px，青色渐变 α0.18→0.30（浅色主题统一 0.12）。
@@ -1028,7 +1094,7 @@ const demoTapeRows = demoTapeSession.absorb(
       </p>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('monitor-flow')" class="g-sec">
       <h2>监控 S6 束线流量宽度 + 高分脉冲 + 急停态（CanvasStage · 活示例）</h2>
       <div class="g-stage">
         <CanvasStage
@@ -1036,6 +1102,7 @@ const demoTapeRows = demoTapeSession.absorb(
           selected-id=""
           :hot-ids="[]"
           :paused="false"
+          :calm="caseCalm"
           :flow="demoFlow"
           kill-active
           :signal-scores="demoScores"
@@ -1050,26 +1117,30 @@ const demoTapeRows = demoTapeSession.absorb(
       </p>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('terminal-tape', 'terminal-positions')" class="g-sec">
       <h2>监控 S4 原语（事件流 TAPE / 五格终端带 · 静态）</h2>
-      <div class="g-monitor nt-monitor g-terms">
-        <TerminalStrip :input="demoTapeInput" :rows="demoTapeRows" first-pane="tape" band-key="morning" />
-      </div>
-      <p class="g-activity__note">
-        六域标签色：信号 --nt-accent、成交 --nt-up/--nt-down（按买卖方向，方向认不出来用中性色不默认红）、风控 --nt-danger、告警 --nt-warn、数据 --nt-info、模型 --nt-accent-2。
-        行是真实 TapeSession 出的，不是手写的：含 §6.3「健康 61：市场结果时效 -16，服务存活 -6，模型可用 -12，交易通道 -5」（必须列扣分项，不写「系统异常」）、§6.1 模型静默与 WS 断开各一行。
-        交互：暂停后新行只计数不滚动（按钮变「继续 · N 条新」）；点可定位的行 = 选中对应画布节点并闪一下，没有对应节点的行不可点；新行入场 300ms 背景淡出；上限 40 行。
-      </p>
-      <div class="g-monitor nt-monitor g-terms">
-        <TerminalStrip :input="demoTapeInput" :rows="demoTapeRows" first-pane="positions" band-key="closing" />
-      </div>
-      <p class="g-activity__note">
-        第一格随时段换语义（§4.3）。这里是尾盘「持仓明细」：浮盈走红涨绿跌，距止损不足 2% 整行左边框转橙、已跌破止损转红（两件事不混色），
-        没有对齐信号止损价的写「止损价未对齐」不拿别的价冒充。其余时段：盘前「昨日复盘」/盘后「复盘」（点名缺的绩效接口）、竞价（读口未接入先用事件流顶上）、午休「半场小结」、非交易日任务调度扩为两格。
-      </p>
+      <template v-if="show('terminal-tape')">
+        <div class="g-monitor nt-monitor g-terms">
+          <TerminalStrip :input="demoTapeInput" :rows="demoTapeRows" first-pane="tape" band-key="morning" />
+        </div>
+        <p class="g-activity__note">
+          六域标签色：信号 --nt-accent、成交 --nt-up/--nt-down（按买卖方向，方向认不出来用中性色不默认红）、风控 --nt-danger、告警 --nt-warn、数据 --nt-info、模型 --nt-accent-2。
+          行是真实 TapeSession 出的，不是手写的：含 §6.3「健康 61：市场结果时效 -16，服务存活 -6，模型可用 -12，交易通道 -5」（必须列扣分项，不写「系统异常」）、§6.1 模型静默与 WS 断开各一行。
+          交互：暂停后新行只计数不滚动（按钮变「继续 · N 条新」）；点可定位的行 = 选中对应画布节点并闪一下，没有对应节点的行不可点；新行入场 300ms 背景淡出；上限 40 行。
+        </p>
+      </template>
+      <template v-if="show('terminal-positions')">
+        <div class="g-monitor nt-monitor g-terms">
+          <TerminalStrip :input="demoTapeInput" :rows="demoTapeRows" first-pane="positions" band-key="closing" />
+        </div>
+        <p class="g-activity__note">
+          第一格随时段换语义（§4.3）。这里是尾盘「持仓明细」：浮盈走红涨绿跌，距止损不足 2% 整行左边框转橙、已跌破止损转红（两件事不混色），
+          没有对齐信号止损价的写「止损价未对齐」不拿别的价冒充。其余时段：盘前「昨日复盘」/盘后「复盘」（点名缺的绩效接口）、竞价（读口未接入先用事件流顶上）、午休「半场小结」、非交易日任务调度扩为两格。
+        </p>
+      </template>
     </section>
 
-    <section class="g-sec">
+    <section v-if="show('deep-sheets')" class="g-sec">
       <h2>监控 S5 详情窗深化（§5.1–5.6 六张牌 · 静态）</h2>
       <p class="g-activity__note">
         六张牌全字段走查：缺口一律点名缺的接口（橙色文字），不写 0 不写破折号；唯一「按钮」是信号牌的「回到交易台确认」——那是一次路由跳转，不是写操作。
@@ -1124,6 +1195,16 @@ const demoTapeRows = demoTapeSession.absorb(
   background: var(--nt-bg-0);
   color: var(--nt-text-1);
   overflow: auto;
+}
+
+/* P2-12 用例定格态：单用例独占，宽由登记表 --case-w 驱动；页边距固定，golden 只见内容框。 */
+.g-casemode {
+  padding: 12px;
+}
+
+.g-casemode .g-sec {
+  margin-top: 0;
+  width: var(--case-w, auto);
 }
 
 /* 监控 S1 原语走查：借 .nt-monitor 让状态光点类生效，但解除整页网格定高 */
@@ -1271,6 +1352,39 @@ const demoTapeRows = demoTapeSession.absorb(
   font-family: var(--nt-font-mono);
   font-size: 10.5px;
   color: var(--nt-text-2);
+}
+
+/* gallery-batch：hero 档标注行（文本阶梯组内可选 note） */
+.g-tokens__note {
+  margin: 4px 0 0;
+  font-size: 0.85em;
+  color: var(--nt-text-3);
+}
+
+/* gallery-batch：SymbolName 走查卡四模式 × 有名/缺名 */
+.g-symname {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.g-symname__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.g-symname__label {
+  flex: 0 0 8.5em;
+  font-size: 0.85em;
+  color: var(--nt-text-3);
+}
+
+.g-symname__note {
+  margin: 10px 0 0;
+  font-size: 0.85em;
+  color: var(--nt-text-3);
 }
 
 .g-icons {

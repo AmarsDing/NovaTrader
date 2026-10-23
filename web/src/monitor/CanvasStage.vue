@@ -6,6 +6,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { createVisualFrameLoop } from '@/theme/visual-quality'
+import { serverNow } from '@/utils/server-clock'
 import type { NodeStatus, Pulse, SceneGraph } from './types'
 import { ACTIVITY_OFF_ALPHA, ACTIVITY_ON_ALPHA } from './activity'
 import { ambientPeriod, flowWidth, HIGH_SCORE, KILL_EDGE_ID, type EdgeFlow } from './flow'
@@ -51,7 +52,7 @@ const props = defineProps<{
   calm?: boolean
   /** 时段键：拖动偏移按时段分别持久化到 localStorage */
   bandKey?: string
-  /** S4：事件流点行后要让对应节点「闪一下」。at 是触发时刻，动画按 Date.now() 自己衰减 */
+  /** S4：事件流点行后要让对应节点「闪一下」。at 是触发时刻（serverNow 口径，与行时间戳同源），动画按 serverNow 自己衰减 */
   flash?: { id: string; at: number }
   /** S6：束线流量（键 = 边 id `from>to`）。rate null = 没观测 → 固定宽度 1.3px，不猜 */
   flow?: Record<string, EdgeFlow>
@@ -91,6 +92,10 @@ let fitted = false
 let stopped = false
 let observer: ResizeObserver | null = null
 let themeObserver: MutationObserver | null = null
+/* dpr 监听（P2-12 评审收口）：窗口跨 DPI 屏拖动时 cssW/cssH 不变、RO 不回调，
+ * 背板会停在旧 dpr 分辨率发虚——resolution 查询单次命中，触发后按当前 dpr 重建 */
+let dprMedia: MediaQueryList | null = null
+let onDprChange: (() => void) | null = null
 let pointer: {
   x: number
   y: number
@@ -172,7 +177,8 @@ function syncVisualMode() {
 }
 
 function hasAnimatedContent(): boolean {
-  const now = Date.now()
+  /* P2-10：脉冲/闪光的 at 均来自 serverNow 时间戳（与数据侧同源）；性能钟只服务环境流向点。 */
+  const now = serverNow()
   if (props.killActive === true) return true
   if (props.graph.pulses.some((pulse) => now >= pulse.at && now - pulse.at <= PULSE_TTL)) return true
   if (props.flash && now >= props.flash.at && now - props.flash.at <= FLASH_MS) return true
@@ -202,7 +208,7 @@ function rebuild() {
    * 只比 face——角标「距今 Ns」每秒都在变，那不是数字变化，闪起来就成噪声了 */
   const faces = new Map(nodes.map((item) => [item.id, item.node.face]))
   if (prevFaces) {
-    const at = Date.now()
+    const at = serverNow()
     for (const [id, face] of faces) {
       const before = prevFaces.get(id)
       if (before != null && before !== face) numFlash.set(id, at)
@@ -260,6 +266,16 @@ function syncGeometry() {
   }
 }
 
+/** dpr 监听重建：matchMedia 的 resolution 查询单次命中，每次触发后按当前 dpr 重挂 */
+function watchDpr() {
+  if (dprMedia && onDprChange) dprMedia.removeEventListener('change', onDprChange)
+  dprMedia =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+      : null
+  if (dprMedia && onDprChange) dprMedia.addEventListener('change', onDprChange)
+}
+
 onMounted(() => {
   const el = host.value
   const cv = canvas.value
@@ -273,8 +289,12 @@ onMounted(() => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     cssW = el.clientWidth
     cssH = el.clientHeight
-    cv.width = Math.max(1, Math.round(cssW * dpr))
-    cv.height = Math.max(1, Math.round(cssH * dpr))
+    /* 尺寸没变就不写背板：width/height 赋值即使同值也会清位图，
+     * 同值重写等于把上一帧抹掉（P2-12 图形回归在 intrinsic 高度容器里实测抓到全透明帧） */
+    const w = Math.max(1, Math.round(cssW * dpr))
+    const h = Math.max(1, Math.round(cssH * dpr))
+    if (cv.width !== w) cv.width = w
+    if (cv.height !== h) cv.height = h
     cv.style.width = `${cssW}px`
     cv.style.height = `${cssH}px`
     ctx?.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -289,6 +309,12 @@ onMounted(() => {
   measure()
   observer = new ResizeObserver(measure)
   observer.observe(el)
+  /* dpr 变化时补一枪 measure（背板按新分辨率重建）；查询单次命中所以回调里先重建监听 */
+  onDprChange = () => {
+    watchDpr()
+    measure()
+  }
+  watchDpr()
   themeObserver = new MutationObserver(syncVisualMode)
   themeObserver.observe(document.documentElement, {
     attributes: true, attributeFilter: ['data-theme', 'data-visual-quality', 'data-motion', 'data-page-visibility'],
@@ -309,6 +335,7 @@ onBeforeUnmount(() => {
   persistOffsets()
   observer?.disconnect()
   themeObserver?.disconnect()
+  if (dprMedia && onDprChange) dprMedia.removeEventListener('change', onDprChange)
   document.removeEventListener('visibilitychange', syncVisualMode)
   // measureCache 是 <script setup> 顶层的每实例 Map，卸载随实例 GC；
   // 这里 clear 是防御性清零，与 syncVisualMode 的主题切换清零路径对齐
@@ -746,7 +773,7 @@ function drawAmbient(context: CanvasRenderingContext2D) {
 }
 
 function drawPulses(context: CanvasRenderingContext2D) {
-  const now = Date.now()
+  const now = serverNow()
   const pulses = props.graph.pulses.filter((pulse) => now - pulse.at <= PULSE_TTL)
   for (const pulse of pulses) {
     const mapped = stagePulse(pulse)
@@ -828,7 +855,7 @@ function drawNodes(context: CanvasRenderingContext2D) {
 function drawFlash(context: CanvasRenderingContext2D) {
   const flash = props.flash
   if (!flash?.id) return
-  const age = Date.now() - flash.at
+  const age = serverNow() - flash.at
   if (!Number.isFinite(age) || age < 0 || age > FLASH_MS) return
   const item = nodes.find((node) => node.id === flash.id)
   if (!item) return
@@ -846,7 +873,7 @@ function drawFlash(context: CanvasRenderingContext2D) {
  * 过期的条目顺手清掉，Map 不会越攒越大。 */
 function drawNumFlash(context: CanvasRenderingContext2D) {
   if (numFlash.size === 0) return
-  const now = Date.now()
+  const now = serverNow()
   for (const [id, at] of numFlash) {
     const age = now - at
     if (!Number.isFinite(age) || age < 0 || age > NUM_FLASH_MS) {
@@ -1087,7 +1114,7 @@ defineExpose({ resetLayout })
 </script>
 
 <template>
-  <div ref="host" class="nt-stage" :class="{ 'is-dragging': dragState != null }">
+  <div ref="host" class="nt-stage" :class="{ 'is-dragging': dragState != null, 'is-failed': failed }">
     <canvas
       v-show="!failed"
       ref="canvas"
