@@ -387,6 +387,7 @@ export function createWsHub(deps: HubDeps): WsHub {
             Promise.resolve().then(() =>
               fn({
                 topic,
+                event: typeof message.event === 'string' ? message.event : undefined,
                 data,
                 seq: Number(n),
                 serverEpoch: epoch,

@@ -54,9 +54,26 @@ export async function fetchSecurityBasics(codes?: string[]): Promise<SecurityBas
     .filter((row) => row.code !== '')
 }
 
-export async function getBars(symbol: string, freq: string): Promise<Bar[]> {
+/** K 线读取窗口（P2-9 缺口回填）。省略时维持默认行数；后端语义：start/end 含两端，limit 从 end 往前取。 */
+export interface BarsWindow {
+  /** RFC3339 或 YYYY-MM-DD，含该端。前端现有 Bar.time 串可直接回传。 */
+  start?: string
+  /** RFC3339 或 YYYY-MM-DD（纯日期后端自动扩到当日最后一刻）；省略 = 不限上界。 */
+  end?: string
+  /** 条数上限（默认 1m 240 / 1d 180；后端默认 1000、上限 10000）。 */
+  limit?: number
+}
+
+export async function getBars(symbol: string, freq: string, window?: BarsWindow): Promise<Bar[]> {
   const data = await request('/api/market/bars', {
-    query: { symbol, freq, limit: freq === '1m' ? 240 : 180, adjust: 'NONE' },
+    query: {
+      symbol,
+      freq,
+      limit: window?.limit ?? (freq === '1m' ? 240 : 180),
+      adjust: 'NONE',
+      start: window?.start || undefined,
+      end: window?.end || undefined,
+    },
   })
   return asList(data, 'bars').map((raw) => ({
     time: pick<string>(raw, 'time', 'barTime', 'bar_time') || '',
@@ -459,6 +476,72 @@ export async function getKlineGaps(days = 5): Promise<KlineGapsSummary> {
   }
 }
 
+/* ---------- 复盘体系 P0-3：盘中情绪路径 ---------- */
+
+export interface EmotionPathPoint {
+  time: string
+  auction: boolean
+  up: number
+  down: number
+  broken: number
+  brokenRate: number
+  maxHeight: number
+  profitEffect: number
+  advance: number
+  decline: number
+  amount: number
+  phase: string
+  scoreCoef: number
+  stale: boolean
+}
+
+export interface EmotionPath {
+  date: string
+  auctionFound: boolean
+  auctionTotalAmount: number
+  auctionLimitUpCount: number
+  /** 昨涨停竞价平均涨幅 %。没取到为 null（不落 0）。 */
+  prevTierAuctionPct: number | null
+  prevTierAuctionSample: number
+  points: EmotionPathPoint[]
+  partial: boolean
+  missing: string[]
+}
+
+export async function getEmotionPath(date: string): Promise<EmotionPath> {
+  // 哨兵钉死（P3-10c）：auction 两字段缺失由 auctionFound 先行表达且面板先判；
+  // points 只含 09:25 竞价占位与已落库截面（没存的时点根本不进 points，缺失由 missing 列表表达）——
+  // 点位 ?? 0 是冗余兜底（截面真值，0=该时点真实读数），不会把「没存」伪装成全 0 截面。
+  const data = await request('/api/market/emotion-path', { query: { date } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    date: pick<string>(raw, 'date') || '',
+    auctionFound: !!(raw.auctionFound ?? raw.auction_found),
+    auctionTotalAmount: num(pick(raw, 'auctionTotalAmount', 'auction_total_amount')) ?? 0,
+    auctionLimitUpCount: num(pick(raw, 'auctionLimitUpCount', 'auction_limit_up_count')) ?? 0,
+    prevTierAuctionPct: num(pick(raw, 'prevTierAuctionPct', 'prev_tier_auction_pct')) ?? null,
+    prevTierAuctionSample: num(pick(raw, 'prevTierAuctionSample', 'prev_tier_auction_sample')) ?? 0,
+    points: asList(raw, 'points').map((p) => ({
+      time: pick<string>(p, 'time') || '',
+      auction: !!p.auction,
+      up: num(pick(p, 'up')) ?? 0,
+      down: num(pick(p, 'down')) ?? 0,
+      broken: num(pick(p, 'broken')) ?? 0,
+      brokenRate: num(pick(p, 'brokenRate', 'broken_rate')) ?? 0,
+      maxHeight: num(pick(p, 'maxHeight', 'max_height')) ?? 0,
+      profitEffect: num(pick(p, 'profitEffect', 'profit_effect')) ?? 0,
+      advance: num(pick(p, 'advance')) ?? 0,
+      decline: num(pick(p, 'decline')) ?? 0,
+      amount: num(pick(p, 'amount')) ?? 0,
+      phase: pick<string>(p, 'phase') || '',
+      scoreCoef: num(pick(p, 'scoreCoef', 'score_coef')) ?? 0,
+      stale: !!p.stale,
+    })),
+    partial: !!raw.partial,
+    missing: asList(raw, 'missing').map((m) => String(m)),
+  }
+}
+
 /* ---------- 视频落地 P0：单券快照（GetQuote，只读） ---------- */
 
 export interface QuoteLevel {
@@ -549,4 +632,35 @@ export async function getQuote(symbol: string): Promise<QuoteView> {
     stale: !!raw.stale,
     found: !!raw.found,
   }
+}
+
+/* ---------- 复盘体系 P0-4：盘中异动流水 ---------- */
+
+export type IntradayAlertKind = 'surge' | 'limit_up' | 'break'
+
+export interface IntradayAlert {
+  symbol: string
+  name: string
+  kind: IntradayAlertKind
+  time: string
+  /** 触发幅度 %（surge 为窗口涨幅，封/开板为当日涨幅）。没取到为 null。 */
+  pct: number | null
+  price: number | null
+}
+
+export async function getIntradayAlerts(date: string, minPct = 0, watchOnly = false): Promise<IntradayAlert[]> {
+  const data = await request('/api/market/intraday-alerts', {
+    query: { date, min_pct: minPct || undefined, watch_only: watchOnly || undefined },
+  })
+  const alerts = asList(data, 'alerts').map((raw) => ({
+    symbol: pick<string>(raw, 'symbol') || '',
+    name: pick<string>(raw, 'name') || '',
+    kind: (pick<string>(raw, 'kind') || 'surge') as IntradayAlertKind,
+    time: pick<string>(raw, 'time') || '',
+    pct: num(pick(raw, 'pct')) ?? null,
+    price: num(pick(raw, 'price')) ?? null,
+  }))
+  // 附录 B-5 回填：异动行的 symbol/name 顺手进名称字典。
+  backfillSecurityBasics(alerts.map((a) => ({ code: a.symbol, name: a.name || null })))
+  return alerts
 }

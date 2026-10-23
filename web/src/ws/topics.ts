@@ -52,6 +52,8 @@ export interface WsResyncContext {
 /** 派发给 onPush 订阅者的消息。topic='resume' 为重连提示帧。 */
 export interface WsPushMessage {
   topic: string
+  /** 服务端帧事件名（如 alert 主题的 move/notify/alert），老帧可能缺省，消费方需容忍。 */
+  event?: string
   data: unknown
   seq?: number | null
   serverEpoch?: string

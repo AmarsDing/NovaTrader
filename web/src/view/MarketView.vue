@@ -7,12 +7,12 @@ import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
-import NtIndicatorChart, { type IndicatorPoint } from '@/viz/NtIndicatorChart.vue'
+import NtKline, { type KlineLevel, type KlineMarker } from '@/viz/NtKline.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
-import NtKline, { type KlineLevel, type KlineMarker } from '@/viz/NtKline.vue'
 import { PALETTE } from '@/theme/tokens'
 import { clock, compactAmount, messageOf, num, pick, pnlClass, price } from '@/utils/format'
+import { chartTime } from '@/utils/time'
 import { router } from '@/router'
 import { useSymbolStore } from '@/stores/symbol'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
@@ -21,14 +21,12 @@ import { isLive, onPush, onResync, subscribe, type MarketSnapshotMeta, type WsPu
 import { dataFrame } from '@/ws/data-frame'
 import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
 import { createPageRefresh } from './page-refresh'
+import { mergeGapRows } from './market-backfill'
 
 /** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转），路由 query 作兼容兜底。 */
 const panelParams = consumePanelParams('market')
 const symbol = ref(String(panelParams?.symbol ?? router.currentRoute.value.query.symbol ?? ''))
-
-/** 全局当前证券存根（视频设计指引 §8「切 symbol 不换布局」单一事实源）：
- *  本页是 market 发起方之一（手工输入/面板参数/路由 query），写入 source='market'；
- *  他源（QB/QL/信号票等）切的券经下方 store watch 回流，布局恒不动、只换数据。 */
+/** 全局当前证券（§8 恒随）：本图写入时记 source=market；外部切换时换图，布局不动。 */
 const symbolStore = useSymbolStore()
 const freq = ref('1d')
 const account = ref('SIM')
@@ -38,9 +36,12 @@ const news = ref<IntelItem[]>([])
 const fills = ref<Fill[]>([])
 const newsReady = ref(false)
 const fillsReady = ref(false)
+const indicatorsReady = ref(false)
 const error = ref('')
 const loading = ref(false)
 const loaded = ref(false)
+/** 框选测量开关：换 symbol/周期/账户一律复位，避免框住旧数据。 */
+const measuring = ref(false)
 
 const freqOptions = [
   { value: '1d', label: '日线' },
@@ -107,14 +108,9 @@ const markers = computed<KlineMarker[]>(() => {
   return [...fromNews, ...fromFills]
 })
 
-const indicatorPoints = computed<IndicatorPoint[]>(() =>
-  indicators.value
-    .filter((point) => point.macd != null || point.rsi6 != null)
-    .map((point) => ({
-      time: String(point.time).slice(5, 16) || String(point.time),
-      macd: point.macd,
-      rsi6: point.rsi6,
-    })),
+/** 副图已迁入 NtKline 的 v5 pane；这里只保留"有没有有效指标"的判定（全空行不算有）。 */
+const hasSubIndicators = computed(() =>
+  indicators.value.some((point) => point.macd != null || point.dif != null || point.dea != null || point.rsi6 != null),
 )
 
 /** 摊薄成本参考线：（买成交额 − 卖成交额）/ 净持仓股数；含已实现盈亏，净额 ≤0 或数据不全则不画。 */
@@ -158,6 +154,39 @@ const LIVE_CAP = 800
 /** 增量通道的保守兜底：消息/成交/指标与长尾数据按期对账一次。 */
 const RECONCILE_MS = 60_000
 let reconcileTimer: ReturnType<typeof setInterval> | undefined
+
+/**
+ * P2-9 重连缺口回填：断线恢复后先只补缺口窗口 [末根时刻, 最新]，而非整段重载（K线级回填）。
+ * 返回 false 交给整载兜底的情形：无基准行 / 回填够不到末根（缺口宽于 LIVE_CAP）/ 合并后超 LIVE_CAP / 并发换图。
+ * 并发整载已接管（frameEpoch 变）时跟随 load() 的真实结果，不提前向 hub ack。
+ * 合并期间被实时帧（待用 bar 管线，今日已产未路由见 M01 §7.4）抢先越过的行被 updateLast 忽略，60s 对账自愈。
+ * 指标/消息/成交不随回填刷新，交给对账定时器（本就负责长尾对齐）。
+ */
+async function backfillGap(): Promise<boolean> {
+  const code = symbol.value.trim()
+  const tail = bars.value.length ? bars.value[bars.value.length - 1] : null
+  if (!code || !tail?.time) return false
+  const epoch = frameEpoch
+  const freqAt = freq.value
+  // 1d 末根可能被（待用 bar 管线）分钟帧写成 RFC3339；截到上海日历日，避免 start 把当日日线行排除出窗口。
+  const tailTime = String(tail.time)
+  const tailDay = chartTime(tailTime, '1d')
+  const startAt = freqAt === '1d' && typeof tailDay === 'string' && tailDay ? tailDay : tailTime
+  let fetched: Bar[]
+  try {
+    fetched = await getBars(code, freqAt, { start: startAt, limit: LIVE_CAP })
+  } catch (error) {
+    console.warn('[market] 缺口回填窗口请求失败，转整载兜底', error)
+    return false
+  }
+  if (disposed) return true
+  if (epoch !== frameEpoch) return load()
+  if (code !== symbol.value.trim() || freqAt !== freq.value) return false
+  const merged = mergeGapRows(bars.value, fetched, LIVE_CAP, freqAt === '1d' ? 'day' : 'ms')
+  if (!merged.covered || merged.overflow) return false
+  for (const bar of merged.applied) klineRef.value?.updateLast(bar)
+  return true
+}
 
 type LiveBarRow = Bar & { symbol?: string; freq?: string }
 
@@ -268,6 +297,7 @@ async function readPage(key: string): Promise<boolean> {
   fills.value = fillRes.status === 'fulfilled' ? fillRes.value : []
   newsReady.value = newsRes.status === 'fulfilled'
   fillsReady.value = fillRes.status === 'fulfilled'
+  indicatorsReady.value = indRes.status === 'fulfilled'
   if (barRes.status === 'rejected') error.value = messageOf(barRes.reason)
   else if (!bars.value.length) error.value = ''
   loading.value = false
@@ -297,9 +327,11 @@ watch([symbol, freq, account], (next, before) => {
   fills.value = []
   newsReady.value = false
   fillsReady.value = false
+  indicatorsReady.value = false
   loading.value = false
   loaded.value = false
   flashSample.value = null
+  measuring.value = false
   if (next[0] !== before[0] || next[1] !== before[1]) resubMarket()
   if (next[0] === before[0] && symbol.value.trim()) void reloadWithRefit()
 }, { flush: 'sync' })
@@ -322,43 +354,26 @@ const offPanelParams = onPanelParams('market', (params) => {
   void reloadWithRefit()
 })
 
-/** 手工换代码：先写全局存根再全量重载并复位视口；下方 store watch 对 source='market' 短路，
- *  这里必须显式重载而不是指望 watch 回路。同值重读也走此口（存根同值短路、重载恒执行）。 */
-function applyManualSymbol(): void {
-  const code = symbol.value.trim()
-  if (!code) return
-  symbolStore.setSymbol(code, 'market')
+/** 手工表单提交（含「读取」钮）：换图的同时把当前证券写进全局 store。 */
+function applyManualSymbol() {
+  symbolStore.setSymbol(symbol.value, 'market')
   void reloadWithRefit()
 }
 
-/** 他源切券回流（QB/QL/信号票等）：同值与本页自写（source='market'）不回灌，布局恒不动。 */
-watch(() => symbolStore.code, (next) => {
-  if (!next || symbolStore.source === 'market') return
-  if (next !== symbol.value.trim()) {
-    symbol.value = next
+/** 外部面板（行情侧栏/下单条/情报等）切了当前证券 → 本图跟随换券，布局不动。 */
+watch(
+  () => symbolStore.code,
+  (next) => {
+    if (!next || symbolStore.source === 'market') return
+    if (next !== symbol.value.trim()) symbol.value = next
     void reloadWithRefit()
-  }
-}, { flush: 'sync' })
+  },
+  { flush: 'sync' },
+)
 
 /** 最近一轮快照批次信息（market 主题推的 SnapshotMeta），null = 还没收到过推送。 */
 const snapshot = ref<MarketSnapshotMeta | null>(null)
 
-const snapshotLine = computed(() => {
-  const meta = snapshot.value
-  if (!meta) return ''
-  const asOf = meta.asOf || meta.as_of
-  const parts: string[] = []
-  parts.push(`快照 ${asOf ? clock(asOf) : '时间未返回'}`)
-  if (meta.stale) parts.push('已过期')
-  if (meta.source) parts.push(`源 ${meta.source}`)
-  const count = Number(meta.count)
-  if (Number.isFinite(count) && count > 0) parts.push(`${count} 只`)
-  const latency = Number(meta.latencyMs ?? meta.latency_ms)
-  if (Number.isFinite(latency) && latency > 0) parts.push(`采集 ${Math.round(latency)}ms`)
-  const seq = Number(meta.seq)
-  if (Number.isFinite(seq) && seq > 0) parts.push(`#${seq}`)
-  return parts.join(' · ')
-})
 /** 面板头徽注（§7.2-2/§7.3）：时间证据优先取快照帧 asOf，退到末根 bar 时刻；
  *  均无则传 null 由组件显「时点未知」（数据纪律：不拿 0s/当前时刻冒充）。 */
 const freshAt = computed<number | null>(() => {
@@ -379,6 +394,22 @@ const freshCut = computed(() => !isLive())
 /** 分钟线推送节拍约一根一分钟（宽限 2 分钟）；日线一根一天（宽限 30h）。 */
 const freshStaleMs = computed(() => (freq.value === '1d' ? 30 * 3600 * 1000 : 120 * 1000))
 
+const snapshotLine = computed(() => {
+  const meta = snapshot.value
+  if (!meta) return ''
+  const asOf = meta.asOf || meta.as_of
+  const parts: string[] = []
+  parts.push(`快照 ${asOf ? clock(asOf) : '时间未返回'}`)
+  if (meta.stale) parts.push('已过期')
+  if (meta.source) parts.push(`源 ${meta.source}`)
+  const count = Number(meta.count)
+  if (Number.isFinite(count) && count > 0) parts.push(`${count} 只`)
+  const latency = Number(meta.latencyMs ?? meta.latency_ms)
+  if (Number.isFinite(latency) && latency > 0) parts.push(`采集 ${Math.round(latency)}ms`)
+  const seq = Number(meta.seq)
+  if (Number.isFinite(seq) && seq > 0) parts.push(`#${seq}`)
+  return parts.join(' · ')
+})
 
 function onPushMessage(msg: WsPushMessage) {
   if (msg.topic !== 'market') return
@@ -405,14 +436,15 @@ function onPushMessage(msg: WsPushMessage) {
 function onVisible() { if (!document.hidden && symbol.value.trim()) void load() }
 
 onMounted(() => {
-  // 存根对齐：本页带参数则以本页为准回写；无参数且别处已选好证券则沿用全局当前券。
+  // 初始与全局 store 对账：本图带参进场则写入；空手进场且 store 有票则跟随。
   if (symbol.value) symbolStore.setSymbol(symbol.value, 'market')
   else if (symbolStore.code) symbol.value = symbolStore.code
   if (symbol.value) void load()
   offResync = onResync(['market'], async () => {
     if (!symbol.value.trim()) return
     const key = refreshKey()
-    const ready = await load()
+    // P2-9：先只补缺口窗口（补不动——过宽/无基准/换图/请求失败——再整载），失败仍抛出让 hub 保持 required。
+    const ready = (await backfillGap()) || (await load())
     if (!disposed && key === refreshKey() && !ready) throw new Error('行情图表尚未恢复')
   })
   resubMarket()
@@ -446,6 +478,7 @@ onBeforeUnmount(() => {
         <h1 class="nt-title">行情</h1>
         <p class="nt-note">K 线、均线、MACD / RSI，以及消息和成交标记。</p>
       </div>
+      <NtFreshness label="行情" :at="freshAt" :cut="freshCut" :stale-after-ms="freshStaleMs" />
     </header>
     <form class="nt-form" @submit.prevent="applyManualSymbol">
       <label class="grow">
@@ -455,6 +488,14 @@ onBeforeUnmount(() => {
       <NtSelect v-model="freq" label="周期" :options="freqOptions" />
       <NtSelect v-model="account" label="成交账户" :options="accountOptions" />
       <NtButton variant="primary" :loading="loading" @click="applyManualSymbol">读取</NtButton>
+      <NtButton
+        :variant="measuring ? 'primary' : 'ghost'"
+        :disabled="!bars.length"
+        title="在图上按住拖动框选区间，统计涨跌与振幅；Esc 退出"
+        @click="measuring = !measuring"
+      >
+        框选测量
+      </NtButton>
     </form>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <p v-else-if="snapshotLine" class="nt-note snap-line">行情推送：{{ snapshotLine }}</p>
@@ -479,7 +520,6 @@ onBeforeUnmount(() => {
       <span class="q-item">量 {{ compactAmount(quote.volume) }} 股</span>
       <span class="q-item">额 {{ compactAmount(quote.amount) }} 元</span>
       <span class="q-item q-time">K 线时间 {{ clock(quote.time) }}</span>
-      <NtFreshness label="行情" :at="freshAt" :cut="freshCut" :stale-after-ms="freshStaleMs" />
     </div>
 
     <div class="nt-split">
@@ -506,14 +546,17 @@ onBeforeUnmount(() => {
             :markers="markers"
             :levels="klineLevels"
             :watermark="symbol.trim()"
+            :symbol="symbol.trim()"
             :freq="freq"
+            :measure="measuring"
             height="100%"
           />
         </div>
-        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量<template v-if="klineLevels.length"> · 琥珀虚线为摊薄成本</template></p>
+        <p v-if="measuring && bars.length" class="nt-note">测量模式：在图上按住拖动画框，统计区间涨跌/振幅；Esc 或再次点按钮退出。</p>
+        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量<template v-if="freq === '1m'"> · 底色=集合竞价时段</template><template v-if="symbol.trim() && bars.length"> · 琥珀描边=涨/跌停封板（板块推断）</template><template v-if="klineLevels.length"> · 琥珀虚线为摊薄成本</template><template v-if="hasSubIndicators"> · 副图 MACD 柱/电蓝 DIF/琥珀 DEA、冰青 RSI6（虚线 80/20）</template></p>
         <p v-if="loaded && !loading && !fillsReady" class="nt-note">成交明细未返回，图上的买卖标记尚不完整。</p>
-        <NtIndicatorChart v-if="indicatorPoints.length" :points="indicatorPoints" height="220px" />
-        <p v-else class="nt-empty">指标未返回。</p>
+        <p v-if="freq === '1d' && loaded && !loading && !indicatorsReady" class="nt-empty">指标未返回。</p>
+        <p v-else-if="freq === '1d' && loaded && !loading && !hasSubIndicators" class="nt-empty">副图指标（MACD/RSI）未返回。</p>
       </section>
     </div>
   </div>
