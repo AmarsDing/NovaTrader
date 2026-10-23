@@ -6,6 +6,7 @@ import hashlib
 import json
 import socket
 import threading
+import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -86,8 +87,29 @@ class SourceServer(ThreadingHTTPServer):
         request.settimeout(5)
         if not self.slots.acquire(blocking=False):
             try:
-                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-            except OSError:
+                # A short bounded drain avoids a Windows TCP reset racing the
+                # client's small POST body. Slow/oversized clients are still closed.
+                pending = bytearray()
+                deadline = time.monotonic() + 0.1
+                required = None
+                while len(pending) < 8192 and time.monotonic() < deadline:
+                    request.settimeout(max(0.001, deadline - time.monotonic()))
+                    chunk = request.recv(min(4096, 8192 - len(pending)))
+                    if not chunk:
+                        break
+                    pending.extend(chunk)
+                    boundary = pending.find(b"\r\n\r\n")
+                    if boundary >= 0 and required is None:
+                        length = next((line.split(b":", 1)[1].strip() for line in pending[:boundary].split(b"\r\n")
+                                       if line.lower().startswith(b"content-length:")), b"0")
+                        required = boundary + 4 + min(MAX_REQUEST, int(length))
+                    if required is not None and len(pending) >= required:
+                        break
+                body = encode({"schema_version": 1, "status": "busy", "training_ready": False})
+                header = ("HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\n"
+                          f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode()
+                request.sendall(header + body)
+            except (OSError, ValueError):
                 pass
             self.shutdown_request(request)
             return

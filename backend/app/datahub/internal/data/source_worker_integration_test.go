@@ -20,6 +20,7 @@ import (
 	"server/app/datahub/internal/biz"
 	"server/ent"
 	"server/ent/datasetrecord"
+	"server/ent/macroseries"
 	"server/ent/marketdata"
 	"server/ent/outbox"
 	"server/pkg/dataset"
@@ -234,6 +235,37 @@ func TestPostgresSupplementConcurrentReservationRevisionAndRollback(t *testing.T
 	if e != nil || current.Close == nil || *current.Close != 10.5 {
 		t.Fatal("same supplement correction failed", e)
 	}
+	// A primary write racing optional revisions must win the current view. The
+	// conditional conflict update must re-check source after acquiring the row lock.
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%2 == 0 {
+				_, err := c.MarketData.Update().Where(marketdata.SymbolEQ(b.Symbol), marketdata.BarTimeEQ(q.Start)).SetSource("tushare").SetOpen(20).SetHigh(21).SetLow(19).SetClose(20).Save(ctx)
+				if err != nil {
+					failures.Add(1)
+					t.Log(err)
+				}
+				return
+			}
+			changed := b
+			proof := *b.Provenance
+			proof.ProviderRawSHA256 = sourceHash([]byte(fmt.Sprintf("synthetic concurrent correction %d", i)))
+			changed.Provenance = &proof
+			if _, err := repo.UpsertBars(ctx, []biz.Bar{changed}, biz.SourceTdxArchive, ready); err != nil {
+				failures.Add(1)
+				t.Log(err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	current, e = c.MarketData.Query().Where(marketdata.SymbolEQ(b.Symbol), marketdata.BarTimeEQ(q.Start)).Only(ctx)
+	if failures.Load() != 0 || e != nil || current.Source != "tushare" || current.Close == nil || *current.Close != 20 {
+		t.Fatal("concurrent optional write replaced primary", e)
+	}
+	count, _ = c.DatasetRecord.Query().Where(datasetrecord.SourceEQ(biz.SourceTdxArchive), datasetrecord.EventTimeEQ(q.Start.UTC())).Count(ctx)
+	beforeRevisions := count
 	before, _ := c.Outbox.Query().Where(outbox.EventIDHasPrefix("sb:")).Count(ctx)
 	c.MarketData.Use(func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(context.Context, ent.Mutation) (ent.Value, error) {
@@ -246,7 +278,56 @@ func TestPostgresSupplementConcurrentReservationRevisionAndRollback(t *testing.T
 	}
 	after, _ := c.Outbox.Query().Where(outbox.EventIDHasPrefix("sb:")).Count(ctx)
 	count, _ = c.DatasetRecord.Query().Where(datasetrecord.SourceEQ(biz.SourceTdxArchive), datasetrecord.EventTimeEQ(q.Start.UTC())).Count(ctx)
-	if before != after || count != 2 {
+	if before != after || count != beforeRevisions {
 		t.Fatal("revision/outbox escaped rollback")
+	}
+}
+
+func TestPostgresMacroSupplementPreservesPrimaryUnitsAndUnknownPublication(t *testing.T) {
+	c := sourceAdapterPG(t)
+	ctx := context.Background()
+	d := time.Date(2025, 2, 1, 0, 0, 0, 0, shanghaiLoc())
+	observed := time.Now()
+	t.Cleanup(func() {
+		_, _ = c.MacroSeries.Delete().Where(macroseries.ObsDateEQ(d)).Exec(ctx)
+		_, _ = c.DatasetRecord.Delete().Where(datasetrecord.DomainEQ("macro"), datasetrecord.EventTimeEQ(d.UTC())).Exec(ctx)
+		_, _ = c.Outbox.Delete().Where(outbox.EventIDHasPrefix("sb:")).Exec(ctx)
+	})
+	_, _ = c.MacroSeries.Delete().Where(macroseries.ObsDateEQ(d)).Exec(ctx)
+	_, _ = c.DatasetRecord.Delete().Where(datasetrecord.DomainEQ("macro"), datasetrecord.EventTimeEQ(d.UTC())).Exec(ctx)
+	provenance := &dataset.Provenance{Provider: "fred.stlouisfed.org", ProviderRawSHA256: sourceHash([]byte("synthetic macro source")), ProviderRawKind: "sdk_normalized_result_json", RecordsSHA256: sourceHash([]byte("synthetic macro observations")), AcquisitionMode: "provider_fetch"}
+	a := dataset.Availability{ObservedAt: &observed, Provenance: provenance, Evidence: "synthetic macro transaction contract"}
+	items := []biz.MacroPoint{{Availability: a, Code: "CPIAUCSL", Name: "CPIAUCSL", Date: d, Value: 300.1, Unit: "Index 1982-1984=100"}, {Availability: a, Code: "FEDFUNDS", Name: "FEDFUNDS", Date: d, Value: 4.5, Unit: "Percent"}, {Availability: a, Code: "UNRATE", Name: "UNRATE", Date: d, Value: 4, Unit: "Percent"}}
+	if _, err := c.MacroSeries.Create().SetCode("UNRATE").SetName("primary fixture").SetObsDate(d).SetValue(1).SetUnit("Percent").SetSource("akshare").Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepo(c)
+	ready := biz.Ready{Domain: biz.DomainMacro, Source: biz.SourceOpenBBFred, TradeDate: "2025-02-01"}
+	if n, err := repo.UpsertMacro(ctx, items, biz.SourceOpenBBFred, ready); err != nil || n != 3 {
+		t.Fatal(n, err)
+	}
+	if n, err := repo.UpsertMacro(ctx, items, biz.SourceOpenBBFred, ready); err != nil || n != 0 {
+		t.Fatal("macro duplicate", n, err)
+	}
+	if n, err := c.MacroSeries.Query().Where(macroseries.CodeEQ("CPIAUCSL"), macroseries.ObsDateEQ(d)).Count(ctx); err != nil || n != 0 {
+		t.Fatal("unrepresentable unit produced a misleading current value", n, err)
+	}
+	row, err := c.MacroSeries.Query().Where(macroseries.CodeEQ("UNRATE"), macroseries.ObsDateEQ(d)).Only(ctx)
+	if err != nil || row.Source != "akshare" || row.Value != 1 {
+		t.Fatal("macro optional source replaced primary", err)
+	}
+	revisions, err := c.DatasetRecord.Query().Where(datasetrecord.SourceEQ(biz.SourceOpenBBFred), datasetrecord.EventTimeEQ(d.UTC())).All(ctx)
+	if err != nil || len(revisions) != 3 {
+		t.Fatal("macro PIT revisions", err)
+	}
+	fullUnit := false
+	for _, r := range revisions {
+		if r.AvailableAt != nil || r.Availability != "unknown" {
+			t.Fatal("macro gained false publication time")
+		}
+		fullUnit = fullUnit || bytes.Contains(r.Payload, []byte("Index 1982-1984=100"))
+	}
+	if !fullUnit {
+		t.Fatal("full unit lost from PIT payload")
 	}
 }

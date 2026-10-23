@@ -67,6 +67,30 @@ class SourceTests(unittest.TestCase):
             parse_tdx(out.getvalue(), "2025-01-06")
         self.assertEqual(raised.exception.code, "empty_result")
 
+    def test_traded_equity_without_close_is_rejected(self):
+        original = archive()
+        edited = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(edited, "w") as output:
+            for name in source.namelist():
+                data = bytearray(source.read(name))
+                if name == "sh250106.md1":
+                    struct.pack_into("<d", data, 36, 0)  # Existing positive volume with missing close.
+                output.writestr(name, data)
+        with self.assertRaises(SourceError) as raised:
+            parse_tdx(edited.getvalue(), "2025-01-06")
+        self.assertEqual(raised.exception.code, "format_changed")
+
+    def test_bj_before_format_boundary_is_explicitly_unsupported(self):
+        original = archive(omit_bj=True)
+        edited = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(edited, "w") as output:
+            for name in source.namelist():
+                output.writestr(name.replace("250106", "220505"), source.read(name))
+        rows, coverage = parse_tdx(edited.getvalue(), "2022-05-05")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(coverage["markets"]["bj"]["status"], "unsupported_before_2022_05_06")
+        self.assertIsNone(coverage["markets"]["bj"]["a_stock_count"])
+
     def test_rate_limit_and_missing_archive(self):
         for status, expected in ((429, "rate_limited"), (404, "not_published"), (503, "unavailable")):
             with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("https://www.tdx.com.cn", status, "test", {}, None)):

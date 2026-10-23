@@ -52,7 +52,11 @@ func (r *Repo) supplementTransaction(ctx context.Context, source string, rd biz.
 		return 0, err
 	}
 	defer tx.Rollback()
-	payload := map[string]any{"domain": rd.Domain, "source": source, "trade_date": rd.TradeDate, "count": len(records), "count_basis": "accepted_provider_records_not_current_view_overwrites", "coverage_known": false, "training_ready": false, "current_view_policy": "fill_missing_or_same_supplement_only"}
+	policy := "fill_missing_or_same_supplement_only"
+	if rd.Domain == biz.DomainMacro {
+		policy += ";unknown_or_oversized_unit_pit_only"
+	}
+	payload := map[string]any{"domain": rd.Domain, "source": source, "trade_date": rd.TradeDate, "count": len(records), "count_basis": "accepted_provider_records_not_current_view_overwrites", "coverage_known": false, "training_ready": false, "current_view_policy": policy}
 	env, err := events.NewWithContext(ctx, "datahub", events.SubjectMDReady(rd.Domain), payload)
 	if err != nil {
 		return 0, err
@@ -145,11 +149,15 @@ func (r *Repo) upsertSupplementMacro(ctx context.Context, items []biz.MacroPoint
 		return chunks(items, func(part []biz.MacroPoint) error {
 			bulk := make([]*ent.MacroSeriesCreate, 0, len(part))
 			for _, m := range part {
-				unit := m.Unit
-				if len(unit) > 16 {
-					unit = ""
+				if m.Unit == "" || len(m.Unit) > 16 {
+					// The current view cannot represent this unit losslessly. Keep
+					// the complete observation in PIT instead of publishing a bare value.
+					continue
 				}
-				bulk = append(bulk, tx.MacroSeries.Create().SetCode(m.Code).SetName(truncate(m.Name, 64)).SetObsDate(day(m.Date)).SetValue(m.Value).SetUnit(unit).SetSource(source).SetAsOf(*m.ObservedAt))
+				bulk = append(bulk, tx.MacroSeries.Create().SetCode(m.Code).SetName(truncate(m.Name, 64)).SetObsDate(day(m.Date)).SetValue(m.Value).SetUnit(m.Unit).SetSource(source).SetAsOf(*m.ObservedAt))
+			}
+			if len(bulk) == 0 {
+				return nil
 			}
 			return tx.MacroSeries.CreateBulk(bulk...).OnConflict(entsql.ConflictColumns(macroseries.FieldCode, macroseries.FieldObsDate), entsql.UpdateWhere(entsql.EQ(macroseries.FieldSource, source))).Update(func(u *ent.MacroSeriesUpsert) { u.UpdateName(); u.UpdateValue(); u.UpdateUnit(); u.UpdateAsOf() }).Exec(ctx)
 		})

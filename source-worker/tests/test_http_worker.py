@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 from unittest.mock import patch
@@ -89,13 +90,30 @@ class HTTPSourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 SourceServer(("0.0.0.0", 0), evidence=Path(directory))
-            server = SourceServer(("127.0.0.1", 0), evidence=Path(directory), enabled=True)
-            self.addCleanup(server.server_close)
-            self.assertTrue(server.slots.acquire(False))
-            self.assertTrue(server.slots.acquire(False))
-            self.assertFalse(server.slots.acquire(False))
-            server.slots.release()
-            server.slots.release()
+            base = self.server(directory, enabled=True)
+            both_started, release, lock = threading.Event(), threading.Event(), threading.Lock()
+            calls = 0
+
+            def blocked_collect(*_args, **_kwargs):
+                nonlocal calls
+                with lock:
+                    calls += 1
+                    if calls == 2:
+                        both_started.set()
+                release.wait(2)
+                return {"schema_version": 1, "status": "succeeded"}
+
+            with patch("http_worker.collect", side_effect=blocked_collect), ThreadPoolExecutor(max_workers=2) as pool:
+                pending = [pool.submit(self.post, base, {"schema_version": 1}) for _ in range(2)]
+                try:
+                    self.assertTrue(both_started.wait(1))
+                    status, body = self.post(base, {"schema_version": 1})
+                    self.assertEqual(status, 503)
+                    self.assertEqual(body["status"], "busy")
+                    self.assertEqual(calls, 2)
+                finally:
+                    release.set()
+                self.assertTrue(all(item.result()[0] == 200 for item in pending))
 
 
 if __name__ == "__main__":

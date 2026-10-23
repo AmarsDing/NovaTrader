@@ -113,6 +113,9 @@ func (c *sourceWorkerClient) call(ctx context.Context, request any, domain, prov
 	if reply.Version != 1 || reply.Status != "succeeded" || reply.Domain != domain || reply.Provider != provider || reply.RawKind != rawKind || reply.AvailableAt != nil || reply.TrainingReady || reply.Count < 1 || reply.Count > 10000 || !validSourceHash(reply.RawHash) || !validSourceHash(reply.RecordsHash) || sourceHash(reply.Records) != reply.RecordsHash || (reply.Mode != "recorded_provider_bytes" && reply.Mode != "provider_fetch") {
 		return nil, fmt.Errorf("source-worker identity/hash/availability mismatch")
 	}
+	if domain == biz.DomainMacro && reply.Mode != "provider_fetch" {
+		return nil, fmt.Errorf("macro acquisition mode outside reviewed contract")
+	}
 	if age := c.now().Sub(reply.ObservedAt); reply.ObservedAt.IsZero() || age < -5*time.Second || age > time.Minute {
 		return nil, fmt.Errorf("source-worker observation clock unavailable or outside freshness window")
 	}
@@ -128,6 +131,9 @@ type TdxArchiveSource struct{ *sourceWorkerClient }
 
 func NewTdxArchiveSource(base string) (*TdxArchiveSource, error) {
 	c, e := newSourceWorkerClient(biz.SourceTdxArchive, base)
+	if e != nil {
+		return nil, e
+	}
 	return &TdxArchiveSource{c}, e
 }
 
@@ -223,6 +229,9 @@ type OpenBBFredSource struct{ *sourceWorkerClient }
 
 func NewOpenBBFredSource(base string) (*OpenBBFredSource, error) {
 	c, e := newSourceWorkerClient(biz.SourceOpenBBFred, base)
+	if e != nil {
+		return nil, e
+	}
 	return &OpenBBFredSource{c}, e
 }
 func (s *OpenBBFredSource) Macro(ctx context.Context) ([]biz.MacroPoint, error) {
