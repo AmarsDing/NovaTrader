@@ -11,7 +11,6 @@ import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { useAuthStore } from '@/stores/auth'
 import { messageOf, missLabel, pnlClass, ratioPct } from '@/utils/format'
-import { getWorkbench } from '@/workspace/inject'
 
 const auth = useAuthStore()
 
@@ -34,8 +33,8 @@ const filtered = computed(() =>
 type Row = Candidate & Record<string, unknown>
 const columns: NtTableColumn<Row>[] = [
   { key: 'tradeDate', title: '交易日', mono: true },
-  { key: 'symbol', title: '代码', mono: true },
-  { key: 'name', title: '名称' },
+  // 名称列合并进证券列：SymbolName inline 一格同时给名称与代码（方案 §6.1/§10-18）。
+  { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'pool', title: '池' },
   { key: 'stage', title: '阶段' },
   { key: 'finalScore', title: '评分', align: 'right' },
@@ -45,10 +44,6 @@ const columns: NtTableColumn<Row>[] = [
   { key: 'missReason', title: '未入选原因' },
 ]
 const rows = computed(() => filtered.value as unknown as Row[])
-
-function openMarket(symbol: string) {
-  getWorkbench()?.openPanel('market', { symbol })
-}
 
 async function load() {
   loading.value = true
@@ -122,9 +117,6 @@ onMounted(load)
     <section class="nt-panel">
       <h2 class="nt-panel__title">候选股</h2>
       <NtTable :columns="columns" :rows="rows" row-key="id" dense empty="今日还没有候选股">
-        <template #cell-symbol="{ row }">
-          <button type="button" class="sym" @click="openMarket(String(row.symbol))">{{ row.symbol }}</button>
-        </template>
         <template #cell-retT1="{ row }">
           <span :class="pnlClass(row.retT1)">{{ ratioPct(row.retT1) }}</span>
         </template>
@@ -157,19 +149,6 @@ onMounted(load)
 .filters {
   display: flex;
   gap: 8px;
-}
-
-.sym {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--nt-accent);
-  font: inherit;
-  cursor: pointer;
-}
-
-.sym:hover {
-  text-decoration: underline;
 }
 
 .up {

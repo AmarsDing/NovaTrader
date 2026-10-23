@@ -61,7 +61,7 @@ describe('玻璃合成背景的文字对比', () => {
 
     it(`${theme}：普通文字在空间/玻璃/数据/标题/选中合成层均≥4.5`, () => {
       for (const [surface, background] of Object.entries(surfaces)) {
-        for (const text of ['text-1', 'text-2', 'text-3']) {
+        for (const text of ['text-0', 'text-1', 'text-2', 'text-3']) {
           expect(contrast(c(text), background), `${theme}/${surface}/${text}`).toBeGreaterThanOrEqual(4.5)
         }
       }
