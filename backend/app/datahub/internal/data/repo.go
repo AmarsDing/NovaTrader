@@ -65,7 +65,7 @@ func (r *Repo) withReady(ctx context.Context, rd biz.Ready, fn func(tx *ent.Tx) 
 	}
 	if rd.Domain != "" {
 		rd.Count = n
-		env, err := events.New("datahub", events.SubjectMDReady(rd.Domain), events.TraceID(ctx), rd)
+		env, err := events.NewWithContext(ctx, "datahub", events.SubjectMDReady(rd.Domain), rd)
 		if err != nil {
 			_ = tx.Rollback()
 			return 0, err

@@ -37,7 +37,7 @@ func (a *Alerter) Alert(ctx context.Context, level, title, body string) {
 		return
 	}
 	n := Notice{Level: level, Category: "datahub", Title: title, Body: body, DedupKey: "datahub:" + title}
-	env, err := events.New("datahub", events.SubjectNotifyRequest, events.TraceID(ctx), n)
+	env, err := events.NewWithContext(ctx, "datahub", events.SubjectNotifyRequest, n)
 	if err != nil {
 		return
 	}

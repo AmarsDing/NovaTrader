@@ -138,7 +138,7 @@ type Publisher struct {
 func NewPublisher(bus *events.Bus) *Publisher { return &Publisher{bus: bus} }
 
 func (p *Publisher) Publish(ctx context.Context, subject string, payload any) error {
-	env, err := events.New("market", subject, events.TraceID(ctx), payload)
+	env, err := events.NewWithContext(ctx, "market", subject, payload)
 	if err != nil {
 		return err
 	}

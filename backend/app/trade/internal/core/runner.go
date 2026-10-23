@@ -139,7 +139,7 @@ func (r *Runner) publishChannel(channel string, from, to brokerif.Status, at tim
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ctx = events.OpenTrace(ctx)
-	env, err := events.New("trade", events.SubjectTradeChannel, events.TraceID(ctx), map[string]any{
+	env, err := events.NewWithContext(ctx, "trade", events.SubjectTradeChannel, map[string]any{
 		"channel": channel, "from": string(from), "to": string(to),
 		"at": at.UTC().Format(time.RFC3339),
 	})
@@ -295,7 +295,7 @@ func (r *Runner) publishLiveUnknown(unknown int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ctx = events.OpenTrace(ctx)
-	env, err := events.New("trade", events.SubjectNotifyRequest, events.TraceID(ctx), map[string]any{
+	env, err := events.NewWithContext(ctx, "trade", events.SubjectNotifyRequest, map[string]any{
 		"level":    "warn",
 		"category": "trade",
 		"title":    "东财文件单传输回执未知",
@@ -500,7 +500,7 @@ func (r *Runner) publishAutoFailure(signalID int, symbol string, cause error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ctx = events.OpenTrace(ctx)
-	env, err := events.New("trade", events.SubjectNotifyRequest, events.TraceID(ctx), map[string]any{
+	env, err := events.NewWithContext(ctx, "trade", events.SubjectNotifyRequest, map[string]any{
 		"level":    "critical",
 		"category": "trade",
 		"title":    "全自动条件计划生成失败",

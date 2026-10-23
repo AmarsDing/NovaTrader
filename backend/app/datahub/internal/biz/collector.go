@@ -266,7 +266,7 @@ func (c *Collector) publish(ctx context.Context, subject string, payload any) {
 	if c.bus == nil {
 		return
 	}
-	env, err := events.New(serviceName, subject, events.TraceID(ctx), payload)
+	env, err := events.NewWithContext(ctx, serviceName, subject, payload)
 	if err != nil {
 		c.log.Warnf("event %s: %v", subject, err)
 		return

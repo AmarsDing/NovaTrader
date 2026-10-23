@@ -120,7 +120,7 @@ func (c *Collector) CollectIntel(ctx context.Context, domain string) (CollectSum
 			continue
 		}
 		it.Kind = kind
-		env, err := events.New(serviceName, events.SubjectIntelRaw(kind), events.TraceID(ctx), it.Intel)
+		env, err := events.NewWithContext(ctx, serviceName, events.SubjectIntelRaw(kind), it.Intel)
 		if err != nil {
 			pubErr = err
 			break
