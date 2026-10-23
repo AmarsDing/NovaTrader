@@ -40,8 +40,10 @@ export const POPOUT_ALLOWED = new Set([
   'intel',
   'backtest',
   'limit-ladder',
+  'intraday-alerts',
   'quote-sidebar',
   'morning-briefing',
+  'emotion-review',
   'brain-monitor',
   'model-stats',
   'watchlist',
@@ -196,6 +198,19 @@ const defs: PanelDef[] = [
     },
   },
   {
+    id: 'intraday-alerts',
+    title: '异动流',
+    icon: '异',
+    loader: () => import('@/panels/market/intraday-alerts.panel.vue'),
+    group: 'right',
+    singleton: true,
+    shortcut: {
+      prefix: 'YD',
+      argKind: 'none',
+      description: '盘中异动流：急拉（3min ≥1.5%）/ 封板 / 开板实时流，支持幅度筛选与候选池聚焦。',
+    },
+  },
+  {
     id: 'quote-sidebar',
     title: '行情侧栏',
     icon: '券',
@@ -220,6 +235,19 @@ const defs: PanelDef[] = [
       prefix: 'CB',
       argKind: 'none',
       description: '晨报：隔夜外围、要闻摘要与今日观察清单。',
+    },
+  },
+  {
+    id: 'emotion-review',
+    title: '情绪复盘',
+    icon: '复',
+    loader: () => import('@/panels/brain/emotion-review.panel.vue'),
+    group: 'center',
+    singleton: true,
+    shortcut: {
+      prefix: 'ER',
+      argKind: 'none',
+      description: '情绪复盘：收盘定稿读数 / 明日验证对账 / 程序版八格复盘。',
     },
   },
   {
@@ -301,6 +329,19 @@ const defs: PanelDef[] = [
     },
   },
   {
+    id: 'alert-rules',
+    title: '告警规则',
+    icon: '警',
+    loader: () => import('@/panels/risk/alert-rules.panel.vue'),
+    group: 'right',
+    singleton: true,
+    shortcut: {
+      prefix: 'GJ',
+      argKind: 'none',
+      description: '告警规则：价格三态/涨速规则的列表、新建编辑与布防重置。',
+    },
+  },
+  {
     id: 'evolution',
     title: '影子进化',
     icon: '化',
@@ -350,6 +391,20 @@ const defs: PanelDef[] = [
       prefix: 'DY',
       argKind: 'none',
       description: '数据源健康：通达信 / Tushare / AkShare 等接入状态。',
+    },
+  },
+  {
+    // 含 /api/config 凭证写面（token 只写不读），与 settings 同级按禁弹处理——不加入 POPOUT_ALLOWED。
+    id: 'datasource-center',
+    title: '数据源中心',
+    icon: '中',
+    loader: () => import('@/panels/datahub/datasource-center.panel.vue'),
+    group: 'center',
+    singleton: true,
+    shortcut: {
+      prefix: 'ZY',
+      argKind: 'none',
+      description: '数据源中心：源墙（域徽章/费用档/凭证）、域降级链排序与健康总览。',
     },
   },
   {

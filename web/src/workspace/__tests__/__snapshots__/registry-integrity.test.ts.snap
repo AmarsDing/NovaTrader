@@ -96,6 +96,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
   },
   {
     "aliases": [],
+    "argHint": "",
+    "argKind": "none",
+    "description": "盘中异动流：急拉（3min ≥1.5%）/ 封板 / 开板实时流，支持幅度筛选与候选池聚焦。",
+    "id": "intraday-alerts",
+    "prefix": "YD",
+    "title": "异动流",
+  },
+  {
+    "aliases": [],
     "argHint": "600519",
     "argKind": "ticker",
     "description": "单券快照侧栏：报价/五档/概况恒随当前证券，QL 600519 直达。",
@@ -111,6 +120,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
     "id": "morning-briefing",
     "prefix": "CB",
     "title": "晨报",
+  },
+  {
+    "aliases": [],
+    "argHint": "",
+    "argKind": "none",
+    "description": "情绪复盘：收盘定稿读数 / 明日验证对账 / 程序版八格复盘。",
+    "id": "emotion-review",
+    "prefix": "ER",
+    "title": "情绪复盘",
   },
   {
     "aliases": [],
@@ -170,6 +188,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
     "aliases": [],
     "argHint": "",
     "argKind": "none",
+    "description": "告警规则：价格三态/涨速规则的列表、新建编辑与布防重置。",
+    "id": "alert-rules",
+    "prefix": "GJ",
+    "title": "告警规则",
+  },
+  {
+    "aliases": [],
+    "argHint": "",
+    "argKind": "none",
     "description": "影子进化：策略影子运行的对照与晋级检查。",
     "id": "evolution",
     "prefix": "YJ",
@@ -201,6 +228,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
     "id": "datasource-health",
     "prefix": "DY",
     "title": "数据源",
+  },
+  {
+    "aliases": [],
+    "argHint": "",
+    "argKind": "none",
+    "description": "数据源中心：源墙（域徽章/费用档/凭证）、域降级链排序与健康总览。",
+    "id": "datasource-center",
+    "prefix": "ZY",
+    "title": "数据源中心",
   },
   {
     "aliases": [],
@@ -240,6 +276,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "id": "datasource-health",
     "title": "数据源",
   },
+  "ER": {
+    "aliases": [],
+    "arg": "none",
+    "id": "emotion-review",
+    "title": "情绪复盘",
+  },
   "FK": {
     "aliases": [],
     "arg": "none",
@@ -257,6 +299,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "arg": "none",
     "id": "pool-manager",
     "title": "股池黑名单",
+  },
+  "GJ": {
+    "aliases": [],
+    "arg": "none",
+    "id": "alert-rules",
+    "title": "告警规则",
   },
   "GP": {
     "aliases": [
@@ -344,6 +392,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "id": "signals",
     "title": "信号",
   },
+  "YD": {
+    "aliases": [],
+    "arg": "none",
+    "id": "intraday-alerts",
+    "title": "异动流",
+  },
   "YJ": {
     "aliases": [],
     "arg": "none",
@@ -355,6 +409,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "arg": "none",
     "id": "ops",
     "title": "运维",
+  },
+  "ZY": {
+    "aliases": [],
+    "arg": "none",
+    "id": "datasource-center",
+    "title": "数据源中心",
   },
 }
 `;

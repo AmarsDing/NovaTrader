@@ -126,7 +126,7 @@ describe('resolveMnemonic 状态机', () => {
 describe('functionIndex 功能卡', () => {
   it('覆盖全部面板且字段齐备（数量与 registry 同步演进）', () => {
     const cards = functionIndex()
-    expect(cards).toHaveLength(21 + 2)
+    expect(cards).toHaveLength(23 + 3 + 1)
     for (const c of cards) {
       expect(c.prefix).toMatch(/^[A-Z0-9]{2,4}$/)
       expect(c.title).toBeTruthy()

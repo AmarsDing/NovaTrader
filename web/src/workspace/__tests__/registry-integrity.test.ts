@@ -37,7 +37,8 @@ describe('panel-registry shortcut 完整性', () => {
   })
 
   it('面板数量与 popout 白名单不自相矛盾', () => {
-    expect(listPanels()).toHaveLength(21 + 2)
+    // +1 datasource-center（含 /api/config 凭证写面，与 settings 同级禁弹——不在 POPOUT_ALLOWED）
+    expect(listPanels()).toHaveLength(23 + 3 + 1)
   })
 })
 
