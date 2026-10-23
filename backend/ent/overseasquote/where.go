@@ -349,6 +349,16 @@ func PctChgLTE(v float64) predicate.OverseasQuote {
 	return predicate.OverseasQuote(sql.FieldLTE(FieldPctChg, v))
 }
 
+// PctChgIsNil applies the IsNil predicate on the "pct_chg" field.
+func PctChgIsNil() predicate.OverseasQuote {
+	return predicate.OverseasQuote(sql.FieldIsNull(FieldPctChg))
+}
+
+// PctChgNotNil applies the NotNil predicate on the "pct_chg" field.
+func PctChgNotNil() predicate.OverseasQuote {
+	return predicate.OverseasQuote(sql.FieldNotNull(FieldPctChg))
+}
+
 // AsOfEQ applies the EQ predicate on the "as_of" field.
 func AsOfEQ(v time.Time) predicate.OverseasQuote {
 	return predicate.OverseasQuote(sql.FieldEQ(FieldAsOf, v))

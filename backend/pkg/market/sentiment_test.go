@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+func pctPtr(v float64) *float64 { return &v }
+
 func TestComputeSentiment(t *testing.T) {
 	stocks := []StockDay{
 		{Symbol: "a", PctChg: 10, Amount: 100, UpStatus: StatusSealed, Consecutive: 3, PrevSealed: true},
@@ -103,10 +105,10 @@ func TestImpulseUsesOnlyFreshQuotes(t *testing.T) {
 	sh := at("00:00:00").Location()
 	d := func(s string) time.Time { x, _ := time.ParseInLocation("2006-01-02 15:04", s, sh); return x }
 	quotes := []Quote{
-		{Code: "NVDA", TradeDate: d("2026-10-07 00:00"), PctChg: 9, AsOf: d("2026-10-08 05:00")},
-		{Code: "NVDA", TradeDate: d("2026-10-08 00:00"), PctChg: 3, AsOf: d("2026-10-09 05:00")},
-		{Code: "NVDA", TradeDate: d("2026-10-09 00:00"), PctChg: -5, AsOf: d("2026-10-10 05:00")},
-		{Code: "XAU", TradeDate: d("2026-10-06 00:00"), PctChg: 2, AsOf: d("2026-10-07 05:00")},
+		{Code: "NVDA", TradeDate: d("2026-10-07 00:00"), PctChg: pctPtr(9), AsOf: d("2026-10-08 05:00")},
+		{Code: "NVDA", TradeDate: d("2026-10-08 00:00"), PctChg: pctPtr(3), AsOf: d("2026-10-09 05:00")},
+		{Code: "NVDA", TradeDate: d("2026-10-09 00:00"), PctChg: pctPtr(-5), AsOf: d("2026-10-10 05:00")},
+		{Code: "XAU", TradeDate: d("2026-10-06 00:00"), PctChg: pctPtr(2), AsOf: d("2026-10-07 05:00")},
 	}
 	maps := []Mapping{{Asset: "NVDA", Sector: "AI", Weight: 0.5}, {Asset: "XAU", Sector: "GOLD", Weight: 1}}
 	// 10-09 早盘：A 股上一交易日 10-08，取美股 10-08 的收盘。

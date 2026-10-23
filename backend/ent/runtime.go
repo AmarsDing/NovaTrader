@@ -2842,10 +2842,6 @@ func init() {
 	overseasquote.DefaultName = overseasquoteDescName.Default.(string)
 	// overseasquote.NameValidator is a validator for the "name" field. It is called by the builders before save.
 	overseasquote.NameValidator = overseasquoteDescName.Validators[0].(func(string) error)
-	// overseasquoteDescPctChg is the schema descriptor for pct_chg field.
-	overseasquoteDescPctChg := overseasquoteFields[4].Descriptor()
-	// overseasquote.DefaultPctChg holds the default value on creation for the pct_chg field.
-	overseasquote.DefaultPctChg = overseasquoteDescPctChg.Default.(float64)
 	// overseasquoteDescSource is the schema descriptor for source field.
 	overseasquoteDescSource := overseasquoteFields[6].Descriptor()
 	// overseasquote.DefaultSource holds the default value on creation for the source field.

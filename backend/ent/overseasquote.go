@@ -25,8 +25,8 @@ type OverseasQuote struct {
 	TradeDate time.Time `json:"trade_date,omitempty"`
 	// Close holds the value of the "close" field.
 	Close *float64 `json:"close,omitempty"`
-	// %
-	PctChg float64 `json:"pct_chg,omitempty"`
+	// %（缺数保持 NULL，不写 0 冒充；M01 上游汇率缺键即缺，T12c 销账）
+	PctChg *float64 `json:"pct_chg,omitempty"`
 	// 收盘数据可得时刻（北京时间）
 	AsOf time.Time `json:"as_of,omitempty"`
 	// Source holds the value of the "source" field.
@@ -97,7 +97,8 @@ func (_m *OverseasQuote) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field pct_chg", values[i])
 			} else if value.Valid {
-				_m.PctChg = value.Float64
+				_m.PctChg = new(float64)
+				*_m.PctChg = value.Float64
 			}
 		case overseasquote.FieldAsOf:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -161,8 +162,10 @@ func (_m *OverseasQuote) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("pct_chg=")
-	builder.WriteString(fmt.Sprintf("%v", _m.PctChg))
+	if v := _m.PctChg; v != nil {
+		builder.WriteString("pct_chg=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("as_of=")
 	builder.WriteString(_m.AsOf.Format(time.ANSIC))

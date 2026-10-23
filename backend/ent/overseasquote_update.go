@@ -118,6 +118,12 @@ func (_u *OverseasQuoteUpdate) AddPctChg(v float64) *OverseasQuoteUpdate {
 	return _u
 }
 
+// ClearPctChg clears the value of the "pct_chg" field.
+func (_u *OverseasQuoteUpdate) ClearPctChg() *OverseasQuoteUpdate {
+	_u.mutation.ClearPctChg()
+	return _u
+}
+
 // SetAsOf sets the "as_of" field.
 func (_u *OverseasQuoteUpdate) SetAsOf(v time.Time) *OverseasQuoteUpdate {
 	_u.mutation.SetAsOf(v)
@@ -234,6 +240,9 @@ func (_u *OverseasQuoteUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.AddedPctChg(); ok {
 		_spec.AddField(overseasquote.FieldPctChg, field.TypeFloat64, value)
 	}
+	if _u.mutation.PctChgCleared() {
+		_spec.ClearField(overseasquote.FieldPctChg, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.AsOf(); ok {
 		_spec.SetField(overseasquote.FieldAsOf, field.TypeTime, value)
 	}
@@ -347,6 +356,12 @@ func (_u *OverseasQuoteUpdateOne) SetNillablePctChg(v *float64) *OverseasQuoteUp
 // AddPctChg adds value to the "pct_chg" field.
 func (_u *OverseasQuoteUpdateOne) AddPctChg(v float64) *OverseasQuoteUpdateOne {
 	_u.mutation.AddPctChg(v)
+	return _u
+}
+
+// ClearPctChg clears the value of the "pct_chg" field.
+func (_u *OverseasQuoteUpdateOne) ClearPctChg() *OverseasQuoteUpdateOne {
+	_u.mutation.ClearPctChg()
 	return _u
 }
 
@@ -495,6 +510,9 @@ func (_u *OverseasQuoteUpdateOne) sqlSave(ctx context.Context) (_node *OverseasQ
 	}
 	if value, ok := _u.mutation.AddedPctChg(); ok {
 		_spec.AddField(overseasquote.FieldPctChg, field.TypeFloat64, value)
+	}
+	if _u.mutation.PctChgCleared() {
+		_spec.ClearField(overseasquote.FieldPctChg, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.AsOf(); ok {
 		_spec.SetField(overseasquote.FieldAsOf, field.TypeTime, value)

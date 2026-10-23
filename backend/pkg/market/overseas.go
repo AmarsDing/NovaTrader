@@ -3,13 +3,14 @@ package market
 import "time"
 
 // Quote 是一条外围收盘。TradeDate 为当地交易日。Close 为源端收盘价（可空——
-// 部分源只报涨跌幅）；PctChg 为源端涨跌幅%。注意 M01 部分上游对汇率 PctChg
-// 写死 0（M13-T12），涨跌幅应以 Close 相邻两日实算，禁止继承该列当 0 冒充。
+// 部分源只报涨跌幅）；PctChg 为源端涨跌幅%（可空——M01 上游对汇率取不到即缺键，
+// T12c 落 NULL，不再写 0 冒充）。涨跌幅应以 Close 相邻两日实算；PctChg 仅作
+// 源端附带数据，nil 即缺失，消费侧不得按 0 继承。
 type Quote struct {
 	Code      string
 	TradeDate time.Time
 	Close     *float64
-	PctChg    float64
+	PctChg    *float64
 	AsOf      time.Time
 }
 
@@ -36,10 +37,10 @@ func Impulse(quotes []Quote, mappings []Mapping, prevTradeDay, cutoff time.Time)
 	out := map[string]float64{}
 	for _, m := range mappings {
 		q, ok := latest[m.Asset]
-		if !ok {
-			continue
+		if !ok || q.PctChg == nil {
+			continue // PctChg 缺失不计入（数据纪律：不以 0 冒充）
 		}
-		out[m.Sector] += m.Weight * q.PctChg
+		out[m.Sector] += m.Weight * *q.PctChg
 	}
 	return out
 }

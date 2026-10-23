@@ -632,7 +632,7 @@ func (r *Repo) UpsertOverseas(ctx context.Context, items []biz.OverseasQuote, so
 				SetName(truncate(q.Name, 64)).
 				SetTradeDate(time.Date(q.TradeDate.Year(), q.TradeDate.Month(), q.TradeDate.Day(), 0, 0, 0, 0, tradecal.Shanghai())).
 				SetClose(close).
-				SetPctChg(q.PctChg).
+				SetNillablePctChg(q.PctChg).
 				SetAsOf(q.AsOf).
 				SetSource(source))
 		}

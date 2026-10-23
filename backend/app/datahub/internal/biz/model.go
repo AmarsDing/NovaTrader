@@ -350,13 +350,13 @@ type IntelQuery struct {
 	Limit int
 }
 
-// OverseasQuote 外围行情。TradeDate 为当地交易日。
+// OverseasQuote 外围行情。TradeDate 为当地交易日。PctChg 缺数保持 nil（不写 0 冒充）。
 type OverseasQuote struct {
 	Code      string
 	Name      string
 	TradeDate time.Time
 	Close     float64
-	PctChg    float64
+	PctChg    *float64
 	AsOf      time.Time
 }
 

@@ -23,7 +23,7 @@ func (OverseasQuote) Fields() []ent.Field {
 		field.String("name").MaxLen(64).Default(""),
 		field.Time("trade_date").SchemaType(pgDate),
 		field.Float("close").Optional().Nillable(),
-		field.Float("pct_chg").Default(0).Comment("%"),
+		field.Float("pct_chg").Optional().Nillable().Comment("%（缺数保持 NULL，不写 0 冒充；M01 上游汇率缺键即缺，T12c 销账）"),
 		field.Time("as_of").SchemaType(pgTimestamptz).Comment("收盘数据可得时刻（北京时间）"),
 		field.String("source").MaxLen(16).Default(""),
 	}

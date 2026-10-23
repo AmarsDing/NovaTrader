@@ -58,8 +58,6 @@ var (
 	DefaultName string
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
-	// DefaultPctChg holds the default value on creation for the "pct_chg" field.
-	DefaultPctChg float64
 	// DefaultSource holds the default value on creation for the "source" field.
 	DefaultSource string
 	// SourceValidator is a validator for the "source" field. It is called by the builders before save.

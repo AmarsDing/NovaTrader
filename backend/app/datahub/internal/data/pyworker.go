@@ -301,11 +301,11 @@ func NewAkshare(base string, opt HTTPOptions) *Akshare {
 func (s *Akshare) Overseas(ctx context.Context) ([]biz.OverseasQuote, error) {
 	var out struct {
 		Items []struct {
-			Code      string  `json:"code"`
-			Name      string  `json:"name"`
-			TradeDate string  `json:"trade_date"`
-			Close     float64 `json:"close"`
-			PctChg    float64 `json:"pct_chg"`
+			Code      string   `json:"code"`
+			Name      string   `json:"name"`
+			TradeDate string   `json:"trade_date"`
+			Close     float64  `json:"close"`
+			PctChg    *float64 `json:"pct_chg"`
 		} `json:"items"`
 	}
 	if err := s.call(ctx, http.MethodGet, "/ak/global", nil, &out); err != nil {

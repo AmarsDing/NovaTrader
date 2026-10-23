@@ -22,8 +22,8 @@ func TestCloseChgFromOverseasCloses(t *testing.T) {
 
 	// 相邻两个有效收盘实算涨跌（%），PctChg 列（上游写死 0）不得参与。
 	q := []market.Quote{
-		{Code: "USDCNH", TradeDate: day(-2), Close: closePtr(7.10), PctChg: 0, AsOf: atT(-2, 9)},
-		{Code: "USDCNH", TradeDate: day(-1), Close: closePtr(7.20), PctChg: 0, AsOf: atT(-1, 9)},
+		{Code: "USDCNH", TradeDate: day(-2), Close: closePtr(7.10), PctChg: closePtr(0), AsOf: atT(-2, 9)},
+		{Code: "USDCNH", TradeDate: day(-1), Close: closePtr(7.20), PctChg: closePtr(0), AsOf: atT(-1, 9)},
 	}
 	v, ok := latestCloseChg(q, asOf, "USDCNH").Value()
 	if !ok || math.Abs(v-(7.20/7.10-1)*100) > 1e-9 {
@@ -212,10 +212,10 @@ func TestCheckpointExternalFactors(t *testing.T) {
 	}
 
 	quotes := []market.Quote{
-		{Code: "USDCNH", TradeDate: day.AddDate(0, 0, -2), Close: closePtr(7.10), PctChg: 0, AsOf: day.AddDate(0, 0, -1).Add(8 * time.Hour)},
-		{Code: "USDCNH", TradeDate: day.AddDate(0, 0, -1), Close: closePtr(7.20), PctChg: 0, AsOf: day.AddDate(0, 0, -1).Add(9 * time.Hour)},
-		{Code: "XAU", TradeDate: day.AddDate(0, 0, -2), Close: closePtr(2000), PctChg: 0, AsOf: day.AddDate(0, 0, -1).Add(8 * time.Hour)},
-		{Code: "XAU", TradeDate: day.AddDate(0, 0, -1), Close: closePtr(2030), PctChg: 0, AsOf: day.AddDate(0, 0, -1).Add(9 * time.Hour)},
+		{Code: "USDCNH", TradeDate: day.AddDate(0, 0, -2), Close: closePtr(7.10), PctChg: closePtr(0), AsOf: day.AddDate(0, 0, -1).Add(8 * time.Hour)},
+		{Code: "USDCNH", TradeDate: day.AddDate(0, 0, -1), Close: closePtr(7.20), PctChg: closePtr(0), AsOf: day.AddDate(0, 0, -1).Add(9 * time.Hour)},
+		{Code: "XAU", TradeDate: day.AddDate(0, 0, -2), Close: closePtr(2000), PctChg: closePtr(0), AsOf: day.AddDate(0, 0, -1).Add(8 * time.Hour)},
+		{Code: "XAU", TradeDate: day.AddDate(0, 0, -1), Close: closePtr(2030), PctChg: closePtr(0), AsOf: day.AddDate(0, 0, -1).Add(9 * time.Hour)},
 	}
 	got := run(t, quotes)
 	w := market.DefaultSectorWeights()

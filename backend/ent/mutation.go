@@ -53249,7 +53249,7 @@ func (m *OverseasQuoteMutation) PctChg() (r float64, exists bool) {
 // OldPctChg returns the old "pct_chg" field's value of the OverseasQuote entity.
 // If the OverseasQuote object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *OverseasQuoteMutation) OldPctChg(ctx context.Context) (v float64, err error) {
+func (m *OverseasQuoteMutation) OldPctChg(ctx context.Context) (v *float64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldPctChg is only allowed on UpdateOne operations")
 	}
@@ -53281,10 +53281,24 @@ func (m *OverseasQuoteMutation) AddedPctChg() (r float64, exists bool) {
 	return *v, true
 }
 
+// ClearPctChg clears the value of the "pct_chg" field.
+func (m *OverseasQuoteMutation) ClearPctChg() {
+	m.pct_chg = nil
+	m.addpct_chg = nil
+	m.clearedFields[overseasquote.FieldPctChg] = struct{}{}
+}
+
+// PctChgCleared returns if the "pct_chg" field was cleared in this mutation.
+func (m *OverseasQuoteMutation) PctChgCleared() bool {
+	_, ok := m.clearedFields[overseasquote.FieldPctChg]
+	return ok
+}
+
 // ResetPctChg resets all changes to the "pct_chg" field.
 func (m *OverseasQuoteMutation) ResetPctChg() {
 	m.pct_chg = nil
 	m.addpct_chg = nil
+	delete(m.clearedFields, overseasquote.FieldPctChg)
 }
 
 // SetAsOf sets the "as_of" field.
@@ -53578,6 +53592,9 @@ func (m *OverseasQuoteMutation) ClearedFields() []string {
 	if m.FieldCleared(overseasquote.FieldClose) {
 		fields = append(fields, overseasquote.FieldClose)
 	}
+	if m.FieldCleared(overseasquote.FieldPctChg) {
+		fields = append(fields, overseasquote.FieldPctChg)
+	}
 	return fields
 }
 
@@ -53594,6 +53611,9 @@ func (m *OverseasQuoteMutation) ClearField(name string) error {
 	switch name {
 	case overseasquote.FieldClose:
 		m.ClearClose()
+		return nil
+	case overseasquote.FieldPctChg:
+		m.ClearPctChg()
 		return nil
 	}
 	return fmt.Errorf("unknown OverseasQuote nullable field %s", name)

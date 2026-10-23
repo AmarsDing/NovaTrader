@@ -1671,7 +1671,7 @@ var (
 		{Name: "name", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
 		{Name: "close", Type: field.TypeFloat64, Nullable: true},
-		{Name: "pct_chg", Type: field.TypeFloat64, Default: 0},
+		{Name: "pct_chg", Type: field.TypeFloat64, Nullable: true},
 		{Name: "as_of", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "source", Type: field.TypeString, Size: 16, Default: ""},
 	}

@@ -135,10 +135,6 @@ func (_c *OverseasQuoteCreate) defaults() {
 		v := overseasquote.DefaultName
 		_c.mutation.SetName(v)
 	}
-	if _, ok := _c.mutation.PctChg(); !ok {
-		v := overseasquote.DefaultPctChg
-		_c.mutation.SetPctChg(v)
-	}
 	if _, ok := _c.mutation.Source(); !ok {
 		v := overseasquote.DefaultSource
 		_c.mutation.SetSource(v)
@@ -165,9 +161,6 @@ func (_c *OverseasQuoteCreate) check() error {
 	}
 	if _, ok := _c.mutation.TradeDate(); !ok {
 		return &ValidationError{Name: "trade_date", err: errors.New(`ent: missing required field "OverseasQuote.trade_date"`)}
-	}
-	if _, ok := _c.mutation.PctChg(); !ok {
-		return &ValidationError{Name: "pct_chg", err: errors.New(`ent: missing required field "OverseasQuote.pct_chg"`)}
 	}
 	if _, ok := _c.mutation.AsOf(); !ok {
 		return &ValidationError{Name: "as_of", err: errors.New(`ent: missing required field "OverseasQuote.as_of"`)}
@@ -225,7 +218,7 @@ func (_c *OverseasQuoteCreate) createSpec() (*OverseasQuote, *sqlgraph.CreateSpe
 	}
 	if value, ok := _c.mutation.PctChg(); ok {
 		_spec.SetField(overseasquote.FieldPctChg, field.TypeFloat64, value)
-		_node.PctChg = value
+		_node.PctChg = &value
 	}
 	if value, ok := _c.mutation.AsOf(); ok {
 		_spec.SetField(overseasquote.FieldAsOf, field.TypeTime, value)
@@ -362,6 +355,12 @@ func (u *OverseasQuoteUpsert) UpdatePctChg() *OverseasQuoteUpsert {
 // AddPctChg adds v to the "pct_chg" field.
 func (u *OverseasQuoteUpsert) AddPctChg(v float64) *OverseasQuoteUpsert {
 	u.Add(overseasquote.FieldPctChg, v)
+	return u
+}
+
+// ClearPctChg clears the value of the "pct_chg" field.
+func (u *OverseasQuoteUpsert) ClearPctChg() *OverseasQuoteUpsert {
+	u.SetNull(overseasquote.FieldPctChg)
 	return u
 }
 
@@ -517,6 +516,13 @@ func (u *OverseasQuoteUpsertOne) AddPctChg(v float64) *OverseasQuoteUpsertOne {
 func (u *OverseasQuoteUpsertOne) UpdatePctChg() *OverseasQuoteUpsertOne {
 	return u.Update(func(s *OverseasQuoteUpsert) {
 		s.UpdatePctChg()
+	})
+}
+
+// ClearPctChg clears the value of the "pct_chg" field.
+func (u *OverseasQuoteUpsertOne) ClearPctChg() *OverseasQuoteUpsertOne {
+	return u.Update(func(s *OverseasQuoteUpsert) {
+		s.ClearPctChg()
 	})
 }
 
@@ -840,6 +846,13 @@ func (u *OverseasQuoteUpsertBulk) AddPctChg(v float64) *OverseasQuoteUpsertBulk 
 func (u *OverseasQuoteUpsertBulk) UpdatePctChg() *OverseasQuoteUpsertBulk {
 	return u.Update(func(s *OverseasQuoteUpsert) {
 		s.UpdatePctChg()
+	})
+}
+
+// ClearPctChg clears the value of the "pct_chg" field.
+func (u *OverseasQuoteUpsertBulk) ClearPctChg() *OverseasQuoteUpsertBulk {
+	return u.Update(func(s *OverseasQuoteUpsert) {
+		s.ClearPctChg()
 	})
 }
 
