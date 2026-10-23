@@ -97,6 +97,7 @@ export async function listDispositions(
     signal,
   })
   return asList(raw, 'items').map((v) => ({
+    // 哨兵钉死（P3-10c）：id 是 ent 自增主键（恒 ≥1 且恒序列化），?? 0 实际不可达，仅防契约漂移。
     id: count(pick(v, 'id')) ?? 0,
     eventId: pick<string>(v, 'eventId', 'event_id') || '',
     traceId: pick<string>(v, 'traceId', 'trace_id') || '',

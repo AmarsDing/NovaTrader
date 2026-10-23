@@ -71,6 +71,8 @@ export interface OpsGpu {
 }
 
 export async function getOpsGpu(): Promise<OpsGpu> {
+  // 哨兵钉死（P3-10c）：行存在则后端六键恒写（memUsed/memTotal 的 ?? 0 冗余，0=空载真值）；
+  // utilPct/tempC/powerW 用 ?? -1 哨兵（N/A 不是 0，消费方一致判 >=0）；缺失语义走 gpuAvailable=false + gpus 空数组。
   const data = await request('/api/ops/gpu')
   const raw = (data ?? {}) as RawRecord
   return {
@@ -147,7 +149,10 @@ export interface OpsDb {
   note: string
 }
 
-/** PostgreSQL 连接池 / 库体积 / 慢查询。pg_stat_statements 未装时 slowAvailable=false。 */
+/** PostgreSQL 连接池 / 库体积 / 慢查询。pg_stat_statements 未装时 slowAvailable=false。
+ * 哨兵钉死（P3-10c）：pool/connections 对象存在 => 内字段后端恒写（Go 结构体/单条聚合 SQL，要么齐活要么整对象缺）；
+ * 0 全为真值（maxOpen 0=无上限，waitCount/waitMs 0=从未等待，idleInTx 0=正常态）；slow top 行内三字段恒有，
+ * 慢查询整体缺失由 slowAvailable=false + note 承载。 */
 export async function getOpsDb(): Promise<OpsDb> {
   const data = await request('/api/ops/db')
   const raw = (data ?? {}) as RawRecord
@@ -215,7 +220,9 @@ export interface OpsNats {
   pendingTotal: number | null
 }
 
-/** NATS 连接计数与各 durable 消费者 lag。断连时 connected=false，不编数。 */
+/** NATS 连接计数与各 durable 消费者 lag。断连时 connected=false，不编数。
+ * 哨兵钉死（P3-10c）：stream 对象存在 => messages/bytes 后端恒写（StreamState 结构体非指针，?? 0 冗余，
+ * 0=空流真值）；StreamInfo 失败则整对象缺，消费面已兜 null 显「未返回」。 */
 export async function getOpsNats(): Promise<OpsNats> {
   const data = await request('/api/ops/nats')
   const raw = (data ?? {}) as RawRecord

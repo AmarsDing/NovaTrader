@@ -313,6 +313,8 @@ function apply(fitViewport = true) {
   volume.setData(
     data.map((row) => ({
       time: row.time as Time,
+      // 「没取到≠0」哨兵（P3-10c 复核）：缺量画 0 高柱（停牌真 0 同形）是视觉降级，不产数字；
+      // 着色 ?? 0 实际不可达——seriesRows() 已把 OHLC 任一为 null 的 bar 整体过滤。
       value: row.volume || 0,
       color: colorWithAlpha((row.close ?? 0) >= (row.open ?? 0) ? palette.value.up : palette.value.down, 0.4),
     })),

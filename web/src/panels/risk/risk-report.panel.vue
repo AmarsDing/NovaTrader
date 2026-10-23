@@ -97,7 +97,7 @@ onMounted(load)
 <style scoped>
 .summary {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--nt-fs-panel); /* 收编自 13px 裸值，等值档映射（§5.3），零视觉换挡 */
   line-height: 1.7;
   color: var(--nt-text-1);
   white-space: pre-wrap;

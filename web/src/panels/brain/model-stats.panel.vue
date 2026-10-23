@@ -48,10 +48,15 @@ const rows = computed<Row[]>(() =>
 )
 
 const totals = computed(() => {
-  const calls = rows.value.reduce((acc, r) => acc + (r.calls ?? 0), 0)
-  const failures = rows.value.reduce((acc, r) => acc + (r.failures ?? 0), 0)
+  // 没取到≠0：全层级都缺失时总调用显示「—」而不是「总调用 0」；
+  // 有部分数据时才把缺失层当 0 参与求和（口径：总和=已知层之和）。
+  const hasCalls = rows.value.some((r) => r.calls != null)
+  const hasFailures = rows.value.some((r) => r.failures != null)
+  const calls = hasCalls ? rows.value.reduce((acc, r) => acc + (r.calls ?? 0), 0) : null
+  const failures = hasFailures ? rows.value.reduce((acc, r) => acc + (r.failures ?? 0), 0) : null
   const breaker = rows.value.filter((r) => r.state === '熔断').length
-  return { calls, failures, breaker, failRate: calls > 0 ? failures / calls : null }
+  const failRate = calls != null && calls > 0 ? (failures ?? 0) / calls : null
+  return { calls, failures, breaker, failRate }
 })
 </script>
 
@@ -66,11 +71,15 @@ const totals = computed(() => {
 
     <div class="nt-cards">
       <NtStatCard label="总调用" :value="intText(totals.calls)" />
-      <NtStatCard label="总失败" :value="intText(totals.failures)" :tone="totals.failures > 0 ? 'warn' : 'neutral'" />
+      <NtStatCard
+        label="总失败"
+        :value="intText(totals.failures)"
+        :tone="totals.failures != null && totals.failures > 0 ? 'warn' : 'neutral'"
+      />
       <NtStatCard
         label="失败率"
         :value="ratioPct(totals.failRate)"
-        :tone="(totals.failRate ?? 0) > 0.05 ? 'danger' : 'neutral'"
+        :tone="totals.failRate != null && totals.failRate > 0.05 ? 'danger' : 'neutral'"
       />
       <NtStatCard label="熔断层级" :value="intText(totals.breaker)" :tone="totals.breaker > 0 ? 'danger' : 'neutral'" />
     </div>
@@ -79,7 +88,7 @@ const totals = computed(() => {
       <h2 class="nt-panel__title">分层明细</h2>
       <NtTable :columns="columns" :rows="rows" row-key="tier" dense empty="还没有模型统计">
         <template #cell-kvCacheUsage="{ row }">
-          <span :class="{ 'kv-hot': (row.kvCacheUsage ?? 0) > 0.85 }">{{ ratioPct(row.kvCacheUsage, 0) }}</span>
+          <span :class="{ 'kv-hot': row.kvCacheUsage != null && row.kvCacheUsage > 0.85 }">{{ ratioPct(row.kvCacheUsage, 0) }}</span>
         </template>
       </NtTable>
     </section>

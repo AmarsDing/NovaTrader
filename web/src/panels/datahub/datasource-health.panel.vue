@@ -21,6 +21,7 @@ import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { linkStatus, statusOf as statusMapOf } from '@/ui/status-map'
 import { clock, messageOf, ratioPct } from '@/utils/format'
+import { serverNow } from '@/utils/server-clock'
 
 const auth = useAuthStore()
 
@@ -42,7 +43,8 @@ function statusOf(s: DataSource): 'live' | 'ok' | 'stale' | 'down' | 'off' {
   if (!s.lastAt) return 'stale'
   const at = new Date(s.lastAt).getTime()
   if (!Number.isFinite(at)) return 'stale'
-  return Date.now() - at < STALE_MS ? 'live' : 'stale'
+  /* P2-10：lastAt 是服务端戳——新鲜度与后端时源对齐（未校准回退本地钟）。 */
+  return serverNow() - at < STALE_MS ? 'live' : 'stale'
 }
 
 /** 状态点双编码（§7.2-1）：dot 带字，状态词取自链路五态册（§7.1，一字锁定）。 */
@@ -169,7 +171,10 @@ onMounted(load)
           <NtStatusDot :status="statusOf(row)" :label="dotLabel(row)" />
         </template>
         <template #cell-successRate="{ row }">
-          <span :class="{ warn: (row.successRate ?? 1) < 0.9 }">{{ row.successRate != null ? ratioPct(row.successRate, 0) : '—' }}</span>
+          <!-- 「没取到≠0」（P3-10c 复核）：原 (row.successRate ?? 1) < 0.9 把缺失冒充满分、告警静默消失；
+               null = 统计窗口无采样，显「—」不参与告警（不虚警），title 写明原因 -->
+          <span v-if="row.successRate != null" :class="{ warn: row.successRate < 0.9 }">{{ ratioPct(row.successRate, 0) }}</span>
+          <span v-else class="mid" title="统计窗口内无采样，成功率无法计算">—</span>
         </template>
         <template #cell-latencyMs="{ row }">{{ row.latencyMs != null ? Math.round(row.latencyMs) : '—' }}</template>
         <template #cell-fails="{ row }">

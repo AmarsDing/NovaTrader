@@ -118,6 +118,8 @@ export interface ShadowStats {
 }
 
 export async function getShadowStats(): Promise<ShadowStats> {
+  // 哨兵钉死（P3-10c）：horizon 是后端常量表（shadowHorizons=1/3/5）逐档恒发射，proto 非 optional，
+  // ?? 0 是从不触发的冗余哨兵（伪造的 T+0 在结构上被堵死）；count/avgReturn/winRate 已 number|null 贯通缺失。
   const data = await request('/api/backtest/shadow/stats')
   const raw = (data && typeof data === 'object' ? data : {}) as RawRecord
   return {
@@ -159,6 +161,8 @@ export interface Introspection {
 }
 
 export async function listIntrospections(): Promise<Introspection[]> {
+  // 哨兵钉死（P3-10c）：attribution map 值来自后端归因计数器（只在 ++ 时开键，恒 ≥1 真计数），
+  // proto3 map 条目恒发射，num(v) ?? 0 不可达；missedCount 恒有值（0=漏选确实 0 只）。
   const data = await request('/api/backtest/introspections')
   return asList<RawRecord>(data, 'items', 'introspections').map((raw) => ({
     id: String(pick(raw, 'id') ?? ''),
