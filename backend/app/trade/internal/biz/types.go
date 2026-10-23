@@ -25,19 +25,19 @@ type Order struct {
 }
 
 type Fill struct {
-	ClientOrderID   string
-	Book            string
-	Symbol          string
-	Side            string
-	Qty             int
-	Price           float64
-	Amount          float64
-	Fee             float64
-	SignalID        string
-	StrategyVersion string
+	ClientOrderID   string  `json:"client_order_id"`
+	Book            string  `json:"book"`
+	Symbol          string  `json:"symbol"`
+	Side            string  `json:"side"`
+	Qty             int     `json:"qty"`
+	Price           float64 `json:"price"`
+	Amount          float64 `json:"amount"`
+	Fee             float64 `json:"fee"`
+	SignalID        string  `json:"signal_id"`
+	StrategyVersion string  `json:"strategy_version"`
 	// ExecID 是券商成交回报的柜台成交号；SIM 撮合成交恒为空。
-	ExecID    string
-	CreatedAt time.Time
+	ExecID    string    `json:"exec_id"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Trail struct {

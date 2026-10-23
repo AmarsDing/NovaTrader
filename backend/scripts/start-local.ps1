@@ -2,7 +2,7 @@
 # Example: powershell -File backend/scripts/start-local.ps1
 [CmdletBinding()]
 param(
-    [string]$BinaryDir = 'runtime/acceptance-2026-10-19',
+    [string]$BinaryDir = 'runtime/acceptance-2026-10-23',
     [string]$ConfigPath = 'configs/config.yaml',
     [string]$PythonPath = '',
     [string]$NodePath = '',

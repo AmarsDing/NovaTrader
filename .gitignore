@@ -38,3 +38,10 @@ Desktop.ini
 node_modules/
 .tmp/
 research-worker/
+node_modules.locked-corpse/
+
+# 验收构建物目录（899MB 级别，exe 已被 *.exe 覆盖；严禁仓史吞入，2026-10-24）
+backend/runtime/acceptance-*/
+
+# UI 设计研究档案（56MB 图片集，留仓外；2026-10-24 用户拍板不入库，决策档：doc/开发文档/实施记录/doc-UI-处置裁决-2026-10-24.md）
+doc/UI/
