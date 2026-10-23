@@ -358,6 +358,8 @@ func toIntro(in *biz.Introspection) *v1.Introspection {
 	if in.TaskID != nil {
 		out.TaskId = int64(*in.TaskID)
 	}
+	out.Narrative = in.Narrative
+	out.NarrativeTags = in.NarrativeTags
 	return out
 }
 

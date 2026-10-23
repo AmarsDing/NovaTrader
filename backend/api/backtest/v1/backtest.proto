@@ -304,6 +304,8 @@ message Introspection {
   int64 task_id = 13;
   string note = 14;
   string created_at = 15;
+  string narrative = 16;        // M13-T14 LLM 归因叙述；LLM 不可用为空串（缺不伪造）
+  repeated string narrative_tags = 17; // M13-T14 归因标签，随 narrative 一同输出；无内容为空
 }
 
 message ListIntrospectionsRequest {

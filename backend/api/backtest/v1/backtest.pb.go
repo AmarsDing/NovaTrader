@@ -1627,6 +1627,8 @@ type Introspection struct {
 	TaskId        int64                  `protobuf:"varint,13,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Note          string                 `protobuf:"bytes,14,opt,name=note,proto3" json:"note,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,15,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Narrative     string                 `protobuf:"bytes,16,opt,name=narrative,proto3" json:"narrative,omitempty"`                              // M13-T14 LLM 归因叙述；LLM 不可用为空串（缺不伪造）
+	NarrativeTags []string               `protobuf:"bytes,17,rep,name=narrative_tags,json=narrativeTags,proto3" json:"narrative_tags,omitempty"` // M13-T14 归因标签，随 narrative 一同输出；无内容为空
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1764,6 +1766,20 @@ func (x *Introspection) GetCreatedAt() string {
 		return x.CreatedAt
 	}
 	return ""
+}
+
+func (x *Introspection) GetNarrative() string {
+	if x != nil {
+		return x.Narrative
+	}
+	return ""
+}
+
+func (x *Introspection) GetNarrativeTags() []string {
+	if x != nil {
+		return x.NarrativeTags
+	}
+	return nil
 }
 
 type ListIntrospectionsRequest struct {
@@ -2704,7 +2720,7 @@ const file_api_backtest_v1_backtest_proto_rawDesc = "" +
 	"\apending\x18\x02 \x01(\x05R\apending\x128\n" +
 	"\bhorizons\x18\x03 \x03(\v2\x1c.api.backtest.v1.HorizonStatR\bhorizons\x125\n" +
 	"\abuckets\x18\x04 \x03(\v2\x1b.api.backtest.v1.BucketStatR\abuckets\x12\x1c\n" +
-	"\tmonotonic\x18\x05 \x01(\bR\tmonotonic\"\xba\x04\n" +
+	"\tmonotonic\x18\x05 \x01(\bR\tmonotonic\"\xff\x04\n" +
 	"\rIntrospection\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
@@ -2725,7 +2741,9 @@ const file_api_backtest_v1_backtest_proto_rawDesc = "" +
 	"\atask_id\x18\r \x01(\x03R\x06taskId\x12\x12\n" +
 	"\x04note\x18\x0e \x01(\tR\x04note\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x0f \x01(\tR\tcreatedAt\x1a>\n" +
+	"created_at\x18\x0f \x01(\tR\tcreatedAt\x12\x1c\n" +
+	"\tnarrative\x18\x10 \x01(\tR\tnarrative\x12%\n" +
+	"\x0enarrative_tags\x18\x11 \x03(\tR\rnarrativeTags\x1a>\n" +
 	"\x10AttributionEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\"E\n" +
