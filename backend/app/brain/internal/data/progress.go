@@ -25,6 +25,8 @@ func (p *progress) Publish(ctx context.Context, ev biz.ProgressEvent) {
 		p.log.Warnf("progress envelope: %v", err)
 		return
 	}
+	// 研判链号由 ev.TraceID（决策链）持有，这里只补父信封因果，不改链号。
+	env = events.StitchWithParent(ctx, env)
 	if err := p.bus.Publish(context.WithoutCancel(ctx), env); err != nil {
 		p.log.Warnf("progress publish: %v", err)
 	}

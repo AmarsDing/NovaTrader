@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"server/pkg/events"
 	"server/pkg/llm"
 	"server/pkg/observe"
 	"server/pkg/tradecal"
@@ -80,6 +81,9 @@ func (uc *Usecase) GenerateBriefing(ctx context.Context, day time.Time) (result 
 		return nil, badRequest("%s 的晨报时间窗为空", day.Format("2006-01-02"))
 	}
 	trace := newTrace("")
+	// 决策链号是晨报域的实体链号：立刻绑进 ctx，让下游 data 层事件与 llm_call_log 同链，
+	// 不再出现「决策一条链、事件另一条链（调度入口常为空链）」的歧义。
+	ctx = events.WithTraceID(ctx, trace)
 	id, err := uc.decisions.Begin(ctx, "briefing", "", trace)
 	if err != nil {
 		return nil, fmt.Errorf("brain: begin decision: %w", err)

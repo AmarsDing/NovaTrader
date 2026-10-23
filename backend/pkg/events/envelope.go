@@ -159,18 +159,27 @@ func NewWithContext(ctx context.Context, source, subject string, payload any) (E
 	if err != nil {
 		return Envelope{}, err
 	}
-	if parent, ok := ctx.Value(parentEventKey{}).(Envelope); ok {
-		env.CausationID = parent.EventID
-		env.CorrelationID = parent.CorrelationID
-		if env.CorrelationID == "" {
-			env.CorrelationID = parent.TraceID
-		}
-		if parent.SourceTime != nil {
-			stamp := parent.SourceTime.UTC()
-			env.SourceTime = &stamp
-		}
+	return StitchWithParent(ctx, env), nil
+}
+
+// StitchWithParent 给既有信封补缝父因果：只补 causation/correlation/source_time，
+// 链号与负载保持调用方原值。用于实体链号由调用方持有、走 New 的存量发射点补齐因果；
+// 新建发射点直接用 NewWithContext。无父信封时逐字返回，不发明因果。
+func StitchWithParent(ctx context.Context, env Envelope) Envelope {
+	parent, ok := ParentEnvelope(ctx)
+	if !ok {
+		return env
 	}
-	return env, nil
+	env.CausationID = parent.EventID
+	env.CorrelationID = parent.CorrelationID
+	if env.CorrelationID == "" {
+		env.CorrelationID = parent.TraceID
+	}
+	if parent.SourceTime != nil {
+		stamp := parent.SourceTime.UTC()
+		env.SourceTime = &stamp
+	}
+	return env
 }
 
 func (e Envelope) validate() error {

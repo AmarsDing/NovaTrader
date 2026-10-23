@@ -212,6 +212,10 @@ func signalEnvelope(s *Signal, from Status) (events.Envelope, error) {
 func (uc *Usecase) signalEnv(ctx context.Context) EnvelopeFunc {
 	return func(s *Signal, from Status) (events.Envelope, error) {
 		env, err := signalEnvelope(s, from)
+		if err == nil {
+			// 信号链号由 s.TraceID（信号生命周期链）持有，迁移/过期路径在这里补父信封因果。
+			env = events.StitchWithParent(ctx, env)
+		}
 		if err != nil || !s.Status.Terminal() {
 			return env, err
 		}

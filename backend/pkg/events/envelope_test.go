@@ -212,3 +212,38 @@ func TestOpenTraceOpensRespectsAndStaysFresh(t *testing.T) {
 		t.Fatalf("parent trace not respected: %q", got)
 	}
 }
+
+// StitchWithParent 只缝因果、不动链号与负载：无父逐字返回，有父补
+// causation/correlation/source_time——存量 New 发射点靠它补齐因果而不改实体链号。
+func TestStitchWithParentKeepsTraceAndNeverInvents(t *testing.T) {
+	plain, err := New("trade", SubjectTradeOrder, "entity-chain", map[string]any{"symbol": "600519.SH"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	naked := StitchWithParent(context.Background(), plain)
+	if naked.EventID != plain.EventID || naked.TraceID != plain.TraceID || !naked.Time.Equal(plain.Time) ||
+		naked.CausationID != "" || naked.CorrelationID != "" || naked.SourceTime != nil ||
+		string(naked.Payload) != string(plain.Payload) {
+		t.Fatalf("parentless stitch must be identity: %+v", naked)
+	}
+	src := time.Date(2026, 10, 23, 9, 30, 0, 0, time.UTC)
+	parent, err := NewWithContext(WithTraceID(context.Background(), "parent-chain"), "datahub", SubjectMarketSnapshot, map[string]any{"batch": "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent.SourceTime = &src
+	ctx := ContextWithEnvelope(context.Background(), parent)
+	got := StitchWithParent(ctx, plain)
+	if got.TraceID != "entity-chain" || string(got.Payload) != string(plain.Payload) {
+		t.Fatalf("stitch must keep trace and payload: %+v", got)
+	}
+	if got.CausationID != parent.EventID || got.CorrelationID != "parent-chain" {
+		t.Fatalf("causation/correlation not stitched: %+v", got)
+	}
+	if got.SourceTime == nil || !got.SourceTime.Equal(src) {
+		t.Fatalf("source_time not stitched: %+v", got)
+	}
+	if err := got.validate(); err != nil {
+		t.Fatalf("stitched envelope must stay valid: %v", err)
+	}
+}

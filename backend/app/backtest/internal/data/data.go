@@ -103,7 +103,7 @@ func (p *Publisher) Progress(ctx context.Context, payload biz.ProgressPayload) {
 	if p.bus == nil {
 		return
 	}
-	env, err := events.New("backtest", biz.SubjectProgress, events.TraceID(ctx), payload)
+	env, err := events.NewWithContext(ctx, "backtest", biz.SubjectProgress, payload)
 	if err != nil {
 		return
 	}

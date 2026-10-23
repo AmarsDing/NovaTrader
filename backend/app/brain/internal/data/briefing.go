@@ -40,7 +40,7 @@ func (r *briefingRepo) Save(ctx context.Context, b *biz.Briefing) error {
 	if err := json.Unmarshal(raw, &summary); err != nil {
 		return err
 	}
-	env, err := events.New("brain", events.SubjectBriefing, events.TraceID(ctx), briefingEvent{
+	env, err := events.NewWithContext(ctx, "brain", events.SubjectBriefing, briefingEvent{
 		Date: b.Date.Format("2006-01-02"), Degraded: b.Degraded, Headline: b.Headline, DecisionID: b.DecisionID,
 	})
 	if err != nil {

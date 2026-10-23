@@ -294,6 +294,8 @@ func (r *reviewRepo) saveWithEvent(ctx context.Context, day time.Time, kind, con
 	if err != nil {
 		return err
 	}
+	// 复盘链号由 traceID（决策链）持有，这里只补父信封因果，不改链号。
+	env = events.StitchWithParent(ctx, env)
 	tx, err := r.db.Tx(ctx)
 	if err != nil {
 		return err
