@@ -149,7 +149,7 @@ func NewConfig(c *conf.Market) Config {
 		StaleAfter:      10 * time.Second,
 		BarGrace:        5 * time.Second,
 		WarmupDays:      250,
-		Checkpoints:     []string{"10:00", "11:31", "14:30"},
+		Checkpoints:     []string{"09:35", "10:00", "10:30", "11:31", "13:30", "14:30"},
 		WatchTTL:        10 * time.Minute,
 	}
 	if c == nil {
