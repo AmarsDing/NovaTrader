@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v6.32.1
-// source: market/v1/market.proto
+// source: api/market/v1/market.proto
 
 // M02 行情与因子对内接口。桌面端经 admin 聚合访问，不直连本服务。
 // 设计见 doc/开发文档/M02-行情与因子/设计文档.md 第 8 节。
@@ -22,19 +22,26 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Market_GetBars_FullMethodName         = "/api.market.v1.Market/GetBars"
-	Market_GetIndicators_FullMethodName   = "/api.market.v1.Market/GetIndicators"
-	Market_GetFactorsCross_FullMethodName = "/api.market.v1.Market/GetFactorsCross"
-	Market_GetSentiment_FullMethodName    = "/api.market.v1.Market/GetSentiment"
-	Market_GetLimitBoards_FullMethodName  = "/api.market.v1.Market/GetLimitBoards"
-	Market_GetSectorHeat_FullMethodName   = "/api.market.v1.Market/GetSectorHeat"
-	Market_SetWatchlist_FullMethodName    = "/api.market.v1.Market/SetWatchlist"
-	Market_GetAuction_FullMethodName      = "/api.market.v1.Market/GetAuction"
-	Market_GetLadder_FullMethodName       = "/api.market.v1.Market/GetLadder"
-	Market_GetLimitPremium_FullMethodName = "/api.market.v1.Market/GetLimitPremium"
-	Market_GetBreadth_FullMethodName      = "/api.market.v1.Market/GetBreadth"
-	Market_GetKlineGaps_FullMethodName    = "/api.market.v1.Market/GetKlineGaps"
-	Market_GetQuote_FullMethodName        = "/api.market.v1.Market/GetQuote"
+	Market_GetBars_FullMethodName             = "/api.market.v1.Market/GetBars"
+	Market_GetIndicators_FullMethodName       = "/api.market.v1.Market/GetIndicators"
+	Market_GetFactorsCross_FullMethodName     = "/api.market.v1.Market/GetFactorsCross"
+	Market_GetSentiment_FullMethodName        = "/api.market.v1.Market/GetSentiment"
+	Market_GetLimitBoards_FullMethodName      = "/api.market.v1.Market/GetLimitBoards"
+	Market_GetSectorHeat_FullMethodName       = "/api.market.v1.Market/GetSectorHeat"
+	Market_SetWatchlist_FullMethodName        = "/api.market.v1.Market/SetWatchlist"
+	Market_GetAuction_FullMethodName          = "/api.market.v1.Market/GetAuction"
+	Market_GetLadder_FullMethodName           = "/api.market.v1.Market/GetLadder"
+	Market_GetLimitPremium_FullMethodName     = "/api.market.v1.Market/GetLimitPremium"
+	Market_GetBreadth_FullMethodName          = "/api.market.v1.Market/GetBreadth"
+	Market_GetKlineGaps_FullMethodName        = "/api.market.v1.Market/GetKlineGaps"
+	Market_GetEmotionPath_FullMethodName      = "/api.market.v1.Market/GetEmotionPath"
+	Market_GetIntradayAlerts_FullMethodName   = "/api.market.v1.Market/GetIntradayAlerts"
+	Market_GetQuote_FullMethodName            = "/api.market.v1.Market/GetQuote"
+	Market_GetSecurityBasics_FullMethodName   = "/api.market.v1.Market/GetSecurityBasics"
+	Market_GetSeatStats_FullMethodName        = "/api.market.v1.Market/GetSeatStats"
+	Market_GetChipDistribution_FullMethodName = "/api.market.v1.Market/GetChipDistribution"
+	Market_GetReportEstimates_FullMethodName  = "/api.market.v1.Market/GetReportEstimates"
+	Market_GetAHPremium_FullMethodName        = "/api.market.v1.Market/GetAHPremium"
 )
 
 // MarketClient is the client API for Market service.
@@ -65,9 +72,27 @@ type MarketClient interface {
 	GetBreadth(ctx context.Context, in *GetBreadthRequest, opts ...grpc.CallOption) (*GetBreadthReply, error)
 	// 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
 	GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest, opts ...grpc.CallOption) (*GetKlineGapsReply, error)
+	// 复盘体系 P0-3（只读）：盘中情绪路径——09:25 竞价头（含昨涨停竞价强度）+ 当日全部情绪截面。没存的时点不出现在 points。
+	GetEmotionPath(ctx context.Context, in *GetEmotionPathRequest, opts ...grpc.CallOption) (*GetEmotionPathReply, error)
+	// 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
+	GetIntradayAlerts(ctx context.Context, in *GetIntradayAlertsRequest, opts ...grpc.CallOption) (*GetIntradayAlertsReply, error)
 	// 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
 	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
 	GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*Quote, error)
+	// 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
+	GetSecurityBasics(ctx context.Context, in *GetSecurityBasicsRequest, opts ...grpc.CallOption) (*GetSecurityBasicsReply, error)
+	// 目录册增补 B2（只读）：龙虎榜席位胜率时序——lhb_seat×market_data 内部计算落 seat_stats，
+	// 每席位每交易日一行 60 交易日滚动窗（T+1/T+5 胜率与收益分布），收盘后重算整批 upsert。
+	GetSeatStats(ctx context.Context, in *GetSeatStatsRequest, opts ...grpc.CallOption) (*GetSeatStatsReply, error)
+	// 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
+	GetChipDistribution(ctx context.Context, in *GetChipDistributionRequest, opts ...grpc.CallOption) (*GetChipDistributionReply, error)
+	// 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
+	// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
+	GetReportEstimates(ctx context.Context, in *GetReportEstimatesRequest, opts ...grpc.CallOption) (*GetReportEstimatesReply, error)
+	// 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
+	// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
+	// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
+	GetAHPremium(ctx context.Context, in *GetAHPremiumRequest, opts ...grpc.CallOption) (*GetAHPremiumReply, error)
 }
 
 type marketClient struct {
@@ -198,10 +223,80 @@ func (c *marketClient) GetKlineGaps(ctx context.Context, in *GetKlineGapsRequest
 	return out, nil
 }
 
+func (c *marketClient) GetEmotionPath(ctx context.Context, in *GetEmotionPathRequest, opts ...grpc.CallOption) (*GetEmotionPathReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetEmotionPathReply)
+	err := c.cc.Invoke(ctx, Market_GetEmotionPath_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetIntradayAlerts(ctx context.Context, in *GetIntradayAlertsRequest, opts ...grpc.CallOption) (*GetIntradayAlertsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetIntradayAlertsReply)
+	err := c.cc.Invoke(ctx, Market_GetIntradayAlerts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *marketClient) GetQuote(ctx context.Context, in *GetQuoteRequest, opts ...grpc.CallOption) (*Quote, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Quote)
 	err := c.cc.Invoke(ctx, Market_GetQuote_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetSecurityBasics(ctx context.Context, in *GetSecurityBasicsRequest, opts ...grpc.CallOption) (*GetSecurityBasicsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSecurityBasicsReply)
+	err := c.cc.Invoke(ctx, Market_GetSecurityBasics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetSeatStats(ctx context.Context, in *GetSeatStatsRequest, opts ...grpc.CallOption) (*GetSeatStatsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSeatStatsReply)
+	err := c.cc.Invoke(ctx, Market_GetSeatStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetChipDistribution(ctx context.Context, in *GetChipDistributionRequest, opts ...grpc.CallOption) (*GetChipDistributionReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetChipDistributionReply)
+	err := c.cc.Invoke(ctx, Market_GetChipDistribution_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetReportEstimates(ctx context.Context, in *GetReportEstimatesRequest, opts ...grpc.CallOption) (*GetReportEstimatesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetReportEstimatesReply)
+	err := c.cc.Invoke(ctx, Market_GetReportEstimates_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetAHPremium(ctx context.Context, in *GetAHPremiumRequest, opts ...grpc.CallOption) (*GetAHPremiumReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAHPremiumReply)
+	err := c.cc.Invoke(ctx, Market_GetAHPremium_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +331,27 @@ type MarketServer interface {
 	GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error)
 	// 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
 	GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error)
+	// 复盘体系 P0-3（只读）：盘中情绪路径——09:25 竞价头（含昨涨停竞价强度）+ 当日全部情绪截面。没存的时点不出现在 points。
+	GetEmotionPath(context.Context, *GetEmotionPathRequest) (*GetEmotionPathReply, error)
+	// 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
+	GetIntradayAlerts(context.Context, *GetIntradayAlertsRequest) (*GetIntradayAlertsReply, error)
 	// 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
 	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
 	GetQuote(context.Context, *GetQuoteRequest) (*Quote, error)
+	// 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
+	GetSecurityBasics(context.Context, *GetSecurityBasicsRequest) (*GetSecurityBasicsReply, error)
+	// 目录册增补 B2（只读）：龙虎榜席位胜率时序——lhb_seat×market_data 内部计算落 seat_stats，
+	// 每席位每交易日一行 60 交易日滚动窗（T+1/T+5 胜率与收益分布），收盘后重算整批 upsert。
+	GetSeatStats(context.Context, *GetSeatStatsRequest) (*GetSeatStatsReply, error)
+	// 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
+	GetChipDistribution(context.Context, *GetChipDistributionRequest) (*GetChipDistributionReply, error)
+	// 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
+	// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
+	GetReportEstimates(context.Context, *GetReportEstimatesRequest) (*GetReportEstimatesReply, error)
+	// 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
+	// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
+	// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
+	GetAHPremium(context.Context, *GetAHPremiumRequest) (*GetAHPremiumReply, error)
 	mustEmbedUnimplementedMarketServer()
 }
 
@@ -285,8 +398,29 @@ func (UnimplementedMarketServer) GetBreadth(context.Context, *GetBreadthRequest)
 func (UnimplementedMarketServer) GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetKlineGaps not implemented")
 }
+func (UnimplementedMarketServer) GetEmotionPath(context.Context, *GetEmotionPathRequest) (*GetEmotionPathReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetEmotionPath not implemented")
+}
+func (UnimplementedMarketServer) GetIntradayAlerts(context.Context, *GetIntradayAlertsRequest) (*GetIntradayAlertsReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetIntradayAlerts not implemented")
+}
 func (UnimplementedMarketServer) GetQuote(context.Context, *GetQuoteRequest) (*Quote, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetQuote not implemented")
+}
+func (UnimplementedMarketServer) GetSecurityBasics(context.Context, *GetSecurityBasicsRequest) (*GetSecurityBasicsReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSecurityBasics not implemented")
+}
+func (UnimplementedMarketServer) GetSeatStats(context.Context, *GetSeatStatsRequest) (*GetSeatStatsReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSeatStats not implemented")
+}
+func (UnimplementedMarketServer) GetChipDistribution(context.Context, *GetChipDistributionRequest) (*GetChipDistributionReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetChipDistribution not implemented")
+}
+func (UnimplementedMarketServer) GetReportEstimates(context.Context, *GetReportEstimatesRequest) (*GetReportEstimatesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetReportEstimates not implemented")
+}
+func (UnimplementedMarketServer) GetAHPremium(context.Context, *GetAHPremiumRequest) (*GetAHPremiumReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAHPremium not implemented")
 }
 func (UnimplementedMarketServer) mustEmbedUnimplementedMarketServer() {}
 func (UnimplementedMarketServer) testEmbeddedByValue()                {}
@@ -525,6 +659,42 @@ func _Market_GetKlineGaps_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Market_GetEmotionPath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEmotionPathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetEmotionPath(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetEmotionPath_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetEmotionPath(ctx, req.(*GetEmotionPathRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetIntradayAlerts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIntradayAlertsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetIntradayAlerts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetIntradayAlerts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetIntradayAlerts(ctx, req.(*GetIntradayAlertsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Market_GetQuote_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetQuoteRequest)
 	if err := dec(in); err != nil {
@@ -539,6 +709,96 @@ func _Market_GetQuote_Handler(srv interface{}, ctx context.Context, dec func(int
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MarketServer).GetQuote(ctx, req.(*GetQuoteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetSecurityBasics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSecurityBasicsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetSecurityBasics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetSecurityBasics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetSecurityBasics(ctx, req.(*GetSecurityBasicsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetSeatStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSeatStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetSeatStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetSeatStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetSeatStats(ctx, req.(*GetSeatStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetChipDistribution_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChipDistributionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetChipDistribution(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetChipDistribution_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetChipDistribution(ctx, req.(*GetChipDistributionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetReportEstimates_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReportEstimatesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetReportEstimates(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetReportEstimates_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetReportEstimates(ctx, req.(*GetReportEstimatesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetAHPremium_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAHPremiumRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetAHPremium(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetAHPremium_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetAHPremium(ctx, req.(*GetAHPremiumRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -599,10 +859,38 @@ var Market_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Market_GetKlineGaps_Handler,
 		},
 		{
+			MethodName: "GetEmotionPath",
+			Handler:    _Market_GetEmotionPath_Handler,
+		},
+		{
+			MethodName: "GetIntradayAlerts",
+			Handler:    _Market_GetIntradayAlerts_Handler,
+		},
+		{
 			MethodName: "GetQuote",
 			Handler:    _Market_GetQuote_Handler,
 		},
+		{
+			MethodName: "GetSecurityBasics",
+			Handler:    _Market_GetSecurityBasics_Handler,
+		},
+		{
+			MethodName: "GetSeatStats",
+			Handler:    _Market_GetSeatStats_Handler,
+		},
+		{
+			MethodName: "GetChipDistribution",
+			Handler:    _Market_GetChipDistribution_Handler,
+		},
+		{
+			MethodName: "GetReportEstimates",
+			Handler:    _Market_GetReportEstimates_Handler,
+		},
+		{
+			MethodName: "GetAHPremium",
+			Handler:    _Market_GetAHPremium_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "market/v1/market.proto",
+	Metadata: "api/market/v1/market.proto",
 }

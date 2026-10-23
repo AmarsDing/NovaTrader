@@ -132,6 +132,7 @@ func TestLadderNoSample(t *testing.T) {
 		t.Fatalf("1进2 = %+v（样本 1 晋级 0）", days[0].Steps[0])
 	}
 }
+
 /* ---------- EmotionPath：盘中情绪路径 ---------- */
 
 type pathRepo struct {

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-http v2.9.2
 // - protoc             v6.32.1
-// source: market/v1/market.proto
+// source: api/market/v1/market.proto
 
 package v1
 
@@ -19,31 +19,48 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationMarketGetAHPremium = "/api.market.v1.Market/GetAHPremium"
 const OperationMarketGetAuction = "/api.market.v1.Market/GetAuction"
 const OperationMarketGetBars = "/api.market.v1.Market/GetBars"
 const OperationMarketGetBreadth = "/api.market.v1.Market/GetBreadth"
+const OperationMarketGetChipDistribution = "/api.market.v1.Market/GetChipDistribution"
+const OperationMarketGetEmotionPath = "/api.market.v1.Market/GetEmotionPath"
 const OperationMarketGetFactorsCross = "/api.market.v1.Market/GetFactorsCross"
 const OperationMarketGetIndicators = "/api.market.v1.Market/GetIndicators"
+const OperationMarketGetIntradayAlerts = "/api.market.v1.Market/GetIntradayAlerts"
 const OperationMarketGetKlineGaps = "/api.market.v1.Market/GetKlineGaps"
 const OperationMarketGetLadder = "/api.market.v1.Market/GetLadder"
 const OperationMarketGetLimitBoards = "/api.market.v1.Market/GetLimitBoards"
 const OperationMarketGetLimitPremium = "/api.market.v1.Market/GetLimitPremium"
 const OperationMarketGetQuote = "/api.market.v1.Market/GetQuote"
+const OperationMarketGetReportEstimates = "/api.market.v1.Market/GetReportEstimates"
+const OperationMarketGetSeatStats = "/api.market.v1.Market/GetSeatStats"
 const OperationMarketGetSectorHeat = "/api.market.v1.Market/GetSectorHeat"
+const OperationMarketGetSecurityBasics = "/api.market.v1.Market/GetSecurityBasics"
 const OperationMarketGetSentiment = "/api.market.v1.Market/GetSentiment"
 const OperationMarketSetWatchlist = "/api.market.v1.Market/SetWatchlist"
 
 type MarketHTTPServer interface {
+	// GetAHPremium 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
+	// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
+	// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
+	GetAHPremium(context.Context, *GetAHPremiumRequest) (*GetAHPremiumReply, error)
 	// GetAuction 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
 	GetAuction(context.Context, *GetAuctionRequest) (*GetAuctionReply, error)
 	// GetBars K 线。freq 为 1m 或 1d。
 	GetBars(context.Context, *GetBarsRequest) (*GetBarsReply, error)
 	// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
 	GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error)
+	// GetChipDistribution 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
+	GetChipDistribution(context.Context, *GetChipDistributionRequest) (*GetChipDistributionReply, error)
+	// GetEmotionPath 复盘体系 P0-3（只读）：盘中情绪路径——09:25 竞价头（含昨涨停竞价强度）+ 当日全部情绪截面。没存的时点不出现在 points。
+	GetEmotionPath(context.Context, *GetEmotionPathRequest) (*GetEmotionPathReply, error)
 	// GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 	GetFactorsCross(context.Context, *GetFactorsCrossRequest) (*GetFactorsCrossReply, error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(context.Context, *GetIndicatorsRequest) (*GetIndicatorsReply, error)
+	// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
+	GetIntradayAlerts(context.Context, *GetIntradayAlertsRequest) (*GetIntradayAlertsReply, error)
 	// GetKlineGaps 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
 	GetKlineGaps(context.Context, *GetKlineGapsRequest) (*GetKlineGapsReply, error)
 	// GetLadder 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
@@ -55,8 +72,16 @@ type MarketHTTPServer interface {
 	// GetQuote 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
 	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
 	GetQuote(context.Context, *GetQuoteRequest) (*Quote, error)
+	// GetReportEstimates 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
+	// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
+	GetReportEstimates(context.Context, *GetReportEstimatesRequest) (*GetReportEstimatesReply, error)
+	// GetSeatStats 目录册增补 B2（只读）：龙虎榜席位胜率时序——lhb_seat×market_data 内部计算落 seat_stats，
+	// 每席位每交易日一行 60 交易日滚动窗（T+1/T+5 胜率与收益分布），收盘后重算整批 upsert。
+	GetSeatStats(context.Context, *GetSeatStatsRequest) (*GetSeatStatsReply, error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(context.Context, *GetSectorHeatRequest) (*GetSectorHeatReply, error)
+	// GetSecurityBasics 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
+	GetSecurityBasics(context.Context, *GetSecurityBasicsRequest) (*GetSecurityBasicsReply, error)
 	// GetSentiment 情绪截面，as_of 规则同上。
 	GetSentiment(context.Context, *GetSentimentRequest) (*Sentiment, error)
 	// SetWatchlist 登记候选池。同一 owner 再次登记会整体替换并续租。
@@ -77,7 +102,14 @@ func RegisterMarketHTTPServer(s *http.Server, srv MarketHTTPServer) {
 	r.GET("/v1/market/limit-premium", _Market_GetLimitPremium0_HTTP_Handler(srv))
 	r.GET("/v1/market/breadth", _Market_GetBreadth0_HTTP_Handler(srv))
 	r.GET("/v1/market/kline-gaps", _Market_GetKlineGaps0_HTTP_Handler(srv))
+	r.GET("/v1/market/emotion-path", _Market_GetEmotionPath0_HTTP_Handler(srv))
+	r.GET("/v1/market/intraday-alerts", _Market_GetIntradayAlerts0_HTTP_Handler(srv))
 	r.GET("/v1/market/quote", _Market_GetQuote0_HTTP_Handler(srv))
+	r.GET("/v1/market/security-basics", _Market_GetSecurityBasics0_HTTP_Handler(srv))
+	r.GET("/v1/market/seat-stats", _Market_GetSeatStats0_HTTP_Handler(srv))
+	r.GET("/v1/market/chip-distribution", _Market_GetChipDistribution0_HTTP_Handler(srv))
+	r.GET("/v1/market/report-estimates", _Market_GetReportEstimates0_HTTP_Handler(srv))
+	r.GET("/v1/market/ah-premium", _Market_GetAHPremium0_HTTP_Handler(srv))
 }
 
 func _Market_GetBars0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
@@ -311,6 +343,44 @@ func _Market_GetKlineGaps0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Cont
 	}
 }
 
+func _Market_GetEmotionPath0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetEmotionPathRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetEmotionPath)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetEmotionPath(ctx, req.(*GetEmotionPathRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetEmotionPathReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetIntradayAlerts0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetIntradayAlertsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetIntradayAlerts)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetIntradayAlerts(ctx, req.(*GetIntradayAlertsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetIntradayAlertsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _Market_GetQuote0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetQuoteRequest
@@ -330,17 +400,122 @@ func _Market_GetQuote0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context)
 	}
 }
 
+func _Market_GetSecurityBasics0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetSecurityBasicsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetSecurityBasics)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetSecurityBasics(ctx, req.(*GetSecurityBasicsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetSecurityBasicsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetSeatStats0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetSeatStatsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetSeatStats)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetSeatStats(ctx, req.(*GetSeatStatsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetSeatStatsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetChipDistribution0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetChipDistributionRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetChipDistribution)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetChipDistribution(ctx, req.(*GetChipDistributionRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetChipDistributionReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetReportEstimates0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetReportEstimatesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetReportEstimates)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetReportEstimates(ctx, req.(*GetReportEstimatesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetReportEstimatesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetAHPremium0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetAHPremiumRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetAHPremium)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetAHPremium(ctx, req.(*GetAHPremiumRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetAHPremiumReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type MarketHTTPClient interface {
+	// GetAHPremium 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
+	// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
+	// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
+	GetAHPremium(ctx context.Context, req *GetAHPremiumRequest, opts ...http.CallOption) (rsp *GetAHPremiumReply, err error)
 	// GetAuction 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
 	GetAuction(ctx context.Context, req *GetAuctionRequest, opts ...http.CallOption) (rsp *GetAuctionReply, err error)
 	// GetBars K 线。freq 为 1m 或 1d。
 	GetBars(ctx context.Context, req *GetBarsRequest, opts ...http.CallOption) (rsp *GetBarsReply, err error)
 	// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
 	GetBreadth(ctx context.Context, req *GetBreadthRequest, opts ...http.CallOption) (rsp *GetBreadthReply, err error)
+	// GetChipDistribution 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
+	GetChipDistribution(ctx context.Context, req *GetChipDistributionRequest, opts ...http.CallOption) (rsp *GetChipDistributionReply, err error)
+	// GetEmotionPath 复盘体系 P0-3（只读）：盘中情绪路径——09:25 竞价头（含昨涨停竞价强度）+ 当日全部情绪截面。没存的时点不出现在 points。
+	GetEmotionPath(ctx context.Context, req *GetEmotionPathRequest, opts ...http.CallOption) (rsp *GetEmotionPathReply, err error)
 	// GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 	GetFactorsCross(ctx context.Context, req *GetFactorsCrossRequest, opts ...http.CallOption) (rsp *GetFactorsCrossReply, err error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(ctx context.Context, req *GetIndicatorsRequest, opts ...http.CallOption) (rsp *GetIndicatorsReply, err error)
+	// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
+	GetIntradayAlerts(ctx context.Context, req *GetIntradayAlertsRequest, opts ...http.CallOption) (rsp *GetIntradayAlertsReply, err error)
 	// GetKlineGaps 监控驾驶舱 P2（只读）：K 线连续性检查——交易日历开市但无日线收盘行的缺口日。
 	GetKlineGaps(ctx context.Context, req *GetKlineGapsRequest, opts ...http.CallOption) (rsp *GetKlineGapsReply, err error)
 	// GetLadder 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
@@ -352,8 +527,16 @@ type MarketHTTPClient interface {
 	// GetQuote 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
 	// 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
 	GetQuote(ctx context.Context, req *GetQuoteRequest, opts ...http.CallOption) (rsp *Quote, err error)
+	// GetReportEstimates 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
+	// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
+	GetReportEstimates(ctx context.Context, req *GetReportEstimatesRequest, opts ...http.CallOption) (rsp *GetReportEstimatesReply, err error)
+	// GetSeatStats 目录册增补 B2（只读）：龙虎榜席位胜率时序——lhb_seat×market_data 内部计算落 seat_stats，
+	// 每席位每交易日一行 60 交易日滚动窗（T+1/T+5 胜率与收益分布），收盘后重算整批 upsert。
+	GetSeatStats(ctx context.Context, req *GetSeatStatsRequest, opts ...http.CallOption) (rsp *GetSeatStatsReply, err error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(ctx context.Context, req *GetSectorHeatRequest, opts ...http.CallOption) (rsp *GetSectorHeatReply, err error)
+	// GetSecurityBasics 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
+	GetSecurityBasics(ctx context.Context, req *GetSecurityBasicsRequest, opts ...http.CallOption) (rsp *GetSecurityBasicsReply, err error)
 	// GetSentiment 情绪截面，as_of 规则同上。
 	GetSentiment(ctx context.Context, req *GetSentimentRequest, opts ...http.CallOption) (rsp *Sentiment, err error)
 	// SetWatchlist 登记候选池。同一 owner 再次登记会整体替换并续租。
@@ -366,6 +549,22 @@ type MarketHTTPClientImpl struct {
 
 func NewMarketHTTPClient(client *http.Client) MarketHTTPClient {
 	return &MarketHTTPClientImpl{client}
+}
+
+// GetAHPremium 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
+// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
+// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
+func (c *MarketHTTPClientImpl) GetAHPremium(ctx context.Context, in *GetAHPremiumRequest, opts ...http.CallOption) (*GetAHPremiumReply, error) {
+	var out GetAHPremiumReply
+	pattern := "/v1/market/ah-premium"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetAHPremium))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // GetAuction 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
@@ -410,6 +609,34 @@ func (c *MarketHTTPClientImpl) GetBreadth(ctx context.Context, in *GetBreadthReq
 	return &out, nil
 }
 
+// GetChipDistribution 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
+func (c *MarketHTTPClientImpl) GetChipDistribution(ctx context.Context, in *GetChipDistributionRequest, opts ...http.CallOption) (*GetChipDistributionReply, error) {
+	var out GetChipDistributionReply
+	pattern := "/v1/market/chip-distribution"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetChipDistribution))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetEmotionPath 复盘体系 P0-3（只读）：盘中情绪路径——09:25 竞价头（含昨涨停竞价强度）+ 当日全部情绪截面。没存的时点不出现在 points。
+func (c *MarketHTTPClientImpl) GetEmotionPath(ctx context.Context, in *GetEmotionPathRequest, opts ...http.CallOption) (*GetEmotionPathReply, error) {
+	var out GetEmotionPathReply
+	pattern := "/v1/market/emotion-path"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetEmotionPath))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 func (c *MarketHTTPClientImpl) GetFactorsCross(ctx context.Context, in *GetFactorsCrossRequest, opts ...http.CallOption) (*GetFactorsCrossReply, error) {
 	var out GetFactorsCrossReply
@@ -430,6 +657,20 @@ func (c *MarketHTTPClientImpl) GetIndicators(ctx context.Context, in *GetIndicat
 	pattern := "/v1/market/indicators"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetIndicators))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
+func (c *MarketHTTPClientImpl) GetIntradayAlerts(ctx context.Context, in *GetIntradayAlertsRequest, opts ...http.CallOption) (*GetIntradayAlertsReply, error) {
+	var out GetIntradayAlertsReply
+	pattern := "/v1/market/intraday-alerts"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetIntradayAlerts))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -509,12 +750,56 @@ func (c *MarketHTTPClientImpl) GetQuote(ctx context.Context, in *GetQuoteRequest
 	return &out, nil
 }
 
+// GetReportEstimates 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
+// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
+func (c *MarketHTTPClientImpl) GetReportEstimates(ctx context.Context, in *GetReportEstimatesRequest, opts ...http.CallOption) (*GetReportEstimatesReply, error) {
+	var out GetReportEstimatesReply
+	pattern := "/v1/market/report-estimates"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetReportEstimates))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetSeatStats 目录册增补 B2（只读）：龙虎榜席位胜率时序——lhb_seat×market_data 内部计算落 seat_stats，
+// 每席位每交易日一行 60 交易日滚动窗（T+1/T+5 胜率与收益分布），收盘后重算整批 upsert。
+func (c *MarketHTTPClientImpl) GetSeatStats(ctx context.Context, in *GetSeatStatsRequest, opts ...http.CallOption) (*GetSeatStatsReply, error) {
+	var out GetSeatStatsReply
+	pattern := "/v1/market/seat-stats"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetSeatStats))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetSectorHeat 板块热度排名。
 func (c *MarketHTTPClientImpl) GetSectorHeat(ctx context.Context, in *GetSectorHeatRequest, opts ...http.CallOption) (*GetSectorHeatReply, error) {
 	var out GetSectorHeatReply
 	pattern := "/v1/market/sectors"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetSectorHeat))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetSecurityBasics 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
+func (c *MarketHTTPClientImpl) GetSecurityBasics(ctx context.Context, in *GetSecurityBasicsRequest, opts ...http.CallOption) (*GetSecurityBasicsReply, error) {
+	var out GetSecurityBasicsReply
+	pattern := "/v1/market/security-basics"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetSecurityBasics))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

@@ -82,11 +82,58 @@ service Market {
       get: "/v1/market/kline-gaps"
     };
   }
+  // 复盘体系 P0-3（只读）：盘中情绪路径——09:25 竞价头（含昨涨停竞价强度）+ 当日全部情绪截面。没存的时点不出现在 points。
+  rpc GetEmotionPath(GetEmotionPathRequest) returns (GetEmotionPathReply) {
+    option (google.api.http) = {
+      get: "/v1/market/emotion-path"
+    };
+  }
+  // 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
+  rpc GetIntradayAlerts(GetIntradayAlertsRequest) returns (GetIntradayAlertsReply) {
+    option (google.api.http) = {
+      get: "/v1/market/intraday-alerts"
+    };
+  }
   // 视频落地 P0（只读）：单券快照——最新价/涨跌/当日区/五档/估值静态一次取（右行情侧栏首刷）。
   // 算不出的字段保持零值由前端显「未知」，口径与陈旧标记见 Quote 注释。
   rpc GetQuote(GetQuoteRequest) returns (Quote) {
     option (google.api.http) = {
       get: "/v1/market/quote"
+    };
+  }
+  // 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
+  rpc GetSecurityBasics(GetSecurityBasicsRequest) returns (GetSecurityBasicsReply) {
+    option (google.api.http) = {
+      get: "/v1/market/security-basics"
+    };
+  }
+  // 目录册增补 B2（只读）：龙虎榜席位胜率时序——lhb_seat×market_data 内部计算落 seat_stats，
+  // 每席位每交易日一行 60 交易日滚动窗（T+1/T+5 胜率与收益分布），收盘后重算整批 upsert。
+  rpc GetSeatStats(GetSeatStatsRequest) returns (GetSeatStatsReply) {
+    option (google.api.http) = {
+      get: "/v1/market/seat-stats"
+    };
+  }
+  // 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
+  rpc GetChipDistribution(GetChipDistributionRequest) returns (GetChipDistributionReply) {
+    option (google.api.http) = {
+      get: "/v1/market/chip-distribution"
+    };
+  }
+  // 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
+  // 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
+  rpc GetReportEstimates(GetReportEstimatesRequest) returns (GetReportEstimatesReply) {
+    option (google.api.http) = {
+      get: "/v1/market/report-estimates"
+    };
+  }
+
+  // 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
+  // RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
+  // HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
+  rpc GetAHPremium(GetAHPremiumRequest) returns (GetAHPremiumReply) {
+    option (google.api.http) = {
+      get: "/v1/market/ah-premium"
     };
   }
 }
@@ -268,14 +315,17 @@ message GetAuctionRequest {
   int32 top = 2;         // 抢筹前 N（按竞价金额），默认 10，上限 50
 }
 
+// AuctionRow 一只股票的集合竞价截面。「没取到≠0」（P3-10c）：源端缺键的推导值
+// （新股无昨收、无 5 日均量、无股本、无未匹配快照）改 optional 省略发送，
+// 不允许折叠成 0 冒充读数；auction_amount 键恒在（源无条件落键），0=竞价无成交真值。
 message AuctionRow {
   string symbol = 1;
-  double auction_pct = 2;        // 竞价涨幅 %
-  double auction_amount = 3;     // 竞价成交额（元）
-  double auction_vol_ratio = 4;  // 竞价量比
-  double auction_turnover = 5;   // 竞价换手 %
-  bool auction_limit_up = 6;     // 竞价涨停
-  double auction_unmatched = 7;  // 未匹配量（股）
+  optional double auction_pct = 2;        // 竞价涨幅 %；源缺键不返回（0=平开真值）
+  double auction_amount = 3;              // 竞价成交额（元）；键恒在，0=无成交真值
+  optional double auction_vol_ratio = 4;  // 竞价量比；无 5 日均量不可算时不返回
+  optional double auction_turnover = 5;   // 竞价换手 %；无股本不可算时不返回
+  bool auction_limit_up = 6;              // 竞价涨停
+  optional double auction_unmatched = 7;  // 未匹配量（股）；09:20-09:25 无快照不返回
 }
 
 // GetAuctionReply found=false 表示该日还没有竞价因子（非交易日或 09:26 前），total_amount 等全为 0。
@@ -342,10 +392,10 @@ message LimitPremiumDay {
   string base_date = 2;
   int32 sample = 3; // 昨日涨停家数
   int32 limit_again = 4; // 今日收盘再度涨停家数
-  double open_avg = 5; // 开盘溢价均值（分数）
-  double close_avg = 6; // 收盘溢价均值（分数）
-  double close_win = 7; // 收盘溢价 > 0 的占比（分数）
-  double high_avg = 8; // 最高溢价均值（分数）
+  optional double open_avg = 5; // 开盘溢价均值（分数）；开盘口径样本为空（竞价/快照整批缺）时不返回——「没取到≠0」
+  double close_avg = 6; // 收盘溢价均值（分数）；has_close=false 时无意义，消费方先判 has_close
+  double close_win = 7; // 收盘溢价 > 0 的占比（分数）；同 close_avg 的 has_close 口径
+  optional double high_avg = 8; // 最高溢价均值（分数）；快照行收盘补齐前 High 全缺时不返回
   bool has_close = 9; // 当日收盘口径已落
 }
 
@@ -409,6 +459,69 @@ message GetKlineGapsReply {
   string as_of = 7;
 }
 
+
+/* ---------- 复盘体系 P0-3：盘中情绪路径 ---------- */
+
+message GetEmotionPathRequest {
+  string date = 1; // YYYY-MM-DD，空为今天
+}
+
+// EmotionPathPoint 一个时点。auction=true 时只表示 09:25 竞价占位点（读数在 reply 顶层的竞价字段）。
+message EmotionPathPoint {
+  string time = 1;  // HH:MM
+  bool auction = 2;
+  int32 up = 3;           // 涨停家数
+  int32 down = 4;         // 跌停家数
+  int32 broken = 5;       // 炸板家数
+  double broken_rate = 6; // 炸板率 %
+  int32 max_height = 7;   // 最高连板
+  double profit_effect = 8; // 昨涨停今平均涨幅 %
+  int32 advance = 9;      // 上涨家数
+  int32 decline = 10;     // 下跌家数
+  double amount = 11;     // 两市成交额（元）
+  string phase = 12;      // 情绪阶段 ICE/RECOVER/WARM/HOT/FADE
+  double score_coef = 13; // 情绪系数
+  bool stale = 14;
+}
+
+// GetEmotionPathReply partial=有块没取到；missing 列出缺的块名（auction / market_sentiment / auction_prev_tier_partial）。
+message GetEmotionPathReply {
+  string date = 1;
+  bool auction_found = 2;
+  double auction_total_amount = 3;        // 竞价总额（元）
+  int32 auction_limit_up_count = 4;       // 竞价涨停家数
+  optional double prev_tier_auction_pct = 5; // 昨涨停竞价平均涨幅 %，没取到不返回
+  int32 prev_tier_auction_sample = 6;        // 昨涨停中有竞价截面的只数
+  repeated EmotionPathPoint points = 7;
+  bool partial = 8;
+  repeated string missing = 9;
+}
+
+/* ---------- 复盘体系 P0-4：盘中异动流水 ---------- */
+
+message GetIntradayAlertsRequest {
+  string date = 1;     // YYYY-MM-DD，空为今天
+  double min_pct = 2;  // 只保留触发幅度 pct ≥ min_pct 的行，0 为不限
+  string symbols = 3;  // 逗号分隔代码，空不限
+  bool watch_only = 4; // true 时叠加盯盘候选池（watch 租约：web 自选 + strategy 池）
+}
+
+// IntradayAlertRow kind∈surge/limit_up/break；pct 为急拉窗口涨幅 %（封/开板为当日涨跌幅），没取到不返回。
+message IntradayAlertRow {
+  string symbol = 1;
+  string name = 2;
+  string kind = 3;
+  string time = 4; // RFC3339 触发时刻（快照时间）
+  optional double pct = 5;
+  optional double price = 6;
+}
+
+// GetIntradayAlertsReply 异动流水 fired_at 倒序，上限 200。当日无异动为 alerts=[]，不是错误。
+message GetIntradayAlertsReply {
+  string date = 1;
+  repeated IntradayAlertRow alerts = 2;
+}
+
 // GetQuoteRequest 单券快照。
 message GetQuoteRequest {
   string symbol = 1;
@@ -453,4 +566,193 @@ message Quote {
   string as_of = 26;         // RFC3339；快照口径取行情时间与写入时间中较早者
   bool stale = 27;
   bool found = 28;
+}
+
+/* ---------- 名称字典（UI 显示方案 §6.2 / 附录 B-1） ---------- */
+
+// SecurityBasic 一只证券的静态字典行。缺字段按 proto 零值（industry 无数据为空串、
+// pe_ttm/pb/circ_mv 为 0），由前端字典判 hasName 显「名称未返回」，后端不伪造。
+message SecurityBasic {
+  string code = 1;          // 600519.SH
+  string name = 2;
+  string market = 3;        // SH / SZ / BJ
+  string industry = 4;
+  bool st_flag = 5;
+  bool suspend_flag = 6;
+  double pe_ttm = 7;
+  double pb = 8;
+  double circ_mv = 9;       // 流通市值（元）
+  string update_time = 10;  // RFC3339
+  repeated string concepts = 11; // 概念板块（stock_basic.concept 逗号分隔拆分；无数据为空）
+}
+
+// GetSecurityBasicsRequest codes 为空时返回全量字典；非空按 codes（任一可解析代码写法，规整为 600519.SH）过滤。
+message GetSecurityBasicsRequest {
+  repeated string codes = 1;
+}
+
+// GetSecurityBasicsReply 字典行 + 版本戳 max_update_time（结果内最大 update_time，RFC3339；无结果为空），
+// 供前端增量校验（§6.2 localStorage nt.secbasic.v1）。
+message GetSecurityBasicsReply {
+  repeated SecurityBasic list = 1;
+  string max_update_time = 2;
+}
+
+// GetSeatStatsRequest 席位胜率时序。trade_date 默认最近一个已收盘交易日。
+message GetSeatStatsRequest {
+  string trade_date = 1; // 2006-01-02，空为今天（未收盘回退上一交易日）
+  int32 top = 2;         // 席位数上限（按 sample 倒序），默认 50，上限 200
+}
+
+// SeatStatRow 一个席位一个基准日的滚动窗口胜率统计。收益率与胜率均为分数（0.0323 = 3.23%）。
+// 「没取到≠0」：sample/sample_t5 是事实列（上榜次数与 T+5 已发生次数），恒有值；
+// 六收益列只在有效样本（上榜日与 t+N 收盘均存在且为正）非空时返回——
+// T+5 未发生（sample_t5=0）或有效样本为零的期对应三列省略发送，0 无歧义。
+message SeatStatRow {
+  string seat = 1;
+  string as_of = 2;              // 统计基准日（窗口右端）
+  int32 lookback = 3;            // 窗口交易日数（60）
+  int32 sample = 4;              // 窗口内上榜次数（含 T+5 未发生）
+  int32 sample_t5 = 5;           // 其中 T+5 已发生的子样本数
+  optional double win_rate_t1 = 6;  // T+1 收涨占比（0-1）
+  optional double avg_ret_t1 = 7;   // T+1 平均收益率
+  optional double med_ret_t1 = 8;   // T+1 中位数收益率
+  optional double win_rate_t5 = 9;  // T+5 收涨占比（0-1）
+  optional double avg_ret_t5 = 10;  // T+5 平均收益率
+  optional double med_ret_t5 = 11;  // T+5 中位数收益率
+  string source = 12;
+}
+
+// GetSeatStatsReply found=false 表示该基准日 seat_stats 无行（当日龙虎榜空或任务未跑）。
+message GetSeatStatsReply {
+  string trade_date = 1;
+  bool found = 2;
+  repeated SeatStatRow rows = 3; // 按 sample 倒序、sample_t5 次之，截断到 top
+  string as_of = 4;
+}
+
+// GetChipDistributionRequest 筹码分布（目录册增补 B3）。
+message GetChipDistributionRequest {
+  string symbol = 1;
+  string as_of = 2;     // 基准日 2006-01-02，空为最近一个已收盘交易日
+  int32 days = 3;       // 取数窗口（交易日）：≤0 默认 250，>400 截 400
+  int32 grid_size = 4;  // 成本网格数：≤0 默认 300，合法域 50..2000（越域 400）
+}
+
+// GetChipDistributionReply 筹码分布结果。
+// status 四态：ok / missing（库中无该券或窗口无日线）/ not_meaningful
+// （数据不足、float_share 缺失无法算换手率、adj_factor 缺失不可复权）/ error（请求非法）。
+// 「没取到≠0」：status!=ok 时价格与衍生列全部缺失（proto optional），不产假数；
+// days_used/cum_turnover_pct 为事实列照常回波（非 ok 时为窗口实际入算行数）。
+message GetChipDistributionReply {
+  string symbol = 1;
+  string status = 2;
+  string reason = 3;
+  optional double profit = 4;           // 获利比例（0..1，现价以下筹码占比）
+  optional double avg_cost = 5;         // 加权平均成本
+  optional double cost90_lo = 6;        // 90% 成本区间 [P05, P95]
+  optional double cost90_hi = 7;
+  optional double cost70_lo = 8;        // 70% 成本区间 [P15, P85]
+  optional double cost70_hi = 9;
+  optional double concentration90 = 10; // (P95−P05)/(P95+P05)
+  optional double concentration70 = 11;
+  optional double peak_price = 12;      // 筹码峰价（存量最大网格点）
+  optional double price = 13;           // 现价 = 窗口末根前复权收盘
+  int32 days_used = 14;
+  double cum_turnover_pct = 15;
+  string window_start = 16;
+  string window_end = 17;
+}
+
+// GetReportEstimatesRequest 券商研报盈利预测（目录册增补 B4）。
+message GetReportEstimatesRequest {
+  string symbol = 1;
+  string as_of = 2;  // 基准日 2006-01-02，空为最近一个已收盘交易日（发布日 ≤ as_of）
+  int32 days = 3;    // 发布日回看窗口：≤0 默认 90，>400 截 400
+}
+
+// ReportEstimateRow 一份研报×一个预测年度的披露行（PIT：多券商分歧各自成行）。
+// 「没取到≠0」：eps/pe/目标价/评级/动作等披露列源头缺披露时 DB 为 NULL，
+// proto 侧全 optional 省略发送——绝不落 0 或空串冒充有披露；
+// org_sname 为签发主体必有列，源头空串的行不入库（写入侧已 skip）。
+message ReportEstimateRow {
+  string publish_date = 1;
+  string org_sname = 2;
+  optional string org_code = 3;         // 东财机构码；缺披露不返回
+  int32 est_year = 4;                   // 预测年度（披露年 +0/1/2）
+  optional double eps = 5;              // 预测每股收益（元）
+  optional double pe = 6;               // 预测市盈率（倍）
+  optional double aim_price_low = 7;    // 目标价下限（元）；多数研报无目标价
+  optional double aim_price_high = 8;   // 目标价上限（元）
+  optional string rating = 9;           // 本次评级原文
+  optional string last_rating = 10;     // 前次评级原文
+  optional int32 rating_change = 11;    // 评级动作枚举（东财原样透传，无公开口径）
+  optional int32 report_type = 12;      // 研报类型枚举（同上）
+  optional string researcher = 13;
+  optional string industry = 14;        // 东财行业名
+}
+
+// GetReportEstimatesReply found=false 表示窗口内无披露行（无覆盖券或窗口过窄），
+// 与「券不存在」同视——显式缺失不编数。
+message GetReportEstimatesReply {
+  string symbol = 1;
+  bool found = 2;
+  repeated ReportEstimateRow rows = 3; // publish_date 倒序、org_sname 次之
+  int32 days = 4;
+  string window_start = 5; // 发布日窗口左端（as_of − days）
+  string as_of = 6;        // 窗口右端（解析后基准日）
+}
+
+// ─── B5 AH 溢价（查询时直抓）────────────────────────────────────────────
+
+// GetAHPremiumRequest symbol 必传（v1 只接 A 股代码，parseSymbol 归一）。
+message GetAHPremiumRequest {
+  string symbol = 1;
+}
+
+// GetAHPremiumReply status 五态：
+//   ok           三腿齐备，衍生列有值；
+//   no_pair      F10 证实该 A 股无 H 配对（空 data / STR_CODEH null / 非 .HK 后缀三态合一；
+//                独立成态落实 empty≠source_down 纪律——同型 GetChipDistributionReply）；
+//   missing      有配对但报价/汇率腿缺失（missing[] 逐腿 why 小枚举列出，衍生列缺省）；
+//   pair_error   F10 配对刷新失败（含缓存过期且刷新失败）——配对未知，不产溢价数；
+//   source_error 腾讯报价请求级失败（非 2xx/超时/畸形）——配对事实列仍回波。
+// 三腿与衍生列 optional 指针直传：缺失=proto 缺省，不落 0/1.0（没取到≠0）。
+// 逐腿显年龄：a_time/h_time/fx_time 各带**源内 tick 时刻**（RFC3339），实测三腿
+// 天然不齐；停牌腿的「现价」是源的最后成交 tick、其时刻是源内最后成交时刻而非
+// 取数时刻——面板必须按 tick 时刻解读该价格的新鲜度，不得当「实时新取」。
+message GetAHPremiumReply {
+  string status = 1; // ok / no_pair / missing / pair_error / source_error
+  string reason = 2; // status≠ok 时的显式原因文案
+  // 配对事实列（status≠ok 也照常回波，能查到什么给什么）
+  string a_code = 3;     // "601939"
+  string a_market = 4;   // "SH" / "SZ"
+  string a_name = 5;     // F10 STR_NAMEA / SECURITY_NAME_ABBR 兜底
+  string h_code = 6;     // "00939"（no_pair / pair_error 时为空串）
+  string h_name = 7;     // F10 STR_NAMEH
+  bool a_traded = 8;     // 仅当 A 腿报价在场（a_price 回波）时承载停牌语义：false=停牌/无成交，
+                         // a_price=源最后成交 tick、a_time=源内最后成交时刻；
+                         // A 腿缺失（status=missing）时本字段为零值 false 不代表停牌，缺失原因见 missing[]
+  // 三腿报价（optional 指针直传；缺失=缺省）
+  optional double a_price = 9;     // A 现价（CNY）
+  optional double h_price = 10;    // H 现价（HKD）
+  optional double hkdcny = 11;     // 港币兑人民币汇率
+  optional double ah_ratio = 12;   // a/(h*rate)，round 4
+  optional double premium_pct = 13;// (ratio-1)*100，round 2，正=A 贵，负合法不钳
+  // 逐腿源内 tick 时刻（RFC3339；该腿缺失或源未给时刻则为空串）
+  string a_time = 14;
+  string h_time = 15;
+  string fx_time = 16;
+  repeated AHMissingLeg missing = 17; // 缺腿逐项（why 小枚举，面板按 why 分流告警）
+  string pair_source = 18;  // 恒 "eastmoney_f10"
+  string quote_source = 19; // 恒 "tencent"
+  string as_of = 20;        // 服务侧合成时刻（RFC3339）
+}
+
+// AHMissingLeg 缺腿逐项：leg=a_price/h_price/hkdcny；why 为小枚举——
+// no_data（响应行缺失/价格字段空串=空≠0）/ na_value（价格字段显式 "0"=无报价哨兵）
+// / parse（字段在场但行或数值不可解析）。面板按 why 分流告警（数据纪律先例）。
+message AHMissingLeg {
+  string leg = 1;
+  string why = 2;
 }

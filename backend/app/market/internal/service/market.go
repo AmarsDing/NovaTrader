@@ -455,7 +455,158 @@ func (s *MarketService) GetLimitPremium(ctx context.Context, req *v1.GetLimitPre
 	return reply, nil
 }
 
-// GetBreadth 返回 20 日均线上占比（监控驾驶舱 P2，只读）。
+// GetSeatStats 返回龙虎榜席位胜率时序（目录册增补 B2，只读）。
+// trade_date 空时按最近已收盘交易日；found=false 表示该日 seat_stats 无行（龙虎榜空或任务未跑）。
+func (s *MarketService) GetSeatStats(ctx context.Context, req *v1.GetSeatStatsRequest) (*v1.GetSeatStatsReply, error) {
+	day, err := resolveP2Day(req.GetTradeDate())
+	if err != nil {
+		return nil, err
+	}
+	report, err := s.uc.SeatStatsSnapshot(ctx, day, int(req.GetTop()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetSeatStatsReply{
+		TradeDate: fmtDay(report.Day), Found: report.Found, AsOf: fmtTime(report.AsOf),
+	}
+	for _, r := range report.Rows {
+		reply.Rows = append(reply.Rows, &v1.SeatStatRow{
+			Seat: r.Seat, AsOf: fmtDay(r.AsOf),
+			Lookback: int32(r.Lookback), Sample: int32(r.Sample), SampleT5: int32(r.SampleT5),
+			WinRateT1: r.WinRateT1, AvgRetT1: r.AvgRetT1, MedRetT1: r.MedRetT1,
+			WinRateT5: r.WinRateT5, AvgRetT5: r.AvgRetT5, MedRetT5: r.MedRetT5,
+			Source: r.Source,
+		})
+	}
+	return reply, nil
+}
+
+// GetChipDistribution 返回筹码分布（目录册增补 B3，只读）。
+// as_of 空时按最近已收盘交易日；status 非 ok 时衍生列缺失（proto optional，「没取到≠0」），
+// window 事实列在无行/校验失败时保持空串而非伪造日期。
+func (s *MarketService) GetChipDistribution(ctx context.Context, req *v1.GetChipDistributionRequest) (*v1.GetChipDistributionReply, error) {
+	sym, err := parseSymbol(req.GetSymbol())
+	if err != nil {
+		return nil, err
+	}
+	grid := int(req.GetGridSize())
+	if grid != 0 && (grid < 50 || grid > 2000) {
+		return nil, badRequest("grid_size out of range [50,2000]")
+	}
+	day, err := resolveP2Day(req.GetAsOf())
+	if err != nil {
+		return nil, err
+	}
+	rep, err := s.uc.ChipDistribution(ctx, sym, day, int(req.GetDays()), grid)
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetChipDistributionReply{
+		Symbol: rep.Symbol, Status: rep.Status, Reason: rep.Reason,
+		Profit: rep.Profit, AvgCost: rep.AvgCost,
+		Cost90Lo: rep.Cost90Lo, Cost90Hi: rep.Cost90Hi,
+		Cost70Lo: rep.Cost70Lo, Cost70Hi: rep.Cost70Hi,
+		Concentration90: rep.Concentration90, Concentration70: rep.Concentration70,
+		PeakPrice: rep.PeakPrice, Price: rep.Price,
+		DaysUsed: int32(rep.DaysUsed), CumTurnoverPct: rep.CumTurnoverPct,
+	}
+	if !rep.WindowStart.IsZero() {
+		reply.WindowStart = fmtDay(rep.WindowStart)
+		reply.WindowEnd = fmtDay(rep.WindowEnd)
+	}
+	return reply, nil
+}
+
+// GetReportEstimates 返回券商研报盈利预测（目录册增补 B4，只读）。
+// as_of 空时按最近已收盘交易日；found=false 表示发布日窗口内无披露行——显式缺失不编数。
+// 披露列 Nillable 指针直传 proto optional，缺披露省略发送不产假数。
+func (s *MarketService) GetReportEstimates(ctx context.Context, req *v1.GetReportEstimatesRequest) (*v1.GetReportEstimatesReply, error) {
+	sym, err := parseSymbol(req.GetSymbol())
+	if err != nil {
+		return nil, err
+	}
+	day, err := resolveP2Day(req.GetAsOf())
+	if err != nil {
+		return nil, err
+	}
+	rep, err := s.uc.ReportEstimates(ctx, sym, day, int(req.GetDays()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetReportEstimatesReply{
+		Symbol: rep.Symbol, Found: rep.Found, Days: int32(rep.Days),
+		WindowStart: fmtDay(rep.WindowStart), AsOf: fmtDay(rep.AsOf),
+	}
+	for _, r := range rep.Rows {
+		row := &v1.ReportEstimateRow{
+			PublishDate: fmtDay(r.PublishDate), OrgSname: r.OrgSname, OrgCode: r.OrgCode,
+			EstYear: int32(r.EstYear),
+			Eps:     r.Eps, Pe: r.Pe, AimPriceLow: r.AimPriceLow, AimPriceHigh: r.AimPriceHigh,
+			Rating: r.Rating, LastRating: r.LastRating,
+			Researcher: r.Researcher, Industry: r.Industry,
+		}
+		if r.RatingChange != nil {
+			v := int32(*r.RatingChange)
+			row.RatingChange = &v
+		}
+		if r.ReportType != nil {
+			v := int32(*r.ReportType)
+			row.ReportType = &v
+		}
+		reply.Rows = append(reply.Rows, row)
+	}
+	return reply, nil
+}
+
+// GetAHPremium 返回 A/H 配对与溢价（目录册增补 B5，查询时直抓，不落库）。
+// status 五态归属与衍生列缺省在 biz 收口；这里只做指针直传与时刻格式化。
+func (s *MarketService) GetAHPremium(ctx context.Context, req *v1.GetAHPremiumRequest) (*v1.GetAHPremiumReply, error) {
+	sym, err := parseSymbol(req.GetSymbol())
+	if err != nil {
+		return nil, err
+	}
+	rep, err := s.uc.AHPremium(ctx, sym)
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetAHPremiumReply{
+		Status:  rep.Status,
+		Reason:  rep.Reason,
+		ACode:   rep.Pairing.ACode,
+		AMarket: rep.Pairing.AMarket,
+		AName:   rep.Pairing.AName,
+		HCode:   rep.Pairing.HCode,
+		HName:   rep.Pairing.HName,
+		ATraded: rep.ATraded,
+		ATime:   fmtTime(rep.A.Time),
+		HTime:   fmtTime(rep.H.Time),
+		FxTime:  fmtTime(rep.FX.Time),
+		// 常量标签恒有：源族留痕给面板/钉样（IV 格式行 40）。
+		PairSource:  "eastmoney_f10",
+		QuoteSource: "tencent",
+		AsOf:        fmtTime(rep.AsOf),
+	}
+	if rep.A.Price != nil {
+		reply.APrice = rep.A.Price
+	}
+	if rep.H.Price != nil {
+		reply.HPrice = rep.H.Price
+	}
+	if rep.FX.Price != nil {
+		reply.Hkdcny = rep.FX.Price
+	}
+	if rep.Ratio != nil {
+		reply.AhRatio = rep.Ratio
+	}
+	if rep.Premium != nil {
+		reply.PremiumPct = rep.Premium
+	}
+	for _, m := range rep.Missing {
+		reply.Missing = append(reply.Missing, &v1.AHMissingLeg{Leg: m.Leg, Why: m.Why})
+	}
+	return reply, nil
+}
+
 func (s *MarketService) GetBreadth(ctx context.Context, req *v1.GetBreadthRequest) (*v1.GetBreadthReply, error) {
 	day, err := resolveP2Day(req.GetTradeDate())
 	if err != nil {
@@ -503,6 +654,93 @@ func (s *MarketService) GetKlineGaps(ctx context.Context, req *v1.GetKlineGapsRe
 			Missing: int32(d.Missing), Present: int32(d.Present),
 			Sample: d.Sample, AsOf: fmtTime(d.AsOf),
 		})
+	}
+	return reply, nil
+}
+
+// GetEmotionPath 返回盘中情绪路径（复盘体系 P0-3，只读）。没存的时点不出现在 points。
+func (s *MarketService) GetEmotionPath(ctx context.Context, req *v1.GetEmotionPathRequest) (*v1.GetEmotionPathReply, error) {
+	day, err := parseDay(req.GetDate())
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.uc.EmotionPath(ctx, day)
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetEmotionPathReply{
+		Date: fmtDay(p.Day), AuctionFound: p.AuctionFound,
+		AuctionTotalAmount: p.AuctionTotalAmount, AuctionLimitUpCount: int32(p.AuctionLimitUpCount),
+		PrevTierAuctionSample: int32(p.PrevTierSample),
+		Partial:               p.Partial, Missing: p.Missing,
+	}
+	if p.PrevTierAuctionPct != nil {
+		reply.PrevTierAuctionPct = p.PrevTierAuctionPct
+	}
+	for _, pt := range p.Points {
+		reply.Points = append(reply.Points, &v1.EmotionPathPoint{
+			Time: pt.Time, Auction: pt.Auction,
+			Up: int32(pt.Up), Down: int32(pt.Down), Broken: int32(pt.Broken),
+			BrokenRate: pt.BrokenRate, MaxHeight: int32(pt.MaxHeight), ProfitEffect: pt.ProfitEffect,
+			Advance: int32(pt.Advance), Decline: int32(pt.Decline), Amount: pt.Amount,
+			Phase: pt.Phase, ScoreCoef: pt.ScoreCoef, Stale: pt.Stale,
+		})
+	}
+	return reply, nil
+}
+
+// GetSecurityBasics 返回名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）。
+// codes 为空返回全量；非空时每个代码必须可解析（600519.SH / sh600519 / SHSE.600519），规整为 600519.SH，
+// 去重交给 biz。缺字段按 proto 零值透传，前端判 hasName 显「名称未返回」，后端不伪造。
+func (s *MarketService) GetSecurityBasics(ctx context.Context, req *v1.GetSecurityBasicsRequest) (*v1.GetSecurityBasicsReply, error) {
+	codes, err := parseSymbols(req.GetCodes())
+	if err != nil {
+		return nil, err
+	}
+	rows, maxUpdate, err := s.uc.SecurityBasics(ctx, codes)
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetSecurityBasicsReply{
+		List:          make([]*v1.SecurityBasic, 0, len(rows)),
+		MaxUpdateTime: fmtTime(maxUpdate),
+	}
+	for _, r := range rows {
+		reply.List = append(reply.List, &v1.SecurityBasic{
+			Code: r.Code, Name: r.Name, Market: r.Market, Industry: r.Industry,
+			StFlag: r.ST, SuspendFlag: r.Suspended,
+			PeTtm: r.PeTtm, Pb: r.Pb, CircMv: r.CircMv,
+			UpdateTime: fmtTime(r.UpdateTime), Concepts: r.Concepts,
+		})
+	}
+	return reply, nil
+}
+
+func (s *MarketService) GetIntradayAlerts(ctx context.Context, req *v1.GetIntradayAlertsRequest) (*v1.GetIntradayAlertsReply, error) {
+	day, err := parseDay(req.GetDate())
+	if err != nil {
+		return nil, err
+	}
+	var symbols []string
+	for _, sym := range strings.Split(req.GetSymbols(), ",") {
+		if sym = strings.TrimSpace(sym); sym != "" {
+			symbols = append(symbols, sym)
+		}
+	}
+	rows, err := s.uc.IntradayAlerts(ctx, day, req.GetMinPct(), symbols, req.GetWatchOnly(), time.Now())
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetIntradayAlertsReply{Date: fmtDay(day)}
+	for _, r := range rows {
+		row := &v1.IntradayAlertRow{Symbol: r.Symbol, Name: r.Name, Kind: r.Kind, Time: r.Time.Format(time.RFC3339)}
+		if r.Pct != nil {
+			row.Pct = r.Pct
+		}
+		if r.Price != nil {
+			row.Price = r.Price
+		}
+		reply.Alerts = append(reply.Alerts, row)
 	}
 	return reply, nil
 }

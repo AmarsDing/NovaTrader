@@ -212,15 +212,18 @@ type PremiumRow struct {
 }
 
 // PremiumDay 是一个溢价日的汇总。
+// 「没取到≠0」（P3-10c）：OpenAvg/HighAvg 样本为空（开盘口径整批缺、
+// 快照行收盘补齐前 High 全缺）以 nil 表达缺失——0 是有效均值真伪难分，禁止冒充；
+// CloseAvg/CloseWin 的缺失口径由 HasClose=false 表达，调用方先判 HasClose。
 type PremiumDay struct {
 	TradeDate  time.Time
 	BaseDate   time.Time
 	Sample     int
 	LimitAgain int
-	OpenAvg    float64
+	OpenAvg    *float64
 	CloseAvg   float64
 	CloseWin   float64
-	HighAvg    float64
+	HighAvg    *float64
 	HasClose   bool
 }
 
@@ -290,14 +293,16 @@ func summarizePremium(rows []PremiumRow) PremiumDay {
 		}
 	}
 	if openN > 0 {
-		day.OpenAvg = openSum / float64(openN)
+		avg := openSum / float64(openN)
+		day.OpenAvg = &avg
 	}
 	if closeN > 0 {
 		day.CloseAvg = closeSum / float64(closeN)
 		day.CloseWin = float64(winN) / float64(closeN)
 	}
 	if highN > 0 {
-		day.HighAvg = highSum / float64(highN)
+		avg := highSum / float64(highN)
+		day.HighAvg = &avg
 	}
 	return day
 }

@@ -7,14 +7,16 @@ import (
 )
 
 // AuctionRow 是一只股票的集合竞价截面（stock_factor kind=auction，09:25 落库）。
+// 「没取到≠0」（P3-10c）：源端缺键的推导值用 *float64 保留缺失（新股无昨收、
+// 无 5 日均量、无股本、无未匹配快照），禁止折叠成 0 冒充读数；Amount 键恒在，0=无成交真值。
 type AuctionRow struct {
-	Symbol     string
-	Pct        float64
-	Amount     float64
-	VolRatio   float64
-	Turnover   float64
-	LimitUp    bool
-	Unmatched  float64
+	Symbol    string
+	Pct       *float64
+	Amount    float64
+	VolRatio  *float64
+	Turnover  *float64
+	LimitUp   bool
+	Unmatched *float64
 }
 
 // AuctionCross 是某日集合竞价汇总。Found 为假表示该日还没有竞价因子。
@@ -28,11 +30,16 @@ type AuctionCross struct {
 	TopRush      []AuctionRow
 }
 
-func auctionFloat(values map[string]float64, key string) float64 {
+// auctionFloatPtr 取键：values 为 nil 或键缺（源端没写）返回 nil，缺失向 wire 贯通。
+func auctionFloatPtr(values map[string]float64, key string) *float64 {
 	if values == nil {
-		return 0
+		return nil
 	}
-	return values[key]
+	v, ok := values[key]
+	if !ok {
+		return nil
+	}
+	return &v
 }
 
 // AuctionCross 汇总某日集合竞价截面：竞价总额、竞价涨停、抢筹前 N（默认 10，上限 50）。
@@ -58,13 +65,14 @@ func (u *Usecase) AuctionCross(ctx context.Context, day time.Time, top int) (*Au
 	all := make([]AuctionRow, 0, len(rows))
 	for _, r := range rows {
 		row := AuctionRow{
-			Symbol:    r.Symbol,
-			Pct:       auctionFloat(r.Values, "auction_pct"),
-			Amount:    auctionFloat(r.Values, "auction_amount"),
-			VolRatio:  auctionFloat(r.Values, "auction_vol_ratio"),
-			Turnover:  auctionFloat(r.Values, "auction_turnover"),
-			LimitUp:   auctionFloat(r.Values, "auction_limit_up") > 0.5,
-			Unmatched: auctionFloat(r.Values, "auction_unmatched"),
+			Symbol: r.Symbol,
+			Pct:    auctionFloatPtr(r.Values, "auction_pct"),
+			// auction_amount/limit_up 键恒在（采集无条件落键），map 直读零值即「无成交/未涨停」真值
+			Amount:    r.Values["auction_amount"],
+			VolRatio:  auctionFloatPtr(r.Values, "auction_vol_ratio"),
+			Turnover:  auctionFloatPtr(r.Values, "auction_turnover"),
+			LimitUp:   r.Values["auction_limit_up"] > 0.5,
+			Unmatched: auctionFloatPtr(r.Values, "auction_unmatched"),
 		}
 		if row.Amount > 0 {
 			summary.TotalAmount += row.Amount
