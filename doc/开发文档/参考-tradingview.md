@@ -130,7 +130,7 @@
 | G6 | 副图指标靠 ECharts/自绘拼窗，无多 pane 联动十字线 | `NtIndicatorChart.vue`（ECharts 路线） | v5 `addPane`/`swapPanes`，unity crosshair 天然 |
 | G7 | 盘口/深度面板无合成兜底，断档即空 | `NtDepthBoard.vue`（2026-10-19 已落地合成兜底，见 §7 P2-11） | `datafeed.js:771-820` 合成阶梯 |
 | G8 | 无图形/交互 e2e；viz 只有单测 mock | `web/src/viz/__tests__/theme-chart.test.ts`（mock 级） | `tests/e2e/graphics`、`tests/e2e/coverage` |
-| G9 | 无服务端时钟校准，倒计时/竞价计时可能漂 | 未实现 | `datafeed.js:304-325` getServerTime |
+| G9 | 无服务端时钟校准，倒计时/竞价计时可能漂 | `web/src/utils/server-clock.ts` + `GET /api/ops/time`（2026-10-19 已落地，见 §7 P2-10） | `datafeed.js:304-325` getServerTime |
 | G10 | 高频文本无 measure/label 缓存，监控画布每帧量字 | `CanvasStage.vue:1047 measureWidth` 每帧调用 | `text-width-cache.ts`、`formatted-labels-cache.ts` |
 
 ---
@@ -162,12 +162,12 @@
 
 ### P2（链路健壮性与工程化）
 
-9. **重连续接范式对齐**（streaming.js:83-98）：WS 恢复时除 resync 外，让图表自动 REST 回填缺口区间（NT 已有 resync→load 机制，补上"K线级别的缺口时间窗回填"，而非整段重载）。
-10. **服务端时钟校准**：admin 提供 `GET /api/system/time`，前端所有倒计时/竞价进度显示用 server clock + drift 补偿（参照 `datafeed.js:304-325` 的失败降级）。
+9. **重连续接范式对齐**（streaming.js:83-98）：WS 恢复时除 resync 外，让图表自动 REST 回填缺口区间（NT 已有 resync→load 机制，补上"K线级别的缺口时间窗回填"，而非整段重载）。（2026-10-19 已落地见 §7 P2-9：缺口窗口回填 + 抽离纯函数合并 + 三重整载兜底；未动后端——proto 的 start/end/limit 自 e6ac3a6 就在，P2-11 记录里"需先扩后端接口"的判断证伪已更正）
+10. **服务端时钟校准**：admin 提供 `GET /api/system/time`，前端所有倒计时/竞价进度显示用 server clock + drift 补偿（参照 `datafeed.js:304-325` 的失败降级）。（2026-10-19 已落地见 §7 P2-10：路由按 /api/ops/* 家族落为 `GET /api/ops/time`——字面路由偏离如实记录；vendor 参照实为纯透传，offset 估算/RTT 丢弃/单调钳制为 NT 自行实现）
 11. **盘口合成兜底**（G7）：`NtDepthBoard` 无档时用最近价+涨跌停/tick 规则生成占位阶梯，标注"合成/待数据"，杜绝空屏（`datafeed.js:771-820`）。（2026-10-19 已落地见 §7 P2-11：viz 层能力就位，刻意不合成挂单量；业务侧等 M01 五档数据通道后传 prop 即生效）
-12. **viz 图形回归**：借鉴 `tests/e2e/graphics` 思路——`/dev/gallery` 每组件固定数据+固定尺寸截图入 CI（Puppeteer/Playwright + pixelmatch），主题×密度矩阵天然适合 golden 比对。
+12. **viz 图形回归**：借鉴 `tests/e2e/graphics` 思路——`/dev/gallery` 每组件固定数据+固定尺寸截图入 CI（Puppeteer/Playwright + pixelmatch），主题×密度矩阵天然适合 golden 比对。（2026-10-20 已落地见 §7 P2-12：Playwright golden 矩阵 23 用例 × 主题 × 密度 = 92 张；golden 权威源钉 CI 镜像 + workflow_dispatch 重刷通道；落地过程顺带根治 CanvasStage ResizeObserver 自激——gallery 内监控画布 golden 全空白的根因在宿主塌缩+内联支距，详见 §7）
 13. **高频文本缓存**：监控画布与 TerminalStrip 引入 `text-width-cache`/`formatted-labels-cache` 等价物，按 (font+text) 缓存，周期清理；canvas 销毁处学 `releaseCanvas`（`canvas-utils.ts:28-36`）。（2026-10-19 已落地见 §7 P2-13：宽测缓存 4bac98e 已有、本轮补卸载清零+releaseCanvas；formatted-labels 不另造——热点全在 Vue computed，框架已 memo）
-14. **行情边车合同文档化**：把 G2 落地后推送帧的 bar/tick schema 写进 `doc/开发文档/M01` 设计文档（proto-first 原则），前后端类型同时从它生成。
+14. **行情边车合同文档化**：把 G2 落地后推送帧的 bar/tick schema 写进 `doc/开发文档/M01` 设计文档（proto-first 原则），前后端类型同时从它生成。（2026-10-19 已落地见 §7 P2-14：合同立档 M01 §7，制图+对账实测纠正六处分歧——bar 帧已产未路由、tick 属预留无生产者、stale 死显示等；前后端类型同生成的 proto 化留作后续项 M01 §7.9）
 
 ## 5. UI 走查（对照 `doc/开发文档/1.视觉需求.md` 与本次静态审读）
 
@@ -290,7 +290,7 @@
 - **合成阶梯纯函数**：新文件 `web/src/viz/depth-synth.ts` 产出 `buildSyntheticDepth(last, { symbol, preClose, tick })`——最近价 ± tick 累进上下各五档、价格 round2；封顶复用 `utils/limit.ts` 板块档（封板价本身可排，越过即停：封涨停时卖侧空、买侧照出，封跌停镜像）；昨收缺失不封顶；两侧合计为空返回 null（交给空态）。对照 `datafeed.js:771-820` 但**刻意剔掉伪造挂单量**：volume 恒 null → 量位显示 '—'，挂单量是无法合成的事实，画柱子最有欺骗性（诚实数据：宁缺勿假）。
 - **组件接通**：`NtDepthBoard` 新增 `lastPrice/symbol/preClose/tick` 四个可选 prop；**双边都无档才触发合成**（任意一侧有真实档位即原样渲染，真/合不混）；合成态量柱不渲染、行价加 `--syn` 类透明度 0.55（保留卖红买绿方向色），中线显示「最近价 + 合成·待数据」琥珀标注。价单元格顺势统一走 `price()` 展示格式（两位小数），真实档位同样生效。
 - 展示面：`/dev/gallery` 新增两卡——常规无档占位（上下各五）与涨停封板（只出买侧）。
-- **边界诚实交代**：全仓 Grep 核实 `NtDepthBoard` 目前仅 `/dev/gallery` 消费（业务面板无五档落点），本轮交付的是 viz 能力与兜底行为本体；M01 行情边车接通五档后，行情面板传 `:last-price/:symbol/:pre-close` 即自动获得断档兜底。顺带核实：P2-9（重连缺口时间窗回填）被 `api/market.ts` 的 `getBars(symbol, freq)` 无时间窗参数卡住，需先扩后端 bars 接口再动，暂搁置。
+- **边界诚实交代**：全仓 Grep 核实 `NtDepthBoard` 目前仅 `/dev/gallery` 消费（业务面板无五档落点），本轮交付的是 viz 能力与兜底行为本体；M01 行情边车接通五档后，行情面板传 `:last-price/:symbol/:pre-close` 即自动获得断档兜底。~~顺带核实：P2-9（重连缺口时间窗回填）被 `api/market.ts` 的 `getBars(symbol, freq)` 无时间窗参数卡住，需先扩后端 bars 接口再动，暂搁置。~~（2026-10-19 更正：该判断失实——`market.proto:113-123` 的 start/end/limit 自 e6ac3a6 即存在，P2-9 已由纯前端落地，见 §7 P2-9。）
 - 测试一件：`viz/__tests__/depth-board.test.ts`（纯函数 4 例：常规五档含 null 量、临近涨停截断到封板价（含 20% 档）、封板两侧镜像、无昨收不封顶+自定义 tick+无效最近价 null；组件 4 例：合成标注与卖五→卖一倒序、量柱隐藏、封板不越价、有真档不合成、无档无价纯空态）。
 - 验收：焦点 8/8、全套 **76 文件 679 用例**、vue-tsc/eslint 零告警。
 
@@ -303,3 +303,65 @@
 - **未做并说明理由**：formatted-labels-cache 等价物不引入——逐帧文本的热路径都在 scene-model/computed 层，Vue 响应式已 memo，再加一层等于重造 computed。
 - 测试：`canvas-stage.test.ts` 新增 releaseCanvas 例（1×1 收缩 + null/undefined 安全）；监控全套 **18 文件 261 用例** 绿。
 - 验收注意：全量测试当时有并行会话半场红（`panels/__tests__` 整目录未跟踪 + registry-integrity 与 .snap 在其 WIP；vue-tsc 仅剩其 `panels/risk/alert-rules.panel.vue` 类型错），按惯例（门禁红先查归属）核实与本条无关。评审 workflow（3 维审视 + 逐条反证，lifecycle/coverage 两维被 429 打断）回归维发现 1 条措辞错误（measureCache 被误称模块级 Map）经反证确认并修正，覆盖/生命周期两维由主会话亲自复核补齐（全 src 唯一自绘 2D 画布即 CanvasStage；NtEChart `dispose():102`、NtKline `chart?.remove():545` 库层自管；TerminalStrip 纯 DOM）。
+
+### P2-14 行情推送帧合同立档（2026-10-19）
+
+- **做法**：5-agent 制图 workflow（后端 / 前端 / 测试钉 / 文档插点）→ 合同审计员逐项对账 → 主会话一手代码复核关键声称；合同写入 `doc/开发文档/M01-数据采集/设计文档.md` 新增 **§7 推送帧合同**（原 §7–§10 顺延 §8–§11；全库无按节号引用 M01 的外部文档，重排安全），M02 §1 的 `{"as_of","count"}` 简写收紧为指向 M01 §7.3，双源漂移销案。
+- **对账实测纠正（写进合同诚实面，六处分歧全部以代码销案）**：
+  - bar 帧（`market.bar.1m`）**已产未路由**——hub `natsRoutes`（hub.go:598-614）无绑定，前端整条增量消费管线今日消费零帧，图表收敛 100% 靠 REST（初始 load + 60s 对账 + resync 全量）；P0-1 记录中「REST 权威胜过在途增量帧」的叙事降级为**待用声明**。
+  - `stale=true` meta 帧线上不可达（失败路径只标 Redis 不发帧）——前端 stale 展示位是死显示，真实陈旧信号 = 帧停更或 REST Quote.stale。
+  - tick/quote 仅是 hub 合流白名单的预留帧类名，全仓无生产者——合同不得按「既有 tick schema」书写。
+  - 「无 bar 行即 meta」兜底（MarketView.vue:363）无形态校验；freq 守卫对真实 bar 帧结构性失效（Bar 无 freq 键、前端忽略 metadata.subject）——列为 bar 接线前的两条必修。
+  - bar 时间双解析器隐患销案：槽时间恒带 +08:00，Date.parse 与 chartTime 结果一致。
+  - `{"bars":[…]}` 批量帧不参与服务端合流（行级键对 marketKey 不可见 → 空 key 直放；前端 data-frame 合批可正确归并，无害但须防误依赖）。
+- **一致口径 11 项**（信封别名序/seq 序号语义/epoch 代际/慢消费者对称保护/at-most-once+REST 恢复/时间格式/market_filters 全有或全无/alert 帧闭环/心跳与本体分层/frameEpoch 同构等）经审计员与地图双侧逐条对账。
+- 测试钉清单写入 M01 §7.8（后端 bar/usecase/hub/observability/trade consume、前端 hub.test/observability）；缺口两条如实：bar 逐行合并语义为私有函数无独立用例、重放×REST 交叠收敛无显式测试。workflow map:test-pins 被 ECONNRESET 打掉，测试钉由主会话 grep 补齐。
+- 本轮纯文档，门禁/走查不适用；制图 4/5 agent 成功 + 审计员复核，关键声称（路由表/信封/槽口径）另经主会话一手核读。M01 文档携并行会话 N2-01/N4-02 半场 WIP，提交时须按归属拆账，不可整文件收。
+
+### P2-9 重连缺口时间窗回填（2026-10-19 落地）
+
+- **做法**：`getBars` 加 `BarsWindow { start?, end?, limit? }` 透传（后端零改动——`market.proto:113-123` 的 start/end/limit 自 e6ac3a6 就在，P2-11 记录"需先扩后端接口"的判断证伪已于 :293 更正）；`onResync` 处理器改为 `(await backfillGap()) || (await load())`，ready=false 仍 throw 保持 hub required 语义。回填 = 以末根时刻起窗 `{ start, limit: LIVE_CAP }` 拉新行（1d 末根先按上海日历日截日），`mergeGapRows` 同根替换+新根追加+逐行 `updateLast`（不重套不动视口）。
+- **合并纯逻辑抽离** `src/view/market-backfill.ts`：算/判/写分离——先在 `existing.slice()` 副本上合并，`covered && !overflow` 才 splice 写回，失败路径不留脏增量（修复评审 #4/#5）；三形态兜底整载：无基准行 / 首行晚于末根（缺口宽于窗口）/ 合并超 LIVE_CAP。粒度参数 `'ms' | 'day'`：day 模式下同日不同格式（`'2026-10-19'` 与 `'2026-10-19T14:59:00+08:00'`）视为同根，裁掉 existing 中日历日 ≥ 窗口首日的尾部再接 REST 权威行，根治（待用 bar 管线的）1m 污染尾根把当日日线行挡在同根替换外（修复评审 #1）。
+- **并发语义**：`frameEpoch` 在 await 期间变化（并发整载接管）不再是"视为恢复完成"，改为 `return load()` 汇进 refresh-queue 跟随其真实结果，不再向 hub 假 ack（修复评审 #2/#8 同源）；disposed 仍直接按完成处理。窗口请求失败 `console.warn` 留痕后转整载（修复 #6，对齐 hub.ts:514 先例）。注释补"待用 bar 管线"限定（修复 #9，呼应 M01 §7.4 已产未路由事实）。
+- **评审闭环**：3 维 finder + 逐条敌意核实（18 agent，1.15M token）出 **11 条确认**——3 major（混合粒度丢当日日线行 / epoch 竞态假 ack ×2 同源）、8 nit（原地突变后判 overflow、applied 不喂图分叉、静默 catch、M01 §7 文案行号陈旧、:293 过期判断、注释缺限定、测试标题与分支不符 ×2），全部修复或条款化；**3 条被拒**（不可解析尾根误报恢复——被后端 400→catch→整载链路兜底且 mergeTail 现已加严格守卫；1d 混合 start+空 fetched 误判——前置管线今日零帧不可达；cap≤0 语义——有意不变量且唯一调用方恒传 LIVE_CAP）。
+- **已知有界回归（验收口径待定）**：回填成功路径不刷新指标/消息/成交（旧版整载会顺带刷），交由 60s 对账定时器补——页面可见时最长滞后 60s，隐页对账暂停时延到下次 onVisible。已在代码注释明示；是否接受由用户验收时定夺（评审 nit #7）。
+- **测试**：新增 `src/view/__tests__/market-backfill.test.ts`（16 例：cmpTime 三分支、空/乱序/够不到/超 cap 不动 existing、day 粒度四例含 #1 原样 repro）+ `src/api/__tests__/market-bars.test.ts`（4 例：默认行数/窗口透传/归一/barTime·bar_time 回退链）；门禁 38 文件 282 用例全绿 + vue-tsc 0 + eslint 0。
+- **文档同步**：M01 §7.4/§7.6 resync 语义改为"先窗口回填失败才整载"、§7.3/§7.4 行号指针随本轮 edit 刷新、§7.8 测试钉补上 backfill 套件并销掉"逐行合并无独立用例"缺口。M02 开发进度.md 条目因文件携并行会话未提交 WIP（intraday-alerts）暂缓写入，其提交后补一行指针——决策 4 三件套留痕缺口如实交代。
+- 走查：本轮纯行为/数据链，无模板与样式改动，视觉走查不适用；视口保全（不重套不 fitContent）是本设计核心不变量，由 NtKline 非深监听契约 + updateLast 只 `update()` 双重保证。
+
+### P2-10 服务端时钟校准（2026-10-19 落地）
+
+- **做法**：proto-first 新增 `SystemClock/GetServerTime`（`backend/api/admin/v1/time.proto` + 三生成件），admin gateway 落 `GET /api/ops/time`——**字面路由偏离如实交代**：roadmap 原文写的是 `/api/system/time`，实施按 `/api/ops/*` 家族一致性改挂 ops 域（与 environment/observability 同_prefix），文档 :166 条目注记同步。`gateway/time.go` 逐模式镜像 environment.go：`transport.FromServerContext` 拿头 → 仅以 Authorization 重建请求 → `g.principal` 鉴权 → `g.now()` 直读 admin 进程钟（路径写明「无缓存、无转发」——前端要的就是这台机器处理请求那一刻的钟）；`sync.Once` 懒建 `khttp.NewServer`、GET-only 405、`Cache-Control: no-store` 显式钉死（评审 nit）。前端 `web/src/utils/server-clock.ts`：DI 工厂 `createServerClock` + 模块单例 `live` + `main.ts` 显式 `startServerClock()`（不做懒拉取——测试面不发网）。
+- **算法语义**（vendor `datafeed.js:304-325` 实为纯透传 getServerTime，以下估算纪律全为 NT 自行实现并如实标注）：offset = 服务端 epoch_ms − 本地中点时刻（RTT/2 口径），不做速率级漂移估计；样本过滤——RTT > 1000ms 视为睡眠唤醒/代理停顿丢弃保旧 offset，epoch_ms 非有限按合同违约拒绝；失败降级照 vendor 纪律 warn 留痕 + 保留旧 offset（未成功过则 offset 0 = 本地钟），不抛给消费方；重校准周期 300s + 页面隐藏跳过 + visibilitychange 补一次。
+- **单调钳制（评审 major 收口）**：`serverNow` 不因估算抖动回退——重校准把 offset 往回收（RTT 中点假设的秒级噪声）时读数原地挂起等本地钟追平，保护 45s/90s/+5s/30s 新鲜度闸门不被重校准瞬时误伤；钳制只在校准后生效（未校准 = 纯本地钟原样直报，系统回拨跟随显示，vitest 时钟回放不会被钳住）；**挂回上限 30s**——回拨超限即真实时钟事件（远端发远未来样本/NTP 步进/休眠唤醒），warn 留痕后一次性跟随，绝不无限冻结到刷新页面（无界冻结会让信号永不过期、推送未来守卫误杀、底栏钟与现实脱节）。
+- **消费侧重接台账**：凡「与戳比对」的本地钟全切 `serverNow/serverDate`——Signal/Overview/ConditionalPlans/TradeView（有效期倒计时、行动分级、readAt/clockMs 新鲜度对戳、signalDraftBlock）、StatusBar 底栏钟（`serverDate()`）、MonitorView clockMs/nowMs 与 pulseFlow/counterFlow/activity/hole/observeGraph/enqueue 全数戳、load-input sampledAt（与后端同源）、CanvasStage data-pulse（rAF 节拍与 drawAmbient 的 performance.now 不动）、pulses.ts push 戳、detail.ts tokensPerSecond 窗口、datasource-health 陈旧度、account-push 未来守卫、stores account/risk/market checkedAt、alerts toast 时刻。**有意保留**：page-refresh 自容节流、data-frame/quote-flash 动画用 performance.now、ID 唯一性戳（notify-center/brain-monitor/risk-chain/auth token）、GalleryView（dev）、timeband.ts 机器时区（另立技术债条目缓议）；stores/symbol.ts 携并行会话 WIP 未动。另把 `format.ts` validRemainText/isValidExpired 与 `decision-desk.ts` buildDecisionAction 的 `now = Date.now()` 默认值改为**必填**（评审 nit：潜藏默认值防再混本地钟，全量调用点已核均显式传参）。
+- **评审闭环**：3 维 finder + 逐条敌意核实（11 agent，618k token）出 **6 条确认、0 被拒**——2 major（无界冻结 → 挂回上限，见上；kratos proto client 再生成把 `backend/openapi.yaml` 耙成 SystemClock 单服务范围 → 已 `git checkout` 恢复 HEAD，全树再生成约定留作后续项）、4 nit（CanvasStage :55 注释仍写 Date.now、format/decision-desk 潜藏默认值、no-store 缺失、stopServerClock/syncServerClock/serverClockHealth 死导出零消费），全部修复。
+- **自伤修复（过程记录）**：重写 `web/src/api/system.ts` 时误删既有 `healthz()` 导出（`ws/hub.ts:587` checkHealth 与 LoginView.vue:34 消费），按 HEAD 逐字节恢复后与 `fetchServerTime()` 并存——「新文件」动写过既有导出者，先核 git status/diff 归属再落笔。
+- **测试**：`utils/__tests__/server-clock.test.ts` 9 例（未校准直报 / offset 显式算术 / RTT 超限丢样本 / 失败保旧·首败 offset 0 / NaN epoch 拒绝 / ≤30s 回拨冻结等追平 / >30s 跟随+告警 / start-隐藏-stop / 并发去重）；`gateway/time_test.go` 2 例（匿名 401 + epoch 窗口 + RFC3339Nano↔epoch 毫秒对齐 + no-store + POST/DELETE 405；注入 42ms 序列时钟两连读真推进判无缓存）。门禁：vitest 86 文件 774 用例全绿 + vue-tsc 0 + eslint 0 + backend build/vet/gateway 全过。
+- **文档同步**：G9 对照行（:133）与条目 10 注记（:166）已于本轮填实；M00/M01/M02 三件套留痕因并行会话持有未提交 WIP 暂缓，待其提交后补指针（同 P2-9 口径）。
+- 走查：本轮纯行为/基建（后端读口 + 时间源单例 + 消费侧重接），无模板与样式改动，视觉走查不适用；唯一用户可见变化是底栏钟/倒计时在多端时钟漂移时更准，属语义修正非外观变更。
+
+### P2-12 viz 图形回归（2026-10-20 落地，CI 第四道门）
+
+- **做法**：@playwright/test + 内置 `toHaveScreenshot`（pixelmatch 比对，不引第三方截图链）：用例登记表 `web/src/dev/graphics-cases.ts`（23 个走查 section 各一行），矩阵 = 用例 × 主题(dark/light) × 密度(normal/compact) = **92 goldens**（`web/graphics/golden/`，`snapshotPathTemplate` 去平台后缀——只跑一个后端就不让路径里躺 `-chromium-win32`）；`maxDiffPixelRatio: 0.004`（只吞抗锯齿/次像素抖动，字形与配色漂移必然越线）；viewport 1100×860、dpr 钉 1、zh-CN/Asia/Shanghai、`reducedMotion: 'reduce'`（产品既有约定：ECharts 关动画、画布谐波只画环境帧）；timeout 本机 60s/CI 90s、retries 0（不掩盖失败）、workers CI 2、globalSetup 暖身、webServer `vite dev --host 127.0.0.1:5199 --strictPort`（vite 8 默认只绑 ::1，探活+Playwright 一致走 IPv4）。
+- **空画布 golden 根因（P2-12 最大的技术债根治，占评审总消耗一半）**：gallery 内 CanvasStage 系列用例首批 golden 全是空白画布。探针时序追踪锁定：**宿主 `.nt-stage` 在 gallery 里塌到内在高度**（`absolute+inset:0` 只生效于 `.nt-monitor__stage` 下），canvas 默认 `display:inline` 留 ~4px 字形支距 → `measure()` 把 `clientHeight` 回写 `cv.style.height` → 支距让宿主再 +4px → **ResizeObserver 无限自激**（实测 154→158→…→602px，+4px/帧）；且 `cv.width/height` 赋值即使同值也清位图 → 逐帧清空与绘制交替 → 截到透明帧（探针：fillRect 执行 31.4 万次而逐帧采样全透明）。**修复成对**：`measure()` 仅尺寸变化时赋 `cv.width/cv.height`（同尺寸护栏）；`.nt-stage{position:relative;width:100%;height:100%}` + `.nt-stage>canvas{display:block}` 落 `monitor.css` 共址（权重 (0,1,0)，宿主 `.nt-monitor__stage .nt-stage` (0,2,0) 仍胜——级联显式同文件，不依赖注入序）。另修评审裁掉后人工核实为真的第 13 项：2d 上下文获取失败时 canvas v-show 隐藏、宿主在不定高容器折叠 0 高，补 `.nt-stage.is-failed{min-height:120px}` 让失败态有锚点。
+- **确定性合同（对抗评审收口后的全套约定）**：① 定格态等宽字形 :root 级钉 `'Cascadia Code', Consolas, monospace`（产品令牌前两顺位 JetBrains/Plex 装机不定——不钉就是机器依赖；:root 级覆盖因为要罩 teleport 出树的 modal 与画布 fillText 运行时取字）；② localStorage 5 键 preset 由用例规格生成；③ 首帧 rAF 双跳定格 + networkidle；④ **golden 唯一权威源 = CI 镜像**：`graphics-update.yml`（workflow_dispatch → windows-2025 全量重刷 → artifact 下发 → 人工 diff 核对后提交），本机 `test:graphics:update` 只当 smoke 不入库——Win10 与 WS2025 系统字体/DirectWrite 不同源，「同平台家族≠同渲染栈」是这类 golden 机制的立项陷阱；⑤ 字体先决条件断言步（pwsh 查注册表缺 Cascadia Code 即 fail-fast，别把环境病送去比像素）；⑥ dev server 专属端口 5199 + `reuseExistingServer:false`（日常 dev 在 5173，禁复用防残留 worktree server 污染）；⑦ `tsconfig.json` include 首次扩到仓库根 TS（`graphics/**/*.ts`、`playwright.config.ts`）让 vue-tsc 门槛罩住；⑧ vitest `test.exclude` 用 `[...configDefaults.exclude, 'graphics/**']`——自定义数组是**替换**默认集，不 spread 会把 dist 等默认排除弄丢。
+- **冷编译 flake 实测注记**：webServer 探活只拿到 SPA 回吐的 index.html（`/dev/gallery` 是懒路由），首条用例的 goto 要吃整棵 GalleryView 静态模块图（ui/viz/display/monitor + echarts/depth 深链约 40 组件）的按需编译；CI 清缓存（npm ci）+ 2 workers 下首波可吃满 60s 预算稳定记红、重跑又绿。解法：`graphics/global-setup.ts` 热身一枪 `?case=tokens`（一页即覆盖整模块图），不 import config 自身（循环引用）改读 env 覆盖。
+- **评审闭环（15 agent，354k token）**：3 维 finder（flake 面/工程约定/CanvasStage 修复面）出 13 项，12 项敌意核实（workflow 上限裁第 13 项后人工自证为真）→ **9 确认 / 3 驳回**。确认项全修：OS 字体 blocker（上文 ④⑤，最大的立项风险）、JetBrains 顺位 → :root Cascadia 钉死、冷编译暖身 + CI 90s、reuse:false、tsconfig include、四道门头注 ×2（ci.yml 与 CLAUDE.md §6）、CanvasStage style 迁 monitor.css 共址、dpr 变化观察（matchMedia resolution 单发查询逐次重挂——RO 不触发 dpr 变化，混 DPI 多屏（本驾驶舱常态）此前背模糊画布）。驳回留痕：①「GPU 光栅后端差异」——要求实测，探针在受管 GPU 机器上比对 `--disable-gpu` 与否截图 hash 全同（Playwright 托管 headless Chromium 默认即 SwiftShader 软光栅，有 GPU 亦然），驳回；②「settle 与画布清帧存在因果」——固定尺寸+同尺寸护栏下 RO 级联不可能复现，waitUntil 降级属假想解，驳回；③「.gitattributes 会把 PNG 文本化」——`text=auto` 保留二进制嗅探，且全仓没有也不会引入 `* text`，驳回。
+- **测试**：graphics 92/92 定稿后连跑全绿（终轮 15.8s，含暖身与 reuse:false 路径）；CanvasStage 修复后 monitor 单元 261 例全过。门禁：vue-tsc 0 错、eslint（自身文件范围）0、CI 由三道门升四道门（web/graphics/tauri-smoke/backend，graphics job 钉 windows-2025 + 镜像浮动注记）。全量 vitest 88 文件 796 过、8 红**全部归属并行会话在途 WIP**——signals.ts P3-10 线 5+3（其 declared 范围外落盘快照）与 c1 名称字典线借 detail.ts/hud.ts 引入 useSecurityStore 致纯 Pinia 测试 2 红（现盘实测通报 novatrader-53 已转其 P4 复核账），均与 P2-12 无涉、不代为修复（并行仓纪律：门禁红先查归属，只交自己文件）。
+- **走查**：抽 6 张 golden 目检（kline-light-normal、buttons-dark-normal、heatmap-dark-normal、table-light-compact、monitor-stage-dark-normal、monitor-flow-light-compact）——红涨绿跌、主题 token、密度矩阵、玻璃材质均合 `doc/开发文档/1.视觉需求.md`；监控画布 golden 现为**完整场景**（三列 01 签入/02 研判/03 表决、节点卡、贝塞尔束线、S3 漏斗光带、急停态红环），正是修复有效的目检证据。本轮改动属「恢复本应显示的绘制」的行为修正+基建，无外观规范冲突。
+
+### P2-10 技术债清偿：市场行情纪元钉北京时间（2026-10-20 落地）
+
+- **缘起**：P2-10 服务端钟落地时有意缓议的尾巴（本节 :337 的「timeband.ts 机器时区」条目）：后端戳全是北京墙钟，前端解析与渲染却按设备本地时区——海外/UTC 机上「盘中/盘后」判定、时段带聚焦、时分秒显示整面歪掉；CI web 任务跑在 ubuntu-latest（原生 UTC），必红。
+- **做法**（monitor 域全链路：5 生产文件改 + 1 生产文件不动留痕，5 测试文件迁移/补强）：
+  1. `timeband.ts` 新增 `shanghaiWall`：固定 +8h 偏移 + UTC 读数拆墙钟字段，**不走 Intl.DateTimeFormat**（域限定等价：上海 1991 年夏令时终止后恒定 UTC+8，输入域为现代交易日瞬时 ≥2019；更早的 1986–1991 UTC+9 与 1940s 战时夏令时按评审纠正后如实注明**在域外**——初版注释「1943 年起全程 UTC+8」为史实误写，本轮一并纠错）。`isTradingDay`/`detectBand`/`bandCountdown` 全改读市场钟。
+  2. `freshness.ts` `parseBeijingWall` 收紧：界外分量（月 13/日 40/25 点）在分支内判 null（`Date.UTC` 对越位分量是归一化不是报错）；**历法不存在的日**（'2026-02-31'）按 `daysInMonth` 纯算术判 null——比旧 Date.parse 归一化口径**刻意更严**（数据纪律：没取到≠0，宁缺勿假；Feb-31 非回归的驳回结论仍成立，此收紧属超越 parity 的主动加固并在此申告）；`new Date(0)` + `setUTCFullYear` 构造躲 `Date.UTC` 的 0–99 年映射 1900+y 陷阱；T 分隔按 ISO 从严（小时必须两位，`'T9:30'` 拒绝），空格形态沿袭 Go 布局（小时可单数字）；补可选毫秒位。新增 `WALL_SHAPE` 哨兵：墙钟命形即终判，非法分量**绝不兜底** `Date.parse`——V8 会把 '2026-02-31 10:00:00' 归一化成合法 epoch（新用例首跑实测抓出此洞后补哨兵）。
+  3. 裸钟串锚「市场钟的今天」：`parseStamp(text, now?)` 基准钟显式可传、缺省 `serverNow()`（与年龄计算同源——采样钟偏了「今天」跟采样钟走，不跟设备钟走）；`now` 沿 `badgeFor`/`stampFor`/`newestSignalTime`/`newestFillTime`/`cardSilence`/`channelSilence`/`observeGraph` 全链路穿线；`stampDay` 带日期子串**按文本日取**并注释（tradeDate 是市场日历日标签而非瞬时，不能做时区换算）。评审钉死的「同一行数据日级算出 20261340、秒级却 null」分裂就此收口。
+  4. 兄弟渲染位同口径：`tape.ts clockText`（时分秒列）与 `MonitorView` 采样时刻角标改上海墙钟读数；`health.ts freshPart` 的 `Date.parse(asOf)` 换 `parseStamp`。**`detail.ts:1067` 不动留痕**：`tokensPerSecond` 吃的是后端 RFC3339 带偏移戳，`Date.parse` 语义已正确，且该文件含并行会话在途编辑——只外科、不越界。
+- **评审闭环（11 agent，713k token）**：18 项 → 8 项进入逐条敌意核实 → **5 确认 / 3 驳回 / 10 裁撤**；2 条被裁但自报 blocker 的按评审纪律人工复核**均证实为真并已修**：① `tape.ts clockText` 本地读数——TZ=UTC 下 tape.test.ts 实测 **4 用例红**（CI ubuntu-latest 即原生 UTC，必红 blocker）；② 本人此前对外声称的「TZ=Pacific/Kiritimati +14 全绿」交叉验证是**空证**——Windows Node 只认 `TZ=UTC`，命名时区静默回落 OS 时区（探针 `TZ=Pacific/Kiritimati node -p` 读数 8 而非 14），如实收回并在环境注记记档：Windows 跨时区验证的诚实口径是「本机 CST + TZ=UTC + CI ubuntu 原生 UTC」三点，命名时区不构证。其余确认项：Date.UTC 两位年映射、stampDay/秒级界分裂、裸钟串设备钟「今天」三处均按上文修法落地。
+- **CI 阻断实证 → 清除实证**：预修前 TZ=UTC 下 tape.test.ts 4 红（六域归类/时间戳解析/TapeSession 合流）；修复后 monitor 域 18 文件 270 用例在本机（UTC+8）与 TZ=UTC **双跑全绿**（读真实退出码判绿，见下条教训）。
+- **门禁勘误与教训**：① `| tail` 截断管道退出码的教训第三轮坐实（本轮 npm-ci 后台任务通知「exit 0」实为 tail 的返回码，日志内 `REAL-EXIT:127` 才是 npm 的真实失败）——凡门禁/后台任务判定必读真实退出码或全文本，已在 P2-12 记录同款注记后列为硬纪律；② 外来红归责法升级：本机 4 簇红经 **HEAD 纯净 worktree 覆盖验证**（junction node_modules + 覆盖本人 4 生产文件，monitor 域 261/261 全绿）证明全部归属并行会话在途链（StatusBar.vue/hud.ts/format.ts 未提交编辑），与本人文件零交集——「worktree 覆盖法」比读调用链更快出铁证。
+- **过程环境事故（如实记档）**：交圈门禁阶段 `web/node_modules` 被在途操作写坏（顶层仅 190 项、无 `.bin`、缺整 `@babel` scope；`npx vue-tsc` 全程回落**全局** vue-tsc + TS 6.0.3 抛出 `tsconfig baseUrl TS5101` 伪红——本地 typescript 实为 5.9.3，其弃用表只到 5.0/5.5 era，断无 6.0/7.0 检查项，三次取证锁定全局副本）；本人 npm-ci 抢修又与在途重建撞 EPERM 后主动退出让路；在途重建其后停摆成尸（哨兵 900s 超时实证：顶层 34 项静止、无安装进程存活），本人接手修。**EPERM 锁根取证**：npm 调试日志点名 `@rolldown/binding-win32-x64-msvc/rolldown-binding.win32-x64-msvc.node`，锁主 = 昨日 14:14 常驻至今的 vite dev server（PID 42684，rolldown-vite 原生 .node 映射加载即拒删）。按并行纪律不杀他方进程，采**改名让位法**：`node_modules` 整树改名（Windows 允许重命名含在用文件的目录、仅拒绝删被锁文件本身）→ `npm ci` 全新落地（275 包 8s 热缓存，REAL-EXIT:0；`.bin` 93 项、本地 typescript 5.9.3、@babel/parser 7.29.2 全数归位），僵尸 server 留在已改名旧树上零打扰（残骸树待其退出后清）。**门禁补跑（同日 12:06–12:10，六门全绿，均读真实退出码）**：monitor 域本机 CST 270/270 EXIT 0、TZ=UTC 270/270 EXIT 0（起步戳 04:06 vs 本机 12:06 证 UTC 真生效）、全量 vitest 94 文件 **877/877**（上轮挂靠的 1 红外来 chrome-state 已随并行会话收口转净，本轮零外来红）、eslint（本人 7 文件范围）0 警 0 误、vue-tsc 本地 5.9.3 零输出 0 错（TS5101 伪红随本地铁证落地彻底销案）、graphics 监控子集 7 用例 ×4 格 = **28/28**。
+- **测试**：timeband 时区无关性（Z 后缀瞬时跨日界正反四例：UTC 周日深夜 = 上海周一交易日、UTC 周五午后 = 上海周六休市等）；freshness 垃圾拒收全家桶（13 月/40 日/25 点/09:61/'2026-02-31'/'2026-02-29'(2026 非闰)/'2024-02-29' 合法对照）、T-form 从严与空格宽松、毫秒保留、裸钟串「市场钟今天」与跨日界（fake timers）、`now` 穿线同源（显式采样钟锚定）；tape 三常量与 hud 三处构造、GalleryView demoNow 全部钉 `+08:00`（跑测机时区免疫）。
+- **走查**：纯行为/时区语义修正，无样式改动；playwright 配置本来就钉 `timezoneId:'Asia/Shanghai'`，golden 渲染文本在修复前后按构造同一（本地 10:24 → 修复后上海墙钟仍 10:24），图形监控子集 28/28 全绿坐实走查证物（golden 按构造免疫本修复：playwright 钉 `timezoneId:'Asia/Shanghai'`，本机 UTC+8 修复前后渲染文义同一；真实受益面在 UTC/海外机与 CI ubuntu 原生 UTC 环境）。

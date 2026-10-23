@@ -41,7 +41,7 @@
 | B2 | 用户自定义选股器：白名单公式 DSL | P0/L | ✅ KEEP | 新 backend/pkg/screener + 选股器面板；**修正**：结果入新表 user_screens 隔离，v1 纯 Go 解释器内存执行禁 SQL 生成 |
 | B3 | 策略晋级发布门槛（OOS 指标闸） | P0/M | ⚠ 降档 | **修正**：不新建 promote.go/新面板；复用 ParamProposal 链路，提案证据须来自 KindWalkForward 任务，门槛逐项结果（有效折数/正收益折比/OOS Sharpe/回撤/最小交易数，阈值复用 Admission 配置）落 metrics JSON。核验指出现状已有 OOS 优于基线门槛与 evolution.panel，真正缺口仅是 Approve 处缺多折/多指标量化下限 |
 | B4 | 用户自定义策略沙箱（pyworker 执行） | P1/L | ⚠ 降档 | **修正**：不把 pyworker（章程「只做采集」）拉上实盘主链跑用户 Python；改 Go 侧声明式策略定义（JSON/表达式树存 strategy_library.code 并版本化，pkg/rules 解释器求值+refstrat 注册）——激活该死字段。策略代码字段全仓零引用已核实 |
-| B5 | 模拟盘多账本对比 + FIFO 回合 | P1/M | ⚠ 降档 | **修正**：6c4e7f5 已闭 FIFO 重放大半缺口；只做多账本窄扩展（bookOf 放开命名 paper 子账本，LIVE 隔离不变）+ 只读「按账本重放对比」端点；坚持同事务物化唯一写路径 |
+| B5 | 模拟盘多账本对比 + FIFO 回合 | P1/M | ⚠ 降档 | **修正**：e837d961 已闭 FIFO 重放大半缺口；只做多账本窄扩展（bookOf 放开命名 paper 子账本，LIVE 隔离不变）+ 只读「按账本重放对比」端点；坚持同事务物化唯一写路径 |
 | B6 | 命中率复盘升级（相对基线+lead_days+源归因） | P1/M | ✅ KEEP | brain verify.go：对账窗 T+1 扩 T+5，hit=相对信号日前 20 日基线突破，加 lead_days/peak_after/base 追加列；per-source 汇总查询口先留 |
 | B7 | 数据源声明式自定义接入 | P1/M | ⚠ 降档（为 P0 的那份在 D1 被压到更低） | **修正**：按 M01 §4.5 既定路径「Go 源+manifest 登记+yaml 默认关」，GenericHTTP 限定纯 intel/news JSON API，经 appcfg 键族白名单评审后启用 |
 | B8 | 告警规则统一引擎（rule_type×scope×cooldown+flagged-once） | ~~P1~~→P2/M | ⚠ 降档 | **修正**：新建 pkg/rules/alertengine + ent monitor_rule 表（跨日持久冷却——engine 每交易日重建，5 分钟内存去重跨日失效属实）；先接 market/intel 两适配器，risk CRUD 后置；不与 D8/R6/U6 冷却窗族抢字段 |
@@ -53,7 +53,7 @@
 | # | 建议 | 定档 | 核验 | 落点/要点 |
 |---|------|------|------|-----------|
 | D1 | 声明式自定义 HTTP 源（JSON 定义→GenericHTTP Source） | P0/M | ⚠ 降档至极低 | 核验：目标源（财联社/雪球/金十）是 M01 红线/绕开源，配置自助化既定走开发者动作；仅留「运行期可扩展」口子（白名单 DSL、纯 intel/news 域、评审启用） |
-| D2 | 对账不合自动回补自愈（reconcile→scoped backfill→复对账） | P1/M | ✅ KEEP | 复用 SubmitBackfill 12 域白名单+护栏（滤 B6 不可回补源声明；独立 N 日计数器，不改 warn 语义与水印语义）；计数器持久化受 52fcd1c ent/data 冻结闸，先以 hits/last_seen 近似 |
+| D2 | 对账不合自动回补自愈（reconcile→scoped backfill→复对账） | P1/M | ✅ KEEP | 复用 SubmitBackfill 12 域白名单+护栏（滤 B6 不可回补源声明；独立 N 日计数器，不改 warn 语义与水印语义）；计数器持久化受 9e74a6e ent/data 冻结闸，先以 hits/last_seen 近似 |
 | D3 | 预测对账改相对基线+lead_days+T+3/T+5 复检 | P1/M | 已并入 B6 ✅ | 见 B6 |
 | D4 | 按信号源归因命中率滚动汇总回写晨报 | P1/S | 已并入 B6 ✅ | 纯读侧聚合（60 交易日窗按 source hit_rate/median lead_days），写晨报固定文案块，样本不足显「样本不足」不落键 |
 | D5 | 外部付费源成本台账+报告页脚+贵源周闸 | P2/M | ⚠ 降档 | **修正**：仅 tushare/tavily 为真付费源需台账；页脚两列=外部计费 / 本地 token 记账（非计费，经 TierUsage 不加 cost 列）；unit_cost 落 catalog sourceBookRow 不动 conf.proto 表结构；周闸键 app.ds.<src>.weekly 同批进 pkg/params/validate.go 白名单 |
@@ -72,7 +72,7 @@
 |---|------|------|------|-----------|
 | U1 | 信号源归因命中率卡+三态状态章 | P0/M | ⚠ 降档 | **修正**只做已证实小修：emotion-review.panel.vue:389-392 结果列 pct==null 渲染「没取到」no_data 章；hit/miss/no_data 三键+涨停/收涨一起走 status-map 册（UI 总方案既定项）；源级汇总先用现有 listPredictionChecks 聚合，等 B6 的 lead_days 落地后再升级 |
 | U2 | K 线关键位叠加层（压力/支撑/密集/枢轴） | P1/M | ⚠ 降档 | **修正**：GetKeyLevels 服务端合成——压力/支撑/枢轴由 GetBars 纯计算（摆动点+floor pivot），密集段调 B3 筹码内核（单一权威，禁另写 bars 版密集）；合同照 B3 四态（ok/missing/not_meaningful/error）+optional；色派改 压力=up/支撑=down/密集=text3 dotted/枢轴=accent2（原「压力 warn」撞 MarketView 图例既有四义琥珀）；顺带补 api/market.ts 的 getChipDistribution 断头消费；落 proto 须避让 market.proto 并行批 |
-| U3 | 题材/概念热力面板与龙头分 | P1/M | ⚠ 降档 | **修正**：龙头行钉死 SectorHeat.leader_symbol/reason 读链单一权威（六因子降级为行内积分展示，量比因子标「日口径」或剔除）；NtHeatmap :70 空态改 empty prop 两态（无行 vs 未取数）——首个生产消费方须 golden 首批入库（66c7ba5 CI 第四道门）；截断常量置面板侧并优先服务端 top；与 R8 共口径为硬前置 |
+| U3 | 题材/概念热力面板与龙头分 | P1/M | ⚠ 降档 | **修正**：龙头行钉死 SectorHeat.leader_symbol/reason 读链单一权威（六因子降级为行内积分展示，量比因子标「日口径」或剔除）；NtHeatmap :70 空态改 empty prop 两态（无行 vs 未取数）——首个生产消费方须 golden 首批入库（a614af29 CI 第四道门）；截断常量置面板侧并优先服务端 top；与 R8 共口径为硬前置 |
 | U4 | 涨停梯队卡片视觉语言升级 | P1/S | ⚠ 降档 | **修正**：砍常驻渐变底 tint（违视觉需求 :168 数据背板稳定底色，且不在 §7.1 五层枚举）；保留左 inset 1px 轨道（accent/track 色）+hover 亮度提亮（bg-raise 阶层，非 glow）；boardTag 作 display/NtBoardTag.vue 三色入册（board.cyb/kcb/bj）、utils/limit.ts 增 boardTag(symbol) 出口与 limitRatio 单源共存；梯队个股行右侧渲 compactAmount(sealAmount)，null→「—」 |
 | U5 | 推送定向失效与焦点 symbol 原位合并 | P1/M | ⚠ 降档 | **修正**：范围收窄到两处——limit-ladder 行级 patch + quote-sidebar 焦点股原位更新；脉冲复用 QUOTE_FLASH_MS=300 不定新值；throttle key=topic:symbol 由 msg.data.symbol 派生；hub.ts:194-218 兴趣收窄口径不动（quote-sidebar:120-125 帧级 symbol 过滤已有，尽调补正），不新增失效总线 |
 | U6 | 首次过闸「🆕 今日首现」标记 | P1/S | ⚠ 降档 | **修正**：新建 utils/alert-seen.ts（nt.alertseen.v1，30 天滚动，损坏→显式清空，对「localStorage 静默降级」惯例声明破例）；判定键复用 causeKey；status-map 增 alert.first_seen/alert.familiar 两键须走入册评审链；显示降档仅限 note/t3 明度层、禁改 levelOf 输出，L3/L4 永不降档 |
@@ -131,7 +131,7 @@ TSP 前端另有两条结构性启示供权衡（未入清单，因 NT 决策已
 
 ✅ KEEP：B2 选股器 DSL（收紧：user_screens 隔离+禁 SQL 生成）、R1 信号总纲（绕行红线源）、R4 公告新词差分（distinct cluster_id+自写 n-gram）、R7 归并晨报（复用 HotWords/dict 不另起抽取）、B6 命中复盘（对账窗扩 T+5）、R7 前述。
 
-⚠ DOWNGRADE 与原因：B1 因子注册表（NT 仅 ~20 固定因子非挖掘平台，P0 过档，落点改 pkg/market）；B3 晋级门（论据失实：ParamProposal 已有 OOS 门槛，真缺口仅 Approve 处量化下限）；D1 声明式源（目标源是红线+既定路径已在 M01 §4.5，降至极低留口子）；U1 命中率卡（当前 briefing 单源，只落 no_data 三态小修）；R2 四表（缩两表防空壳）；R3 judge（孤儿组件，先补中文候选产出）；R9 T+14（先落 theme_signal 快照，复盘第二阶段）；B4 沙箱（威胁模型：pyworker 章程只采集，改 Go 声明式）；B5 多账本（6c4e7f5 已闭大半，只做窄扩展+坚守同事务物化）。
+⚠ DOWNGRADE 与原因：B1 因子注册表（NT 仅 ~20 固定因子非挖掘平台，P0 过档，落点改 pkg/market）；B3 晋级门（论据失实：ParamProposal 已有 OOS 门槛，真缺口仅 Approve 处量化下限）；D1 声明式源（目标源是红线+既定路径已在 M01 §4.5，降至极低留口子）；U1 命中率卡（当前 briefing 单源，只落 no_data 三态小修）；R2 四表（缩两表防空壳）；R3 judge（孤儿组件，先补中文候选产出）；R9 T+14（先落 theme_signal 快照，复盘第二阶段）；B4 沙箱（威胁模型：pyworker 章程只采集，改 Go 声明式）；B5 多账本（e837d961 已闭大半，只做窄扩展+坚守同事务物化）。
 
 pass2 明细见第 9 节：22 条全部定判，无 REJECT。自此 39 行全闭环。
 
@@ -155,7 +155,7 @@ pass2 明细见第 9 节：22 条全部定判，无 REJECT。自此 39 行全闭
 | B8 | DOWNGRADE（P1→P2） | 2/M | pkg/rules/alertengine+monitor_rule 跨日持久冷却；先 market/intel 两适配器，risk CRUD 后置 |
 | B9 | DOWNGRADE | 2/S | shape.go 独立成件与 R6/R8 共用；LLM 缓存 key=task+prompt hash，cache_hit 记 llm_call_log |
 | B10 | DOWNGRADE | 3/M | mcpbridge 桥内 GET+精确路径白名单；MCP SDK 审批闸，不批手写最小 stdio JSON-RPC |
-| D2 | KEEP | 1/M | 12 域白名单内 scoped backfill；独立 N 日计数不动 warn/水印语义；持久化受 52fcd1c 冻结 |
+| D2 | KEEP | 1/M | 12 域白名单内 scoped backfill；独立 N 日计数不动 warn/水印语义；持久化受 9e74a6e 冻结 |
 | D5 | DOWNGRADE | 2/M | 仅 tushare/tavily 计费；本地 token 记账非计费；unit_cost 落 sourceBookRow；周闸键入 validate.go 白名单 |
 | D6 | DOWNGRADE | 1/M | empty_policy 四值枚举 conf.proto 三步；Issue{CheckEmpty} 通道非 StaleError；水位不前移免费 |
 | D7 | DOWNGRADE | 1/S | 仅元数据 replace 重试参数化（~2s 帽）+transport_unknown 接 L2；零新表；CSV 原子件勿碰 |

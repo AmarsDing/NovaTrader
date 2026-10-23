@@ -1,5 +1,6 @@
 # 参考：gloomberb（开源彭博式金融终端）分析与借鉴清单
 
+> 〔口径注 2026-10-24：文中「21 面板」六处系成文时点口径；现行注册表为 **27** 面板（原 23 + 四合奏 4 件，10-24 落史）。〕
 > 分析对象：[`gloom-sh/gloomberb`](https://github.com/gloom-sh/gloomberb) v0.17.6，MIT 协议。
 > 本地副本：`research-worker/gloomberb/`（浅克隆去 .git，仅作参考，勿提交进主仓库）。
 > 分析日期：2026-10-18。性质同 `参考-ai-hedge-fund.md` / `参考-nautilus-trader.md`：外部产品对标，沉淀可抄项。
