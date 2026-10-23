@@ -79,7 +79,8 @@ const labels: Record<string, string> = {
   scheduled_collect: '盘中与情报定时采集',
   health_persist: '源健康记录保存',
   run_domain_returned_nil_not_all_quality_or_publish_results: '本次采集域调用返回成功；部分质量与发布结果另查',
-  validated_snapshot_written_to_redis_not_all_symbols_fresh_or_nats_publish_confirmed: '快照已校验并写入Redis；逐证券时效和通知发布另查',
+  validated_snapshot_written_to_redis_not_all_symbols_fresh_or_nats_publish_confirmed:
+    '快照已校验并写入Redis；逐证券时效和通知发布另查',
   scheduled_collector_returned_nil_not_all_quality_or_publish_results: '本次定时采集返回成功；部分质量与发布结果另查',
   source_health_persistence_returned_success_not_source_healthy: '源健康记录已保存；不代表数据源健康',
   minute_bar: '分钟账本推进',
@@ -99,6 +100,14 @@ const labels: Record<string, string> = {
   research_recovery: '研究任务租约恢复',
   research_claim: '研究任务领取',
   research_execute: '研究工作进程执行',
+  research_run: '研究权威终态核对',
+  authoritative_terminal_job_outcome_unknown_skipped_not_profit_or_promotion:
+    '按权威任务终态统计；非终态或所有权改变记跳过，不代表收益或准许上线',
+  review_ai: 'AI 日复盘',
+  review_ai_week: 'AI 周复盘',
+  ai_review_persisted_segment_degraded_skipped_not_prediction_accuracy: '日复盘已保存；段落降级记跳过，不代表预测正确',
+  ai_weekly_review_persisted_degraded_skipped_not_prediction_accuracy:
+    '周复盘已保存；模型降级或整周无数据记跳过，不代表预测正确',
   research_finish: '研究结果回写',
   validated_market_bar_envelope_only_not_ledger_or_broker_ack: '源分钟信封通过校验；账本提交与总线确认另计',
   source_minute_cursor_and_ledger_committed_not_guaranteed_fill: '该分钟游标与账本事务已提交；不保证有成交',

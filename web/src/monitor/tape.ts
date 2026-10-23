@@ -14,6 +14,7 @@
  */
 import { amount, intText } from '@/utils/format'
 import { parseStamp } from './freshness'
+import { shanghaiWall } from './timeband'
 import type { HealthScore } from './health'
 import type { CardSilence } from './freshness'
 import type { Pulse } from './types'
@@ -67,10 +68,13 @@ export interface TapeSnapshot {
 
 /* ── 时间 ─────────────────────────────────────────────── */
 
+/** 时分秒列按市场钟墙钟渲染：入流时刻多是北京时间语义的后端戳（parseStamp 已把它们
+ *  钉成瞬时），再用设备本地时区读数会在海外/UTC 机上显示成另一座城市的钟——
+ *  CI web 任务跑在 ubuntu-latest（原生 UTC），本地读数必错。 */
 export function clockText(ms: number): string {
-  const date = new Date(ms)
+  const wall = shanghaiWall(new Date(ms))
   const pad = (value: number) => String(value).padStart(2, '0')
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  return `${pad(Math.floor(wall.minuteOfDay / 60))}:${pad(wall.minuteOfDay % 60)}:${pad(wall.second)}`
 }
 
 /** 后端时间戳 → { at, time }。解析不了：at=0 沉底，time 照排原文（不编时刻） */

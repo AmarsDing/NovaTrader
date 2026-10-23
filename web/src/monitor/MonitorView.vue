@@ -37,12 +37,13 @@ import { assertMonitorRecovery } from './recovery'
 import { observationSections, topicsForNode } from './observability'
 import { RingSeries } from './sampler'
 import { buildChildren, buildScene, pushPulse } from './scene-model'
+import { serverNow } from '@/utils/server-clock'
 import Sparkline from './Sparkline.vue'
 import { TapeSession } from './tape'
 import TerminalStrip from './TerminalStrip.vue'
 import TraceExplorer from './TraceExplorer.vue'
 import EnvironmentExplorer from './EnvironmentExplorer.vue'
-import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells } from './timeband'
+import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells, shanghaiWall } from './timeband'
 import type { TapeRow } from './tape'
 import type { Pulse } from './types'
 import './monitor.css'
@@ -58,9 +59,10 @@ const paused = ref(typeof document !== 'undefined' && document.hidden)
 
 /* ---- 时段带：焦点随交易时段切换，拓扑永不变（timeband.ts） ---- */
 
-/* S2：1 秒一拍的前端时钟。轮询停了这个钟也照走，角标年龄跟着涨，这才回答得出「多久没读到」 */
-const clockMs = ref(Date.now())
-const nowMs = computed(() => clockMs.value || input.value.now || Date.now())
+/* S2：1 秒一拍的前端时钟。轮询停了这个钟也照走，角标年龄跟着涨，这才回答得出「多久没读到」
+ * P2-10：走服务端钟（未校准回退本地）——静默/新鲜度闸门与后端时源一致；入流/采样时间戳同源。 */
+const clockMs = ref(serverNow())
+const nowMs = computed(() => clockMs.value || input.value.now || serverNow())
 const bandKey = computed(() => detectBand(new Date(nowMs.value)))
 const spec = computed(() => bandSpec(bandKey.value))
 const segments = computed(() => bandSegments(bandKey.value))
@@ -91,11 +93,11 @@ const pickedEdge = computed(() => edgeOf(graph.value, selectedEdgeId.value))
 const counterFlow = new CounterFlow()
 const pulseFlow = new PulseFlow()
 /* 风控→账户没有计数器，只有 WS 告警脉冲这一个观测口；从挂载起攒 60s 窗口 */
-pulseFlow.observe(KILL_EDGE_ID, Date.now())
+pulseFlow.observe(KILL_EDGE_ID, serverNow())
 
 /** 每轮轮询末尾喂计数器：数据源 successCount（边键取自场景图）、模型档 calls */
 function sampleFlow() {
-  const at = Date.now()
+  const at = serverNow()
   const data = input.value
   if (data.sources?.ok) {
     const byNode = new Map(data.sources.items.map((item) => [sourceNodeId(item.id, item.name), item]))
@@ -223,12 +225,12 @@ function absorbTape(pulses?: Pulse[]) {
       silence: silenceMap.value,
       live: isLive(),
     },
-    Date.now(),
+    serverNow(),
   )
 }
 
 function onTapeFlash(id: string) {
-  flash.value = { id, at: Date.now() }
+  flash.value = { id, at: serverNow() }
 }
 
 /* ---- 顶部 HUD：时段决定十格，格内容来自 resolveHud ---- */
@@ -268,9 +270,10 @@ function sampleSparks() {
 const sampled = computed(() => {
   const at = input.value.sampledAt ?? input.value.now
   if (!at) return ''
-  const date = new Date(at)
+  /* 采样时刻按市场钟墙钟渲染，与事件流时分秒列同口径：海外/UTC 机上不显示当地钟 */
+  const wall = shanghaiWall(new Date(at))
   const pad = (value: number) => String(value).padStart(2, '0')
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  return `${pad(Math.floor(wall.minuteOfDay / 60))}:${pad(wall.minuteOfDay % 60)}:${pad(wall.second)}`
 })
 
 const STATUS_WORD: Record<string, string> = { live: '在线', idle: '空闲', gap: '未返回', down: '中断', attention: '要注意' }
@@ -467,7 +470,7 @@ const channelAlert = ref<{ id: string; title: string; body: string; at: string }
 const channelSeen = new Set<string>()
 
 function tick() {
-  clockMs.value = Date.now()
+  clockMs.value = serverNow()
   /* S4：健康分跌破 70、模型静默、WS 通断都是状态量，交给会话去重后再进流（§6.1/§6.3） */
   absorbTape()
   const hit = channelSilence(input.value, activity, clockMs.value, !offday.value)
@@ -542,10 +545,10 @@ function onVisibility() {
   paused.value = document.hidden
   if (document.hidden) {
     stopPoll()
-    hiddenAt = Date.now()
+    hiddenAt = serverNow()
   } else {
     /* 页面藏起这段时间没有任何观测：记成 hole，格子画未知，静默时钟从这里重新起算 */
-    if (hiddenAt) activity.hole(hiddenAt, Date.now())
+    if (hiddenAt) activity.hole(hiddenAt, serverNow())
     hiddenAt = 0
     startPoll()
   }
@@ -565,7 +568,7 @@ const queuedPull = createRefreshQueue(async () => {
       /* S6：这一轮的 successCount / calls 喂给流量差分（束线宽度与流向点速度） */
       sampleFlow()
       /* S2：这一轮读到的牌面喂给活动条（签名只含状态/主词/副行，见 freshness.observeGraph） */
-      observeGraph(activity, buildScene(next, Date.now()), next, Date.now())
+      observeGraph(activity, buildScene(next, serverNow()), next, serverNow())
       /* S4：通知/审计/成交这三路是轮询来的，每轮拉完重新入流（id 稳定，不会重复） */
       absorbTape()
       return true
@@ -579,7 +582,7 @@ function enqueue(pulse: Pulse) {
   if (flush) return
   flush = window.setTimeout(() => {
     let list = input.value.pulses
-    const now = Date.now()
+    const now = serverNow()
     edgePulseHistory.value = retainEdgePulses(edgePulseHistory.value, pending, now)
     for (const item of pending) {
       list = pushPulse(list, item, now)

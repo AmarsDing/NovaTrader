@@ -40,6 +40,7 @@ import {
   strategyLabel,
   validRemainText,
 } from '@/utils/format'
+import { serverNow } from '@/utils/server-clock'
 import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
 
@@ -60,8 +61,8 @@ const stateFilter = ref<StateFilter>('')
 const strategyFilter = ref('')
 const sortKey = ref<SortKey>('score')
 const planSignalId = ref('')
-/** 有效期与按钮状态同一时钟，避免过期后仍保留可执行入口。 */
-const nowTick = ref(Date.now())
+/** 有效期与按钮状态同一时钟（P2-10 服务端钟，未校准回退本地），避免过期后仍保留可执行入口。 */
+const nowTick = ref(serverNow())
 const labels = ['技术面', '消息面', '资金面', '外围']
 
 const sideOptions = [
@@ -138,7 +139,7 @@ async function readPage(key: string): Promise<boolean> {
     listSources(),
   ])
   if (disposed || key !== refreshKey() || sequence !== loadSequence || checkedBook !== account.book) return false
-  nowTick.value = Date.now()
+  nowTick.value = serverNow()
   const failed = [signalRes, accountRes, riskRes, marketRes].find((result) => result.status === 'rejected')
   const ready = [signalRes, accountRes, riskRes, marketRes].every((result) => result.status === 'fulfilled' && result.value === true)
   if (!ready) error.value = failed?.status === 'rejected' ? messageOf(failed.reason) : '核心状态未恢复，不能执行信号'
@@ -177,7 +178,7 @@ function openTrade(item: SignalItem) {
     !buildDecisionAction(
       item,
       decisionContext.value && { ...decisionContext.value, accountBook: account.book, live: isLive() },
-      Date.now(),
+      serverNow(),
     ).canOpenTrade
   )
     return
@@ -233,7 +234,7 @@ async function onPushMessage(msg: WsPushMessage) {
 }
 
 function onVisible() {
-  if (!document.hidden) { nowTick.value = Date.now(); void load() }
+  if (!document.hidden) { nowTick.value = serverNow(); void load() }
 }
 
 onMounted(() => {
@@ -241,7 +242,7 @@ onMounted(() => {
   // signal 属常驻主题（BASE_TOPICS），只需 onPush，不必再 subscribe。
   offPush = onPush(onPushMessage)
   tickTimer = setInterval(() => {
-    if (!document.hidden) nowTick.value = Date.now()
+    if (!document.hidden) nowTick.value = serverNow()
   }, 1000)
   refreshTimer = setInterval(() => {
     if (!document.hidden) void load()
@@ -365,11 +366,11 @@ watch(
             <dd>{{ item.positionPct != null ? ratioPct(item.positionPct, 0) : '—' }}</dd>
           </div>
           <div>
-          <div>
             <!-- R2 列位补齐：有效期 text-2；validUntil 缺失显「—」（数据纪律） -->
             <dt>有效期</dt>
             <dd class="t2">{{ item.validUntil ? clock(item.validUntil) : '—' }}</dd>
           </div>
+          <div>
             <dt>ATR</dt>
             <dd>{{ price(item.atr) }}</dd>
           </div>
@@ -511,12 +512,12 @@ dd {
   margin: 0;
 }
 
-.meta,
 /* R2 有效期位降一档（text-2），不打断 mono 价格列的节奏。 */
 dd.t2 {
   color: var(--nt-text-2);
 }
 
+.meta,
 .reason {
   margin: 0;
   color: var(--nt-text-2);

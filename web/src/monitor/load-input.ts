@@ -14,6 +14,7 @@ import { listFills, listOrders } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'
 import { useRiskStore } from '@/stores/risk'
 import { quiet } from '@/utils/async'
+import { serverNow } from '@/utils/server-clock'
 import type { MonitorInput, Pulse } from './types'
 
 /** 各块独立失败。返回值永远可交给 buildScene，不向外抛。 */
@@ -73,7 +74,9 @@ export async function loadMonitorInput(focusSymbol: string, pulses: Pulse[]): Pr
     ])
 
   const observation = await observations
-  const sampledAt = Date.now()
+  /* P2-10：采样戳与 MonitorView 的 nowMs/clockMs 同走服务端钟（未校准回退本地）——
+   * 新鲜度/静默口径是「nowMs − at」的差值，两侧必须同钟，否则漂移直接变成假年龄。 */
+  const sampledAt = serverNow()
   return {
     observability: observation,
     now: sampledAt,

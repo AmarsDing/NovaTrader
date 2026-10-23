@@ -14,9 +14,10 @@ import { useAuthStore } from '@/stores/auth'
 import { onPush, onResync } from '@/ws/hub'
 import { createPageRefresh } from './page-refresh'
 import { amount, clock, messageOf, price } from '@/utils/format'
+import { serverNow } from '@/utils/server-clock'
 import NtButton from '@/ui/NtButton.vue'
-
 import SymbolName from '@/display/SymbolName.vue'
+
 const props = defineProps<{ signalId?: string }>()
 const account = useAccountStore(),
   auth = useAuthStore()
@@ -26,7 +27,8 @@ const ready = ref(false),
   loading = ref(false),
   busy = ref(false),
   error = ref('')
-const now = ref(Date.now())
+/** 计划有效期判定走 P2-10 服务端钟（未校准回退本地）：过期判定与后端同一时源。 */
+const now = ref(serverNow())
 const focused = computed(() => rows.value.filter((r) => !props.signalId || String(r.plan.signal_id) === props.signalId))
 const unknown = computed(() => intents.value.filter((i) => ['claimed', 'unknown'].includes(i.state)))
 const selectedSignal = computed(() => Number(props.signalId))
@@ -108,7 +110,7 @@ onMounted(() => {
     if (!(await refresh.refresh())) throw new Error('执行意图尚未恢复')
   })
   timer = setInterval(() => {
-    now.value = Date.now()
+    now.value = serverNow()
     if (!document.hidden) void refresh.refresh()
   }, 5000)
 })

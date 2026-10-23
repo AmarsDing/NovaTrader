@@ -466,7 +466,7 @@ function symbolKey(symbol: string): string {
 export function buildDecisionAction(
   plan: ActionPlan & { dims?: Record<string, unknown>; votes?: DimVote[] },
   context: DecisionContext | null,
-  now = Date.now(),
+  now: number, // P2-10：必填——有效性判定基准一律 serverNow，禁本地钟默认值
 ): DecisionAction {
   const status = plan.status.toLowerCase()
   const sell = plan.side === 'sell'

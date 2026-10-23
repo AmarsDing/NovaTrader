@@ -6,6 +6,7 @@
  * 由调用方回退 REST 权威刷新——提示帧、半个快照、别的账户的帧都不许当真值。
  */
 import type { WsEventMetadata } from '@/ws/topics'
+import { serverNow } from '@/utils/server-clock'
 import type { Position } from './types/trade'
 
 export interface AccountPushState {
@@ -42,7 +43,8 @@ export function parseAccountPush(payload: unknown, metadata: WsEventMetadata | u
   const asOf = typeof body.as_of === 'string' ? body.as_of : ''
   const asOfMs = Date.parse(asOf)
   // 镜像后端 Fresh()：账户态不允许来自未来（容忍 5s 时钟偏差）。
-  if (!asOf || !Number.isFinite(asOfMs) || asOfMs > Date.now() + 5000) return null
+  // P2-10：基准走服务端钟（未校准回退本地）——asOf 是服务端戳，与本地钟比会吃整机漂移。
+  if (!asOf || !Number.isFinite(asOfMs) || asOfMs > serverNow() + 5000) return null
   const equity = finite(body.equity) && body.equity >= 0 ? body.equity : null
   const cash = finite(body.cash) && body.cash >= 0 ? body.cash : null
   if (equity == null || cash == null || !Array.isArray(body.holdings)) return null

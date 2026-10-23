@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { getSentiment, listSectors, type SectorRow } from '@/api/market'
 import { quiet } from '@/utils/async'
 import { createRefreshQueue } from '@/utils/refresh-queue'
+import { serverNow } from '@/utils/server-clock'
 
 export const useMarketStore = defineStore('market', () => {
   const phase = ref('')
@@ -31,7 +32,8 @@ export const useMarketStore = defineStore('market', () => {
     if (sectorRows) sectors.value = sectorRows
     ready.value = !!sentiment && !!sentiment.asOf && sectorRows != null
     if (!sentiment) sentimentStale.value = true
-    checkedAt.value = Date.now()
+    /* P2-10：读取时刻与底栏时段钟同走服务端钟（未校准回退本地）。 */
+    checkedAt.value = serverNow()
     return ready.value
   })
 

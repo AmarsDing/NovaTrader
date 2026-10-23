@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ActivityLog } from './activity'
 import {
   ageShort,
@@ -18,14 +18,16 @@ import {
 } from './freshness'
 import type { SceneGraph, SceneNode } from './types'
 
-/** 2026-10-12 周一 10:00（交易日盘中）；10-17 周六；10-16 周五 */
-const MON = Date.parse('2026-10-12T10:00:00')
-const SAT = Date.parse('2026-10-17T10:00:00')
+/** 2026-10-12 周一 10:00（交易日盘中）；10-17 周六；10-16 周五。
+ *  基准戳钉 +08:00：后端戳全是市场钟，测试必须与跑测机时区无关。 */
+const MON = Date.parse('2026-10-12T10:00:00+08:00')
+const SAT = Date.parse('2026-10-17T10:00:00+08:00')
 
+/** 把 epoch 格式化成「YYYY-MM-DD HH:mm:ss」北京墙钟串——正是后端无偏移戳的样子。 */
 function ago(base: number, seconds: number): string {
-  const date = new Date(base - seconds * 1000)
+  const shifted = new Date(base - seconds * 1000 + 8 * 3600_000)
   const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())} ${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(shifted.getUTCSeconds())}`
 }
 
 function node(id: string, status: SceneNode['status'] = 'live'): SceneNode {
@@ -44,6 +46,57 @@ describe('parseStamp / stampDay', () => {
     expect(parseStamp('不是时间')).toBeNull()
     expect(stampDay('2026-10-12 15:00:00')).toBe(20261012)
     expect(stampDay('')).toBeNull()
+  })
+
+  it('无偏移墙钟串钉北京时间，不随跑测机时区漂移', () => {
+    expect(parseStamp('2026-10-12 14:30:00')).toBe(Date.parse('2026-10-12T14:30:00+08:00'))
+    expect(parseStamp('2026-10-12T09:30')).toBe(Date.parse('2026-10-12T09:30:00+08:00'))
+  })
+
+  it('非法分量当垃圾拒绝，不做 Date.UTC 式溢出归一化', () => {
+    /* "13 月 40 日"、"25 点"：Date.UTC 会吞下去归一化成合法时刻，这里必须 null。 */
+    expect(parseStamp('2026-13-40 15:04:05')).toBeNull()
+    expect(parseStamp('25:00')).toBeNull()
+    expect(parseStamp('09:61')).toBeNull()
+  })
+
+  it('历法上不存在的日子当垃圾拒绝：2 月看闰年，日级与秒级同一套界', () => {
+    /* '2026-02-31' 旧路会被归一化成 3 月 3 日冒充合法时刻——没取到≠0，宁缺勿假。 */
+    expect(parseStamp('2026-02-31 10:00:00')).toBeNull()
+    expect(parseStamp('2026-02-29 10:00:00')).toBeNull() // 2026 非闰年
+    expect(parseStamp('2024-02-29 10:00:00')).toBe(Date.parse('2024-02-29T10:00:00+08:00')) // 2024 闰年合法
+    expect(stampDay('2026-13-40')).toBeNull()
+    expect(stampDay('2026-02-31')).toBeNull()
+    expect(stampDay('2024-02-29')).toBe(20240229)
+  })
+
+  it('T 形态按 ISO 从严（小时必须两位），空格形态沿袭 Go 布局，毫秒位保留', () => {
+    expect(parseStamp('2026-10-12T9:30')).toBeNull()
+    expect(parseStamp('2026-10-12 9:30')).toBe(Date.parse('2026-10-12T09:30:00+08:00'))
+    expect(parseStamp('2026-10-12 09:30:00.500')).toBe(Date.parse('2026-10-12T09:30:00.500+08:00'))
+  })
+
+  it('裸钟串优先锚定调用方传入的采样钟，不跟设备钟', () => {
+    const sample = Date.parse('2026-10-14T16:00:00+08:00')
+    expect(parseStamp('09:30:00', sample)).toBe(Date.parse('2026-10-14T09:30:00+08:00'))
+    expect(stampDay('09:30:00', sample)).toBe(20261014)
+  })
+
+  it('裸钟串落在市场钟的「今天」，UTC 与东八区跑测同结论', () => {
+    vi.useFakeTimers()
+    try {
+      /* 北京时间 2026-10-12 16:47 = UTC 08:47：UTC 机上「今天」是 10-12，
+       * 市场钟的今天也是 10-12，两条日历在此不打架，专验证小时归位。 */
+      vi.setSystemTime(Date.parse('2026-10-12T16:47:00+08:00'))
+      expect(parseStamp('09:30:45')).toBe(Date.parse('2026-10-12T09:30:45+08:00'))
+      expect(parseStamp('9:30')).toBe(Date.parse('2026-10-12T09:30:00+08:00'))
+      /* 日界临界：北京时间 10-13 00:05 = UTC 10-12 16:05——「今天」必须是 10-13（市场钟），
+       * UTC 机若按设备日历会错绑到 10-12。 */
+      vi.setSystemTime(Date.parse('2026-10-13T00:05:00+08:00'))
+      expect(parseStamp('00:04:00')).toBe(Date.parse('2026-10-13T00:04:00+08:00'))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

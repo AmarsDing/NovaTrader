@@ -15,6 +15,44 @@
 
 import type { NodeStatus, SceneGraph, SceneNode } from './types'
 import type { ActivityLog } from './activity'
+import { shanghaiWall } from './timeband'
+import { serverNow } from '@/utils/server-clock'
+
+/** 上海市场钟固定偏移（timeband.ts 同款口径：固定 +8h，不走 Intl）。 */
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000
+
+/** 历法真实日数：二月看闰年，其余定盘。纯算术，绕开 Date.UTC 的 0–99 年映射与归一化。 */
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28
+  return [31, 0, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] ?? 0
+}
+
+/** 把「YYYY-MM-DD HH:mm:ss」这类无偏移墙钟串按北京时间落成 epoch（后端戳全是市场钟）。
+ *  分量必须先过界再合成：Date.UTC 对月溢出/分越位是归一化而非报错，不拦会把垃圾戳
+ *  当成合法时刻（旧路 Date.parse 对非法分量返回 NaN → 调方得 null，口径不能倒退）。
+ *  日界按真实历法收紧（'2026-02-31' 旧路归一化成 3 月 3 日冒充合法时刻）：没取到≠0，宁缺。 */
+function parseBeijingWall(raw: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})([ T])(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.(\d{1,3}))?$/.exec(raw)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[5])
+  const minute = Number(match[6])
+  const second = Number(match[7] ?? 0)
+  const millis = Number((match[8] ?? '0').padEnd(3, '0'))
+  /* T 分隔按 ISO 从严：小时必须两位（'T9:30' 不是 ISO）；空格形态沿袭 Go
+     "2006-01-02 15:04:05"，小时允许单数字。 */
+  if (match[4] === 'T' && match[5].length !== 2) return null
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month) || hour > 23 || minute > 59 || second > 59) {
+    return null
+  }
+  /* 不用 Date.UTC：构造器/Date.UTC 对 0–99 年私下映射 1900+y，setUTCFullYear 无此陷阱。 */
+  const stamp = new Date(0)
+  stamp.setUTCFullYear(year, month - 1, day)
+  stamp.setUTCHours(hour, minute, second, millis)
+  return stamp.getTime() - SHANGHAI_OFFSET_MS
+}
 
 export type FreshKind = 'tape' | 'sentiment' | 'account' | 'model' | 'overseas' | 'post'
 export type FreshTone = 'ok' | 'warn' | 'danger'
@@ -53,34 +91,60 @@ const AWAITING = new Set(['approved', 'risk_checking', 'pending', '待确认'])
 
 /* ── 时间解析 ─────────────────────────────────────────────── */
 
-/** 解析后端时间戳（RFC3339 / "2006-01-02 15:04:05" / "15:04:05"）。解析不了返回 null，不猜。 */
-export function parseStamp(text: string | null | undefined): number | null {
+/** 墙钟命形制式（parseBeijingWall 同款正则的哨兵）：命中即终判——历上不存在的
+ *  日子（'2026-02-31'）在墙钟域内判 null 后，绝不能兜底给 Date.parse 私下归一化。 */
+const WALL_SHAPE = /^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d{1,3})?$/
+
+/** 解析后端时间戳（RFC3339 / "2006-01-02 15:04:05" / "15:04:05"）。解析不了返回 null，不猜。
+ *  无偏移墙钟串一律按北京时间钉死：Date.parse 对无偏移串的落地依赖设备时区，
+ *  在海外/UTC 机上会把北京墙钟误当本地钟，年龄凭空差出时区差（P2-10 遗留债清偿）。
+ *  裸钟串锚定「市场钟的今天」：基准钟取 serverNow()（调用方有上下文的经 now 显式传入，
+ *  与年龄计算同源——采样钟偏了，「今天」跟着采样钟走，不跟设备钟走）。 */
+export function parseStamp(text: string | null | undefined, now?: number): number | null {
   const raw = (text ?? '').trim()
   if (!raw) return null
-  const direct = Date.parse(raw)
-  if (Number.isFinite(direct)) return direct
+  const wall = parseBeijingWall(raw)
+  if (wall != null) return wall
+  if (WALL_SHAPE.test(raw)) return null
   const clock = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(raw)
   if (clock) {
-    const day = new Date()
-    day.setHours(Number(clock[1]), Number(clock[2]), Number(clock[3] ?? 0), 0)
-    return day.getTime()
+    const hour = Number(clock[1])
+    const minute = Number(clock[2])
+    const second = Number(clock[3] ?? 0)
+    /* 钟形如 "25:00"/"09:61" 是垃圾不是时刻：V8 Date.parse 对越界分量会私下归一化，
+     * 绝不兜底交给它，在分支内要么合法要么 null。 */
+    if (hour > 23 || minute > 59 || second > 59) return null
+    /* 裸钟串 = 市场钟今天这一刻：先取上海墙钟的「今天是哪天」，再拼回 epoch。 */
+    const today = shanghaiWall(new Date(now ?? serverNow()))
+    return Date.UTC(today.year, today.month - 1, today.day, hour, minute, second) - SHANGHAI_OFFSET_MS
   }
+  const direct = Date.parse(raw)
+  if (Number.isFinite(direct)) return direct
   return null
 }
 
 /** 取日期部分成 yyyymmdd 整数，避开时区把日期推前一天。 */
-export function stampDay(text: string | null | undefined): number | null {
+export function stampDay(text: string | null | undefined, now?: number): number | null {
   const match = /(\d{4})-(\d{2})-(\d{2})/.exec((text ?? '').trim())
-  if (match) return Number(match[1]) * 10000 + Number(match[2]) * 100 + Number(match[3])
-  const parsed = parseStamp(text)
+  if (match) {
+    /* 带日期的串按文本日取（tradeDate 是市场日历日标签，不需要也不能做时区换算）；
+       但月日越位的是垃圾不是标签：与 parseBeijingWall 同一套界，避免同一行数据
+       在秒级路径判 null、日级路径却算出 20261340 的分裂。 */
+    const year = Number(match[1])
+    const month = Number(match[2])
+    const day = Number(match[3])
+    if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) return null
+    return year * 10000 + month * 100 + day
+  }
+  const parsed = parseStamp(text, now)
   if (parsed == null) return null
-  const date = new Date(parsed)
-  return date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()
+  const wall = shanghaiWall(new Date(parsed))
+  return wall.year * 10000 + wall.month * 100 + wall.day
 }
 
 function dayStamp(now: number): number {
-  const date = new Date(now)
-  return date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate()
+  const wall = shanghaiWall(new Date(now))
+  return wall.year * 10000 + wall.month * 100 + wall.day
 }
 
 /** 两个日期之间隔了几个交易日（只跳过周末，节假日按交易日走，与 timeband 同口径）。 */
@@ -202,14 +266,14 @@ export function cardFreshness(input: MonitorInputLike, now: number, trading: boo
     put('book:tape', 'sentiment', input.sentiment.asOf, false)
   }
   if (input.signals?.ok) {
-    put('post:desk', 'account', newestSignalTime(input))
-    for (const id of ['dim:tech', 'dim:capital', 'dim:news', 'dim:overseas', 'dim:synth']) put(id, 'model', newestSignalTime(input))
+    put('post:desk', 'account', newestSignalTime(input, now))
+    for (const id of ['dim:tech', 'dim:capital', 'dim:news', 'dim:overseas', 'dim:synth']) put(id, 'model', newestSignalTime(input, now))
   }
   if (input.candidates?.ok) put('post:miss', 'account', null)
   if (input.risk?.ok) put('post:risk', 'account', null)
   if (input.account?.ok) put('book:center', 'account', null)
   if (input.orders?.ok) put('book:orders', 'account', null)
-  if (input.fills?.ok) put('book:fills', 'account', newestFillTime(input))
+  if (input.fills?.ok) put('book:fills', 'account', newestFillTime(input, now))
 
   if (input.brainStats?.ok) {
     put('model:large', 'model', null)
@@ -223,7 +287,7 @@ export function cardFreshness(input: MonitorInputLike, now: number, trading: boo
 function badgeFor(ctx: FreshCtx, kind: FreshKind, stamp: string | null | undefined, useSampleAge: boolean): CardFresh | null {
   /* 非交易日：所有牌按盘后阈值（§6.2 脚注） */
   const daily = !ctx.trading || kind === 'post'
-  const day = stampDay(stamp)
+  const day = stampDay(stamp, ctx.now)
   if (daily) {
     if (day == null) {
       if (!useSampleAge || ctx.sampleAge == null) return null
@@ -234,7 +298,7 @@ function badgeFor(ctx: FreshCtx, kind: FreshKind, stamp: string | null | undefin
     const gap = day === today ? 0 : Math.max(1, tradingDaysBetween(day, today))
     return { text: dayText(gap), tone: dayTone(gap) }
   }
-  const at = parseStamp(stamp)
+  const at = parseStamp(stamp, ctx.now)
   if (at != null) {
     const age = Math.max(0, (ctx.now - at) / 1000)
     return { text: ageText(age), tone: secTone(kind, age) }
@@ -257,11 +321,11 @@ function oldestQualityDay(input: MonitorInputLike): string | null {
   return text
 }
 
-function newestSignalTime(input: MonitorInputLike): string | null {
+function newestSignalTime(input: MonitorInputLike, now: number): string | null {
   let newest: number | null = null
   let text: string | null = null
   for (const item of input.signals?.items ?? []) {
-    const at = parseStamp(item.time)
+    const at = parseStamp(item.time, now)
     if (at == null) continue
     if (newest == null || at > newest) {
       newest = at
@@ -271,11 +335,11 @@ function newestSignalTime(input: MonitorInputLike): string | null {
   return text
 }
 
-function newestFillTime(input: MonitorInputLike): string | null {
+function newestFillTime(input: MonitorInputLike, now: number): string | null {
   let newest: number | null = null
   let text: string | null = null
   for (const item of input.fills?.items ?? []) {
-    const at = parseStamp(item.time)
+    const at = parseStamp(item.time, now)
     if (at == null) continue
     if (newest == null || at > newest) {
       newest = at
@@ -301,7 +365,7 @@ export function awaitingSignal(input: MonitorInputLike): boolean {
 /** 每轮轮询末尾把整张图喂给活动条。签名只取牌面可见字段（状态/主词/副行），不看 detail 长文。 */
 export function observeGraph(activity: ActivityLog, graph: SceneGraph, input: MonitorInputLike, now: number): void {
   for (const node of graph.nodes) {
-    activity.observe(node.id, `${node.status}${node.face}${node.sub}`, now, stampFor(input, node.id))
+    activity.observe(node.id, `${node.status}${node.face}${node.sub}`, now, stampFor(input, node.id, now))
   }
   for (const order of input.orders?.items ?? []) {
     activity.observe(`order:${order.id}`, order.status, now)
@@ -309,16 +373,16 @@ export function observeGraph(activity: ActivityLog, graph: SceneGraph, input: Mo
 }
 
 /** 与 cardFreshness 同一套时间戳映射：数据源 lastAt、扫描/情绪 asOf、订单/成交取最新成交时刻 */
-function stampFor(input: MonitorInputLike, id: string): number | null {
+function stampFor(input: MonitorInputLike, id: string, now: number): number | null {
   if (id.startsWith('source:')) {
     for (const item of input.sources?.items ?? []) {
-      if (sourceNodeId(item.id, item.name) === id) return parseStamp(item.lastAt)
+      if (sourceNodeId(item.id, item.name) === id) return parseStamp(item.lastAt, now)
     }
     return null
   }
-  if (id === 'post:scan' || id === 'book:tape') return parseStamp(input.sentiment?.asOf)
-  if (id === 'post:desk') return parseStamp(newestSignalTime(input))
-  if (id === 'book:orders' || id === 'book:fills') return parseStamp(newestFillTime(input))
+  if (id === 'post:scan' || id === 'book:tape') return parseStamp(input.sentiment?.asOf, now)
+  if (id === 'post:desk') return parseStamp(newestSignalTime(input, now), now)
+  if (id === 'book:orders' || id === 'book:fills') return parseStamp(newestFillTime(input, now), now)
   return null
 }
 
@@ -329,7 +393,7 @@ function stampFor(input: MonitorInputLike, id: string): number | null {
 export function cardSilence(input: MonitorInputLike, ctx: SilenceCtx): Map<string, CardSilence> {
   const out = new Map<string, CardSilence>()
   const ageOf = (stamp: string | null | undefined): number | null => {
-    const at = parseStamp(stamp)
+    const at = parseStamp(stamp, ctx.now)
     return at == null ? null : Math.max(0, (ctx.now - at) / 1000)
   }
 
@@ -374,8 +438,8 @@ export function channelSilence(input: MonitorInputLike, activity: ActivityLog, n
     if (!/pending|accepted|submitted|partially|部分|待|已报|risk_checking/i.test(status)) continue
     const since = activity.observedFor(`order:${order.id}`, now)
     if (since < CHANNEL_SILENT_SEC) continue
-    const lastFill = newestFillTime(input)
-    const fillAt = parseStamp(lastFill)
+    const lastFill = newestFillTime(input, now)
+    const fillAt = parseStamp(lastFill, now)
     const filledRecently = fillAt != null && now - fillAt < CHANNEL_SILENT_SEC * 1000
     if (filledRecently) continue
     return {

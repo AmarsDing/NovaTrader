@@ -4,6 +4,7 @@
  * 测不到的项记 measured=false 并说明缺哪个接口，不编扣分、不装健康。
  */
 import type { MonitorInput } from './types'
+import { parseStamp } from './freshness'
 
 export type HealthTone = 'accent' | 'text' | 'warn' | 'danger'
 
@@ -63,8 +64,8 @@ export function computeHealth(input: MonitorInput, now: number): HealthScore {
 function freshPart(input: MonitorInput, now: number): HealthPart {
   const part = { key: 'fresh' as const, label: '市场结果时效' }
   const result = input.sentiment?.ok ? input.sentiment : null
-  const generatedAt = result ? Date.parse(result.asOf) : NaN
-  if (!Number.isFinite(generatedAt)) {
+  const generatedAt = result ? parseStamp(result.asOf, now) : null
+  if (generatedAt == null) {
     return { ...part, deduction: 0, measured: false, note: '未判定：情绪结果 asOf 未返回；源数据时钟未接入，采集成功 lastAt 不能代替报价时间' }
   }
   const ageSec = Math.max(0, Math.round((now - generatedAt) / 1000))

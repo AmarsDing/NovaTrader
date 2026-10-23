@@ -41,6 +41,7 @@ import {
   sideLabel,
 } from '@/utils/format'
 import { formatDateTime } from '@/utils/time'
+import { serverNow } from '@/utils/server-clock'
 import { router } from '@/router'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { PAPER_DAYS_REQUIRED } from './decision-desk'
@@ -67,7 +68,8 @@ const positionsOk = ref(false)
 const ordersOk = ref(false)
 const fillsOk = ref(false)
 const readAt = ref(0)
-const clockMs = ref(Date.now())
+/** 提交链路的新鲜度闸门/信号有效期判定同一时钟（P2-10 服务端钟，未校准回退本地）。 */
+const clockMs = ref(serverNow())
 const signalContext = ref<SignalDraftContext | null>(null)
 /** 已核实的本会话信号委托；列表短暂延迟不能使同一计划再次提交。 */
 const acknowledgedSignals = reactive(new Set<string>())
@@ -228,10 +230,10 @@ const fillSummary = computed(() => {
 const priceNum = computed(() => Number(form.price))
 const volumeNum = computed(() => Number(form.volume))
 const symbolOk = computed(() => /^\d{6}\.(SZ|SH|BJ)$/i.test(form.symbol.trim()))
-const priceOk = computed(() => Number.isFinite(priceNum.value) && priceNum.value > 0)
-const volumeOk = computed(() => Number.isInteger(volumeNum.value) && volumeNum.value >= 100 && volumeNum.value % 100 === 0)
 /** 输码即查（方案 §10-4）：凑满 6 位即在表单回显名称章；字典缺失时 SymbolName 显「名称未返回」提醒二读代码，不阻断下单。 */
 const echoOk = computed(() => /^\d{6}(?:\.(?:SH|SZ|BJ))?$/i.test(form.symbol.trim()))
+const priceOk = computed(() => Number.isFinite(priceNum.value) && priceNum.value > 0)
+const volumeOk = computed(() => Number.isInteger(volumeNum.value) && volumeNum.value >= 100 && volumeNum.value % 100 === 0)
 const signalBlock = computed(() => signalDraftBlock(signalContext.value, { account: account.value, symbol: form.symbol, side: form.side }, clockMs.value))
 const signalOrderBlock = computed(() => {
   const context = signalContext.value
@@ -375,8 +377,8 @@ async function readPage(key: string): Promise<boolean> {
   accountSnapshot.value = acc.status === 'fulfilled' && normalizeBook(acc.value.account) === normalizeBook(book) &&
     acc.value.equity != null && acc.value.cash != null ? acc.value : null
   riskSnapshot.value = riskRes.status === 'fulfilled' && ['L0', 'L1', 'L2', 'L3'].includes(riskRes.value.mode) ? riskRes.value : null
-  readAt.value = Date.now()
-  clockMs.value = Date.now()
+  readAt.value = serverNow()
+  clockMs.value = serverNow()
   if (uncertainDraft.value && orders.value.some((order) => order.id === uncertainDraft.value?.clientOrderId)) {
     try {
       const foundId = uncertainDraft.value.clientOrderId
@@ -439,20 +441,20 @@ async function submit() {
     if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) {
       throw new Error('确认期间表单或信号已变化，请重新核对')
     }
-    clockMs.value = Date.now()
+    clockMs.value = serverNow()
     if (submissionBlock.value) throw new Error(submissionBlock.value)
     if (originalContext) {
       const signal = await getSignal(originalContext.signalId)
       if (disposed) return
       if (signal.status.toLowerCase() !== 'approved') throw new Error('信号不再处于可确认状态，请查看最新计划')
       if (normalizeBook(signal.book) !== originalContext.book || signal.symbol.toUpperCase() !== originalContext.symbol || signal.side !== originalContext.side || signal.strategyVersionId !== originalContext.strategyVersionId) throw new Error('信号身份或策略版本已变化，请重新选择')
-      const blocked = signalDraftBlock({ ...originalContext, validUntil: signal.validUntil }, draft, Date.now())
+      const blocked = signalDraftBlock({ ...originalContext, validUntil: signal.validUntil }, draft, serverNow())
       if (blocked) throw new Error(blocked)
       if (signal.side === 'buy' && (signal.entryLow == null || signal.entryHigh == null || draft.price < signal.entryLow || draft.price > signal.entryHigh)) throw new Error('限价不在当前信号的入场区间，请重新核对计划')
     }
     if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) throw new Error('检查期间表单已变化，请重新核对')
     if (disposed) return
-    clockMs.value = Date.now()
+    clockMs.value = serverNow()
     if (submissionBlock.value) throw new Error(submissionBlock.value)
     // G7：落单前必跑一次全新的干跑试算（同草稿编号，只预演不留痕）。拦截或不可用都不生成委托。
     let pv: PreviewReply
@@ -603,12 +605,12 @@ onMounted(() => {
   pollTimer = setInterval(() => {
     if (!document.hidden) void load()
   }, 10_000)
-  clockTimer = setInterval(() => { clockMs.value = Date.now() }, 1000)
+  clockTimer = setInterval(() => { clockMs.value = serverNow() }, 1000)
   document.addEventListener('visibilitychange', onVisible)
 })
 
 function onVisible() {
-  if (!document.hidden) { clockMs.value = Date.now(); void load() }
+  if (!document.hidden) { clockMs.value = serverNow(); void load() }
 }
 
 const offPush = onPush(async (message) => {
@@ -659,12 +661,12 @@ onBeforeUnmount(() => {
         <span>代码</span>
         <NtInput v-model="form.symbol" placeholder="600519.SH" mono :invalid="touched && !symbolOk" />
       </label>
-      <NtSelect v-model="form.side" label="方向" :options="sideOptions" />
-      <label>
       <div v-if="echoOk" class="symbol-echo" title="名称回显：显「名称未返回」时请人工二读代码，不阻断下单">
         <!-- 终审走查补齐：下单表单内同名章禁点击跳转（ConfirmSheet 同款纪律），防输码中途误跳侧栏 -->
         <SymbolName :code="form.symbol" mode="inline" :clickable="false" />
       </div>
+      <NtSelect v-model="form.side" label="方向" :options="sideOptions" />
+      <label>
         <span>限价</span>
         <NtInput v-model="form.price" type="number" mono :invalid="touched && !priceOk" />
       </label>
@@ -781,14 +783,14 @@ h2 {
   color: var(--nt-text-2);
 }
 
-.channel-pill {
-  margin-left: 8px;
 .symbol-echo {
   align-self: flex-end;
   max-width: 240px;
   padding-bottom: 7px;
 }
 
+.channel-pill {
+  margin-left: 8px;
   padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--nt-border-1);

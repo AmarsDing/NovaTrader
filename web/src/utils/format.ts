@@ -201,8 +201,9 @@ export function signalStatusLabel(status: unknown): string {
   return SIGNAL_STATUS[key] || (key ? key : '—')
 }
 
-/** 有效期剩余的文字；已结束返回空串，由调用方改显「已过期」。 */
-export function validRemainText(validUntil: unknown, now = Date.now()): string {
+/** 有效期剩余的文字；已结束返回空串，由调用方改显「已过期」。
+ *  now 必填（P2-10）：交易时刻语义一律吃 serverNow，禁本地钟默认值悄悄混入。 */
+export function validRemainText(validUntil: unknown, now: number): string {
   if (!validUntil) return ''
   const ts = new Date(String(validUntil)).getTime()
   if (!Number.isFinite(ts)) return ''
@@ -213,7 +214,8 @@ export function validRemainText(validUntil: unknown, now = Date.now()): string {
   return `剩 ${minutes} 分`
 }
 
-export function isValidExpired(validUntil: unknown, now = Date.now()): boolean {
+/** now 必填（P2-10）：同 validRemainText，判定基准一律 serverNow。 */
+export function isValidExpired(validUntil: unknown, now: number): boolean {
   if (!validUntil) return false
   const ts = new Date(String(validUntil)).getTime()
   if (!Number.isFinite(ts)) return false

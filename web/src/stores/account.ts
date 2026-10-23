@@ -6,6 +6,7 @@ import { parseAccountPush } from '@/api/account-push'
 import type { WsEventMetadata } from '@/ws/topics'
 import { quiet } from '@/utils/async'
 import { createRefreshQueue } from '@/utils/refresh-queue'
+import { serverNow } from '@/utils/server-clock'
 
 export const useAccountStore = defineStore('account', () => {
   const book = ref('SIM')
@@ -49,7 +50,8 @@ export const useAccountStore = defineStore('account', () => {
       return accountOk.value && positionsOk.value
     }
     accountOk.value = !!acc && acc.account.toUpperCase() === b.toUpperCase() && acc.equity != null && acc.cash != null
-    checkedAt.value = Date.now()
+    /* P2-10：读取时刻与底栏时段钟同走服务端钟（未校准回退本地），提示时间与走字一致。 */
+    checkedAt.value = serverNow()
     if (accountOk.value && acc) {
       snapshot.value = acc
       equity.value = acc.equity
@@ -88,7 +90,7 @@ export const useAccountStore = defineStore('account', () => {
     positions.value = parsed.positions
     accountOk.value = true
     positionsOk.value = true
-    checkedAt.value = Date.now()
+    checkedAt.value = serverNow()
     return true
   }
 

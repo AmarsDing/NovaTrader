@@ -9,12 +9,12 @@ import type { Pulse } from './types'
 /**
  * S4 事件流 TAPE 的测试（监控业务监控方案 §4.6 / §6.1 / §6.3）。
  * 盯四件事：六域归类与标签色键、点行能定位到哪个节点、状态事件不刷屏、40 行上限。
- * 时刻一律用不带时区的「YYYY-MM-DD HH:MM:SS」（按本地解析），CI 换时区也不会翻。
+ * 时刻一律显式钉 +08:00（市场钟）：stampOf/clockText 按北京时间读，与跑测机时区脱钩。
  */
 
-const T_NOTICE = Date.parse('2026-10-12 14:32:07')
-const T_PULSE = Date.parse('2026-10-12 14:32:09')
-const T_NOW = Date.parse('2026-10-12 14:32:10')
+const T_NOTICE = Date.parse('2026-10-12T14:32:07+08:00')
+const T_PULSE = Date.parse('2026-10-12T14:32:09+08:00')
+const T_NOW = Date.parse('2026-10-12T14:32:10+08:00')
 
 function pulse(id: string, from: string, to: string, kind: Pulse['identifier']['kind'], value: string, at: number): Pulse {
   return { id, from, to, identifier: { kind, value }, at }

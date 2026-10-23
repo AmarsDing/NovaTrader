@@ -5,6 +5,7 @@ import { getRiskState, resetKillSwitch, setMode, triggerKillSwitch, updateParam 
 import type { KillBody, ModeBody, ParamBody, RiskStateView } from '@/api/risk'
 import { quiet } from '@/utils/async'
 import { createRefreshQueue } from '@/utils/refresh-queue'
+import { serverNow } from '@/utils/server-clock'
 
 export const useRiskStore = defineStore('risk', () => {
   const mode = ref('')
@@ -22,7 +23,8 @@ export const useRiskStore = defineStore('risk', () => {
   const refresh = createRefreshQueue(async () => {
     const state = await quiet(() => getRiskState())
     ready.value = !!state && state.engineReady !== false && state.configReady !== false && ['L0', 'L1', 'L2', 'L3'].includes(state.mode)
-    checkedAt.value = Date.now()
+    /* P2-10：读取时刻与底栏时段钟同走服务端钟（未校准回退本地）。 */
+    checkedAt.value = serverNow()
     if (ready.value && state) {
       snapshot.value = state
       mode.value = state.mode

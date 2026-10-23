@@ -1,4 +1,5 @@
 import { onPush, subscribe, type WsPushMessage, type WsTopic } from '@/ws/hub'
+import { serverNow } from '@/utils/server-clock'
 import type { Identifier, Pulse } from './types'
 
 /** 把一帧推送收成脉冲。没有标识符的帧返回 null，不进场景。 */
@@ -48,7 +49,8 @@ export function bindPulses(onPulse: (pulse: Pulse) => void, onDomain: (topic: Ws
   const offBrain = subscribe('brain')
   const offPush = onPush((msg: WsPushMessage) => {
     if (!['position', 'signal', 'alert', 'market', 'brain'].includes(msg.topic)) return
-    const next = pulseFromPush(msg, Date.now())
+    /* P2-10：脉冲戳与 MonitorView 的 nowMs 同走服务端钟——过期与新鲜度比较的是「nowMs − at」，两钟混算会吃整机漂移。 */
+    const next = pulseFromPush(msg, serverNow())
     if (next) onPulse(next)
     return onDomain(msg.topic as WsTopic)
   })
