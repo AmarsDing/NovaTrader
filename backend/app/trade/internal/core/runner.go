@@ -397,7 +397,13 @@ func (r *Runner) subscribeSignal(ctx context.Context) (*nats.Subscription, error
 func (r *Runner) onSignal(msg *nats.Msg) {
 	op := observe.ForService("trade").Op("signal_auto")
 	op.Received()
-	observed := op.Begin()
+	env, err := events.Unmarshal(msg.Data)
+	var observed func(observe.Outcome)
+	if err == nil {
+		observed = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		observed = op.Begin()
+	}
 	outcome := observe.Rejected
 	defer func() { observed(outcome) }()
 	ctx, finish, active := r.beginCallback()
@@ -406,7 +412,6 @@ func (r *Runner) onSignal(msg *nats.Msg) {
 		return // Leave unacknowledged for the next active instance.
 	}
 	defer finish()
-	env, err := events.Unmarshal(msg.Data)
 	if err != nil || env.Subject != events.SubjectSignal || env.Source != "strategy" || msg.Subject != events.SubjectSignal {
 		r.log.Warnf("signal envelope: %v", err)
 		_ = msg.Ack()
@@ -640,7 +645,7 @@ func (r *Runner) onBars(msg *nats.Msg) {
 		}
 		op := observe.ForService("trade").Op("minute_bar")
 		op.Received()
-		done := op.Begin()
+		done := op.BeginFrom(b.Time, env.Time)
 		if b.Time.IsZero() || now.Before(b.Time.Add(time.Minute)) || now.Sub(b.Time) > 2*time.Minute {
 			done(observe.Rejected)
 			continue
@@ -671,7 +676,13 @@ func (r *Runner) onBars(msg *nats.Msg) {
 func (r *Runner) onExit(msg *nats.Msg) {
 	op := observe.ForService("trade").Op("risk_exit")
 	op.Received()
-	observed := op.Begin()
+	env, err := events.Unmarshal(msg.Data)
+	var observed func(observe.Outcome)
+	if err == nil {
+		observed = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		observed = op.Begin()
+	}
 	outcome := observe.Rejected
 	defer func() { observed(outcome) }()
 	ctx, finish, active := r.beginCallback()
@@ -680,7 +691,6 @@ func (r *Runner) onExit(msg *nats.Msg) {
 		return // Leave unacknowledged for the next active instance.
 	}
 	defer finish()
-	env, err := events.Unmarshal(msg.Data)
 	if err != nil || env.Subject != events.SubjectRiskExit || env.Source != "risk" || msg.Subject != events.SubjectRiskExit {
 		r.log.Warnf("exit envelope: %v", err)
 		_ = msg.Ack()

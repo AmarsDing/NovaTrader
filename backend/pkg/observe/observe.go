@@ -144,6 +144,9 @@ type counts struct {
 	durationCount                                                                           uint64
 	durationTotal, durationMax                                                              float64
 	hist                                                                                    [len(bounds) + 1]uint64
+	e2eCount, e2eFromSource, e2eNoSourceTime, e2eSkewed                                     uint64
+	e2eTotal, e2eMax                                                                        float64
+	e2eHist                                                                                 [len(bounds) + 1]uint64
 }
 type bucket struct {
 	second int64
@@ -216,6 +219,19 @@ func (o *Operation) Coalesced() {
 
 // Begin starts actual execution. Finish is idempotent even across concurrent defers.
 func (o *Operation) Begin() func(Outcome) {
+	return o.begin(true, time.Time{}, time.Time{})
+}
+
+// BeginFrom 与 Begin 相同，另按完成时刻−时间基准计端到端时延：
+// source 非零为业务源时刻优先基准，否则退到 published（信封发布时刻）；
+// 两者皆零或出现负偏差（跨主机时钟偏差、SUT 钟倒拨）如实计入 skewed，
+// 绝不把未知/负值取零冒充零时延。事件消费路径传 source_time/payload 业务
+// 时刻与信封 time；无上游事件的纯定时操作继续用 Begin。
+func (o *Operation) BeginFrom(source, published time.Time) func(Outcome) {
+	return o.begin(false, source.UTC(), published.UTC())
+}
+
+func (o *Operation) begin(skipE2E bool, source, published time.Time) func(Outcome) {
 	r := o.registry
 	r.mu.Lock()
 	started := r.now()
@@ -256,6 +272,31 @@ func (o *Operation) Begin() func(Outcome) {
 				}
 				i := sort.SearchFloat64s(bounds[:], elapsed)
 				c.hist[i]++
+				if skipE2E {
+					continue
+				}
+				basis := published
+				fromSource := !source.IsZero()
+				if fromSource {
+					basis = source
+				}
+				e2e := now.Sub(basis).Seconds() * 1000
+				if basis.IsZero() || e2e < 0 {
+					c.e2eSkewed++
+					continue
+				}
+				c.e2eCount++
+				if fromSource {
+					c.e2eFromSource++
+				} else {
+					c.e2eNoSourceTime++
+				}
+				c.e2eTotal += e2e
+				if e2e > c.e2eMax {
+					c.e2eMax = e2e
+				}
+				j := sort.SearchFloat64s(bounds[:], e2e)
+				c.e2eHist[j]++
 			}
 		})
 	}
@@ -294,23 +335,37 @@ func add(dst *counts, src counts) {
 	for i, n := range src.hist {
 		dst.hist[i] += n
 	}
+	dst.e2eCount += src.e2eCount
+	dst.e2eFromSource += src.e2eFromSource
+	dst.e2eNoSourceTime += src.e2eNoSourceTime
+	dst.e2eSkewed += src.e2eSkewed
+	dst.e2eTotal += src.e2eTotal
+	if src.e2eMax > dst.e2eMax {
+		dst.e2eMax = src.e2eMax
+	}
+	for i, n := range src.e2eHist {
+		dst.e2eHist[i] += n
+	}
 }
-func project(c counts) *v1.ConsumerCounters {
-	out := &v1.ConsumerCounters{Received: c.received, Queued: c.queued, Coalesced: c.coalesced, Attempted: c.attempted, Succeeded: c.succeeded, Rejected: c.rejected, Failed: c.failed, Cancelled: c.cancelled, Skipped: c.skipped, DurationCount: c.durationCount, DurationTotalMs: c.durationTotal, DurationMaxMs: c.durationMax}
-	if c.durationCount > 0 {
-		target := (c.durationCount*95 + 99) / 100
-		var seen uint64
-		for i, n := range c.hist {
-			seen += n
-			if seen >= target {
-				if i < len(bounds) {
-					v := bounds[i]
-					out.DurationP95UpperMs = &v
-				}
-				break
-			}
+func p95Upper(count uint64, hist [len(bounds) + 1]uint64) *float64 {
+	if count == 0 {
+		return nil
+	}
+	target := (count*95 + 99) / 100
+	var seen uint64
+	for i, n := range hist {
+		seen += n
+		if seen >= target && i < len(bounds) {
+			v := bounds[i]
+			return &v
 		}
 	}
+	return nil
+}
+func project(c counts) *v1.ConsumerCounters {
+	out := &v1.ConsumerCounters{Received: c.received, Queued: c.queued, Coalesced: c.coalesced, Attempted: c.attempted, Succeeded: c.succeeded, Rejected: c.rejected, Failed: c.failed, Cancelled: c.cancelled, Skipped: c.skipped, DurationCount: c.durationCount, DurationTotalMs: c.durationTotal, DurationMaxMs: c.durationMax, E2ECount: c.e2eCount, E2ETotalMs: c.e2eTotal, E2EMaxMs: c.e2eMax, E2EFromSourceCount: c.e2eFromSource, E2ENoSourceTimeCount: c.e2eNoSourceTime, E2ESkewedCount: c.e2eSkewed}
+	out.DurationP95UpperMs = p95Upper(c.durationCount, c.hist)
+	out.E2EP95UpperMs = p95Upper(c.e2eCount, c.e2eHist)
 	return out
 }
 func (r *Registry) Snapshot() *v1.ConsumerObservation {
@@ -327,7 +382,7 @@ func (r *Registry) Snapshot() *v1.ConsumerObservation {
 	if covered > WindowSeconds {
 		covered = WindowSeconds
 	}
-	out := &v1.ConsumerObservation{SchemaVersion: 1, Scope: "process_consumer_operations", Service: r.service, InstanceId: r.instance, Host: r.host, Os: runtime.GOOS, Arch: runtime.GOARCH, StartedAt: stamp(r.started), SampledAt: stamp(now), UptimeSeconds: uptime, WindowSeconds: WindowSeconds, WindowObservedSeconds: covered, WindowComplete: uptime >= WindowSeconds, WindowBasis: "60_one_second_buckets_including_partial_current_second;duration_at_completion", Goroutines: uint64(runtime.NumGoroutine()), HeapAllocBytes: mem.Alloc, RuntimeSysBytes: mem.Sys, LogicalCpus: uint32(runtime.NumCPU()), Gomaxprocs: uint32(runtime.GOMAXPROCS(0)), Unsupported: []string{"broker_ack_confirmation", "durable_pending_and_redelivery", "unique_business_event_count", "cross_host_clock_skew", "end_to_end_latency", "unregistered_operations", "host_cpu_and_disk_utilization"}}
+	out := &v1.ConsumerObservation{SchemaVersion: 1, Scope: "process_consumer_operations", Service: r.service, InstanceId: r.instance, Host: r.host, Os: runtime.GOOS, Arch: runtime.GOARCH, StartedAt: stamp(r.started), SampledAt: stamp(now), UptimeSeconds: uptime, WindowSeconds: WindowSeconds, WindowObservedSeconds: covered, WindowComplete: uptime >= WindowSeconds, WindowBasis: "60_one_second_buckets_including_partial_current_second;duration_at_completion", Goroutines: uint64(runtime.NumGoroutine()), HeapAllocBytes: mem.Alloc, RuntimeSysBytes: mem.Sys, LogicalCpus: uint32(runtime.NumCPU()), Gomaxprocs: uint32(runtime.GOMAXPROCS(0)), Unsupported: []string{"broker_ack_confirmation", "durable_pending_and_redelivery", "unique_business_event_count", "cross_host_clock_skew", "unregistered_operations", "host_cpu_and_disk_utilization"}}
 	for _, o := range r.ops {
 		var win counts
 		for _, b := range o.buckets {

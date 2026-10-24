@@ -129,6 +129,20 @@ func TestCausationAndKnownSourceTime(t *testing.T) {
 	}
 }
 
+// TestSourceOrZero 钉 e2e 基准取值口：有 source_time 如实返回，缺失退零值，
+// 绝不编造默认时刻（「没取到≠0」由调用方 BeginFrom 的 skewed 桶如实表达）。
+func TestSourceOrZero(t *testing.T) {
+	env, _ := New("market", SubjectMarketBar, "trace", nil)
+	if !env.SourceOrZero().IsZero() {
+		t.Fatalf("no source_time must yield zero: %v", env.SourceOrZero())
+	}
+	stamp := time.Date(2026, 10, 24, 9, 30, 0, 0, time.UTC)
+	env.SourceTime = &stamp
+	if got := env.SourceOrZero(); !got.Equal(stamp) {
+		t.Fatalf("source_time = %v, want %v", got, stamp)
+	}
+}
+
 func TestEnvelopePreservesOptionalMetadata(t *testing.T) {
 	env, _ := New("strategy", SubjectSignal, "trace", json.RawMessage(`{"signal_id":"s1"}`))
 	stamp := time.Now().UTC()

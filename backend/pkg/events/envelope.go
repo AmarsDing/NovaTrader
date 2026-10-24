@@ -28,14 +28,14 @@ const (
 	SubjectTradeReconciliation = "trade.reconciliation" // 对账差异，不是完整账户快照
 	// SubjectTradeChannel 是执行通道状态迁移（G7）：idle→connected→degraded→down。
 	// 迁移罕见但对运维留痕有价值，随 trade.> 走 JetStream；载荷 {"channel","from","to","at"}。
-	SubjectTradeChannel = "trade.channel.status"
-	SubjectMarketSentiment     = "market.sentiment.updated"
-	SubjectNotifyRequest       = "notify.request"
-	SubjectNotifyDesktop       = "notify.desktop"  // M10 发给 admin，再经 WebSocket 到桌面
-	SubjectStrategyReview      = "strategy.review" // 盘后复盘。载荷 date、title、body
-	SubjectMarketSnapshot      = "market.snapshot"
-	SubjectMarketAlert         = "market.alert"     // 个股异动，M06 用来触发盘中扫描：{"symbol","kind"}
-	SubjectMarketWatchlist     = "market.watchlist" // trade process lease; ordinary NATS, renewed from its durable SIM ledger.
+	SubjectTradeChannel    = "trade.channel.status"
+	SubjectMarketSentiment = "market.sentiment.updated"
+	SubjectNotifyRequest   = "notify.request"
+	SubjectNotifyDesktop   = "notify.desktop"  // M10 发给 admin，再经 WebSocket 到桌面
+	SubjectStrategyReview  = "strategy.review" // 盘后复盘。载荷 date、title、body
+	SubjectMarketSnapshot  = "market.snapshot"
+	SubjectMarketAlert     = "market.alert"     // 个股异动，M06 用来触发盘中扫描：{"symbol","kind"}
+	SubjectMarketWatchlist = "market.watchlist" // trade process lease; ordinary NATS, renewed from its durable SIM ledger.
 	// M02 发布，载荷见 M02 设计文档第 8 节。
 	SubjectMarketBar    = "market.bar.1m"
 	SubjectMarketFactor = "market.factor.updated"
@@ -128,6 +128,15 @@ type Envelope struct {
 	Source        string          `json:"source"`
 	Subject       string          `json:"subject"`
 	Payload       json.RawMessage `json:"payload"`
+}
+
+// SourceOrZero 返回上游声明的业务源时刻；缺失时返回零值由观察者退到
+// 信封 time，绝不编造默认值。
+func (e Envelope) SourceOrZero() time.Time {
+	if e.SourceTime != nil {
+		return *e.SourceTime
+	}
+	return time.Time{}
 }
 
 // New 生成一条事件。event_id 由系统分配，调用方不能指定。

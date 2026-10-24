@@ -221,7 +221,7 @@ func decode[T any](r *Runner, env events.Envelope) (T, bool) {
 func (r *Runner) onAccount(ctx context.Context, env events.Envelope) {
 	op := observe.ForService("risk").Op("account_consume")
 	op.Received()
-	finish := op.Begin()
+	finish := op.BeginFrom(env.SourceOrZero(), env.Time)
 	if env.Subject != events.SubjectTradeAccount || env.Source != "trade" {
 		finish(observe.Rejected)
 		return

@@ -52,7 +52,13 @@ func (r *Runner) subscribeExecutions() error {
 		sub, err := r.bus.JetStream().QueueSubscribe(item.subject, "strategy-execution-projection", func(msg *nats.Msg) {
 			op := observe.ForService("strategy").Op("execution_projection")
 			op.Received()
-			finish := op.Begin()
+			// 先解信封只为取 e2e 基准（source_time/发布时刻）；业务校验仍在 onExecution 内重做。
+			var finish func(observe.Outcome)
+			if env, derr := events.Unmarshal(msg.Data); derr == nil {
+				finish = op.BeginFrom(env.SourceOrZero(), env.Time)
+			} else {
+				finish = op.Begin()
+			}
 			bounded, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := r.onExecution(bounded, msg.Subject, msg.Data); err != nil {

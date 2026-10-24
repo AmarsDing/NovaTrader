@@ -59,22 +59,29 @@ func (*GetConsumerObservationRequest) Descriptor() ([]byte, []int) {
 }
 
 type ConsumerCounters struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Received           uint64                 `protobuf:"varint,1,opt,name=received,proto3" json:"received,omitempty"` // Wire notifications, before validation/queueing; includes redelivery.
-	Queued             uint64                 `protobuf:"varint,2,opt,name=queued,proto3" json:"queued,omitempty"`     // Notification admitted to a local queue, not business completion.
-	Coalesced          uint64                 `protobuf:"varint,3,opt,name=coalesced,proto3" json:"coalesced,omitempty"`
-	Attempted          uint64                 `protobuf:"varint,4,opt,name=attempted,proto3" json:"attempted,omitempty"` // Actual execution started, separate from received.
-	Succeeded          uint64                 `protobuf:"varint,5,opt,name=succeeded,proto3" json:"succeeded,omitempty"` // Only the operation's declared completion_scope.
-	Rejected           uint64                 `protobuf:"varint,6,opt,name=rejected,proto3" json:"rejected,omitempty"`
-	Failed             uint64                 `protobuf:"varint,7,opt,name=failed,proto3" json:"failed,omitempty"`
-	Cancelled          uint64                 `protobuf:"varint,8,opt,name=cancelled,proto3" json:"cancelled,omitempty"`
-	Skipped            uint64                 `protobuf:"varint,9,opt,name=skipped,proto3" json:"skipped,omitempty"`
-	DurationCount      uint64                 `protobuf:"varint,10,opt,name=duration_count,json=durationCount,proto3" json:"duration_count,omitempty"`
-	DurationTotalMs    float64                `protobuf:"fixed64,11,opt,name=duration_total_ms,json=durationTotalMs,proto3" json:"duration_total_ms,omitempty"`
-	DurationMaxMs      float64                `protobuf:"fixed64,12,opt,name=duration_max_ms,json=durationMaxMs,proto3" json:"duration_max_ms,omitempty"`
-	DurationP95UpperMs *float64               `protobuf:"fixed64,13,opt,name=duration_p95_upper_ms,json=durationP95UpperMs,proto3,oneof" json:"duration_p95_upper_ms,omitempty"` // Fixed histogram upper bound, absent if > largest bucket.
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Received             uint64                 `protobuf:"varint,1,opt,name=received,proto3" json:"received,omitempty"` // Wire notifications, before validation/queueing; includes redelivery.
+	Queued               uint64                 `protobuf:"varint,2,opt,name=queued,proto3" json:"queued,omitempty"`     // Notification admitted to a local queue, not business completion.
+	Coalesced            uint64                 `protobuf:"varint,3,opt,name=coalesced,proto3" json:"coalesced,omitempty"`
+	Attempted            uint64                 `protobuf:"varint,4,opt,name=attempted,proto3" json:"attempted,omitempty"` // Actual execution started, separate from received.
+	Succeeded            uint64                 `protobuf:"varint,5,opt,name=succeeded,proto3" json:"succeeded,omitempty"` // Only the operation's declared completion_scope.
+	Rejected             uint64                 `protobuf:"varint,6,opt,name=rejected,proto3" json:"rejected,omitempty"`
+	Failed               uint64                 `protobuf:"varint,7,opt,name=failed,proto3" json:"failed,omitempty"`
+	Cancelled            uint64                 `protobuf:"varint,8,opt,name=cancelled,proto3" json:"cancelled,omitempty"`
+	Skipped              uint64                 `protobuf:"varint,9,opt,name=skipped,proto3" json:"skipped,omitempty"`
+	DurationCount        uint64                 `protobuf:"varint,10,opt,name=duration_count,json=durationCount,proto3" json:"duration_count,omitempty"`
+	DurationTotalMs      float64                `protobuf:"fixed64,11,opt,name=duration_total_ms,json=durationTotalMs,proto3" json:"duration_total_ms,omitempty"`
+	DurationMaxMs        float64                `protobuf:"fixed64,12,opt,name=duration_max_ms,json=durationMaxMs,proto3" json:"duration_max_ms,omitempty"`
+	DurationP95UpperMs   *float64               `protobuf:"fixed64,13,opt,name=duration_p95_upper_ms,json=durationP95UpperMs,proto3,oneof" json:"duration_p95_upper_ms,omitempty"` // Fixed histogram upper bound, absent if > largest bucket.
+	E2ECount             uint64                 `protobuf:"varint,14,opt,name=e2e_count,json=e2eCount,proto3" json:"e2e_count,omitempty"`                                          // Finishes with a usable time basis (source_time preferred, publish time fallback).
+	E2ETotalMs           float64                `protobuf:"fixed64,15,opt,name=e2e_total_ms,json=e2eTotalMs,proto3" json:"e2e_total_ms,omitempty"`
+	E2EMaxMs             float64                `protobuf:"fixed64,16,opt,name=e2e_max_ms,json=e2eMaxMs,proto3" json:"e2e_max_ms,omitempty"`
+	E2EP95UpperMs        *float64               `protobuf:"fixed64,17,opt,name=e2e_p95_upper_ms,json=e2eP95UpperMs,proto3,oneof" json:"e2e_p95_upper_ms,omitempty"`                 // Same fixed bounds, absent if no e2e sample or > largest bucket.
+	E2EFromSourceCount   uint64                 `protobuf:"varint,18,opt,name=e2e_from_source_count,json=e2eFromSourceCount,proto3" json:"e2e_from_source_count,omitempty"`         // e2e measured from envelope.source_time (upstream declared source instant).
+	E2ENoSourceTimeCount uint64                 `protobuf:"varint,19,opt,name=e2e_no_source_time_count,json=e2eNoSourceTimeCount,proto3" json:"e2e_no_source_time_count,omitempty"` // source_time absent → measured from envelope.time (publish instant).
+	E2ESkewedCount       uint64                 `protobuf:"varint,20,opt,name=e2e_skewed_count,json=e2eSkewedCount,proto3" json:"e2e_skewed_count,omitempty"`                       // Negative or both-times-missing samples, excluded from e2e_count, never zeroed.
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ConsumerCounters) Reset() {
@@ -194,6 +201,55 @@ func (x *ConsumerCounters) GetDurationMaxMs() float64 {
 func (x *ConsumerCounters) GetDurationP95UpperMs() float64 {
 	if x != nil && x.DurationP95UpperMs != nil {
 		return *x.DurationP95UpperMs
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2ECount() uint64 {
+	if x != nil {
+		return x.E2ECount
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2ETotalMs() float64 {
+	if x != nil {
+		return x.E2ETotalMs
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2EMaxMs() float64 {
+	if x != nil {
+		return x.E2EMaxMs
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2EP95UpperMs() float64 {
+	if x != nil && x.E2EP95UpperMs != nil {
+		return *x.E2EP95UpperMs
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2EFromSourceCount() uint64 {
+	if x != nil {
+		return x.E2EFromSourceCount
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2ENoSourceTimeCount() uint64 {
+	if x != nil {
+		return x.E2ENoSourceTimeCount
+	}
+	return 0
+}
+
+func (x *ConsumerCounters) GetE2ESkewedCount() uint64 {
+	if x != nil {
+		return x.E2ESkewedCount
 	}
 	return 0
 }
@@ -523,7 +579,7 @@ var File_api_platform_v1_observe_proto protoreflect.FileDescriptor
 const file_api_platform_v1_observe_proto_rawDesc = "" +
 	"\n" +
 	"\x1dapi/platform/v1/observe.proto\x12\x0fapi.platform.v1\x1a\x1cgoogle/api/annotations.proto\"\x1f\n" +
-	"\x1dGetConsumerObservationRequest\"\xd9\x03\n" +
+	"\x1dGetConsumerObservationRequest\"\x8e\x06\n" +
 	"\x10ConsumerCounters\x12\x1a\n" +
 	"\breceived\x18\x01 \x01(\x04R\breceived\x12\x16\n" +
 	"\x06queued\x18\x02 \x01(\x04R\x06queued\x12\x1c\n" +
@@ -538,8 +594,18 @@ const file_api_platform_v1_observe_proto_rawDesc = "" +
 	" \x01(\x04R\rdurationCount\x12*\n" +
 	"\x11duration_total_ms\x18\v \x01(\x01R\x0fdurationTotalMs\x12&\n" +
 	"\x0fduration_max_ms\x18\f \x01(\x01R\rdurationMaxMs\x126\n" +
-	"\x15duration_p95_upper_ms\x18\r \x01(\x01H\x00R\x12durationP95UpperMs\x88\x01\x01B\x18\n" +
-	"\x16_duration_p95_upper_ms\"\x88\x03\n" +
+	"\x15duration_p95_upper_ms\x18\r \x01(\x01H\x00R\x12durationP95UpperMs\x88\x01\x01\x12\x1b\n" +
+	"\te2e_count\x18\x0e \x01(\x04R\be2eCount\x12 \n" +
+	"\fe2e_total_ms\x18\x0f \x01(\x01R\n" +
+	"e2eTotalMs\x12\x1c\n" +
+	"\n" +
+	"e2e_max_ms\x18\x10 \x01(\x01R\be2eMaxMs\x12,\n" +
+	"\x10e2e_p95_upper_ms\x18\x11 \x01(\x01H\x01R\re2eP95UpperMs\x88\x01\x01\x121\n" +
+	"\x15e2e_from_source_count\x18\x12 \x01(\x04R\x12e2eFromSourceCount\x126\n" +
+	"\x18e2e_no_source_time_count\x18\x13 \x01(\x04R\x14e2eNoSourceTimeCount\x12(\n" +
+	"\x10e2e_skewed_count\x18\x14 \x01(\x04R\x0ee2eSkewedCountB\x18\n" +
+	"\x16_duration_p95_upper_msB\x13\n" +
+	"\x11_e2e_p95_upper_ms\"\x88\x03\n" +
 	"\x11ConsumerOperation\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x14\n" +

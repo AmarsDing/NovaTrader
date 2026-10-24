@@ -192,9 +192,55 @@ func TestEveryRegisteredServiceHasClosedValidHTTPContract(t *testing.T) {
 	}
 }
 
-// 调用点⊆注册表静态守卫：app 各服务代码里的 Op("key") 字面量必须属于该文件中
-// ForService("svc") 声明过的服务注册集，漏注册（如 market_alert_handle 曾路过
-// 只判 def 存在性的测试）在此显红，不等到运行时 panic 才暴露。
+// TestBeginFromE2E 钉样端到端时延三态：source_time 优先基准、零 source 退发布
+// 时刻、两者皆零或负偏差进 skewed（绝不取零冒充零时延）；Begin 不进 e2e 桶。
+func TestBeginFromE2E(t *testing.T) {
+	base := time.Date(2026, 10, 24, 9, 30, 0, 0, time.UTC)
+	at := base
+	r := newRegistry("market", definitions["market"], func() time.Time { return at })
+	op := r.Op("refresh")
+
+	op.BeginFrom(base.Add(-1500*time.Millisecond), time.Time{})(Succeeded) // from_source=1，e2e=1500ms → 2500 档
+	op.BeginFrom(time.Time{}, base.Add(-100*time.Millisecond))(Succeeded)  // no_source_time=1，e2e=100ms → 100 档
+	op.BeginFrom(time.Time{}, time.Time{})(Failed)                         // 无基准 → skewed
+	op.BeginFrom(base.Add(2500*time.Millisecond), time.Time{})(Failed)     // 负偏差 → skewed
+	op.Begin()(Skipped)                                                    // Begin 不带 e2e：三桶不进
+
+	var m *v1.ConsumerOperation
+	for _, o := range r.Snapshot().Operations {
+		if o.Key == "refresh" {
+			m = o
+		}
+	}
+	if m == nil {
+		t.Fatal("op missing")
+	}
+	if m.Total.Attempted != 5 || m.Total.DurationCount != 5 {
+		t.Fatalf("duration 治应照旧: %+v", m.Total)
+	}
+	if m.Total.E2ECount != 2 || m.Total.E2EFromSourceCount != 1 || m.Total.E2ENoSourceTimeCount != 1 || m.Total.E2ESkewedCount != 2 {
+		t.Fatalf("e2e 三桶不符: %+v", m.Total)
+	}
+	wantTotal := 1500.0 + 100.0
+	if m.Total.E2ETotalMs != wantTotal {
+		t.Fatalf("e2eTotal = %v, want %v", m.Total.E2ETotalMs, wantTotal)
+	}
+	if m.Total.E2EMaxMs != 1500 {
+		t.Fatalf("e2eMax = %v, want 1500", m.Total.E2EMaxMs)
+	}
+	// P95(2 样本)→ 向上取到 2500ms 档（含 1500ms 那格）。
+	if m.Total.E2EP95UpperMs == nil || *m.Total.E2EP95UpperMs != 2500 {
+		t.Fatalf("e2eP95Upper = %v, want 2500", m.Total.E2EP95UpperMs)
+	}
+	if m.Window.E2ECount != 2 { // 同秒窗口与累计同口径
+		t.Fatalf("window e2e = %d, want 2", m.Window.E2ECount)
+	}
+	// 契约校验对 e2e 不变式开绿灯（from_source + no_source_time == count）。
+	if err := ValidateSnapshot("market", r.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpCallSitesRegistered(t *testing.T) {
 	forService := regexp.MustCompile(`ForService\("([a-z0-9_]+)"\)`)
 	opKey := regexp.MustCompile(`\.Op\("([a-z0-9_.]+)"\)`)

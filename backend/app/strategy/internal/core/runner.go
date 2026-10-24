@@ -320,8 +320,13 @@ func (r *Runner) subscribe() error {
 func (r *Runner) onKill(body []byte) {
 	op := observe.ForService("strategy").Op("kill_switch")
 	op.Received()
-	finish := op.Begin()
 	env, err := events.Unmarshal(body)
+	var finish func(observe.Outcome)
+	if err == nil {
+		finish = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		finish = op.Begin()
+	}
 	if err != nil {
 		finish(observe.Rejected)
 		r.log.Warnf("killswitch: %v", err)
@@ -341,8 +346,13 @@ func (r *Runner) onKill(body []byte) {
 func (r *Runner) onAlert(body []byte) {
 	op := observe.ForService("strategy").Op("market_alert_notice")
 	op.Received()
-	finish := op.Begin()
 	env, err := events.Unmarshal(body)
+	var finish func(observe.Outcome)
+	if err == nil {
+		finish = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		finish = op.Begin()
+	}
 	if err != nil {
 		finish(observe.Rejected)
 		return

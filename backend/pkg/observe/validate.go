@@ -57,7 +57,9 @@ func ValidateSnapshot(service string, in *v1.ConsumerObservation) error {
 		delete(expected, op.Key)
 	}
 	// The server contract uses a closed set; do not forward arbitrary upstream strings.
-	in.Unsupported = []string{"broker_ack_confirmation", "durable_pending_and_redelivery", "unique_business_event_count", "cross_host_clock_skew", "end_to_end_latency", "unregistered_operations", "host_cpu_and_disk_utilization"}
+	// end_to_end_latency 已在事件消费路径落地（per-op source_time/published 基准 +
+	// skewed 如实话），剩余瓶颈=跨主机时钟偏差不可校准，保留 cross_host_clock_skew。
+	in.Unsupported = []string{"broker_ack_confirmation", "durable_pending_and_redelivery", "unique_business_event_count", "cross_host_clock_skew", "unregistered_operations", "host_cpu_and_disk_utilization"}
 	return nil
 }
 
@@ -72,6 +74,9 @@ func validStamp(raw string, optional bool) bool {
 	return err == nil
 }
 func finitePositive(n float64) bool { return n >= 0 && !math.IsNaN(n) && !math.IsInf(n, 0) }
+
+// validCounters 校验形状封闭边界：P95 只认固定直方图档、有值必有样本；
+// e2e 基准分桶必须恰好拆分 e2eCount（source_time 优先与发布时刻兜底不重叠）。
 func validCounters(in *v1.ConsumerCounters) bool {
 	if in == nil || !finitePositive(in.DurationTotalMs) || !finitePositive(in.DurationMaxMs) {
 		return false
@@ -87,6 +92,24 @@ func validCounters(in *v1.ConsumerCounters) bool {
 		if !found {
 			return false
 		}
+	}
+	if !finitePositive(in.E2ETotalMs) || !finitePositive(in.E2EMaxMs) {
+		return false
+	}
+	if in.E2EP95UpperMs != nil {
+		if in.E2ECount == 0 {
+			return false
+		}
+		found := false
+		for _, b := range bounds {
+			found = found || *in.E2EP95UpperMs == b
+		}
+		if !found {
+			return false
+		}
+	}
+	if in.E2ECount != in.E2EFromSourceCount+in.E2ENoSourceTimeCount {
+		return false
 	}
 	return true
 }

@@ -131,8 +131,13 @@ func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
 	}
 	op := observe.ForService("notify").Op(key)
 	op.Received()
-	finish := op.Begin()
 	env, err := events.Unmarshal(m.Data)
+	var finish func(observe.Outcome)
+	if err == nil {
+		finish = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		finish = op.Begin()
+	}
 	if err != nil {
 		finish(observe.Rejected)
 		r.log.Warnf("bad envelope: %v", err)
@@ -163,8 +168,13 @@ func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
 func (r *Runner) onMarketAlert(ctx context.Context, body []byte) {
 	op := observe.ForService("notify").Op("market_alert_handle")
 	op.Received()
-	finish := op.Begin()
 	env, err := events.Unmarshal(body)
+	var finish func(observe.Outcome)
+	if err == nil {
+		finish = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		finish = op.Begin()
+	}
 	if err != nil {
 		finish(observe.Rejected)
 		r.log.Warnf("bad market.alert envelope: %v", err)

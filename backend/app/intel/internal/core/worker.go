@@ -132,8 +132,14 @@ func (w *Worker) consume(ctx context.Context) {
 
 // handle 处理一条 intel.raw.<kind>。坏消息直接终止投递；其他错误稍后重投，靠库上的去重保证幂等。
 func (w *Worker) handle(ctx context.Context, m *nats.Msg) {
-	finish := observe.ForService("intel").Op("raw").Begin()
 	env, err := events.Unmarshal(m.Data)
+	op := observe.ForService("intel").Op("raw")
+	var finish func(observe.Outcome)
+	if err == nil {
+		finish = op.BeginFrom(env.SourceOrZero(), env.Time)
+	} else {
+		finish = op.Begin()
+	}
 	if err != nil {
 		finish(observe.Rejected)
 		w.log.Warnf("drop bad envelope on %s: %v", m.Subject, err)
