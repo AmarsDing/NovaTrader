@@ -5,11 +5,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"server/ent"
 
 	"server/pkg/events"
 )
+
+// DomainOf 把事件主题归并成投递公平性分组的域键：取首段（trade/risk/market/…）。
+// 无点主题整体为域。outbox.domain 列由它在写入时派生，调度按域轮询互不饿死。
+func DomainOf(subject string) string {
+	if i := strings.IndexByte(subject, '.'); i > 0 {
+		return subject[:i]
+	}
+	return subject
+}
 
 // Publisher 是 Dispatch 使用的发送端口。*events.Bus 可以直接传入。
 type Publisher interface {
@@ -30,6 +40,7 @@ func Insert(ctx context.Context, tx *ent.Tx, env events.Envelope) error {
 		SetEventID(env.EventID).
 		SetTraceID(env.TraceID).
 		SetSubject(env.Subject).
+		SetDomain(DomainOf(env.Subject)).
 		SetSource(env.Source).
 		SetMetadata(meta).
 		SetPayload(payload).

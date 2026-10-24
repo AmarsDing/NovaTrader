@@ -26,6 +26,9 @@ func (Outbox) Fields() []ent.Field {
 		field.String("event_id").MaxLen(64).NotEmpty().Unique(),
 		field.String("trace_id").MaxLen(64).Optional().Default(""),
 		field.String("subject").MaxLen(128).NotEmpty(),
+		// domain 是投递公平性分组键，Insert 时由 subject 首段派生（trade/risk/market/…）。
+		// 2026-10-24 追加：按域隔离租约与最老待发年龄域维指标用。旧行默认 "" 自成一个域，不饿死也不回补。
+		field.String("domain").MaxLen(64).Default(""),
 		field.String("source").MaxLen(64).NotEmpty(),
 		field.Bytes("payload"),
 		field.Time("created_at").Default(time.Now).
@@ -45,5 +48,6 @@ func (Outbox) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("published_at", "created_at"),
 		index.Fields("dead_letter", "published_at", "next_attempt_at", "lease_until"),
+		index.Fields("domain", "created_at"),
 	}
 }

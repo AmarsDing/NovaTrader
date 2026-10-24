@@ -54,6 +54,20 @@ func (_c *OutboxCreate) SetSubject(v string) *OutboxCreate {
 	return _c
 }
 
+// SetDomain sets the "domain" field.
+func (_c *OutboxCreate) SetDomain(v string) *OutboxCreate {
+	_c.mutation.SetDomain(v)
+	return _c
+}
+
+// SetNillableDomain sets the "domain" field if the given value is not nil.
+func (_c *OutboxCreate) SetNillableDomain(v *string) *OutboxCreate {
+	if v != nil {
+		_c.SetDomain(*v)
+	}
+	return _c
+}
+
 // SetSource sets the "source" field.
 func (_c *OutboxCreate) SetSource(v string) *OutboxCreate {
 	_c.mutation.SetSource(v)
@@ -217,6 +231,10 @@ func (_c *OutboxCreate) defaults() {
 		v := outbox.DefaultTraceID
 		_c.mutation.SetTraceID(v)
 	}
+	if _, ok := _c.mutation.Domain(); !ok {
+		v := outbox.DefaultDomain
+		_c.mutation.SetDomain(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := outbox.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -256,6 +274,14 @@ func (_c *OutboxCreate) check() error {
 	if v, ok := _c.mutation.Subject(); ok {
 		if err := outbox.SubjectValidator(v); err != nil {
 			return &ValidationError{Name: "subject", err: fmt.Errorf(`ent: validator failed for field "Outbox.subject": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Domain(); !ok {
+		return &ValidationError{Name: "domain", err: errors.New(`ent: missing required field "Outbox.domain"`)}
+	}
+	if v, ok := _c.mutation.Domain(); ok {
+		if err := outbox.DomainValidator(v); err != nil {
+			return &ValidationError{Name: "domain", err: fmt.Errorf(`ent: validator failed for field "Outbox.domain": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Source(); !ok {
@@ -328,6 +354,10 @@ func (_c *OutboxCreate) createSpec() (*Outbox, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Subject(); ok {
 		_spec.SetField(outbox.FieldSubject, field.TypeString, value)
 		_node.Subject = value
+	}
+	if value, ok := _c.mutation.Domain(); ok {
+		_spec.SetField(outbox.FieldDomain, field.TypeString, value)
+		_node.Domain = value
 	}
 	if value, ok := _c.mutation.Source(); ok {
 		_spec.SetField(outbox.FieldSource, field.TypeString, value)
@@ -478,6 +508,18 @@ func (u *OutboxUpsert) SetSubject(v string) *OutboxUpsert {
 // UpdateSubject sets the "subject" field to the value that was provided on create.
 func (u *OutboxUpsert) UpdateSubject() *OutboxUpsert {
 	u.SetExcluded(outbox.FieldSubject)
+	return u
+}
+
+// SetDomain sets the "domain" field.
+func (u *OutboxUpsert) SetDomain(v string) *OutboxUpsert {
+	u.Set(outbox.FieldDomain, v)
+	return u
+}
+
+// UpdateDomain sets the "domain" field to the value that was provided on create.
+func (u *OutboxUpsert) UpdateDomain() *OutboxUpsert {
+	u.SetExcluded(outbox.FieldDomain)
 	return u
 }
 
@@ -738,6 +780,20 @@ func (u *OutboxUpsertOne) SetSubject(v string) *OutboxUpsertOne {
 func (u *OutboxUpsertOne) UpdateSubject() *OutboxUpsertOne {
 	return u.Update(func(s *OutboxUpsert) {
 		s.UpdateSubject()
+	})
+}
+
+// SetDomain sets the "domain" field.
+func (u *OutboxUpsertOne) SetDomain(v string) *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetDomain(v)
+	})
+}
+
+// UpdateDomain sets the "domain" field to the value that was provided on create.
+func (u *OutboxUpsertOne) UpdateDomain() *OutboxUpsertOne {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateDomain()
 	})
 }
 
@@ -1187,6 +1243,20 @@ func (u *OutboxUpsertBulk) SetSubject(v string) *OutboxUpsertBulk {
 func (u *OutboxUpsertBulk) UpdateSubject() *OutboxUpsertBulk {
 	return u.Update(func(s *OutboxUpsert) {
 		s.UpdateSubject()
+	})
+}
+
+// SetDomain sets the "domain" field.
+func (u *OutboxUpsertBulk) SetDomain(v string) *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.SetDomain(v)
+	})
+}
+
+// UpdateDomain sets the "domain" field to the value that was provided on create.
+func (u *OutboxUpsertBulk) UpdateDomain() *OutboxUpsertBulk {
+	return u.Update(func(s *OutboxUpsert) {
+		s.UpdateDomain()
 	})
 }
 

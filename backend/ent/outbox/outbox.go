@@ -21,6 +21,8 @@ const (
 	FieldTraceID = "trace_id"
 	// FieldSubject holds the string denoting the subject field in the database.
 	FieldSubject = "subject"
+	// FieldDomain holds the string denoting the domain field in the database.
+	FieldDomain = "domain"
 	// FieldSource holds the string denoting the source field in the database.
 	FieldSource = "source"
 	// FieldPayload holds the string denoting the payload field in the database.
@@ -52,6 +54,7 @@ var Columns = []string{
 	FieldEventID,
 	FieldTraceID,
 	FieldSubject,
+	FieldDomain,
 	FieldSource,
 	FieldPayload,
 	FieldCreatedAt,
@@ -83,6 +86,10 @@ var (
 	TraceIDValidator func(string) error
 	// SubjectValidator is a validator for the "subject" field. It is called by the builders before save.
 	SubjectValidator func(string) error
+	// DefaultDomain holds the default value on creation for the "domain" field.
+	DefaultDomain string
+	// DomainValidator is a validator for the "domain" field. It is called by the builders before save.
+	DomainValidator func(string) error
 	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	SourceValidator func(string) error
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -118,6 +125,11 @@ func ByTraceID(opts ...sql.OrderTermOption) OrderOption {
 // BySubject orders the results by the subject field.
 func BySubject(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubject, opts...).ToFunc()
+}
+
+// ByDomain orders the results by the domain field.
+func ByDomain(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDomain, opts...).ToFunc()
 }
 
 // BySource orders the results by the source field.

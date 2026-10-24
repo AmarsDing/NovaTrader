@@ -2732,8 +2732,14 @@ func init() {
 			return nil
 		}
 	}()
+	// outboxDescDomain is the schema descriptor for domain field.
+	outboxDescDomain := outboxFields[4].Descriptor()
+	// outbox.DefaultDomain holds the default value on creation for the domain field.
+	outbox.DefaultDomain = outboxDescDomain.Default.(string)
+	// outbox.DomainValidator is a validator for the "domain" field. It is called by the builders before save.
+	outbox.DomainValidator = outboxDescDomain.Validators[0].(func(string) error)
 	// outboxDescSource is the schema descriptor for source field.
-	outboxDescSource := outboxFields[4].Descriptor()
+	outboxDescSource := outboxFields[5].Descriptor()
 	// outbox.SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	outbox.SourceValidator = func() func(string) error {
 		validators := outboxDescSource.Validators
@@ -2751,21 +2757,21 @@ func init() {
 		}
 	}()
 	// outboxDescCreatedAt is the schema descriptor for created_at field.
-	outboxDescCreatedAt := outboxFields[6].Descriptor()
+	outboxDescCreatedAt := outboxFields[7].Descriptor()
 	// outbox.DefaultCreatedAt holds the default value on creation for the created_at field.
 	outbox.DefaultCreatedAt = outboxDescCreatedAt.Default.(func() time.Time)
 	// outboxDescAttempts is the schema descriptor for attempts field.
-	outboxDescAttempts := outboxFields[8].Descriptor()
+	outboxDescAttempts := outboxFields[9].Descriptor()
 	// outbox.DefaultAttempts holds the default value on creation for the attempts field.
 	outbox.DefaultAttempts = outboxDescAttempts.Default.(int)
 	// outboxDescLeaseOwner is the schema descriptor for lease_owner field.
-	outboxDescLeaseOwner := outboxFields[9].Descriptor()
+	outboxDescLeaseOwner := outboxFields[10].Descriptor()
 	// outbox.DefaultLeaseOwner holds the default value on creation for the lease_owner field.
 	outbox.DefaultLeaseOwner = outboxDescLeaseOwner.Default.(string)
 	// outbox.LeaseOwnerValidator is a validator for the "lease_owner" field. It is called by the builders before save.
 	outbox.LeaseOwnerValidator = outboxDescLeaseOwner.Validators[0].(func(string) error)
 	// outboxDescDeadLetter is the schema descriptor for dead_letter field.
-	outboxDescDeadLetter := outboxFields[12].Descriptor()
+	outboxDescDeadLetter := outboxFields[13].Descriptor()
 	// outbox.DefaultDeadLetter holds the default value on creation for the dead_letter field.
 	outbox.DefaultDeadLetter = outboxDescDeadLetter.Default.(bool)
 	overseasmappingFields := schema.OverseasMapping{}.Fields()

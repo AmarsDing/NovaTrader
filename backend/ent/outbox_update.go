@@ -88,6 +88,20 @@ func (_u *OutboxUpdate) SetNillableSubject(v *string) *OutboxUpdate {
 	return _u
 }
 
+// SetDomain sets the "domain" field.
+func (_u *OutboxUpdate) SetDomain(v string) *OutboxUpdate {
+	_u.mutation.SetDomain(v)
+	return _u
+}
+
+// SetNillableDomain sets the "domain" field if the given value is not nil.
+func (_u *OutboxUpdate) SetNillableDomain(v *string) *OutboxUpdate {
+	if v != nil {
+		_u.SetDomain(*v)
+	}
+	return _u
+}
+
 // SetSource sets the "source" field.
 func (_u *OutboxUpdate) SetSource(v string) *OutboxUpdate {
 	_u.mutation.SetSource(v)
@@ -300,6 +314,11 @@ func (_u *OutboxUpdate) check() error {
 			return &ValidationError{Name: "subject", err: fmt.Errorf(`ent: validator failed for field "Outbox.subject": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Domain(); ok {
+		if err := outbox.DomainValidator(v); err != nil {
+			return &ValidationError{Name: "domain", err: fmt.Errorf(`ent: validator failed for field "Outbox.domain": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Source(); ok {
 		if err := outbox.SourceValidator(v); err != nil {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "Outbox.source": %w`, err)}
@@ -342,6 +361,9 @@ func (_u *OutboxUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Subject(); ok {
 		_spec.SetField(outbox.FieldSubject, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Domain(); ok {
+		_spec.SetField(outbox.FieldDomain, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Source(); ok {
 		_spec.SetField(outbox.FieldSource, field.TypeString, value)
@@ -464,6 +486,20 @@ func (_u *OutboxUpdateOne) SetSubject(v string) *OutboxUpdateOne {
 func (_u *OutboxUpdateOne) SetNillableSubject(v *string) *OutboxUpdateOne {
 	if v != nil {
 		_u.SetSubject(*v)
+	}
+	return _u
+}
+
+// SetDomain sets the "domain" field.
+func (_u *OutboxUpdateOne) SetDomain(v string) *OutboxUpdateOne {
+	_u.mutation.SetDomain(v)
+	return _u
+}
+
+// SetNillableDomain sets the "domain" field if the given value is not nil.
+func (_u *OutboxUpdateOne) SetNillableDomain(v *string) *OutboxUpdateOne {
+	if v != nil {
+		_u.SetDomain(*v)
 	}
 	return _u
 }
@@ -693,6 +729,11 @@ func (_u *OutboxUpdateOne) check() error {
 			return &ValidationError{Name: "subject", err: fmt.Errorf(`ent: validator failed for field "Outbox.subject": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Domain(); ok {
+		if err := outbox.DomainValidator(v); err != nil {
+			return &ValidationError{Name: "domain", err: fmt.Errorf(`ent: validator failed for field "Outbox.domain": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Source(); ok {
 		if err := outbox.SourceValidator(v); err != nil {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "Outbox.source": %w`, err)}
@@ -752,6 +793,9 @@ func (_u *OutboxUpdateOne) sqlSave(ctx context.Context) (_node *Outbox, err erro
 	}
 	if value, ok := _u.mutation.Subject(); ok {
 		_spec.SetField(outbox.FieldSubject, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Domain(); ok {
+		_spec.SetField(outbox.FieldDomain, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Source(); ok {
 		_spec.SetField(outbox.FieldSource, field.TypeString, value)

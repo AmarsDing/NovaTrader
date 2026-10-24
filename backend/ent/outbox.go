@@ -26,6 +26,8 @@ type Outbox struct {
 	TraceID string `json:"trace_id,omitempty"`
 	// Subject holds the value of the "subject" field.
 	Subject string `json:"subject,omitempty"`
+	// Domain holds the value of the "domain" field.
+	Domain string `json:"domain,omitempty"`
 	// Source holds the value of the "source" field.
 	Source string `json:"source,omitempty"`
 	// Payload holds the value of the "payload" field.
@@ -60,7 +62,7 @@ func (*Outbox) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case outbox.FieldID, outbox.FieldAttempts:
 			values[i] = new(sql.NullInt64)
-		case outbox.FieldEventID, outbox.FieldTraceID, outbox.FieldSubject, outbox.FieldSource, outbox.FieldLeaseOwner, outbox.FieldLastError:
+		case outbox.FieldEventID, outbox.FieldTraceID, outbox.FieldSubject, outbox.FieldDomain, outbox.FieldSource, outbox.FieldLeaseOwner, outbox.FieldLastError:
 			values[i] = new(sql.NullString)
 		case outbox.FieldCreatedAt, outbox.FieldPublishedAt, outbox.FieldLeaseUntil, outbox.FieldNextAttemptAt:
 			values[i] = new(sql.NullTime)
@@ -110,6 +112,12 @@ func (_m *Outbox) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field subject", values[i])
 			} else if value.Valid {
 				_m.Subject = value.String
+			}
+		case outbox.FieldDomain:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field domain", values[i])
+			} else if value.Valid {
+				_m.Domain = value.String
 			}
 		case outbox.FieldSource:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -222,6 +230,9 @@ func (_m *Outbox) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("subject=")
 	builder.WriteString(_m.Subject)
+	builder.WriteString(", ")
+	builder.WriteString("domain=")
+	builder.WriteString(_m.Domain)
 	builder.WriteString(", ")
 	builder.WriteString("source=")
 	builder.WriteString(_m.Source)

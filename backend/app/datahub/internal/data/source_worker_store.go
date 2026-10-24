@@ -17,6 +17,7 @@ import (
 	box "server/ent/outbox"
 	"server/pkg/dataset"
 	"server/pkg/events"
+	"server/pkg/outbox"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -72,7 +73,7 @@ func (r *Repo) supplementTransaction(ctx context.Context, source string, rd biz.
 	}
 	delete(metadata, "payload")
 	delete(metadata, "published_at")
-	err = tx.Outbox.Create().SetEventID(id).SetTraceID(env.TraceID).SetSubject(env.Subject).SetSource(env.Source).SetCreatedAt(env.Time).SetPayload(env.Payload).SetMetadata(metadata).OnConflictColumns(box.FieldEventID).DoNothing().Exec(ctx)
+	err = tx.Outbox.Create().SetEventID(id).SetTraceID(env.TraceID).SetSubject(env.Subject).SetDomain(outbox.DomainOf(env.Subject)).SetSource(env.Source).SetCreatedAt(env.Time).SetPayload(env.Payload).SetMetadata(metadata).OnConflictColumns(box.FieldEventID).DoNothing().Exec(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}

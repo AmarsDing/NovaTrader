@@ -51239,6 +51239,7 @@ type OutboxMutation struct {
 	event_id        *string
 	trace_id        *string
 	subject         *string
+	domain          *string
 	source          *string
 	payload         *[]byte
 	created_at      *time.Time
@@ -51522,6 +51523,42 @@ func (m *OutboxMutation) OldSubject(ctx context.Context) (v string, err error) {
 // ResetSubject resets all changes to the "subject" field.
 func (m *OutboxMutation) ResetSubject() {
 	m.subject = nil
+}
+
+// SetDomain sets the "domain" field.
+func (m *OutboxMutation) SetDomain(s string) {
+	m.domain = &s
+}
+
+// Domain returns the value of the "domain" field in the mutation.
+func (m *OutboxMutation) Domain() (r string, exists bool) {
+	v := m.domain
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDomain returns the old "domain" field's value of the Outbox entity.
+// If the Outbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OutboxMutation) OldDomain(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDomain is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDomain requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDomain: %w", err)
+	}
+	return oldValue.Domain, nil
+}
+
+// ResetDomain resets all changes to the "domain" field.
+func (m *OutboxMutation) ResetDomain() {
+	m.domain = nil
 }
 
 // SetSource sets the "source" field.
@@ -51990,7 +52027,7 @@ func (m *OutboxMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OutboxMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.metadata != nil {
 		fields = append(fields, outbox.FieldMetadata)
 	}
@@ -52002,6 +52039,9 @@ func (m *OutboxMutation) Fields() []string {
 	}
 	if m.subject != nil {
 		fields = append(fields, outbox.FieldSubject)
+	}
+	if m.domain != nil {
+		fields = append(fields, outbox.FieldDomain)
 	}
 	if m.source != nil {
 		fields = append(fields, outbox.FieldSource)
@@ -52049,6 +52089,8 @@ func (m *OutboxMutation) Field(name string) (ent.Value, bool) {
 		return m.TraceID()
 	case outbox.FieldSubject:
 		return m.Subject()
+	case outbox.FieldDomain:
+		return m.Domain()
 	case outbox.FieldSource:
 		return m.Source()
 	case outbox.FieldPayload:
@@ -52086,6 +52128,8 @@ func (m *OutboxMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldTraceID(ctx)
 	case outbox.FieldSubject:
 		return m.OldSubject(ctx)
+	case outbox.FieldDomain:
+		return m.OldDomain(ctx)
 	case outbox.FieldSource:
 		return m.OldSource(ctx)
 	case outbox.FieldPayload:
@@ -52142,6 +52186,13 @@ func (m *OutboxMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSubject(v)
+		return nil
+	case outbox.FieldDomain:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDomain(v)
 		return nil
 	case outbox.FieldSource:
 		v, ok := value.(string)
@@ -52327,6 +52378,9 @@ func (m *OutboxMutation) ResetField(name string) error {
 		return nil
 	case outbox.FieldSubject:
 		m.ResetSubject()
+		return nil
+	case outbox.FieldDomain:
+		m.ResetDomain()
 		return nil
 	case outbox.FieldSource:
 		m.ResetSource()

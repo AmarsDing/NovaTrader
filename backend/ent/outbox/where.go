@@ -69,6 +69,11 @@ func Subject(v string) predicate.Outbox {
 	return predicate.Outbox(sql.FieldEQ(FieldSubject, v))
 }
 
+// Domain applies equality check predicate on the "domain" field. It's identical to DomainEQ.
+func Domain(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldDomain, v))
+}
+
 // Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
 func Source(v string) predicate.Outbox {
 	return predicate.Outbox(sql.FieldEQ(FieldSource, v))
@@ -332,6 +337,71 @@ func SubjectEqualFold(v string) predicate.Outbox {
 // SubjectContainsFold applies the ContainsFold predicate on the "subject" field.
 func SubjectContainsFold(v string) predicate.Outbox {
 	return predicate.Outbox(sql.FieldContainsFold(FieldSubject, v))
+}
+
+// DomainEQ applies the EQ predicate on the "domain" field.
+func DomainEQ(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEQ(FieldDomain, v))
+}
+
+// DomainNEQ applies the NEQ predicate on the "domain" field.
+func DomainNEQ(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNEQ(FieldDomain, v))
+}
+
+// DomainIn applies the In predicate on the "domain" field.
+func DomainIn(vs ...string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldIn(FieldDomain, vs...))
+}
+
+// DomainNotIn applies the NotIn predicate on the "domain" field.
+func DomainNotIn(vs ...string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldNotIn(FieldDomain, vs...))
+}
+
+// DomainGT applies the GT predicate on the "domain" field.
+func DomainGT(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGT(FieldDomain, v))
+}
+
+// DomainGTE applies the GTE predicate on the "domain" field.
+func DomainGTE(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldGTE(FieldDomain, v))
+}
+
+// DomainLT applies the LT predicate on the "domain" field.
+func DomainLT(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLT(FieldDomain, v))
+}
+
+// DomainLTE applies the LTE predicate on the "domain" field.
+func DomainLTE(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldLTE(FieldDomain, v))
+}
+
+// DomainContains applies the Contains predicate on the "domain" field.
+func DomainContains(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldContains(FieldDomain, v))
+}
+
+// DomainHasPrefix applies the HasPrefix predicate on the "domain" field.
+func DomainHasPrefix(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldHasPrefix(FieldDomain, v))
+}
+
+// DomainHasSuffix applies the HasSuffix predicate on the "domain" field.
+func DomainHasSuffix(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldHasSuffix(FieldDomain, v))
+}
+
+// DomainEqualFold applies the EqualFold predicate on the "domain" field.
+func DomainEqualFold(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldEqualFold(FieldDomain, v))
+}
+
+// DomainContainsFold applies the ContainsFold predicate on the "domain" field.
+func DomainContainsFold(v string) predicate.Outbox {
+	return predicate.Outbox(sql.FieldContainsFold(FieldDomain, v))
 }
 
 // SourceEQ applies the EQ predicate on the "source" field.

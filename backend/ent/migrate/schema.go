@@ -1614,6 +1614,7 @@ var (
 		{Name: "event_id", Type: field.TypeString, Unique: true, Size: 64},
 		{Name: "trace_id", Type: field.TypeString, Nullable: true, Size: 64, Default: ""},
 		{Name: "subject", Type: field.TypeString, Size: 128},
+		{Name: "domain", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "source", Type: field.TypeString, Size: 64},
 		{Name: "payload", Type: field.TypeBytes},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -1634,12 +1635,17 @@ var (
 			{
 				Name:    "outbox_published_at_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{OutboxColumns[8], OutboxColumns[7]},
+				Columns: []*schema.Column{OutboxColumns[9], OutboxColumns[8]},
 			},
 			{
 				Name:    "outbox_dead_letter_published_at_next_attempt_at_lease_until",
 				Unique:  false,
-				Columns: []*schema.Column{OutboxColumns[13], OutboxColumns[8], OutboxColumns[12], OutboxColumns[11]},
+				Columns: []*schema.Column{OutboxColumns[14], OutboxColumns[9], OutboxColumns[13], OutboxColumns[12]},
+			},
+			{
+				Name:    "outbox_domain_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{OutboxColumns[5], OutboxColumns[8]},
 			},
 		},
 	}
