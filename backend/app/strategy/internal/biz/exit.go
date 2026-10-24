@@ -45,6 +45,8 @@ func (uc *Usecase) ScanExits(ctx context.Context, asOf time.Time) ([]int, error)
 	uc.attachStage(ctx, snaps, asOf, nil)
 	uc.attachNews(ctx, snaps, symbols, asOf, nil)
 	p := uc.loadParams(ctx)
+	// B4：出口扫描按策略名取 ExitPlan（M09 分工），在册声明式策略同一装载口径。
+	p.Strategies = uc.mergeLibrary(ctx, p.Strategies, nil)
 	day := tradeDay(asOf)
 	var ids []int
 	for _, s := range snaps {

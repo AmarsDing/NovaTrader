@@ -140,6 +140,7 @@ type Usecase struct {
 	blacklist  BlacklistRepo
 	positions  PositionRepo
 	feedback   FeedbackRepo
+	library    LibraryRepo // B4 在册声明式策略端口（可选，见 library.go）
 	cal        *tradecal.Calendar
 	log        *log.Helper
 

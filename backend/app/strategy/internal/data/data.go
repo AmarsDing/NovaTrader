@@ -21,7 +21,7 @@ import (
 
 var ProviderSet = wire.NewSet(
 	NewData, NewEntClient, NewParamRepo, NewSignalRepo, NewCandidateRepo, NewBlacklistRepo, NewPositionRepo,
-	NewMarketClient, NewMarketSource, NewNewsClient, NewAnalyzer, NewFeedbackRepo, registry.NewBeater,
+	NewMarketClient, NewMarketSource, NewNewsClient, NewAnalyzer, NewFeedbackRepo, NewLibraryRepo, registry.NewBeater,
 	wire.Bind(new(biz.SentimentSource), new(*marketClient)),
 )
 

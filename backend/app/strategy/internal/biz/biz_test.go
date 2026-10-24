@@ -917,3 +917,135 @@ func TestSettings(t *testing.T) {
 		t.Fatalf("params %+v", p)
 	}
 }
+
+// B4 声明式策略装载（pkg/rules/decl × strategy_library in-flight 批）。
+type fakeLibrary struct {
+	rows []LibraryRow
+	err  error
+}
+
+func (f *fakeLibrary) ActiveLibrary(context.Context) ([]LibraryRow, error) { return f.rows, f.err }
+
+// dslScanRow 造一行合法 DSL 策略：恒真过滤（现价 ≥ 1）+ 基础分 99（必赢内置模板）。
+func dslScanRow(name string) LibraryRow {
+	return LibraryRow{Name: name, Code: `{"version":1,"name":"` + name + `","hold_days":3,` +
+		`"filter":{"op":"gte","args":[{"op":"field","name":"last"},{"op":"num","num":1}]},` +
+		`"score":{"base":99}}`}
+}
+
+func hasMissing(rep *ScanReport, prefix string) bool {
+	for _, m := range rep.Missing {
+		if m == prefix {
+			return true
+		}
+	}
+	return false
+}
+
+func TestScanLibraryStrategies(t *testing.T) {
+	t.Run("active 行进漏斗且胜出", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+		e.uc.SetLibrary(&fakeLibrary{rows: []LibraryRow{dslScanRow("dsl_scan")}})
+		rep := scan(t, e, ScanRequest{})
+		if len(rep.Signals) != 1 || rep.AICalls != 1 {
+			t.Fatalf("report %+v", rep)
+		}
+		c := e.cands.get("600000.SH")
+		if c == nil || c.Strategy != "dsl_scan" || c.RuleScore != 99 {
+			t.Fatalf("candidate %+v（DSL 基础分 99 应在内置模板之上胜出）", c)
+		}
+		sig, _ := e.signals.Get(ctx, rep.Signals[0])
+		if sig.Strategy != "dsl_scan" || sig.HoldDaysMax != 3 {
+			t.Fatalf("signal %+v", sig)
+		}
+		if len(rep.Missing) != 0 {
+			t.Fatalf("missing %v（全部行合法不应有缺失标记）", rep.Missing)
+		}
+	})
+
+	t.Run("行级失败不半激活", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+		e.uc.SetLibrary(&fakeLibrary{rows: []LibraryRow{
+			{Name: "bad_one", Code: `{"version":2,"name":"bad_one"}`}, // 版本不支持
+			dslScanRow("dsl_scan"),
+		}})
+		rep := scan(t, e, ScanRequest{})
+		c := e.cands.get("600000.SH")
+		if c == nil || c.Strategy != "dsl_scan" {
+			t.Fatalf("坏行不得拖死好行：candidate %+v", c)
+		}
+		if !hasMissing(rep, MissLibraryInvalid+":bad_one") {
+			t.Fatalf("missing %v 应记 library_invalid:bad_one", rep.Missing)
+		}
+	})
+
+	t.Run("与内置模板撞名拒绝", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+		e.uc.SetLibrary(&fakeLibrary{rows: []LibraryRow{dslScanRow(rules.NameFirstBoard)}})
+		rep := scan(t, e, ScanRequest{})
+		c := e.cands.get("600000.SH")
+		if c == nil || c.Strategy != rules.NameFirstBoard || c.RuleScore > 98 {
+			t.Fatalf("撞名行混入会静默换轨：candidate %+v", c)
+		}
+		if !hasMissing(rep, MissLibraryInvalid+":"+rules.NameFirstBoard) {
+			t.Fatalf("missing %v 应记撞名行", rep.Missing)
+		}
+	})
+
+	t.Run("行名与 code 名不一致拒绝", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+		e.uc.SetLibrary(&fakeLibrary{rows: []LibraryRow{{Name: "row_a", Code: dslScanRow("dsl_x").Code}}})
+		rep := scan(t, e, ScanRequest{})
+		c := e.cands.get("600000.SH")
+		if c == nil || c.Strategy == "dsl_x" || c.Strategy == "row_a" {
+			t.Fatalf("不一致行不得激活：candidate %+v", c)
+		}
+		if !hasMissing(rep, MissLibraryInvalid+":row_a") {
+			t.Fatalf("missing %v 应记 library_invalid:row_a", rep.Missing)
+		}
+	})
+
+	t.Run("读表失败只标记不中断了", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"))
+		e.uc.SetLibrary(&fakeLibrary{err: errors.New("db down")})
+		rep := scan(t, e, ScanRequest{})
+		if len(rep.Signals) != 1 {
+			t.Fatalf("读表失败应按内置模板续扫：report %+v", rep)
+		}
+		if !hasMissing(rep, MissLibraryInvalid) {
+			t.Fatalf("missing %v 应记 library_invalid", rep.Missing)
+		}
+	})
+
+	t.Run("出口按名取 DSL 策略走时间链", func(t *testing.T) {
+		// DSL hold_days=3：仓位 9/25 开仓（国庆 10/1–8 休市，9/28–30+10/9 已 4 个交易日
+		// ≥3），止损止盈都够不着、无利空、情绪 WARM——只有 DSL 的 ExitPlan（holdMax=3）
+		// 能出时间到信号；未装配端口时走通用 rules.Exit(holdMax=0)，时间链不触发，
+		// 一条信号也不出。
+		e := newEnv(t, nil, nil, firstBoard("600000.SH"))
+		e.uc.SetLibrary(&fakeLibrary{rows: []LibraryRow{dslScanRow("dsl_scan")}})
+		e.pos.list = []Holding{{Symbol: "600000.SH", Quantity: 1000, Available: 1000, AvgCost: 12}}
+		e.signals.put(Signal{
+			Book: "paper", Symbol: "600000.SH", Side: rules.SideBuy, Status: StatusDone, Strategy: "dsl_scan",
+			StopLoss: 10.0, TakeProfit: 13.0, TradeDate: tradeDay(asOf.AddDate(0, 0, -14)),
+		})
+		ids, err := e.uc.ScanExits(ctx, asOf)
+		if err != nil || len(ids) != 1 {
+			t.Fatalf("ids=%v err=%v（DSL 时间链应触发）", ids, err)
+		}
+		s, _ := e.signals.Get(ctx, ids[0])
+		if s.ExitKind != rules.ExitTime || s.Strategy != "dsl_scan" {
+			t.Fatalf("sell %+v", s)
+		}
+
+		e2 := newEnv(t, nil, nil, firstBoard("600000.SH"))
+		e2.pos.list = []Holding{{Symbol: "600000.SH", Quantity: 1000, Available: 1000, AvgCost: 12}}
+		e2.signals.put(Signal{
+			Book: "paper", Symbol: "600000.SH", Side: rules.SideBuy, Status: StatusDone, Strategy: "dsl_scan",
+			StopLoss: 10.0, TakeProfit: 13.0, TradeDate: tradeDay(asOf.AddDate(0, 0, -14)),
+		})
+		if ids, _ := e2.uc.ScanExits(ctx, asOf); len(ids) != 0 {
+			t.Fatalf("未装配端口不得出 DSL 信号（holdMax=0 时间链不触发）：%v", ids)
+		}
+	})
+}

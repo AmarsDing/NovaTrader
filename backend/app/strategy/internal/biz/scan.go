@@ -100,6 +100,8 @@ func (uc *Usecase) Scan(ctx context.Context, req ScanRequest) (*ScanReport, erro
 	day := tradeDay(req.AsOf)
 	p := uc.loadParams(ctx)
 	rep := &ScanReport{TraceID: trace, Pool: req.Pool, Misses: map[string]int{}, KillState: uc.KillSwitch()}
+	// B4：在册声明式策略追加在内置模板之后；行级失败记 library_invalid，绝不半激活。
+	p.Strategies = uc.mergeLibrary(ctx, p.Strategies, rep)
 
 	snaps, err := uc.snapshots(ctx, req, day)
 	if err != nil {
