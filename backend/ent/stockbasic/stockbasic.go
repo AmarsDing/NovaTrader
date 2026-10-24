@@ -35,6 +35,8 @@ const (
 	FieldFloatShare = "float_share"
 	// FieldCircMv holds the string denoting the circ_mv field in the database.
 	FieldCircMv = "circ_mv"
+	// FieldTotalMv holds the string denoting the total_mv field in the database.
+	FieldTotalMv = "total_mv"
 	// FieldPeTtm holds the string denoting the pe_ttm field in the database.
 	FieldPeTtm = "pe_ttm"
 	// FieldPb holds the string denoting the pb field in the database.
@@ -63,6 +65,7 @@ var Columns = []string{
 	FieldFreeShare,
 	FieldFloatShare,
 	FieldCircMv,
+	FieldTotalMv,
 	FieldPeTtm,
 	FieldPb,
 	FieldStFlag,
@@ -160,6 +163,11 @@ func ByFloatShare(opts ...sql.OrderTermOption) OrderOption {
 // ByCircMv orders the results by the circ_mv field.
 func ByCircMv(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCircMv, opts...).ToFunc()
+}
+
+// ByTotalMv orders the results by the total_mv field.
+func ByTotalMv(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTotalMv, opts...).ToFunc()
 }
 
 // ByPeTtm orders the results by the pe_ttm field.

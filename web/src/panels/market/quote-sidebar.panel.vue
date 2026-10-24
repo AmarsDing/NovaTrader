@@ -220,14 +220,15 @@ const volumeFields = computed<FieldItem[]>(() => {
 })
 
 /** 估值区块（§6.4）：全部读 security 字典（stock_basic 口径），truthy 守卫让负 PE 照样渲染、0/null 显「—」。
- * 总市值字典未携带（stock_basic 无该列；不拿 total_share×现价派生——禁计算派生）→ 恒显「—」。 */
+ * 总市值走字典日级口径（stock_basic.total_mv，C1 采集链落读）；未采集显「—」——不拿 total_share×现价
+ * 派生（禁计算派生，盘中即席口径归 Quote 链），两口径勿混。 */
 const valuationFields = computed<FieldItem[]>(() => {
   const b = basic.value
   return [
     { label: '流通市值', value: b?.circMv ? compactAmount(b.circMv) : MISS_FIELD },
     { label: 'PE(TTM)', value: b?.peTtm ? b.peTtm.toFixed(1) : MISS_FIELD },
     { label: 'PB', value: b?.pb ? b.pb.toFixed(2) : MISS_FIELD },
-    { label: '总市值', value: MISS_FIELD },
+    { label: '总市值', value: b?.totalMv ? compactAmount(b.totalMv) : MISS_FIELD },
   ]
 })
 

@@ -6,7 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { scan, type ScanReply } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
-import { getQuote } from '@/api/market'
+import { getQuote, getWatchlist, setWatchlist, type WatchLeaseView } from '@/api/market'
 import NtButton from '@/ui/NtButton.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
@@ -14,12 +14,15 @@ import SymbolName from '@/display/SymbolName.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
-import { clock, compactAmount, messageOf, missLabel, pnlClass, price, signed } from '@/utils/format'
+import { compactAmount, messageOf, missLabel, pnlClass, price, signed } from '@/utils/format'
+import { serverNow } from '@/utils/server-clock'
 import { raiseAlert } from '@/utils/notify'
-import { request } from '@/api/http'
 
 const auth = useAuthStore()
 const symbolStore = useSymbolStore()
+
+/** 本机登记 owner：与后端 SetWatchlist 同一口径（operatorName 缺省 'web'）。 */
+const ownerName = computed(() => auth.operatorName || 'web')
 
 const draft = ref('')
 const saving = ref(false)
@@ -147,6 +150,46 @@ function openHit(row: HitRow) {
 const SYMBOL_RE = /^\d{6}\.(SZ|SH|BJ)$/i
 let heartbeat: ReturnType<typeof setInterval> | undefined
 
+/** 租约读口回显（W3-B2，评审 §4.9.2「登记后刷新即失忆」根修）：面板挂载 GET 全 owner 租约，逐行倒计时。 */
+const leases = ref<WatchLeaseView[]>([])
+/** 读口失败态：true 时租约区显「状态未知」，不得以空表冒充「没有活租约」（没取到≠0）。 */
+const leasesFailed = ref(false)
+const nowTick = ref(serverNow())
+let tickTimer: ReturnType<typeof setInterval> | undefined
+
+/** 租约行视图：剩余毫秒按 1s tick 递减；<=0 视为已失效（后端惰性剔除，读口下次返回即缺席）。 */
+const leaseRows = computed(() =>
+  leases.value.map((row) => ({
+    owner: row.owner,
+    count: row.symbols.length,
+    remain: Date.parse(row.expiresAt) - nowTick.value,
+    mine: row.owner === ownerName.value,
+  })),
+)
+
+async function loadLeases() {
+  try {
+    leases.value = await getWatchlist()
+    leasesFailed.value = false
+  } catch {
+    // 读口失败不挡登记/扫描主流程；置失败态让列表显「状态未知」，不冒充空（也防误导用户整池替换）。
+    leasesFailed.value = true
+  }
+}
+
+function fmtRemain(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** 当前心跳闭包里的名单（保存失败恢复用）与代际号（迟到回包丢弃判据）。 */
+let beatSymbols: string[] = []
+let beatSeq = 0
+/** 登记代际号：save() 每次发起即 +1；挂载恢复拿它判「GET 在飞期间用户是否已登记」。 */
+let saveGen = 0
+/** 卸载死旗：onMounted 的 await 之后判死，防迟到回包重启出永不清理的幽灵心跳。 */
+let dead = false
+
 async function save() {
   const symbols = draft.value
     .split(/[\s,;，；]+/)
@@ -157,34 +200,49 @@ async function save() {
     error.value = `代码格式不对：${bad.join('、')}（应为 000001.SZ）`
     return
   }
+  saveGen++ // 挂载恢复的迟到回包看到代际前进即放弃，不得回写旧名单
   saving.value = true
   error.value = ''
+  // 写序防竞：保存全程先停心跳——已在飞的旧闭包心跳无法取消，若其 POST 晚于本次登记到达后端
+  // 会把候选池整体改回旧名单（后端 Set 是 owner 级整池替换）。停心跳把窗口缩到本次 await 期间
+  // 残存的一拍；界面侧迟到回包由 beat() 的代际号丢弃，不把旧 expires/lease 行写回。失败即恢复原心跳。
+  stopHeartbeat()
   try {
-    const data = (await request('/api/market/watchlist', {
-      method: 'POST',
-      json: { owner: auth.operatorName || 'web', symbols },
-    })) as Record<string, unknown>
-    expiresAt.value = String(data?.expiresAt ?? data?.expires_at ?? '')
+    expiresAt.value = await setWatchlist(ownerName.value, symbols)
     startHeartbeat(symbols)
+    void loadLeases()
   } catch (err) {
     error.value = messageOf(err)
+    startHeartbeat(beatSymbols)
   } finally {
     saving.value = false
   }
 }
 
+/** 续期一拍：失败静默（与 loadLeases 同纪律）——不写 error 不扰用户，下一拍自动重试；
+ *  晚到的回包按代际号丢弃（名单已换/心跳已停时不得回写旧 expires 与租约行）。 */
+async function beat(symbols: string[], seq: number) {
+  try {
+    const expires = await setWatchlist(ownerName.value, symbols)
+    if (seq !== beatSeq) return
+    expiresAt.value = expires
+    void loadLeases()
+  } catch {
+    /* 见上注释 */
+  }
+}
+
 function startHeartbeat(symbols: string[]) {
   stopHeartbeat()
+  beatSymbols = symbols
   if (!symbols.length) return
-  // 租约 10 分钟，8 分钟续一次。
+  const seq = beatSeq
+  // 租约 10 分钟，8 分钟续一次，不按 document.hidden 跳拍：桌面壳最小化（含托盘）即 hidden，
+  // 跳拍超 10 分钟租约即死、池推送静默中断——违背页注「开着本面板即续期」与 data-frame 隐藏态纪律；
+  // 8 分钟一拍成本为零。系统睡眠造成的迟到空窗由 onVisible 补一拍兜底。
   heartbeat = setInterval(
     () => {
-      void request('/api/market/watchlist', {
-        method: 'POST',
-        json: { owner: auth.operatorName || 'web', symbols },
-      }).then((d) => {
-        expiresAt.value = String((d as Record<string, unknown>)?.expiresAt ?? '')
-      })
+      void beat(symbols, seq)
     },
     8 * 60 * 1000,
   )
@@ -193,6 +251,13 @@ function startHeartbeat(symbols: string[]) {
 function stopHeartbeat() {
   if (heartbeat) clearInterval(heartbeat)
   heartbeat = undefined
+  beatSeq++ // 代际+1：在飞回包全部作废
+}
+
+/** 回到前台立即补一拍（隐藏期不续、租约 10 分钟可能已死）——死态行不必等下个 8 分钟整拍。 */
+function onVisible() {
+  if (document.hidden || !heartbeat || !beatSymbols.length) return
+  void beat(beatSymbols, beatSeq)
 }
 
 async function runScan() {
@@ -212,8 +277,34 @@ function openPool() {
   getWorkbench()?.openPanel('pool-manager')
 }
 
-onMounted(() => {})
-onBeforeUnmount(stopHeartbeat)
+onMounted(async () => {
+  // 倒计时 tick（1s，P2-10 纪律：有效期判定一律 serverNow，禁本地钟）；隐藏标签页不空转，回前台下一秒自对齐。
+  tickTimer = setInterval(() => {
+    if (document.hidden) return
+    nowTick.value = serverNow()
+  }, 1000)
+  document.addEventListener('visibilitychange', onVisible)
+  const genAtMount = saveGen
+  await loadLeases()
+  // 卸载/登记竞态护栏：GET 在飞期间面板被关（dead）或用户已完成一次登记（saveGen 前进），
+  // 迟到回包一律丢弃——否则会以旧名单重启心跳，下一拍把刚登记的池整体改回（整池替换语义）。
+  if (dead || genAtMount !== saveGen) return
+  // 本机活租约自动回显并重启续期——面板重开不失忆；「任一桌面开着本面板即续期」口径见页注。
+  const mine = leases.value.find((row) => row.owner === ownerName.value)
+  if (mine && Date.parse(mine.expiresAt) > serverNow()) {
+    if (!draft.value.trim()) draft.value = mine.symbols.join(' ')
+    expiresAt.value = mine.expiresAt
+    startHeartbeat(mine.symbols)
+    // 恢复即补一拍：剩余 TTL<8 分钟的租约等不到首个整拍就到期，立即续满 10 分钟消除推送空窗。
+    void beat(mine.symbols, beatSeq)
+  }
+})
+onBeforeUnmount(() => {
+  dead = true
+  document.removeEventListener('visibilitychange', onVisible)
+  stopHeartbeat()
+  if (tickTimer) clearInterval(tickTimer)
+})
 </script>
 
 <template>
@@ -221,7 +312,7 @@ onBeforeUnmount(stopHeartbeat)
     <header class="nt-head">
       <div>
         <h1 class="nt-title">自选 / 扫描</h1>
-        <p class="nt-note">登记候选池租约 10 分钟，面板开着会自动续期。</p>
+        <p class="nt-note">登记候选池租约 10 分钟；任一桌面开着本面板即每 8 分钟续期，全部关闭后约 10 分钟停止池中标的的分钟行情推送（扫描不受影响）。</p>
       </div>
     </header>
 
@@ -235,7 +326,16 @@ onBeforeUnmount(stopHeartbeat)
         </NtButton>
         <NtButton size="sm" @click="openPool">打开股池面板</NtButton>
       </div>
-      <p v-if="expiresAt" class="nt-note">租约有效至 {{ clock(expiresAt) }}</p>
+      <ul v-if="leaseRows.length" class="leases">
+        <li v-for="row in leaseRows" :key="row.owner" class="lease" :class="{ 'lease--dead': row.remain <= 0 }">
+          <span class="lease__owner">{{ row.owner }}<template v-if="row.mine">（本机）</template></span>
+          <span class="lease__count">{{ row.count }} 只</span>
+          <span v-if="row.remain > 0" class="lease__remain">剩余 {{ fmtRemain(row.remain) }}</span>
+          <span v-else class="lease__dead">已失效，重新登记恢复推送</span>
+        </li>
+      </ul>
+      <p v-else-if="leasesFailed" class="nt-note">租约读口失败，当前池状态未知——稍后重开面板复查，勿凭缺表提示把池整池改小。</p>
+      <p v-else class="nt-note">当前没有活租约——登记后池中标的才有分钟行情推送。</p>
       <p v-if="error" class="nt-err">{{ error }}</p>
     </section>
 
@@ -354,6 +454,36 @@ onBeforeUnmount(stopHeartbeat)
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
+}
+
+.leases {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lease {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-2);
+}
+
+.lease--dead {
+  opacity: 0.55;
+}
+
+.lease__owner {
+  font-family: var(--nt-font-mono);
+  color: var(--nt-text-1);
+}
+
+.lease__dead {
+  color: var(--nt-warn);
 }
 
 .sym {

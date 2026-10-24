@@ -22,6 +22,7 @@ import { dataFrame } from '@/ws/data-frame'
 import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
 import { createPageRefresh } from './page-refresh'
 import { mergeGapRows } from './market-backfill'
+import { fillSideTone } from './market-markers'
 
 /** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转），路由 query 作兼容兜底。 */
 const panelParams = consumePanelParams('market')
@@ -87,6 +88,9 @@ const qFlashClass = computed(() => {
   return ''
 })
 
+/** 当前票成交：legend 门槛与 markers 同口径——账户他票成交不得点亮本图的买卖图例。 */
+const symbolFills = computed(() => fills.value.filter((item) => item.symbol === symbol.value.trim()))
+
 const markers = computed<KlineMarker[]>(() => {
   const fromNews: KlineMarker[] = news.value.map((item) => ({
     time: item.time,
@@ -96,15 +100,15 @@ const markers = computed<KlineMarker[]>(() => {
     shape: 'circle',
     text: (item.title || '消息').slice(0, 8),
   }))
-  const fromFills: KlineMarker[] = fills.value
-    .filter((item) => item.symbol === symbol.value.trim())
-    .map((item) => ({
-      time: item.time,
-      position: item.side === 'sell' ? 'aboveBar' : 'belowBar',
-      color: item.side === 'sell' ? PALETTE.warn : PALETTE.accent,
-      shape: item.side === 'sell' ? 'arrowDown' : 'arrowUp',
-      text: item.side === 'sell' ? '卖' : '买',
-    }))
+  const fromFills: KlineMarker[] = symbolFills.value.map((item) => ({
+    time: item.time,
+    position: item.side === 'sell' ? 'aboveBar' : 'belowBar',
+    // 红买绿卖（双色制定案，单源见 view/market-markers.ts）：up/down 同全站红涨绿跌，
+    // 色觉硬门禁管辖内；方向未知走中性 text3 且不借买/卖箭头——bar 下圆点与消息圈（bar 上）错位自明。
+    color: PALETTE[fillSideTone(item.side)],
+    shape: item.side === 'sell' ? 'arrowDown' : item.side === 'buy' ? 'arrowUp' : 'circle',
+    text: item.side === 'sell' ? '卖' : item.side === 'buy' ? '买' : '·',
+  }))
   return [...fromNews, ...fromFills]
 })
 
@@ -553,7 +557,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <p v-if="measuring && bars.length" class="nt-note">测量模式：在图上按住拖动画框，统计区间涨跌/振幅；Esc 或再次点按钮退出。</p>
-        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量<template v-if="freq === '1m'"> · 底色=集合竞价时段</template><template v-if="symbol.trim() && bars.length"> · 琥珀描边=涨/跌停封板（板块推断）</template><template v-if="klineLevels.length"> · 琥珀虚线为摊薄成本</template><template v-if="hasSubIndicators"> · 副图 MACD 柱/电蓝 DIF/琥珀 DEA、冰青 RSI6（虚线 80/20）</template></p>
+        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量<template v-if="symbolFills.length"> · 红↑=买 · 绿↓=卖</template><template v-if="freq === '1m'"> · 底色=集合竞价时段</template><template v-if="symbol.trim() && bars.length"> · 琥珀描边=涨/跌停封板（板块推断）</template><template v-if="klineLevels.length"> · 琥珀虚线为摊薄成本</template><template v-if="hasSubIndicators"> · 副图 MACD 柱/电蓝 DIF/琥珀 DEA、冰青 RSI6（虚线 80/20）</template></p>
         <p v-if="loaded && !loading && !fillsReady" class="nt-note">成交明细未返回，图上的买卖标记尚不完整。</p>
         <p v-if="freq === '1d' && loaded && !loading && !indicatorsReady" class="nt-empty">指标未返回。</p>
         <p v-else-if="freq === '1d' && loaded && !loading && !hasSubIndicators" class="nt-empty">副图指标（MACD/RSI）未返回。</p>

@@ -30,7 +30,7 @@ func (r *Repo) SecurityBasics(ctx context.Context, codes []string) ([]biz.Securi
 		item := biz.SecurityBasicRow{
 			Code: row.StockCode, Name: row.StockName, Market: row.Market,
 			ST: row.StFlag, Suspended: row.SuspendFlag,
-			PeTtm: f64(row.PeTtm), Pb: f64(row.Pb), CircMv: f64(row.CircMv),
+			PeTtm: f64(row.PeTtm), Pb: f64(row.Pb), CircMv: f64(row.CircMv), TotalMv: f64(row.TotalMv),
 			UpdateTime: row.UpdateTime,
 		}
 		if row.Industry != nil {

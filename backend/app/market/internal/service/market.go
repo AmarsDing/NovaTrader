@@ -380,6 +380,21 @@ func (s *MarketService) SetWatchlist(ctx context.Context, req *v1.SetWatchlistRe
 	return &v1.SetWatchlistReply{Count: int32(len(syms)), ExpiresAt: fmtTime(exp)}, nil
 }
 
+// GetWatchlist 读取候选池租约（只读）。owner 为空返回全部未到期 owner 租约——登录即可读：本系统为单机私有部署，各桌面互见彼此与 trade.* 进程的池以便排查推送中断（WS 不广播租约，这是本读口独有的有意暴露面）。
+func (s *MarketService) GetWatchlist(ctx context.Context, req *v1.GetWatchlistRequest) (*v1.GetWatchlistReply, error) {
+	owner := strings.TrimSpace(req.GetOwner())
+	leases := s.uc.GetWatchlist(owner)
+	reply := &v1.GetWatchlistReply{Leases: make([]*v1.WatchLease, 0, len(leases))}
+	for _, l := range leases {
+		reply.Leases = append(reply.Leases, &v1.WatchLease{
+			Owner:     l.Owner,
+			Symbols:   l.Symbols,
+			ExpiresAt: fmtTime(l.Expires),
+		})
+	}
+	return reply, nil
+}
+
 // GetAuction 返回集合竞价截面汇总（监控驾驶舱 P1，只读）。
 func (s *MarketService) GetAuction(ctx context.Context, req *v1.GetAuctionRequest) (*v1.GetAuctionReply, error) {
 	day, err := parseDay(req.GetTradeDate())
@@ -770,12 +785,17 @@ func (s *MarketService) GetSecurityBasics(ctx context.Context, req *v1.GetSecuri
 		MaxUpdateTime: fmtTime(maxUpdate),
 	}
 	for _, r := range rows {
-		reply.List = append(reply.List, &v1.SecurityBasic{
+		item := &v1.SecurityBasic{
 			Code: r.Code, Name: r.Name, Market: r.Market, Industry: r.Industry,
 			StFlag: r.ST, SuspendFlag: r.Suspended,
 			PeTtm: r.PeTtm, Pb: r.Pb, CircMv: r.CircMv,
 			UpdateTime: fmtTime(r.UpdateTime), Concepts: r.Concepts,
-		})
+		}
+		// total_mv 未采集=0 → optional 不置位：「没取到≠0」，前端拿 undefined 显「—」，禁止以 0 充数。
+		if r.TotalMv > 0 {
+			item.TotalMv = &r.TotalMv
+		}
+		reply.List = append(reply.List, item)
 	}
 	return reply, nil
 }

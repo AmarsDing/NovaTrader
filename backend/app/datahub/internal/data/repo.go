@@ -125,7 +125,11 @@ func (r *Repo) UpsertSecurities(ctx context.Context, items []biz.Security, sourc
 					SetNillableListDate(s.ListDate).
 					SetNillableDelistDate(s.DelistDate).
 					SetNillableTotalShare(s.TotalShare).
-					SetNillableFloatShare(s.FloatShare)
+					SetNillableFloatShare(s.FloatShare).
+					SetNillablePeTtm(s.PeTtm).
+					SetNillablePb(s.Pb).
+					SetNillableCircMv(s.CircMv).
+					SetNillableTotalMv(s.TotalMv)
 				if s.Industry != "" {
 					c.SetIndustry(s.Industry)
 				}
@@ -162,6 +166,22 @@ func (r *Repo) UpsertSecurities(ctx context.Context, items []biz.Security, sourc
 			}
 			if s.FloatShare != nil {
 				upd.SetFloatShare(*s.FloatShare)
+				n++
+			}
+			if s.PeTtm != nil {
+				upd.SetPeTtm(*s.PeTtm)
+				n++
+			}
+			if s.Pb != nil {
+				upd.SetPb(*s.Pb)
+				n++
+			}
+			if s.CircMv != nil {
+				upd.SetCircMv(*s.CircMv)
+				n++
+			}
+			if s.TotalMv != nil {
+				upd.SetTotalMv(*s.TotalMv)
 				n++
 			}
 			if s.Industry != "" {

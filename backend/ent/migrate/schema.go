@@ -2334,6 +2334,7 @@ var (
 		{Name: "free_share", Type: field.TypeInt64, Nullable: true},
 		{Name: "float_share", Type: field.TypeInt64, Nullable: true},
 		{Name: "circ_mv", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
+		{Name: "total_mv", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
 		{Name: "pe_ttm", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
 		{Name: "pb", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
 		{Name: "st_flag", Type: field.TypeBool, Default: false},

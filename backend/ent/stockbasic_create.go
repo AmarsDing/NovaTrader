@@ -152,6 +152,20 @@ func (_c *StockBasicCreate) SetNillableCircMv(v *float64) *StockBasicCreate {
 	return _c
 }
 
+// SetTotalMv sets the "total_mv" field.
+func (_c *StockBasicCreate) SetTotalMv(v float64) *StockBasicCreate {
+	_c.mutation.SetTotalMv(v)
+	return _c
+}
+
+// SetNillableTotalMv sets the "total_mv" field if the given value is not nil.
+func (_c *StockBasicCreate) SetNillableTotalMv(v *float64) *StockBasicCreate {
+	if v != nil {
+		_c.SetTotalMv(*v)
+	}
+	return _c
+}
+
 // SetPeTtm sets the "pe_ttm" field.
 func (_c *StockBasicCreate) SetPeTtm(v float64) *StockBasicCreate {
 	_c.mutation.SetPeTtm(v)
@@ -381,6 +395,10 @@ func (_c *StockBasicCreate) createSpec() (*StockBasic, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CircMv(); ok {
 		_spec.SetField(stockbasic.FieldCircMv, field.TypeFloat64, value)
 		_node.CircMv = &value
+	}
+	if value, ok := _c.mutation.TotalMv(); ok {
+		_spec.SetField(stockbasic.FieldTotalMv, field.TypeFloat64, value)
+		_node.TotalMv = &value
 	}
 	if value, ok := _c.mutation.PeTtm(); ok {
 		_spec.SetField(stockbasic.FieldPeTtm, field.TypeFloat64, value)
@@ -643,6 +661,30 @@ func (u *StockBasicUpsert) AddCircMv(v float64) *StockBasicUpsert {
 // ClearCircMv clears the value of the "circ_mv" field.
 func (u *StockBasicUpsert) ClearCircMv() *StockBasicUpsert {
 	u.SetNull(stockbasic.FieldCircMv)
+	return u
+}
+
+// SetTotalMv sets the "total_mv" field.
+func (u *StockBasicUpsert) SetTotalMv(v float64) *StockBasicUpsert {
+	u.Set(stockbasic.FieldTotalMv, v)
+	return u
+}
+
+// UpdateTotalMv sets the "total_mv" field to the value that was provided on create.
+func (u *StockBasicUpsert) UpdateTotalMv() *StockBasicUpsert {
+	u.SetExcluded(stockbasic.FieldTotalMv)
+	return u
+}
+
+// AddTotalMv adds v to the "total_mv" field.
+func (u *StockBasicUpsert) AddTotalMv(v float64) *StockBasicUpsert {
+	u.Add(stockbasic.FieldTotalMv, v)
+	return u
+}
+
+// ClearTotalMv clears the value of the "total_mv" field.
+func (u *StockBasicUpsert) ClearTotalMv() *StockBasicUpsert {
+	u.SetNull(stockbasic.FieldTotalMv)
 	return u
 }
 
@@ -996,6 +1038,34 @@ func (u *StockBasicUpsertOne) UpdateCircMv() *StockBasicUpsertOne {
 func (u *StockBasicUpsertOne) ClearCircMv() *StockBasicUpsertOne {
 	return u.Update(func(s *StockBasicUpsert) {
 		s.ClearCircMv()
+	})
+}
+
+// SetTotalMv sets the "total_mv" field.
+func (u *StockBasicUpsertOne) SetTotalMv(v float64) *StockBasicUpsertOne {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.SetTotalMv(v)
+	})
+}
+
+// AddTotalMv adds v to the "total_mv" field.
+func (u *StockBasicUpsertOne) AddTotalMv(v float64) *StockBasicUpsertOne {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.AddTotalMv(v)
+	})
+}
+
+// UpdateTotalMv sets the "total_mv" field to the value that was provided on create.
+func (u *StockBasicUpsertOne) UpdateTotalMv() *StockBasicUpsertOne {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.UpdateTotalMv()
+	})
+}
+
+// ClearTotalMv clears the value of the "total_mv" field.
+func (u *StockBasicUpsertOne) ClearTotalMv() *StockBasicUpsertOne {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.ClearTotalMv()
 	})
 }
 
@@ -1529,6 +1599,34 @@ func (u *StockBasicUpsertBulk) UpdateCircMv() *StockBasicUpsertBulk {
 func (u *StockBasicUpsertBulk) ClearCircMv() *StockBasicUpsertBulk {
 	return u.Update(func(s *StockBasicUpsert) {
 		s.ClearCircMv()
+	})
+}
+
+// SetTotalMv sets the "total_mv" field.
+func (u *StockBasicUpsertBulk) SetTotalMv(v float64) *StockBasicUpsertBulk {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.SetTotalMv(v)
+	})
+}
+
+// AddTotalMv adds v to the "total_mv" field.
+func (u *StockBasicUpsertBulk) AddTotalMv(v float64) *StockBasicUpsertBulk {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.AddTotalMv(v)
+	})
+}
+
+// UpdateTotalMv sets the "total_mv" field to the value that was provided on create.
+func (u *StockBasicUpsertBulk) UpdateTotalMv() *StockBasicUpsertBulk {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.UpdateTotalMv()
+	})
+}
+
+// ClearTotalMv clears the value of the "total_mv" field.
+func (u *StockBasicUpsertBulk) ClearTotalMv() *StockBasicUpsertBulk {
+	return u.Update(func(s *StockBasicUpsert) {
+		s.ClearTotalMv()
 	})
 }
 

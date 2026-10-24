@@ -109,6 +109,11 @@ func CircMv(v float64) predicate.StockBasic {
 	return predicate.StockBasic(sql.FieldEQ(FieldCircMv, v))
 }
 
+// TotalMv applies equality check predicate on the "total_mv" field. It's identical to TotalMvEQ.
+func TotalMv(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldEQ(FieldTotalMv, v))
+}
+
 // PeTtm applies equality check predicate on the "pe_ttm" field. It's identical to PeTtmEQ.
 func PeTtm(v float64) predicate.StockBasic {
 	return predicate.StockBasic(sql.FieldEQ(FieldPeTtm, v))
@@ -777,6 +782,56 @@ func CircMvIsNil() predicate.StockBasic {
 // CircMvNotNil applies the NotNil predicate on the "circ_mv" field.
 func CircMvNotNil() predicate.StockBasic {
 	return predicate.StockBasic(sql.FieldNotNull(FieldCircMv))
+}
+
+// TotalMvEQ applies the EQ predicate on the "total_mv" field.
+func TotalMvEQ(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldEQ(FieldTotalMv, v))
+}
+
+// TotalMvNEQ applies the NEQ predicate on the "total_mv" field.
+func TotalMvNEQ(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldNEQ(FieldTotalMv, v))
+}
+
+// TotalMvIn applies the In predicate on the "total_mv" field.
+func TotalMvIn(vs ...float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldIn(FieldTotalMv, vs...))
+}
+
+// TotalMvNotIn applies the NotIn predicate on the "total_mv" field.
+func TotalMvNotIn(vs ...float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldNotIn(FieldTotalMv, vs...))
+}
+
+// TotalMvGT applies the GT predicate on the "total_mv" field.
+func TotalMvGT(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldGT(FieldTotalMv, v))
+}
+
+// TotalMvGTE applies the GTE predicate on the "total_mv" field.
+func TotalMvGTE(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldGTE(FieldTotalMv, v))
+}
+
+// TotalMvLT applies the LT predicate on the "total_mv" field.
+func TotalMvLT(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldLT(FieldTotalMv, v))
+}
+
+// TotalMvLTE applies the LTE predicate on the "total_mv" field.
+func TotalMvLTE(v float64) predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldLTE(FieldTotalMv, v))
+}
+
+// TotalMvIsNil applies the IsNil predicate on the "total_mv" field.
+func TotalMvIsNil() predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldIsNull(FieldTotalMv))
+}
+
+// TotalMvNotNil applies the NotNil predicate on the "total_mv" field.
+func TotalMvNotNil() predicate.StockBasic {
+	return predicate.StockBasic(sql.FieldNotNull(FieldTotalMv))
 }
 
 // PeTtmEQ applies the EQ predicate on the "pe_ttm" field.

@@ -1,9 +1,14 @@
 /**
- * G4 UI 字面量守护：panels/、display/、viz/ 内禁止裸写颜色字面量
- * （#hex / rgb() / rgba() / hsl() / hsla()），状态色必须走 theme/tokens.css 的 --nt-* 令牌。
+ * G4 UI 字面量守护：panels/、display/、viz/、workspace/、ui/、view/、layout/、monitor/、
+ * component/ 内禁止裸写颜色字面量（#hex / rgb() / rgba() / hsl() / hsla()），状态色必须走
+ * theme/tokens.css 的 --nt-* 令牌。
+ * 永不进扫描面的两个目录：theme/（令牌本源）与 style/（global.css 已全令牌 +
+ * 厂商 dockview-core.css 属第三方改造豁免）。
  * 移植 gloomberb architecture/ui-literals.test.ts 纪律：
  * - 例外必须登记 ui-literals-allowlist.json 并给出理由；
- * - countLock 只降不升——新增裸色的 PR 直接红，收编令牌的 PR 才允许把锁往下调。
+ * - countLock 只降不升——新增裸色的 PR 直接红，收编令牌的 PR 才允许把锁往下调；
+ *   唯一合法上调：扫描面扩面时对存量合法残余做基线登记（如 2026-10-24 扩 3→9 目录，锁 0→3），
+ *   须在提交说明里写明扩面范围与逐条登记理由，且登记条目理由必填（同 allowlist 纪律）。
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, extname, join, relative, sep } from 'node:path'
@@ -11,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const SRC_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
-const SCAN_DIRS = ['panels', 'display', 'viz']
+const SCAN_DIRS = ['panels', 'display', 'viz', 'workspace', 'ui', 'view', 'layout', 'monitor', 'component']
 const EXTS = new Set(['.vue', '.ts', '.css'])
 const RAW_COLOR = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/g
 

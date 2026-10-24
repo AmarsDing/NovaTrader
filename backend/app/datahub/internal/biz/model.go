@@ -77,6 +77,11 @@ type Security struct {
 	Industry   string
 	TotalShare *int64
 	FloatShare *int64
+	// 估值四件套（东财 clist f115/f23/f21/f20，日级字典口径）；未采集=nil，UPSERT 可空覆盖只写有值。
+	PeTtm   *float64
+	Pb      *float64
+	CircMv  *float64
+	TotalMv *float64
 	ST         bool
 	Suspended  bool
 }

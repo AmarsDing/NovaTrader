@@ -21,6 +21,9 @@ type SecurityBasicRow struct {
 	PeTtm      float64
 	Pb         float64
 	CircMv     float64
+	// TotalMv 字典日级口径（stock_basic.total_mv 采集落数）；未采集=0，service 层 >0 才置 optional。
+	// 与 Quote.total_mv 的盘中 last×total_share 即席口径不同，勿互相替代。
+	TotalMv    float64
 	UpdateTime time.Time
 }
 

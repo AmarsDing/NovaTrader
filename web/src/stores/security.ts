@@ -8,7 +8,8 @@
  *   各 API 适配层拿到 name 时顺手 put、GetQuote 单点回填；
  * - ensure 四重去重：已有名 / 待出窗（pending）/ 在飞行（inflight）/ 失败冷却 5min 内不再发；
  *   300ms 批量窗合并；fetcher 未注册时静默 noop；
- * - put 合并：name 为 null/undefined/'' 不覆盖已有 name；updatedAt 只增（旧快照整体拒收）；
+ * - put 合并：name 为 null/undefined/'' 不覆盖已有 name；updatedAt 只认服务端时点、只增
+ *   （旧快照整体拒收，无时点补丁不顶新服务端时点）；LRU 淘汰看写入时刻 seenAt；
  * - 持久化：localStorage 'nt.secbasic.v1'，上限 3000 条，超出按 updatedAt 最旧淘汰（LRU）。
  *
  * 注意：useSecurityStore() 必须在函数体内调用，禁模块顶层调用（pinia 初始化时序）。
@@ -29,8 +30,12 @@ export interface SecurityBasic {
   pb?: number | null
   /** 流通市值，元。 */
   circMv?: number | null
-  /** epoch ms。 */
+  /** 总市值，元（字典日级口径；与 Quote 盘中 last×total_share 即席口径分开，勿混）。 */
+  totalMv?: number | null
+  /** epoch ms，服务端签发（update_time）。stale 闸只认它；无 updatedAt 的补丁（名字回填）不得顶到墙钟。 */
   updatedAt?: number
+  /** epoch ms，本端最近一次写入时刻——LRU 淘汰判据（与服务端时点分离，回填只刷新它）。 */
+  seenAt?: number
 }
 
 export type SecurityBasicPatch = Partial<SecurityBasic> & { code: string }
@@ -90,11 +95,11 @@ export const useSecurityStore = defineStore('security', () => {
     }
   }
 
-  /** 超上限时按 updatedAt 最旧淘汰。 */
+  /** 超上限时按写入时刻 seenAt 最旧淘汰（旧档位无 seenAt 回落服务端 updatedAt）。 */
   function evictOverflow() {
     const map = basics.value
     if (map.size <= MAX) return
-    const oldestFirst = [...map.values()].sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
+    const oldestFirst = [...map.values()].sort((a, b) => (a.seenAt ?? a.updatedAt ?? 0) - (b.seenAt ?? b.updatedAt ?? 0))
     for (const entry of oldestFirst.slice(0, map.size - MAX)) map.delete(entry.code)
   }
 
@@ -127,7 +132,11 @@ export const useSecurityStore = defineStore('security', () => {
         peTtm: item.peTtm !== undefined ? item.peTtm : (prev?.peTtm ?? null),
         pb: item.pb !== undefined ? item.pb : (prev?.pb ?? null),
         circMv: item.circMv !== undefined ? item.circMv : (prev?.circMv ?? null),
-        updatedAt: Math.max(prev?.updatedAt ?? 0, item.updatedAt ?? Date.now()),
+        totalMv: item.totalMv !== undefined ? item.totalMv : (prev?.totalMv ?? null),
+        // updatedAt 只认服务端签发：无 updatedAt 的补丁（如 GetQuote 顺手回填名字）不得顶到墙钟「现在」，
+        // 否则其后 update_time 更早的字典包被上方 stale 闸整包拒收，字典数值（含 totalMv）永久冻结。
+        updatedAt: item.updatedAt ?? prev?.updatedAt,
+        seenAt: Date.now(),
       }
       basics.value.set(code, next)
       dirty = true
@@ -221,6 +230,7 @@ export const useSecurityStore = defineStore('security', () => {
           peTtm: typeof e.peTtm === 'number' ? e.peTtm : null,
           pb: typeof e.pb === 'number' ? e.pb : null,
           circMv: typeof e.circMv === 'number' ? e.circMv : null,
+          totalMv: typeof e.totalMv === 'number' ? e.totalMv : null,
           updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : 0,
         })
       }

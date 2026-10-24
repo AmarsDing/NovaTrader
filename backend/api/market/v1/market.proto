@@ -52,6 +52,12 @@ service Market {
       body: "*"
     };
   }
+  // 读取候选池租约（只读）。owner 为空时返回全部未到期 owner 租约——登录即可读；单机私有部署要求各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。
+  rpc GetWatchlist(GetWatchlistRequest) returns (GetWatchlistReply) {
+    option (google.api.http) = {
+      get: "/v1/market/watchlist"
+    };
+  }
   // 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
   rpc GetAuction(GetAuctionRequest) returns (GetAuctionReply) {
     option (google.api.http) = {
@@ -335,6 +341,23 @@ message SetWatchlistReply {
   string expires_at = 2;
 }
 
+// GetWatchlistRequest 读候选池租约：owner 过滤（如 web / trade.<uuid>）；空=全部 owner。
+message GetWatchlistRequest {
+  string owner = 1;
+}
+
+// WatchLease 单个 owner 的未到期租约快照。
+message WatchLease {
+  string owner = 1;
+  repeated string symbols = 2; // 排序后的规范代码（如 600519.SH）
+  string expires_at = 3; // RFC3339，与 SetWatchlistReply.expires_at 同口径
+}
+
+// GetWatchlistReply 未到期租约清单；已到期者缺席（惰性剔除，缺席即租约不存在）。
+message GetWatchlistReply {
+  repeated WatchLease leases = 1;
+}
+
 // GetAuctionRequest 集合竞价截面。trade_date 默认今天；数据是 09:25 落的 stock_factor(kind=auction)。
 message GetAuctionRequest {
   string trade_date = 1; // 2006-01-02，空为今天
@@ -614,6 +637,7 @@ message SecurityBasic {
   double circ_mv = 9;       // 流通市值（元）
   string update_time = 10;  // RFC3339
   repeated string concepts = 11; // 概念板块（stock_basic.concept 逗号分隔拆分；无数据为空）
+  optional double total_mv = 12; // 总市值（元，stock_basic.total_mv 字典日级口径原样透传，读链不做总股本×现价推导；盘中即席口径另见 Quote.total_mv，两口径勿混）；未采集=null，「没取到≠0」
 }
 
 // GetSecurityBasicsRequest codes 为空时返回全量字典；非空按 codes（任一可解析代码写法，规整为 600519.SH）过滤。

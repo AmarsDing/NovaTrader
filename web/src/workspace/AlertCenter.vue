@@ -205,7 +205,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(10, 4, 4, 0.62);
+  background: color-mix(in srgb, var(--nt-danger) 6%, var(--nt-scrim));
   backdrop-filter: blur(6px);
 }
 
@@ -217,7 +217,7 @@ onBeforeUnmount(() => {
   border-radius: var(--nt-radius-l);
   box-shadow:
     var(--nt-glow-danger),
-    0 24px 80px rgba(0, 0, 0, 0.6);
+    var(--nt-shadow-depth);
   animation: ac-pulse 1.6s ease-in-out infinite;
 }
 
@@ -227,7 +227,7 @@ onBeforeUnmount(() => {
     border-color: var(--nt-danger);
   }
   50% {
-    border-color: rgba(255, 58, 58, 0.35);
+    border-color: color-mix(in srgb, var(--nt-danger) 35%, transparent);
   }
 }
 
@@ -298,7 +298,9 @@ onBeforeUnmount(() => {
   padding: 8px 18px;
   font-size: 13px;
   font-weight: 600;
-  color: #fff;
+  /* on-danger 语义对：与 NtButton/controls.css 的 on-accent 同款纪律，
+     暗主题深字压亮红（校准对比度优于纯白），亮主题即白。 */
+  color: var(--nt-on-danger);
   background: var(--nt-danger);
   border: none;
   border-radius: var(--nt-radius-s);

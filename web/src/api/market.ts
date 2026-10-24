@@ -26,7 +26,8 @@ function backfillSecurityBasics(list: SecurityBasicPatch[]): void {
 
 /** 名称字典批量取数（§6.2 填充路 2）：GET /api/market/security-basics（admin 聚合透传 market 服务）。
  * codes 省略/为空 = 全量字典（上限 6000 行）；repeated query 逐参重复（?codes=A&codes=B）。
- * 归一为字典补丁：name 空串→null（缺失非空串）；peTtm/pb/circMv 后端 0=缺失→null（不伪造，§6.2 口径）。 */
+ * 归一为字典补丁：name 空串→null（缺失非空串）；peTtm/pb/circMv 后端 0=缺失→null（不伪造，§6.2 口径）；
+ * totalMv 为 optional 字段（未采集整条缺省），缺省/0 同样归一为 null。 */
 export async function fetchSecurityBasics(codes?: string[]): Promise<SecurityBasicPatch[]> {
   bindBasicsFetcher()
   const suffix = codes?.length ? `?${codes.map((c) => `codes=${encodeURIComponent(c)}`).join('&')}` : ''
@@ -38,6 +39,7 @@ export async function fetchSecurityBasics(codes?: string[]): Promise<SecurityBas
       const peTtm = num(pick(row, 'peTtm', 'pe_ttm'))
       const pb = num(pick(row, 'pb'))
       const circMv = num(pick(row, 'circMv', 'circ_mv'))
+      const totalMv = num(pick(row, 'totalMv', 'total_mv'))
       return {
         code: pick<string>(row, 'code') || '',
         name: pick<string>(row, 'name') || null,
@@ -48,6 +50,7 @@ export async function fetchSecurityBasics(codes?: string[]): Promise<SecurityBas
         peTtm: peTtm === 0 ? null : peTtm,
         pb: pb === 0 ? null : pb,
         circMv: circMv === 0 ? null : circMv,
+        totalMv: totalMv == null || totalMv === 0 ? null : totalMv,
         updatedAt: Number.isFinite(updatedAt) ? updatedAt : undefined,
       }
     })
@@ -584,6 +587,34 @@ export interface QuoteView {
 
 function quoteLevels(list: QuoteLevel[]): QuoteLevel[] {
   return list.filter((l) => l.price > 0)
+}
+
+/** 候选池租约行（GetWatchlist 读口，W3-B1）：owner + 排序标的 + 到期时刻；到期/无租约=缺席（缺席即缺失）。 */
+export interface WatchLeaseView {
+  owner: string
+  symbols: string[]
+  expiresAt: string
+}
+
+/** 读取候选池租约（只读）：owner 过滤，空=全部 owner 租约——登录即可读，单机私有部署下各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。 */
+export async function getWatchlist(owner?: string): Promise<WatchLeaseView[]> {
+  const data = await request('/api/market/watchlist', owner ? { query: { owner } } : {})
+  return asList(data, 'leases')
+    .map((row) => ({
+      owner: pick<string>(row, 'owner') || '',
+      symbols: asList(row.symbols).map((s) => String(s)),
+      expiresAt: pick<string>(row, 'expiresAt') || pick<string>(row, 'expires_at') || '',
+    }))
+    .filter((row) => row.owner)
+}
+
+/** 登记候选池（同 owner 整体替换并续租），返回到期时刻。 */
+export async function setWatchlist(owner: string, symbols: string[]): Promise<string> {
+  const data = (await request('/api/market/watchlist', {
+    method: 'POST',
+    json: { owner, symbols },
+  })) as RawRecord
+  return pick<string>(data, 'expiresAt') || pick<string>(data, 'expires_at') || ''
 }
 
 export async function getQuote(symbol: string): Promise<QuoteView> {

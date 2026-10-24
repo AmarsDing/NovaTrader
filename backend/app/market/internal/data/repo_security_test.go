@@ -25,7 +25,7 @@ func TestSecurityBasicsRead(t *testing.T) {
 	if _, err := c.StockBasic.Create().
 		SetStockCode("600519.SH").SetStockName("贵州茅台").SetMarket("SH").
 		SetIndustry("白酒").SetConcept("国企改革，融资融券").SetStFlag(false).SetSuspendFlag(false).
-		SetPeTtm(22.5).SetPb(8.8).SetCircMv(2.1e12).SetUpdateTime(newer).
+		SetPeTtm(22.5).SetPb(8.8).SetCircMv(2.1e12).SetTotalMv(2.6e12).SetUpdateTime(newer).
 		Save(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestSecurityBasicsRead(t *testing.T) {
 	if most.Name != "贵州茅台" || most.Industry != "白酒" || most.ST || most.Suspended {
 		t.Fatalf("贵州茅台行不对: %+v", most)
 	}
-	if most.PeTtm != 22.5 || most.Pb != 8.8 || most.CircMv != 2.1e12 {
+	if most.PeTtm != 22.5 || most.Pb != 8.8 || most.CircMv != 2.1e12 || most.TotalMv != 2.6e12 {
 		t.Fatalf("估值字段不对: %+v", most)
 	}
 	if len(most.Concepts) != 2 || most.Concepts[0] != "国企改革" || most.Concepts[1] != "融资融券" {
@@ -71,7 +71,7 @@ func TestSecurityBasicsRead(t *testing.T) {
 	}
 	// 缺字段透传：industry/concept NULL→空串/空列表，估值 0，不得伪造。
 	bank := rows[0]
-	if bank.Industry != "" || len(bank.Concepts) != 0 || bank.PeTtm != 0 || bank.Pb != 0 || bank.CircMv != 0 {
+	if bank.Industry != "" || len(bank.Concepts) != 0 || bank.PeTtm != 0 || bank.Pb != 0 || bank.CircMv != 0 || bank.TotalMv != 0 {
 		t.Fatalf("平安银行缺字段应空透传: %+v", bank)
 	}
 	// ST 旗标往返 + 英文逗号概念切分。

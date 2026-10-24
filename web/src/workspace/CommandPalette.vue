@@ -561,7 +561,7 @@ defineExpose({ open, close })
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
-  background: rgba(4, 6, 12, 0.5);
+  background: var(--nt-scrim-light);
   backdrop-filter: blur(3px);
 }
 
@@ -574,7 +574,7 @@ defineExpose({ open, close })
   background: var(--nt-bg-glass);
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-l);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--nt-shadow-depth);
 }
 
 .bar {

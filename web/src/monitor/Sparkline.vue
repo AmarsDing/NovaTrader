@@ -15,9 +15,11 @@ const props = defineProps<{
 const path = computed(() => sparkPath(props.points, 100, 14))
 
 const stroke = computed(() => {
-  if (props.tone === 'up') return 'var(--nt-up, #ff4d4d)'
-  if (props.tone === 'down') return 'var(--nt-down, #00d084)'
-  return 'var(--nt-text-3, rgba(255,255,255,0.38))'
+  // tokens.css 在 :root 恒定义三令牌，var() 兜底值永远触不到且是陈旧色——
+  // G4 门禁下直接删兜底，纠错路径只有「令牌缺失=渲染断」一种（比读错色好）。
+  if (props.tone === 'up') return 'var(--nt-up)'
+  if (props.tone === 'down') return 'var(--nt-down)'
+  return 'var(--nt-text-3)'
 })
 </script>
 

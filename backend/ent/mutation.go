@@ -73481,6 +73481,8 @@ type StockBasicMutation struct {
 	addfloat_share *int64
 	circ_mv        *float64
 	addcirc_mv     *float64
+	total_mv       *float64
+	addtotal_mv    *float64
 	pe_ttm         *float64
 	addpe_ttm      *float64
 	pb             *float64
@@ -74176,6 +74178,76 @@ func (m *StockBasicMutation) ResetCircMv() {
 	delete(m.clearedFields, stockbasic.FieldCircMv)
 }
 
+// SetTotalMv sets the "total_mv" field.
+func (m *StockBasicMutation) SetTotalMv(f float64) {
+	m.total_mv = &f
+	m.addtotal_mv = nil
+}
+
+// TotalMv returns the value of the "total_mv" field in the mutation.
+func (m *StockBasicMutation) TotalMv() (r float64, exists bool) {
+	v := m.total_mv
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalMv returns the old "total_mv" field's value of the StockBasic entity.
+// If the StockBasic object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *StockBasicMutation) OldTotalMv(ctx context.Context) (v *float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalMv is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalMv requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalMv: %w", err)
+	}
+	return oldValue.TotalMv, nil
+}
+
+// AddTotalMv adds f to the "total_mv" field.
+func (m *StockBasicMutation) AddTotalMv(f float64) {
+	if m.addtotal_mv != nil {
+		*m.addtotal_mv += f
+	} else {
+		m.addtotal_mv = &f
+	}
+}
+
+// AddedTotalMv returns the value that was added to the "total_mv" field in this mutation.
+func (m *StockBasicMutation) AddedTotalMv() (r float64, exists bool) {
+	v := m.addtotal_mv
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTotalMv clears the value of the "total_mv" field.
+func (m *StockBasicMutation) ClearTotalMv() {
+	m.total_mv = nil
+	m.addtotal_mv = nil
+	m.clearedFields[stockbasic.FieldTotalMv] = struct{}{}
+}
+
+// TotalMvCleared returns if the "total_mv" field was cleared in this mutation.
+func (m *StockBasicMutation) TotalMvCleared() bool {
+	_, ok := m.clearedFields[stockbasic.FieldTotalMv]
+	return ok
+}
+
+// ResetTotalMv resets all changes to the "total_mv" field.
+func (m *StockBasicMutation) ResetTotalMv() {
+	m.total_mv = nil
+	m.addtotal_mv = nil
+	delete(m.clearedFields, stockbasic.FieldTotalMv)
+}
+
 // SetPeTtm sets the "pe_ttm" field.
 func (m *StockBasicMutation) SetPeTtm(f float64) {
 	m.pe_ttm = &f
@@ -74458,7 +74530,7 @@ func (m *StockBasicMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *StockBasicMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 17)
 	if m.stock_code != nil {
 		fields = append(fields, stockbasic.FieldStockCode)
 	}
@@ -74491,6 +74563,9 @@ func (m *StockBasicMutation) Fields() []string {
 	}
 	if m.circ_mv != nil {
 		fields = append(fields, stockbasic.FieldCircMv)
+	}
+	if m.total_mv != nil {
+		fields = append(fields, stockbasic.FieldTotalMv)
 	}
 	if m.pe_ttm != nil {
 		fields = append(fields, stockbasic.FieldPeTtm)
@@ -74537,6 +74612,8 @@ func (m *StockBasicMutation) Field(name string) (ent.Value, bool) {
 		return m.FloatShare()
 	case stockbasic.FieldCircMv:
 		return m.CircMv()
+	case stockbasic.FieldTotalMv:
+		return m.TotalMv()
 	case stockbasic.FieldPeTtm:
 		return m.PeTtm()
 	case stockbasic.FieldPb:
@@ -74578,6 +74655,8 @@ func (m *StockBasicMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldFloatShare(ctx)
 	case stockbasic.FieldCircMv:
 		return m.OldCircMv(ctx)
+	case stockbasic.FieldTotalMv:
+		return m.OldTotalMv(ctx)
 	case stockbasic.FieldPeTtm:
 		return m.OldPeTtm(ctx)
 	case stockbasic.FieldPb:
@@ -74674,6 +74753,13 @@ func (m *StockBasicMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCircMv(v)
 		return nil
+	case stockbasic.FieldTotalMv:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalMv(v)
+		return nil
 	case stockbasic.FieldPeTtm:
 		v, ok := value.(float64)
 		if !ok {
@@ -74729,6 +74815,9 @@ func (m *StockBasicMutation) AddedFields() []string {
 	if m.addcirc_mv != nil {
 		fields = append(fields, stockbasic.FieldCircMv)
 	}
+	if m.addtotal_mv != nil {
+		fields = append(fields, stockbasic.FieldTotalMv)
+	}
 	if m.addpe_ttm != nil {
 		fields = append(fields, stockbasic.FieldPeTtm)
 	}
@@ -74751,6 +74840,8 @@ func (m *StockBasicMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFloatShare()
 	case stockbasic.FieldCircMv:
 		return m.AddedCircMv()
+	case stockbasic.FieldTotalMv:
+		return m.AddedTotalMv()
 	case stockbasic.FieldPeTtm:
 		return m.AddedPeTtm()
 	case stockbasic.FieldPb:
@@ -74791,6 +74882,13 @@ func (m *StockBasicMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddCircMv(v)
+		return nil
+	case stockbasic.FieldTotalMv:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalMv(v)
 		return nil
 	case stockbasic.FieldPeTtm:
 		v, ok := value.(float64)
@@ -74838,6 +74936,9 @@ func (m *StockBasicMutation) ClearedFields() []string {
 	if m.FieldCleared(stockbasic.FieldCircMv) {
 		fields = append(fields, stockbasic.FieldCircMv)
 	}
+	if m.FieldCleared(stockbasic.FieldTotalMv) {
+		fields = append(fields, stockbasic.FieldTotalMv)
+	}
 	if m.FieldCleared(stockbasic.FieldPeTtm) {
 		fields = append(fields, stockbasic.FieldPeTtm)
 	}
@@ -74881,6 +74982,9 @@ func (m *StockBasicMutation) ClearField(name string) error {
 		return nil
 	case stockbasic.FieldCircMv:
 		m.ClearCircMv()
+		return nil
+	case stockbasic.FieldTotalMv:
+		m.ClearTotalMv()
 		return nil
 	case stockbasic.FieldPeTtm:
 		m.ClearPeTtm()
@@ -74928,6 +75032,9 @@ func (m *StockBasicMutation) ResetField(name string) error {
 		return nil
 	case stockbasic.FieldCircMv:
 		m.ResetCircMv()
+		return nil
+	case stockbasic.FieldTotalMv:
+		m.ResetTotalMv()
 		return nil
 	case stockbasic.FieldPeTtm:
 		m.ResetPeTtm()

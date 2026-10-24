@@ -39,6 +39,9 @@ func (StockBasic) Fields() []ent.Field {
 		field.Float("circ_mv").Optional().Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "numeric(18,2)"}).
 			Comment("流通市值，元"),
+		field.Float("total_mv").Optional().Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "numeric(18,2)"}).
+			Comment("总市值，元（字典日级口径采集落数；盘中即席口径走 Quote 链 last×total_share，两口径勿混）"),
 		field.Float("pe_ttm").Optional().Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "numeric(12,4)"}),
 		field.Float("pb").Optional().Nillable().

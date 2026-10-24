@@ -1,4 +1,15 @@
 {
-  "countLock": 0,
-  "entries": []
+  "countLock": 3,
+  "entries": [
+    {
+      "file": "layout/BlankLayout.vue",
+      "literal": "#000",
+      "reason": "mask-image 径向渐隐的亮度通道遮罩色，不参与实际渲染配色，无语义令牌对应"
+    },
+    {
+      "file": "monitor/canvas-stage.ts",
+      "literal": "rgba(",
+      "reason": "withAlpha 颜色工具的模板串构造器 rgba(${…})（两条 return 共用一条登记），运行时拼接非固定色值"
+    }
+  ]
 }

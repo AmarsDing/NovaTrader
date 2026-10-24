@@ -4101,15 +4101,15 @@ func init() {
 	// stockbasic.IndustryValidator is a validator for the "industry" field. It is called by the builders before save.
 	stockbasic.IndustryValidator = stockbasicDescIndustry.Validators[0].(func(string) error)
 	// stockbasicDescStFlag is the schema descriptor for st_flag field.
-	stockbasicDescStFlag := stockbasicFields[13].Descriptor()
+	stockbasicDescStFlag := stockbasicFields[14].Descriptor()
 	// stockbasic.DefaultStFlag holds the default value on creation for the st_flag field.
 	stockbasic.DefaultStFlag = stockbasicDescStFlag.Default.(bool)
 	// stockbasicDescSuspendFlag is the schema descriptor for suspend_flag field.
-	stockbasicDescSuspendFlag := stockbasicFields[14].Descriptor()
+	stockbasicDescSuspendFlag := stockbasicFields[15].Descriptor()
 	// stockbasic.DefaultSuspendFlag holds the default value on creation for the suspend_flag field.
 	stockbasic.DefaultSuspendFlag = stockbasicDescSuspendFlag.Default.(bool)
 	// stockbasicDescUpdateTime is the schema descriptor for update_time field.
-	stockbasicDescUpdateTime := stockbasicFields[15].Descriptor()
+	stockbasicDescUpdateTime := stockbasicFields[16].Descriptor()
 	// stockbasic.DefaultUpdateTime holds the default value on creation for the update_time field.
 	stockbasic.DefaultUpdateTime = stockbasicDescUpdateTime.Default.(func() time.Time)
 	// stockbasic.UpdateDefaultUpdateTime holds the default value on update for the update_time field.

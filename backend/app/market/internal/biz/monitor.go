@@ -225,7 +225,7 @@ type IntradayAlertRow struct {
 }
 
 // IntradayAlerts 读某日盘中异动流水。minPct>0 时按触发幅度过滤；symbols 非空按代码过滤；
-// watchOnly 把当前盯盘候选池（watch 租约，含 web 自选与 strategy 池）并入过滤集。
+// watchOnly 把当前盯盘候选池（watch 租约，含 web 自选与 trade 进程租约；strategy 从未登记——FR-02-10 欠账）并入过滤集。
 func (u *Usecase) IntradayAlerts(ctx context.Context, day time.Time, minPct float64, symbols []string, watchOnly bool, now time.Time) ([]IntradayAlertRow, error) {
 	if watchOnly {
 		seen := make(map[string]bool, len(symbols))

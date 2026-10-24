@@ -3,8 +3,8 @@
  * F10 抽屉（方案 §6.5）：右锚 Teleport 浮层，订阅 stores/f10。
  * - 唤出：宿主经 f10.openFor(code, tab?)；遮罩点击 / Esc（useOverlay 栈顶）→ close()；
  * - 页签 ↔ store.tab 双向同步（NtTabs 既有件）：
- *   · 概况 = security 字典身份（代码/名称/市场/行业 + ST·停牌章）+ 估值（PE(TTM)/PB/流通市值，
- *     缺显「—」，总市值 stock_basic 无该列恒显「—」禁派生），角落标注来源「security 字典」；
+ *   · 概况 = security 字典身份（代码/名称/市场/行业 + ST·停牌章）+ 估值（PE(TTM)/PB/流通市值/总市值，
+ *     缺显「—」；总市值=字典日级 total_mv 原样透传，禁 total_share×现价派生），角落标注来源「security 字典」；
  *   · 公告 = intel.timeline 过滤 kind==='announcement' 全列（标题+时间+来源章）；
  *     有 url 新窗口打开，无 url 走内链 intel 面板；
  *   · 财务摘要 = 附录 B-3 端点未接入，显式占位不展示任何指标（避免虚构）；
@@ -79,14 +79,14 @@ const identityFields = computed(() => [
 ])
 
 /** 估值区：全走 security 字典（stock_basic 口径）；negative PE 守卫同 quote-sidebar，
- *  总市值字典未携带恒显「—」（不拿 total_share×现价派生）。 */
+ *  总市值=字典日级 total_mv 原样透传（不拿 total_share×现价派生，盘中即席口径另见行情报价）；缺失显「—」。 */
 const valuationFields = computed(() => {
   const b = basic.value
   return [
     { label: 'PE(TTM)', value: b?.peTtm ? b.peTtm.toFixed(1) : MISS },
     { label: 'PB', value: b?.pb ? b.pb.toFixed(2) : MISS },
     { label: '流通市值', value: b?.circMv ? compactAmount(b.circMv) : MISS },
-    { label: '总市值', value: MISS },
+    { label: '总市值', value: b?.totalMv ? compactAmount(b.totalMv) : MISS },
   ]
 })
 

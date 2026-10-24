@@ -1,9 +1,9 @@
 /**
  * 证券名称字典（方案 §6.2）纪律测试：
- * - put 合并：null/undefined/'' name 不覆盖已有名，updatedAt 只增；
+ * - put 合并：null/undefined/'' name 不覆盖已有名，updatedAt 只增且不被无时点补丁顶新；
  * - resolve hasName=false → UI 显「名称未返回」（数据纪律：没取到≠空串冒充）；
  * - ensure：注入 fetcher 后台补齐，300ms 批量合并 + 重复 ensure 去重 + 失败冷却 5min；
- * - LRU 3000 条封顶按 updatedAt 最旧淘汰；hydrate 从 localStorage 恢复。
+ * - LRU 3000 条封顶按写入时刻 seenAt 最旧淘汰；hydrate 从 localStorage 恢复。
  */
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -63,7 +63,7 @@ describe('put 合并纪律', () => {
     sec.put([{ code: '600519.SH', name: null, industry: '食品', updatedAt: 1000 }])
     expect(sec.get('600519.SH')?.industry).toBe('白酒')
     expect(sec.get('600519.SH')?.updatedAt).toBe(2000)
-    // 无 updatedAt 的补丁按 now 合并，updatedAt 不倒退。
+    // 无 updatedAt 的补丁不动服务端时点（避免污染 stale 闸）；带时点补丁照常推进。
     sec.put([{ code: '600519.SH', pb: 8.1, updatedAt: 3000 }])
     expect(sec.get('600519.SH')?.pb).toBe(8.1)
     expect(sec.get('600519.SH')?.updatedAt).toBe(3000)
@@ -149,7 +149,7 @@ describe('LRU 与持久化', () => {
     // updatedAt=0 的最老条目被淘汰，最新一条保留。
     expect(sec.basics.has('600000.SH')).toBe(false)
     expect(sec.basics.has('603000.SH')).toBe(true)
-    // 再来一条新码（updatedAt 取 now，最大）：留新汰旧，现存最老的 600001 被挤掉。
+    // 再来一条新码（写入时刻最新，seenAt 判据下必留）：留新汰旧，现存最老的 600001 被挤掉。
     sec.put([{ code: '699999.SH', name: 'X' }])
     expect(sec.basics.size).toBe(3000)
     expect(sec.basics.has('699999.SH')).toBe(true)

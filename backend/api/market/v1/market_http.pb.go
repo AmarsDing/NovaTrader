@@ -40,6 +40,7 @@ const OperationMarketGetSeatStats = "/api.market.v1.Market/GetSeatStats"
 const OperationMarketGetSectorHeat = "/api.market.v1.Market/GetSectorHeat"
 const OperationMarketGetSecurityBasics = "/api.market.v1.Market/GetSecurityBasics"
 const OperationMarketGetSentiment = "/api.market.v1.Market/GetSentiment"
+const OperationMarketGetWatchlist = "/api.market.v1.Market/GetWatchlist"
 const OperationMarketSearchSecurities = "/api.market.v1.Market/SearchSecurities"
 const OperationMarketSetWatchlist = "/api.market.v1.Market/SetWatchlist"
 
@@ -95,6 +96,8 @@ type MarketHTTPServer interface {
 	GetSecurityBasics(context.Context, *GetSecurityBasicsRequest) (*GetSecurityBasicsReply, error)
 	// GetSentiment 情绪截面，as_of 规则同上。
 	GetSentiment(context.Context, *GetSentimentRequest) (*Sentiment, error)
+	// GetWatchlist 读取候选池租约（只读）。owner 为空时返回全部未到期 owner 租约——登录即可读；单机私有部署要求各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。
+	GetWatchlist(context.Context, *GetWatchlistRequest) (*GetWatchlistReply, error)
 	// SearchSecurities 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
 	// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
 	// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
@@ -112,6 +115,7 @@ func RegisterMarketHTTPServer(s *http.Server, srv MarketHTTPServer) {
 	r.GET("/v1/market/limits", _Market_GetLimitBoards0_HTTP_Handler(srv))
 	r.GET("/v1/market/sectors", _Market_GetSectorHeat0_HTTP_Handler(srv))
 	r.POST("/v1/market/watchlist", _Market_SetWatchlist0_HTTP_Handler(srv))
+	r.GET("/v1/market/watchlist", _Market_GetWatchlist0_HTTP_Handler(srv))
 	r.GET("/v1/market/auction", _Market_GetAuction0_HTTP_Handler(srv))
 	r.GET("/v1/market/ladder", _Market_GetLadder0_HTTP_Handler(srv))
 	r.GET("/v1/market/limit-premium", _Market_GetLimitPremium0_HTTP_Handler(srv))
@@ -262,6 +266,25 @@ func _Market_SetWatchlist0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Cont
 			return err
 		}
 		reply := out.(*SetWatchlistReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetWatchlist0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetWatchlistRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetWatchlist)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetWatchlist(ctx, req.(*GetWatchlistRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetWatchlistReply)
 		return ctx.Result(200, reply)
 	}
 }
@@ -625,6 +648,8 @@ type MarketHTTPClient interface {
 	GetSecurityBasics(ctx context.Context, req *GetSecurityBasicsRequest, opts ...http.CallOption) (rsp *GetSecurityBasicsReply, err error)
 	// GetSentiment 情绪截面，as_of 规则同上。
 	GetSentiment(ctx context.Context, req *GetSentimentRequest, opts ...http.CallOption) (rsp *Sentiment, err error)
+	// GetWatchlist 读取候选池租约（只读）。owner 为空时返回全部未到期 owner 租约——登录即可读；单机私有部署要求各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。
+	GetWatchlist(ctx context.Context, req *GetWatchlistRequest, opts ...http.CallOption) (rsp *GetWatchlistReply, err error)
 	// SearchSecurities 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
 	// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
 	// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
@@ -936,6 +961,20 @@ func (c *MarketHTTPClientImpl) GetSentiment(ctx context.Context, in *GetSentimen
 	pattern := "/v1/market/sentiment"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetSentiment))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetWatchlist 读取候选池租约（只读）。owner 为空时返回全部未到期 owner 租约——登录即可读；单机私有部署要求各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。
+func (c *MarketHTTPClientImpl) GetWatchlist(ctx context.Context, in *GetWatchlistRequest, opts ...http.CallOption) (*GetWatchlistReply, error) {
+	var out GetWatchlistReply
+	pattern := "/v1/market/watchlist"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetWatchlist))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

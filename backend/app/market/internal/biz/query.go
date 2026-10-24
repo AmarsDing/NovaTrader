@@ -216,3 +216,8 @@ func (u *Usecase) SetWatchlist(owner string, symbols []string, ttl time.Duration
 	}
 	return u.watch.Set(owner, symbols, ttl, time.Now())
 }
+
+// GetWatchlist 读取候选池未到期租约（owner 为空=全部 owner）。
+func (u *Usecase) GetWatchlist(owner string) []LeaseInfo {
+	return u.watch.Leases(time.Now(), owner)
+}

@@ -39,6 +39,8 @@ type StockBasic struct {
 	FloatShare *int64 `json:"float_share,omitempty"`
 	// 流通市值，元
 	CircMv *float64 `json:"circ_mv,omitempty"`
+	// 总市值，元（字典日级口径采集落数；盘中即席口径走 Quote 链 last×total_share，两口径勿混）
+	TotalMv *float64 `json:"total_mv,omitempty"`
 	// PeTtm holds the value of the "pe_ttm" field.
 	PeTtm *float64 `json:"pe_ttm,omitempty"`
 	// Pb holds the value of the "pb" field.
@@ -59,7 +61,7 @@ func (*StockBasic) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case stockbasic.FieldStFlag, stockbasic.FieldSuspendFlag:
 			values[i] = new(sql.NullBool)
-		case stockbasic.FieldCircMv, stockbasic.FieldPeTtm, stockbasic.FieldPb:
+		case stockbasic.FieldCircMv, stockbasic.FieldTotalMv, stockbasic.FieldPeTtm, stockbasic.FieldPb:
 			values[i] = new(sql.NullFloat64)
 		case stockbasic.FieldID, stockbasic.FieldTotalShare, stockbasic.FieldFreeShare, stockbasic.FieldFloatShare:
 			values[i] = new(sql.NullInt64)
@@ -161,6 +163,13 @@ func (_m *StockBasic) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CircMv = new(float64)
 				*_m.CircMv = value.Float64
+			}
+		case stockbasic.FieldTotalMv:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field total_mv", values[i])
+			} else if value.Valid {
+				_m.TotalMv = new(float64)
+				*_m.TotalMv = value.Float64
 			}
 		case stockbasic.FieldPeTtm:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -276,6 +285,11 @@ func (_m *StockBasic) String() string {
 	builder.WriteString(", ")
 	if v := _m.CircMv; v != nil {
 		builder.WriteString("circ_mv=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.TotalMv; v != nil {
+		builder.WriteString("total_mv=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

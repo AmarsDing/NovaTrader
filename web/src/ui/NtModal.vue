@@ -70,7 +70,7 @@ function close() {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(4, 6, 12, 0.68);
+  background: var(--nt-scrim);
   backdrop-filter: blur(6px);
 }
 
@@ -83,7 +83,7 @@ function close() {
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-l);
   outline: none;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--nt-shadow-depth);
 }
 
 .nt-modal__head {

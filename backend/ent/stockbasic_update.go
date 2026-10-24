@@ -244,6 +244,33 @@ func (_u *StockBasicUpdate) ClearCircMv() *StockBasicUpdate {
 	return _u
 }
 
+// SetTotalMv sets the "total_mv" field.
+func (_u *StockBasicUpdate) SetTotalMv(v float64) *StockBasicUpdate {
+	_u.mutation.ResetTotalMv()
+	_u.mutation.SetTotalMv(v)
+	return _u
+}
+
+// SetNillableTotalMv sets the "total_mv" field if the given value is not nil.
+func (_u *StockBasicUpdate) SetNillableTotalMv(v *float64) *StockBasicUpdate {
+	if v != nil {
+		_u.SetTotalMv(*v)
+	}
+	return _u
+}
+
+// AddTotalMv adds value to the "total_mv" field.
+func (_u *StockBasicUpdate) AddTotalMv(v float64) *StockBasicUpdate {
+	_u.mutation.AddTotalMv(v)
+	return _u
+}
+
+// ClearTotalMv clears the value of the "total_mv" field.
+func (_u *StockBasicUpdate) ClearTotalMv() *StockBasicUpdate {
+	_u.mutation.ClearTotalMv()
+	return _u
+}
+
 // SetPeTtm sets the "pe_ttm" field.
 func (_u *StockBasicUpdate) SetPeTtm(v float64) *StockBasicUpdate {
 	_u.mutation.ResetPeTtm()
@@ -470,6 +497,15 @@ func (_u *StockBasicUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	}
 	if _u.mutation.CircMvCleared() {
 		_spec.ClearField(stockbasic.FieldCircMv, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.TotalMv(); ok {
+		_spec.SetField(stockbasic.FieldTotalMv, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTotalMv(); ok {
+		_spec.AddField(stockbasic.FieldTotalMv, field.TypeFloat64, value)
+	}
+	if _u.mutation.TotalMvCleared() {
+		_spec.ClearField(stockbasic.FieldTotalMv, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.PeTtm(); ok {
 		_spec.SetField(stockbasic.FieldPeTtm, field.TypeFloat64, value)
@@ -734,6 +770,33 @@ func (_u *StockBasicUpdateOne) ClearCircMv() *StockBasicUpdateOne {
 	return _u
 }
 
+// SetTotalMv sets the "total_mv" field.
+func (_u *StockBasicUpdateOne) SetTotalMv(v float64) *StockBasicUpdateOne {
+	_u.mutation.ResetTotalMv()
+	_u.mutation.SetTotalMv(v)
+	return _u
+}
+
+// SetNillableTotalMv sets the "total_mv" field if the given value is not nil.
+func (_u *StockBasicUpdateOne) SetNillableTotalMv(v *float64) *StockBasicUpdateOne {
+	if v != nil {
+		_u.SetTotalMv(*v)
+	}
+	return _u
+}
+
+// AddTotalMv adds value to the "total_mv" field.
+func (_u *StockBasicUpdateOne) AddTotalMv(v float64) *StockBasicUpdateOne {
+	_u.mutation.AddTotalMv(v)
+	return _u
+}
+
+// ClearTotalMv clears the value of the "total_mv" field.
+func (_u *StockBasicUpdateOne) ClearTotalMv() *StockBasicUpdateOne {
+	_u.mutation.ClearTotalMv()
+	return _u
+}
+
 // SetPeTtm sets the "pe_ttm" field.
 func (_u *StockBasicUpdateOne) SetPeTtm(v float64) *StockBasicUpdateOne {
 	_u.mutation.ResetPeTtm()
@@ -990,6 +1053,15 @@ func (_u *StockBasicUpdateOne) sqlSave(ctx context.Context) (_node *StockBasic, 
 	}
 	if _u.mutation.CircMvCleared() {
 		_spec.ClearField(stockbasic.FieldCircMv, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.TotalMv(); ok {
+		_spec.SetField(stockbasic.FieldTotalMv, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedTotalMv(); ok {
+		_spec.AddField(stockbasic.FieldTotalMv, field.TypeFloat64, value)
+	}
+	if _u.mutation.TotalMvCleared() {
+		_spec.ClearField(stockbasic.FieldTotalMv, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.PeTtm(); ok {
 		_spec.SetField(stockbasic.FieldPeTtm, field.TypeFloat64, value)

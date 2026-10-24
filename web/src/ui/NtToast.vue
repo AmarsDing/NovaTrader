@@ -53,7 +53,7 @@ const ICON: Record<string, IconName> = {
   background: var(--nt-bg-glass);
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-m);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--nt-shadow-depth);
   backdrop-filter: blur(10px);
   pointer-events: auto;
 }

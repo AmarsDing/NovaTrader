@@ -232,7 +232,7 @@ func (e *Eastmoney) DailyBars(ctx context.Context, q biz.BarQuery) (biz.BarBatch
 }
 
 func (e *Eastmoney) Securities(ctx context.Context) ([]biz.Security, error) {
-	rows, err := e.clist(ctx, emAShares, "f2,f12,f13,f14,f26,f38,f39")
+	rows, err := e.clist(ctx, emAShares, "f2,f12,f13,f14,f26,f38,f39,f100,f115,f23,f21,f20")
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +253,29 @@ func (e *Eastmoney) Securities(ctx context.Context) ([]biz.Security, error) {
 		}
 		if v := int64(r.f("f39")); v > 0 {
 			s.FloatShare = &v
+		}
+		// 行业 f100：停牌/未归板块时东财给哨兵 "-"——str() 回包原文，必须连 "-" 一起挡，
+		// 否则哨兵当真行业写库覆盖主源正确值（与下方四件套 has() 同一「没取到≠0」纪律）。
+		if v := r.str("f100"); v != "" && v != "-" {
+			s.Industry = v
+		}
+		// 估值四件套 f115/f23/f21/f20：必须先 has() 判在场——f() 的哨兵 0 与缺失不可区分，
+		// 而亏损股 PE 为负、负净资产 PB 为负都是真数据，「没取到≠0」只放行源头在场的值。
+		if r.has("f115") {
+			v := r.f("f115")
+			s.PeTtm = &v
+		}
+		if r.has("f23") {
+			v := r.f("f23")
+			s.Pb = &v
+		}
+		if r.has("f21") {
+			v := r.f("f21")
+			s.CircMv = &v
+		}
+		if r.has("f20") {
+			v := r.f("f20")
+			s.TotalMv = &v
 		}
 		items = append(items, s)
 	}

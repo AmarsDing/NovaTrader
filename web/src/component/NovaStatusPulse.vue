@@ -27,7 +27,7 @@ defineProps({
   height: 10px;
   margin: auto;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #7dfff8, var(--nt-accent));
+  background: radial-gradient(circle at 30% 30%, var(--nt-pulse-glow), var(--nt-accent));
   animation: nt-breathe 2.4s ease-in-out infinite;
   box-shadow: var(--nt-glow-accent);
 }

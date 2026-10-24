@@ -55,7 +55,7 @@ onUnmounted(() => {
   background: var(--nt-bg-3);
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-s);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--nt-shadow-depth);
   pointer-events: none;
 }
 

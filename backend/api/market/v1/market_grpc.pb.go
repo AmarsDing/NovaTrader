@@ -29,6 +29,7 @@ const (
 	Market_GetLimitBoards_FullMethodName      = "/api.market.v1.Market/GetLimitBoards"
 	Market_GetSectorHeat_FullMethodName       = "/api.market.v1.Market/GetSectorHeat"
 	Market_SetWatchlist_FullMethodName        = "/api.market.v1.Market/SetWatchlist"
+	Market_GetWatchlist_FullMethodName        = "/api.market.v1.Market/GetWatchlist"
 	Market_GetAuction_FullMethodName          = "/api.market.v1.Market/GetAuction"
 	Market_GetLadder_FullMethodName           = "/api.market.v1.Market/GetLadder"
 	Market_GetLimitPremium_FullMethodName     = "/api.market.v1.Market/GetLimitPremium"
@@ -65,6 +66,8 @@ type MarketClient interface {
 	GetSectorHeat(ctx context.Context, in *GetSectorHeatRequest, opts ...grpc.CallOption) (*GetSectorHeatReply, error)
 	// 登记候选池。同一 owner 再次登记会整体替换并续租。
 	SetWatchlist(ctx context.Context, in *SetWatchlistRequest, opts ...grpc.CallOption) (*SetWatchlistReply, error)
+	// 读取候选池租约（只读）。owner 为空时返回全部未到期 owner 租约——登录即可读；单机私有部署要求各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。
+	GetWatchlist(ctx context.Context, in *GetWatchlistRequest, opts ...grpc.CallOption) (*GetWatchlistReply, error)
 	// 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
 	GetAuction(ctx context.Context, in *GetAuctionRequest, opts ...grpc.CallOption) (*GetAuctionReply, error)
 	// 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
@@ -182,6 +185,16 @@ func (c *marketClient) SetWatchlist(ctx context.Context, in *SetWatchlistRequest
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetWatchlistReply)
 	err := c.cc.Invoke(ctx, Market_SetWatchlist_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetWatchlist(ctx context.Context, in *GetWatchlistRequest, opts ...grpc.CallOption) (*GetWatchlistReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWatchlistReply)
+	err := c.cc.Invoke(ctx, Market_GetWatchlist_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +379,8 @@ type MarketServer interface {
 	GetSectorHeat(context.Context, *GetSectorHeatRequest) (*GetSectorHeatReply, error)
 	// 登记候选池。同一 owner 再次登记会整体替换并续租。
 	SetWatchlist(context.Context, *SetWatchlistRequest) (*SetWatchlistReply, error)
+	// 读取候选池租约（只读）。owner 为空时返回全部未到期 owner 租约——登录即可读；单机私有部署要求各桌面互见彼此与 trade.* 进程的池（WS 不广播租约，此为本读口独有的有意暴露面）。
+	GetWatchlist(context.Context, *GetWatchlistRequest) (*GetWatchlistReply, error)
 	// 监控驾驶舱 P1（只读）：集合竞价截面汇总——竞价总额、竞价涨停清单、抢筹前 N。
 	GetAuction(context.Context, *GetAuctionRequest) (*GetAuctionReply, error)
 	// 监控驾驶舱 P1（只读）：连板梯队成功率（昨日 N 板今日封住 N+1 的比例）。
@@ -439,6 +454,9 @@ func (UnimplementedMarketServer) GetSectorHeat(context.Context, *GetSectorHeatRe
 }
 func (UnimplementedMarketServer) SetWatchlist(context.Context, *SetWatchlistRequest) (*SetWatchlistReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetWatchlist not implemented")
+}
+func (UnimplementedMarketServer) GetWatchlist(context.Context, *GetWatchlistRequest) (*GetWatchlistReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWatchlist not implemented")
 }
 func (UnimplementedMarketServer) GetAuction(context.Context, *GetAuctionRequest) (*GetAuctionReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAuction not implemented")
@@ -631,6 +649,24 @@ func _Market_SetWatchlist_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MarketServer).SetWatchlist(ctx, req.(*SetWatchlistRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetWatchlist_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWatchlistRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetWatchlist(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetWatchlist_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetWatchlist(ctx, req.(*GetWatchlistRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -957,6 +993,10 @@ var Market_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetWatchlist",
 			Handler:    _Market_SetWatchlist_Handler,
+		},
+		{
+			MethodName: "GetWatchlist",
+			Handler:    _Market_GetWatchlist_Handler,
 		},
 		{
 			MethodName: "GetAuction",
