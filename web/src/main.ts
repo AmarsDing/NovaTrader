@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSecurityStore } from '@/stores/security'
 import { useSettingsStore } from '@/stores/settings'
 import { startServerClock } from '@/utils/server-clock'
+import { primeQuietFromServer } from '@/utils/alert-quiet-server'
 
 import './style/global.css'
 
@@ -36,6 +37,9 @@ async function bootstrap() {
   await auth.hydrate()
   // P2-10：先挂钟再挂 UI——倒计时/时段显示首帧即可吃到校准源的降级态（未成功前=本地钟）。
   startServerClock()
+  // 汇聚与静默服务端首次同步（M12 §8.3 存储级后端化）：尽力而为不拦挂载，
+  // 失败仅丢配置漫游（toast 决策仍以本机即时态为准）。
+  void primeQuietFromServer()
   app.mount('#app')
 }
 

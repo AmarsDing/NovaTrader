@@ -27,6 +27,12 @@ import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { statusOf } from '@/ui/status-map'
 import type { AlertLevel } from '@/ui/alert-levels'
 import { loadQuiet, saveQuiet, type QuietWindow } from '@/utils/alert-quiet'
+import {
+  primeQuietFromServer,
+  quietSyncState,
+  quietSyncVersion,
+  scheduleQuietPush,
+} from '@/utils/alert-quiet-server'
 import { clock } from '@/utils/format'
 
 const REFRESH_MS = 15000
@@ -181,8 +187,9 @@ const emptyText = computed(() => {
 })
 
 /* ---------- 汇聚与静默（§8.3/§8.5） ----------
- * 读写全走 utils/alert-quiet（localStorage 持久化，读路径全容错，L4 恒直通不在级别选项内）。
- * 后端字段留账：proto 扩 alert_rule 冷却/静默字段、改服务端持久化，待 e4 ent 落批后接——本区先落本机。 */
+ * 持久化双轨：utils/alert-quiet 的 localStorage 是即时读缓存（toast 决策同步读），
+ * 服务端 strategy_config（app.alert.quiet.*）是跨机权威层，经 alert-quiet-server
+ * prime/防抖回推同步；viewer 角色只读本机，状态经 quietSyncState 如实呈现。 */
 const cooldownMin = ref('')
 const quietWindows = ref<QuietWindow[]>([])
 
@@ -199,11 +206,16 @@ watch(cooldownMin, (raw) => {
   const minutes = Number(raw)
   if (!raw.trim() || !Number.isFinite(minutes) || minutes < 0) return
   saveQuiet({ ...loadQuiet(), cooldownMs: minutes * 60000 })
+  scheduleQuietPush()
 })
 
 function persistQuietWindows() {
   saveQuiet({ ...loadQuiet(), windows: quietWindows.value.filter((w) => HHMM_RE.test(w.start) && HHMM_RE.test(w.end)) })
+  scheduleQuietPush()
 }
+
+/* 服务端采纳（prime/冲突回采）会顶掉本机值：编辑草稿同步重拽，不留陈旧窗。 */
+watch(quietSyncVersion, () => syncQuietDraft())
 
 function addQuietWindow() {
   /* 默认隔夜窗 + L1/L2：L3 重要不默认压，留用户自行抬手。 */
@@ -227,6 +239,10 @@ function setQuietLevel(w: QuietWindow, level: AlertLevel, on: boolean) {
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
   void load()
+  /* 每上下文只 prime 一次（boot 已先发）：面板挂载补打覆盖 boot 失败那一路。 */
+  void primeQuietFromServer().then((ok) => {
+    if (ok) syncQuietDraft()
+  })
   syncQuietDraft()
   timer = setInterval(() => {
     if (!saving.value) void load()
@@ -334,6 +350,8 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <p class="nt-note">L4 风险不受静默与冷却限制，始终全屏直达。</p>
+        <p v-if="quietSyncState === 'readonly'" class="nt-note">以查看角色登录：本区修改只在本机生效，不会写入服务器。</p>
+        <p v-else-if="quietSyncState === 'error'" class="nt-note">服务器同步暂不可用：修改已保存在本机，恢复后即为准。</p>
       </div>
     </section>
   </div>

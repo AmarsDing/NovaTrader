@@ -102,6 +102,8 @@ func Target(key string) (service, effective string) {
 		return "trade", "下一次信号消费读取；配置缓存最长5秒"
 	case strings.HasPrefix(key, "app.notify."):
 		return "notify", "下一次通知读取；配置缓存最长5秒"
+	case strings.HasPrefix(key, "app.alert."):
+		return "admin", "前端经 /api/config 快照读取；下一次拉取生效"
 	default:
 		return "unknown", "加载点未登记"
 	}
@@ -222,6 +224,12 @@ var appAllowed = func() map[string]string {
 	add("tier", "agent.technical agent.capital agent.news agent.external agent.synthesis agent.briefing agent.explain agent.ask")
 	add("weight", "agent.w.technical agent.w.news agent.w.capital agent.w.external")
 	add("provider", "kb.provider")
+	// 告警汇聚与静默（M12 §8.3，存储级后端化）：面板级 toast 配置持久化走
+	// strategy_config——消费侧仍是前端 toast 层，引擎行为与通知历史不变；
+	// localStorage 保留为即时读缓存与离线回退。服务端不加表不加列（一次性引擎
+	// 无按规则冷却的消费者，躺列即冗余）。
+	add("quietcooldown", "alert.quiet.cooldown_ms")
+	add("quietwindows", "alert.quiet.windows")
 	// 数据源键族：源级 qps/quota(0=不限)/timeout_sec 与域级降级链 sources。
 	for _, s := range dsSourceNames {
 		m["app.ds."+s+".qps"] = "qps"
@@ -366,6 +374,15 @@ func ValidatePatch(current, patch map[string]string) (map[string]string, error) 
 				if err := checkTemplateChain(key, value); err != nil {
 					return nil, err
 				}
+			case "quietcooldown":
+				n, e := strconv.ParseFloat(value, 64)
+				if e != nil || math.IsNaN(n) || math.IsInf(n, 0) || math.Trunc(n) != n || n < 0 || n > 86400000 {
+					return nil, fmt.Errorf("%s: 同因冷却需在0到86400000毫秒的整数（0=不抑制）", key)
+				}
+			case "quietwindows":
+				if err := checkQuietWindows(key, value); err != nil {
+					return nil, err
+				}
 			case "score0100":
 				n, e := strconv.ParseFloat(value, 64)
 				if e != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 100 {
@@ -445,6 +462,80 @@ func checkTemplateChain(key, raw string) error {
 		seen[n] = true
 	}
 	return nil
+}
+
+// quietWindow 对应前端 alert-quiet.ts 的静默窗：HH:MM 起止 + 适用级别（跨午交由
+// 消费侧 inQuietWindow 两段并集消化）。L4 恒直通（M12 §8.3），服务端不入选项——
+// 拒收 L4 可避免配置页手写引入「休眠 L4」的歧义。
+// 空串清除覆盖走 appAllowed 既有空值分支，不经这里。
+type quietWindow struct {
+	Start  string   `json:"start"`
+	End    string   `json:"end"`
+	Levels []string `json:"levels"`
+}
+
+var quietLevelSet = map[string]bool{"L1": true, "L2": true, "L3": true}
+
+// checkQuietWindows 校验 app.alert.quiet.windows：严格 JSON 数组（拒尾随垃圾与
+// 未知字段），窗 0..8 个、起止 HH:MM 且零长度窗拒收、级别仅 L1..L3 窗内去重。
+// 错误文案不携带提交值。
+func checkQuietWindows(key, raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "[") {
+		return fmt.Errorf("%s: 静默窗需为JSON数组", key)
+	}
+	var ws []quietWindow
+	d := json.NewDecoder(strings.NewReader(trimmed))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&ws); err != nil {
+		return fmt.Errorf("%s: 静默窗需为JSON数组", key)
+	}
+	var trailing any
+	if err := d.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("%s: 静默窗必须是单个JSON数组", key)
+	}
+	if len(ws) > 8 {
+		return fmt.Errorf("%s: 静默窗数量需在0到8", key)
+	}
+	for _, w := range ws {
+		s, sok := hhmmToMinutes(w.Start)
+		e, eok := hhmmToMinutes(w.End)
+		if !sok || !eok {
+			return fmt.Errorf("%s: 静默窗起止需为HH:MM", key)
+		}
+		if s == e {
+			return fmt.Errorf("%s: 静默窗起止不能相同", key)
+		}
+		if len(w.Levels) < 1 || len(w.Levels) > 3 {
+			return fmt.Errorf("%s: 静默窗级别需在1到3项", key)
+		}
+		seen := map[string]bool{}
+		for _, l := range w.Levels {
+			if !quietLevelSet[l] {
+				return fmt.Errorf("%s: 静默窗级别仅L1到L3（L4恒直通）", key)
+			}
+			if seen[l] {
+				return fmt.Errorf("%s: 静默窗级别不得重复", key)
+			}
+			seen[l] = true
+		}
+	}
+	return nil
+}
+
+// hhmmToMinutes 把 'H:MM'/'HH:MM' 解析为当日分钟数；与前端 alert-levels.ts
+// parseHHMM 同一容差（小时 1..2 位、分钟恒两位，0..23 / 0..59）。
+func hhmmToMinutes(raw string) (int, bool) {
+	hm, m, ok := strings.Cut(strings.TrimSpace(raw), ":")
+	if !ok || len(hm) < 1 || len(hm) > 2 || len(m) != 2 {
+		return 0, false
+	}
+	h, err1 := strconv.Atoi(hm)
+	mi, err2 := strconv.Atoi(m)
+	if err1 != nil || err2 != nil || h < 0 || h > 23 || mi < 0 || mi > 59 {
+		return 0, false
+	}
+	return h*60 + mi, true
 }
 
 // tradeTemplateNames 现行生产模板白名单。同步纪律：与 pkg/rules 注册的模板常量

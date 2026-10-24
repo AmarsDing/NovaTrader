@@ -196,3 +196,50 @@ func TestParseDrillReceipt(t *testing.T) {
 		t.Fatal("empty object must not parse")
 	}
 }
+
+func TestAlertQuietKeys(t *testing.T) {
+	good := map[string]string{
+		"app.alert.quiet.cooldown_ms": "60000",
+		"app.alert.quiet.windows":     `[{"start":"22:00","end":"07:00","levels":["L1","L2"]},{"start":"7:30","end":"09:25","levels":["L3"]}]`,
+	}
+	if _, err := ValidatePatch(nil, good); err != nil {
+		t.Fatal(err)
+	}
+	bads := []map[string]string{
+		{"app.alert.quiet.cooldown_ms": "-1"},
+		{"app.alert.quiet.cooldown_ms": "86400001"},
+		{"app.alert.quiet.cooldown_ms": "1.5"},
+		{"app.alert.quiet.windows": `{"start":"22:00"}`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"07:00","levels":["L1"]}] trailing`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"07:00","levels":["L1"],"extra":1}]`},
+		{"app.alert.quiet.windows": `[{"start":"24:00","end":"07:00","levels":["L1"]}]`},
+		{"app.alert.quiet.windows": `[{"start":"22:0","end":"07:00","levels":["L1"]}]`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"22:00","levels":["L1"]}]`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"07:00","levels":[]}]`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"07:00","levels":["L4"]}]`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"07:00","levels":["L1","L1"]}]`},
+		{"app.alert.quiet.windows": `[{"start":"22:00","end":"07:00","levels":["L1"],"x":1},{"start":"01:00","end":"02:00","levels":["L1"]},{"start":"03:00","end":"04:00","levels":["L1"]},{"start":"05:00","end":"06:00","levels":["L1"]},{"start":"09:00","end":"10:00","levels":["L1"]},{"start":"11:00","end":"12:00","levels":["L1"]},{"start":"13:00","end":"14:00","levels":["L1"]},{"start":"15:00","end":"16:00","levels":["L1"]},{"start":"17:00","end":"18:00","levels":["L1"]}]`},
+	}
+	for _, v := range bads {
+		if _, e := ValidatePatch(nil, v); e == nil {
+			t.Errorf("accepted invalid alert quiet patch %v", v)
+		}
+	}
+	// 空串=清覆盖回落前端默认，两键都可回收；空数组=显式「无静默窗」也合法。
+	if _, err := ValidatePatch(nil, map[string]string{"app.alert.quiet.windows": `[]`}); err != nil {
+		t.Fatal("explicit empty window list must pass")
+	}
+	if _, err := ValidatePatch(good, map[string]string{"app.alert.quiet.cooldown_ms": "", "app.alert.quiet.windows": ""}); err != nil {
+		t.Fatal(err)
+	}
+	// 静默配置经 /api/config 快照下发前端：Target 必须登记（unknown 会被快照过滤）。
+	if svc, _ := Target("app.alert.quiet.cooldown_ms"); svc == "unknown" {
+		t.Fatal("quiet cooldown key must be routed, not unknown")
+	}
+	if svc, _ := Target("app.alert.quiet.windows"); svc == "unknown" {
+		t.Fatal("quiet windows key must be routed, not unknown")
+	}
+	if Secret("app.alert.quiet.cooldown_ms") || Secret("app.alert.quiet.windows") {
+		t.Fatal("quiet keys are display config, must stay readable in snapshot values")
+	}
+}
