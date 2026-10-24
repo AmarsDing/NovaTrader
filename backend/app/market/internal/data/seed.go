@@ -18,8 +18,9 @@ var defaultSeats = []struct {
 	{"深股通专用", market.SeatNorth, "深股通"},
 }
 
-// 板块代码是通达信行业（tdxhy.cfg 第三列，本机 incon.dat 的名称）。
-// M01 当前会写入涨跌幅的外围代码只有 CL。黄金、半导体要等行情代码落地后再加。
+// 板块代码是通达信行业（tdxhy.cfg 第三列，本机 incon.dat 的名称，2026-10-24 逐项对本地 incon.dat 核实。
+// M01 外围代码已落地：CL（WTI）、XAU（COMEX黄金）、SOX（费城半导体）；航空以油价反向映射承载
+// （油价上行压航空利润，权重取负）。
 var defaultMappings = []struct {
 	asset, sector string
 	weight        float64
@@ -27,6 +28,9 @@ var defaultMappings = []struct {
 }{
 	{"CL", "T010301", 1, "WTI → 石油开采"},
 	{"CL", "T010302", 0.5, "WTI → 石油加工"},
+	{"CL", "T0701", -1, "WTI 上行压航空利润（反向映射）"},
+	{"XAU", "T020204", 1, "COMEX黄金 → 黄金"},
+	{"SOX", "T1203", 1, "费城半导体 → 半导体"},
 }
 
 // EnsureDefaults 补默认行。已有行不更新，人工改过的标签和权重保留。

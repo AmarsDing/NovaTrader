@@ -519,15 +519,16 @@ def ak_global():
         df = ak.stock_us_spot_em()
         if df is not None and not df.empty:
             row = df.iloc[0]
-            items.append(
-                {
-                    "code": "US_SPOT",
-                    "name": str(row.get("名称", "美股")),
-                    "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
-                    "close": float(row.get("最新价", 0) or 0),
-                    "pct_chg": float(row.get("涨跌幅", 0) or 0),
-                }
-            )
+            item = {
+                "code": "US_SPOT",
+                "name": str(row.get("名称", "美股")),
+                "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
+                "close": float(row.get("最新价", 0) or 0),
+            }
+            pct = row.get("涨跌幅")
+            if pct not in (None, ""):
+                item["pct_chg"] = float(pct)
+            items.append(item)
     except Exception:
         pass
     try:
@@ -542,8 +543,8 @@ def ak_global():
             }
             pct = usdcny_pct_chg(ak)
             if pct is None:
-                # 数据纪律「没取到≠0」：上一收盘不可得则缺键表达缺失，绝不写 0.0 冒充。
-                logger.warning("ak_global: USDCNH pct_chg 上一收盘不可得，载荷缺键（datahub 必填列将落 0，治理债见 M13-T12b）")
+                # 数据纪律「没取到≠0」：上一收盘不可得则缺键表达缺失（datahub 列已可空，落 NULL，T12c 已销）
+                logger.warning("ak_global: USDCNH pct_chg 上一收盘不可得，载荷缺键（T12c 后落 NULL，不再冒充 0）")
             else:
                 item["pct_chg"] = pct
             items.append(item)
@@ -553,15 +554,48 @@ def ak_global():
         df = ak.futures_foreign_commodity_realtime(symbol="NYMEX原油")
         if df is not None and not df.empty:
             row = df.iloc[0]
-            items.append(
-                {
-                    "code": "CL",
-                    "name": "WTI原油",
-                    "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
-                    "close": float(row.get("最新价", 0) or 0),
-                    "pct_chg": float(row.get("涨跌幅", 0) or 0),
-                }
-            )
+            item = {
+                "code": "CL",
+                "name": "WTI原油",
+                "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
+                "close": float(row.get("最新价", 0) or 0),
+            }
+            pct = row.get("涨跌幅")
+            if pct not in (None, ""):
+                item["pct_chg"] = float(pct)
+            items.append(item)
+    except Exception:
+        pass
+    try:
+        df = ak.futures_foreign_commodity_realtime(symbol="COMEX黄金")
+        if df is not None and not df.empty:
+            row = df.iloc[0]
+            item = {
+                "code": "XAU",
+                "name": "COMEX黄金",
+                "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
+                "close": float(row.get("最新价", 0) or 0),
+            }
+            pct = row.get("涨跌幅")
+            if pct not in (None, ""):
+                item["pct_chg"] = float(pct)
+            items.append(item)
+    except Exception:
+        pass
+    try:
+        df = ak.macro_global_sox_index()
+        if df is not None and not df.empty:
+            row = df.iloc[-1]  # 按日期升序，最新收盘在末行
+            item = {
+                "code": "SOX",
+                "name": "费城半导体指数",
+                "trade_date": str(row.get("日期", datetime.now(SHANGHAI).date())),
+                "close": float(row.get("最新值", 0) or 0),
+            }
+            pct = row.get("涨跌幅")
+            if pct not in (None, ""):
+                item["pct_chg"] = float(pct)
+            items.append(item)
     except Exception:
         pass
     if len(items) < 1:
