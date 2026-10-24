@@ -45,6 +45,24 @@ func firstBoard(symbol string) rules.Snapshot {
 	}
 }
 
+// deepBaseBoard 与 firstBoard 同为模板一样本（昨日首板、今日高开高走，规则分约 94），
+// 但老基线在 12 元、最近两日砸到 10 元后才首板反包：近窗 [10, 11, 11.45](含当日 +4%)
+// 相对基线 [12×10] 偏离约 -9.9%——B9 形态判 fading。
+func deepBaseBoard(symbol string) rules.Snapshot {
+	bars := make([]rules.Bar, 28)
+	for i := range bars {
+		bars[i] = rules.Bar{Open: 12, High: 12.05, Low: 11.95, Close: 12, Volume: 1e7, Amount: 1.2e8}
+	}
+	bars = append(bars,
+		rules.Bar{Open: 12, High: 12.05, Low: 9.95, Close: 10, Volume: 1e7, Amount: 1.1e8},
+		rules.Bar{Open: 10.2, High: 11, Low: 10, Close: 11, Volume: 3e7, Amount: 3.6e8},
+	)
+	return rules.Snapshot{
+		Symbol: symbol, Name: "深基" + symbol, ListDate: since, AsOf: asOf, Stage: rules.StageWarm, Bars: bars,
+		Today: &rules.Bar{Open: 11.22, High: 11.9, Low: 11.2, Close: 11.45, Volume: 5e6, Amount: 5.7e7},
+	}
+}
+
 type fakeMarket struct {
 	snaps  []rules.Snapshot
 	closes map[string]map[string]float64
@@ -490,6 +508,44 @@ func TestScanDiscardedAndBelow(t *testing.T) {
 	if c := e.cands.get("600000.SH"); c.Stage != StageAIScored || c.AIScore == nil || c.FinalScore == nil {
 		t.Fatalf("candidate %+v", c)
 	}
+}
+
+// TestScanMissShape B9 形态前置（scan.go eligible 闸段，先于 AITopN 截断）：
+// 深基首板样本 deepBaseBoard 近窗远低于基线判 fading——不配 AI 券、券位顺位让给次名。
+func TestScanMissShape(t *testing.T) {
+	t.Run("fading 不配 AI 券", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), nil, firstBoard("600000.SH"), deepBaseBoard("600001.SH"))
+		rep := scan(t, e, ScanRequest{})
+		if rep.AICalls != 1 || len(rep.Signals) != 1 || rep.Misses[MissShape] != 1 {
+			t.Fatalf("report %+v", rep)
+		}
+		c := e.cands.get("600001.SH")
+		if c == nil || c.MissReason != MissShape || c.Stage != StageRanked {
+			t.Fatalf("fading candidate %+v", c)
+		}
+	})
+
+	t.Run("MissShape 先占先序：券位让给次名", func(t *testing.T) {
+		// deepBaseBoard 规则分（约 94）高于 firstBoard（约 87）且排首位：
+		// AITopN=1 下它若占券位，firstBoard 必归 not_in_ai_top 且零 AI 调用——
+		// 本断言反向钉死：形态闸先于截断执行，券位让出，次名照常进 AI。
+		e := newEnv(t, scoreAI(80), map[string]string{"m06.ai_top_n": "1"}, firstBoard("600000.SH"), deepBaseBoard("600001.SH"))
+		rep := scan(t, e, ScanRequest{})
+		if rep.AICalls != 1 || len(rep.Signals) != 1 {
+			t.Fatalf("report %+v", rep)
+		}
+		if rep.Misses[MissShape] != 1 || rep.Misses[MissNotInAITop] != 0 {
+			t.Fatalf("misses %+v", rep.Misses)
+		}
+	})
+
+	t.Run("shape.band 为 0 关停本件", func(t *testing.T) {
+		e := newEnv(t, scoreAI(80), map[string]string{"m06.shape.band": "0"}, firstBoard("600000.SH"), deepBaseBoard("600001.SH"))
+		rep := scan(t, e, ScanRequest{})
+		if rep.AICalls != 2 || rep.Misses[MissShape] != 0 || len(rep.Signals) != 2 {
+			t.Fatalf("report %+v", rep)
+		}
+	})
 }
 
 func TestScanGuards(t *testing.T) {

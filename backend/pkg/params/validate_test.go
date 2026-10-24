@@ -6,13 +6,13 @@ func TestStrictCatalogueAndRanges(t *testing.T) {
 	if _, err := ValidatePatch(nil, map[string]string{"market.sentiment.rules": "{} {}"}); err == nil {
 		t.Fatal("trailing JSON accepted")
 	}
-	bad := []map[string]string{{"m06.unknown": "1"}, {"m06.rule_top_n": "2.5"}, {"m06.select_score": "NaN"}, {"m06.select_score": "101"}, {"app.brain.large.url": "http://user:secret@localhost"}, {"market.sentiment.rules": `{"injected":1}`}, {"market.sector.weights": `{"min_members":0}`}, {"risk.max_single_pct": "2"}, {"risk.live_admitted": "true"}}
+	bad := []map[string]string{{"m06.unknown": "1"}, {"m06.rule_top_n": "2.5"}, {"m06.select_score": "NaN"}, {"m06.select_score": "101"}, {"app.brain.large.url": "http://user:secret@localhost"}, {"market.sentiment.rules": `{"injected":1}`}, {"market.sector.weights": `{"min_members":0}`}, {"risk.max_single_pct": "2"}, {"risk.live_admitted": "true"}, {"m06.shape.recent": "0"}, {"m06.shape.recent": "2.5"}, {"m06.shape.band": "1.5"}}
 	for _, v := range bad {
 		if _, e := ValidatePatch(nil, v); e == nil {
 			t.Errorf("accepted invalid patch keys %v", v)
 		}
 	}
-	valid := map[string]string{"app.brain.large.key": "secret", "m06.rule_top_n": "20", "risk.max_single_pct": "0.05", "market.sentiment.rules": `{"hot_min_up":80}`}
+	valid := map[string]string{"app.brain.large.key": "secret", "m06.rule_top_n": "20", "risk.max_single_pct": "0.05", "market.sentiment.rules": `{"hot_min_up":80}`, "m06.shape.recent": "3", "m06.shape.base": "10", "m06.shape.band": "0.03"}
 	if _, err := ValidatePatch(nil, valid); err != nil {
 		t.Fatal(err)
 	}

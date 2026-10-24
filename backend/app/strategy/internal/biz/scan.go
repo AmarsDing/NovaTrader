@@ -34,6 +34,9 @@ const (
 	MissKillSwitch = "killswitch"
 	MissCutoff     = "after_cutoff"
 	MissNoQuote    = "no_quote"
+	// MissShape 是 B9 形态前置归因：近窗相对基线明显走弱（fading），不配 AI 券。
+	// 先于 AITopN 截断执行（见漏斗 eligible 闸段注释）。
+	MissShape = "miss_shape"
 )
 
 // 扫描取数缺失标记（数据纪律「没取到≠0」，M13-T01）。出现在 ScanReport.Missing
@@ -173,6 +176,14 @@ func (uc *Usecase) Scan(ctx context.Context, req ScanRequest) (*ScanReport, erro
 		}
 		if cooled {
 			rows[i].MissReason = MissCooldown
+			continue
+		}
+		// B9 形态前置（先于 AITopN 截断）：近窗相对基线明显走弱（fading）的候选
+		// 直接归 miss_shape、不占 eligible 额——被它占走的 AITopN 券顺位让出。
+		// rising/holding 照常进 AI；missing（数据不足或含 0/负价）不惩罚，
+		// 取数问题交给 AI fail-open 与数据纪律，不在这里假想形态。
+		if p.Shape.Band > 0 && rules.ShapeOfSnapshot(c.Snapshot, p.Shape.Recent, p.Shape.Base, p.Shape.Band) == rules.ShapeFading {
+			rows[i].MissReason = MissShape
 			continue
 		}
 		eligible = append(eligible, i)

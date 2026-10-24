@@ -84,6 +84,7 @@ type Params struct {
 	Funnel       rules.FunnelParams
 	Fuse         rules.FuseParams
 	Price        rules.PriceParams
+	Shape        rules.ShapeParams // B9 形态前置滤 AI（Band<=0 关停）
 	Strategies   []rules.Strategy
 	AITopN       int
 	MaxDaily     int
@@ -116,6 +117,7 @@ func LoadParams(values map[string]string, version *int) Params {
 		Funnel:       rules.LoadFunnel(get),
 		Fuse:         rules.LoadFuse(get),
 		Price:        rules.LoadPrice(get),
+		Shape:        rules.LoadShape(get),
 		Strategies:   rules.Templates(get),
 		AITopN:       int(num("m06.ai_top_n", 30)),
 		MaxDaily:     int(num("m06.max_daily_signals", 5)),

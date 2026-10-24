@@ -193,10 +193,13 @@ var numericRules = func() map[string]numberRule {
 	add("rule_top_n ai_top_n max_daily_signals", 0, 10000, true)
 	add("signal_ttl_minutes buy_cooldown_minutes sell_cooldown_minutes", 1, 10080, true)
 	add("atr_period pd.lookback fb.hold_days pd.hold_days", 1, 1000, true)
+	// B9 形态前置窗口（pkg/rules/shape.go）：近窗/基线根数下限 1。
+	add("shape.recent shape.base", 1, 250, true)
 	add("min_amount fb.big_amount", 0, 1e14, false)
 	add("rule_weight ai_weight stage_coef.ICE stage_coef.RECOVER stage_coef.WARM stage_coef.HOT stage_coef.FADE stop_atr take_atr entry_band_atr fb.amount_ratio pd.strong_gain pd.shrink_max", 0, 100, false)
 	add("select_score high_score", 0, 100, false)
-	add("max_stop_pct sell_slip_pct position_per_stock normal_position_factor fb.gap_min fb.gap_max fb.strength_min pd.dd_min pd.dd_max pd.dd_ideal pd.ma_band pd.rebound_min pd.floor_pct", 0, 1, false)
+	// shape.band 0 = 扫描层关停形态前置（语义见 pkg/rules 与 scan.go 闸段注释）。
+	add("max_stop_pct sell_slip_pct position_per_stock normal_position_factor fb.gap_min fb.gap_max fb.strength_min pd.dd_min pd.dd_max pd.dd_ideal pd.ma_band pd.rebound_min pd.floor_pct shape.band", 0, 1, false)
 	return m
 }()
 var appAllowed = func() map[string]string {
