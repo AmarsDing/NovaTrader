@@ -61,8 +61,9 @@ func TestDayBarsCacheRetentionAndClone(t *testing.T) {
 }
 
 // 全市场调研（代码数 > symbolFilter）按交易日缓存：同一天第二次调研不再请求 market——
-// 窗口内 market 端后补写的日线对缓存不可见；换天即重查。小批量按代码拉取不缓存，
-// 随时可见新行。M13-T01 后日线改走 market HTTP 按代码拉取，语义由请求计数钉住。
+// 窗口内 market 端后补写的日线对缓存不可见；换天即重查。小批量直拉不缓存，
+// 随时可见新行。M13-T01 后日线改走 market HTTP；W2 收敛为批量分包
+// （batchSymbols=500/包），缓存语义由批量请求计数钉住。
 func TestDailyBarsCacheFullMarketBranch(t *testing.T) {
 	stub := newStubMarket()
 	defer stub.Close()
@@ -79,15 +80,19 @@ func TestDailyBarsCacheFullMarketBranch(t *testing.T) {
 	for i := range many {
 		many[i] = fmt.Sprintf("60%04d.SH", i)
 	}
+	chunks := int32((len(many) + batchSymbols - 1) / batchSymbols) // 1001 码 → 3 包
 
 	got, err := ms.dailyBars(ctx, many, asOf)
 	if err != nil || len(got) != 2 {
 		t.Fatalf("first scan = %d, err %v", len(got), err)
 	}
-	if n := stub.barsReq.Load(); n != int32(len(many)) {
-		t.Fatalf("per-symbol fetch must hit market %d times, got %d", len(many), n)
+	if n := stub.batchReq.Load(); n != chunks {
+		t.Fatalf("batch fetch must hit market %d times, got %d", chunks, n)
 	}
-	baseline := stub.barsReq.Load()
+	if n := stub.barsReq.Load(); n != 0 {
+		t.Fatalf("batch path must not touch per-symbol endpoint: %d", n)
+	}
+	baseline := stub.batchReq.Load()
 
 	// 同日缓存命中：market 端补写的 10-07 日线必须不可见（这次没有请求）。
 	stub.setBars("600002.SH", bar("2026-10-07", 30, 1))
@@ -95,7 +100,7 @@ func TestDailyBarsCacheFullMarketBranch(t *testing.T) {
 	if err != nil || len(again) != 2 {
 		t.Fatalf("cached day must not re-query, late row must stay invisible: %d %v", len(again), err)
 	}
-	if n := stub.barsReq.Load(); n != baseline {
+	if n := stub.batchReq.Load(); n != baseline {
 		t.Fatalf("same day must be served from cache: requests %d → %d", baseline, n)
 	}
 
@@ -114,10 +119,10 @@ func TestDailyBarsCacheFullMarketBranch(t *testing.T) {
 	if err != nil || len(fresh) != 3 {
 		t.Fatalf("new day must re-query: %d %v", len(fresh), err)
 	}
-	if n := stub.barsReq.Load(); n != baseline*2 {
-		t.Fatalf("new day must re-fetch every symbol: %d", n)
+	if n := stub.batchReq.Load(); n != baseline+chunks {
+		t.Fatalf("new day must re-fetch all chunks: %d", n)
 	}
-	baseline = stub.barsReq.Load()
+	baseline = stub.batchReq.Load()
 
 	// 小批量分支不缓存：再补一根立刻可见（600000.SH 变 2 根）。
 	stub.setBars("600000.SH", bar(prev, 10, 1), bar("2026-10-06", 9, 1))
@@ -125,7 +130,7 @@ func TestDailyBarsCacheFullMarketBranch(t *testing.T) {
 	if err != nil || len(small["600000.SH"]) != 2 {
 		t.Fatalf("IN branch must not be cached: %v %v", small, err)
 	}
-	if n := stub.barsReq.Load(); n != baseline+1 {
-		t.Fatalf("small batch must fetch afresh: %d", n)
+	if n := stub.batchReq.Load(); n != baseline+1 {
+		t.Fatalf("small batch must fetch afresh in one chunk: %d", n)
 	}
 }

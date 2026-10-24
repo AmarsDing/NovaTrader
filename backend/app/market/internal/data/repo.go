@@ -8,6 +8,7 @@ import (
 
 	"server/app/market/internal/biz"
 	"server/ent"
+	"server/ent/financereport"
 	"server/ent/intradayalert"
 	"server/ent/lhbseat"
 	"server/ent/limitboard"
@@ -752,6 +753,72 @@ func (r *Repo) SectorHeatAt(ctx context.Context, day, asOf time.Time, top int) (
 			MemberCount: h.MemberCount, LeaderSymbol: h.LeaderSymbol, LeaderReason: h.LeaderReason,
 			OverseasImpulse: h.OverseasImpulse,
 		})
+	}
+	return out, nil
+}
+
+// BarsMulti 一次读多码 [start,end] 全部 K 线：symbol 分组、各自时间升序。
+// 窗口内无行的码在 map 中缺席——缺席即缺数，调用方不得补 0 行（M13 W2 批量日线收敛）。
+func (r *Repo) BarsMulti(ctx context.Context, symbols []string, freq string, start, end time.Time) (map[string][]biz.BarRow, error) {
+	if len(symbols) == 0 {
+		return nil, nil
+	}
+	q := r.db.MarketData.Query().Where(marketdata.SymbolIn(symbols...), marketdata.FreqEQ(freq))
+	if !start.IsZero() {
+		q = q.Where(marketdata.BarTimeGTE(start))
+	}
+	if !end.IsZero() {
+		q = q.Where(marketdata.BarTimeLTE(end))
+	}
+	rows, err := q.Order(marketdata.BySymbol(), marketdata.ByBarTime()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]biz.BarRow, len(symbols))
+	for _, row := range rows {
+		if !barOK(row) {
+			continue
+		}
+		out[row.Symbol] = append(out[row.Symbol], biz.BarRow{
+			Bar: market.Bar{
+				Symbol: row.Symbol, Time: row.BarTime.In(tradecal.Shanghai()),
+				Open: f64(row.Open), High: f64(row.High), Low: f64(row.Low), Close: f64(row.Close),
+				Volume: i64(row.Volume), Amount: f64(row.Amount),
+			},
+			Adj: row.AdjFactor, PreClose: f64(row.PreClose),
+		})
+	}
+	return out, nil
+}
+
+// FinanceBriefRows 读 symbol 最近 periods 个报告期的披露行（end_date 倒序、ann_date 次之）。
+// 同报告期多公告全列；披露列保持 nil（缺披露不落 0）。
+func (r *Repo) FinanceBriefRows(ctx context.Context, symbol string, periods int) ([]biz.FinanceBriefRow, error) {
+	if periods <= 0 {
+		periods = 4
+	}
+	rows, err := r.db.FinanceReport.Query().
+		Where(financereport.SymbolEQ(symbol)).
+		Order(financereport.ByEndDate(entsql.OrderDesc()), financereport.ByAnnDate(entsql.OrderDesc())).
+		Limit(periods * 3).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.FinanceBriefRow, 0, len(rows))
+	for _, row := range rows {
+		item := biz.FinanceBriefRow{
+			EndDate: row.EndDate, Kind: row.Kind, AnnDate: row.AnnDate,
+			ForecastType: row.ForecastType, Summary: row.Summary, Source: row.Source,
+		}
+		if row.NetProfit != nil {
+			v := f64(row.NetProfit)
+			item.NetProfit = &v
+		}
+		if row.NetProfitYoy != nil {
+			v := f64(row.NetProfitYoy)
+			item.NetProfitYoY = &v
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }

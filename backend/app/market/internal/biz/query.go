@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"server/pkg/market"
@@ -29,6 +30,56 @@ func (u *Usecase) Bars(ctx context.Context, symbol, freq string, start, end time
 		rows[i].Bar = market.AdjustBar(rows[i].Bar, rows[i].Adj, base, mode)
 	}
 	return rows, nil
+}
+
+// maxBatchSymbols / maxBatchBars 是 GetBarsBatch 的批量闸：每码默认/上限条数与整批码数。
+const (
+	maxBatchSymbols = 500
+	maxBatchBars    = 500
+)
+
+// BarsBatch 一次取回多码日线（M13 W2 留账：T01 全市场读放大收敛）。
+// 每码独立尾截 limit、独立以自身窗口末根因子折算（与 Bars 同口径）；
+// start 空时按 limit×3 自然日自 end 反推起算（250 交易日窗口余量）；
+// 窗口内无行的码在结果中缺席——缺席即缺数，调用方不得补 0 行。
+func (u *Usecase) BarsBatch(ctx context.Context, symbols []string, start, end time.Time, mode market.Adjust, limit int) (map[string][]BarRow, error) {
+	if len(symbols) == 0 {
+		return nil, fmt.Errorf("symbols required")
+	}
+	if len(symbols) > maxBatchSymbols {
+		symbols = symbols[:maxBatchSymbols]
+	}
+	if limit <= 0 {
+		limit = 250
+	}
+	if limit > maxBatchBars {
+		limit = maxBatchBars
+	}
+	if end.IsZero() {
+		end = time.Now()
+	}
+	if start.IsZero() {
+		start = end.AddDate(0, 0, -3*limit)
+	}
+	rows, err := u.repo.BarsMulti(ctx, symbols, "1d", start, end)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]BarRow, len(rows))
+	for sym, list := range rows {
+		if len(list) > limit {
+			list = list[len(list)-limit:]
+		}
+		if len(list) == 0 {
+			continue
+		}
+		base := list[len(list)-1].Adj
+		for i := range list {
+			list[i].Bar = market.AdjustBar(list[i].Bar, list[i].Adj, base, mode)
+		}
+		out[sym] = list
+	}
+	return out, nil
 }
 
 // IndicatorPoint 是一根日线上的指标。

@@ -3484,8 +3484,12 @@ type Quote struct {
 	AsOf           string                 `protobuf:"bytes,26,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"` // RFC3339；快照口径取行情时间与写入时间中较早者
 	Stale          bool                   `protobuf:"varint,27,opt,name=stale,proto3" json:"stale,omitempty"`
 	Found          bool                   `protobuf:"varint,28,opt,name=found,proto3" json:"found,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 近 250 交易日窗口的前复权最高/最低价（B-2）：以窗口末根 adj_factor 为基准折算；
+	// 窗口有效行不足 20 或含缺因子行不可复权时不返回——「没取到≠0」。不含当日未成 K 的盘中值。
+	High_52W      *float64 `protobuf:"fixed64,29,opt,name=high_52w,json=high52w,proto3,oneof" json:"high_52w,omitempty"`
+	Low_52W       *float64 `protobuf:"fixed64,30,opt,name=low_52w,json=low52w,proto3,oneof" json:"low_52w,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Quote) Reset() {
@@ -3712,6 +3716,20 @@ func (x *Quote) GetFound() bool {
 		return x.Found
 	}
 	return false
+}
+
+func (x *Quote) GetHigh_52W() float64 {
+	if x != nil && x.High_52W != nil {
+		return *x.High_52W
+	}
+	return 0
+}
+
+func (x *Quote) GetLow_52W() float64 {
+	if x != nil && x.Low_52W != nil {
+		return *x.Low_52W
+	}
+	return 0
 }
 
 // SecurityBasic 一只证券的静态字典行。缺字段按 proto 零值（industry 无数据为空串、
@@ -5056,6 +5074,589 @@ func (x *AHMissingLeg) GetWhy() string {
 	return ""
 }
 
+// GetBarsBatchRequest 批量日线请求（M13 W2 留账）。
+type GetBarsBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbols       []string               `protobuf:"bytes,1,rep,name=symbols,proto3" json:"symbols,omitempty"`                          // 必传非空；任一码解析失败整批 400；>500 截 500（消费侧按 500 分包）
+	Start         string                 `protobuf:"bytes,2,opt,name=start,proto3" json:"start,omitempty"`                              // 同 GetBars 时间格式；空 = 按 limit×3 自然日自 end 反推起算
+	End           string                 `protobuf:"bytes,3,opt,name=end,proto3" json:"end,omitempty"`                                  // 空 = 现在；纯日期含当日
+	Adjust        Adjust                 `protobuf:"varint,4,opt,name=adjust,proto3,enum=api.market.v1.Adjust" json:"adjust,omitempty"` // 各码以自身窗口末根因子为基准（与 GetBars 同口径）
+	Limit         int32                  `protobuf:"varint,5,opt,name=limit,proto3" json:"limit,omitempty"`                             // 每码条数（升序取尾）；≤0 默认 250，>500 截 500
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBarsBatchRequest) Reset() {
+	*x = GetBarsBatchRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBarsBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBarsBatchRequest) ProtoMessage() {}
+
+func (x *GetBarsBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBarsBatchRequest.ProtoReflect.Descriptor instead.
+func (*GetBarsBatchRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *GetBarsBatchRequest) GetSymbols() []string {
+	if x != nil {
+		return x.Symbols
+	}
+	return nil
+}
+
+func (x *GetBarsBatchRequest) GetStart() string {
+	if x != nil {
+		return x.Start
+	}
+	return ""
+}
+
+func (x *GetBarsBatchRequest) GetEnd() string {
+	if x != nil {
+		return x.End
+	}
+	return ""
+}
+
+func (x *GetBarsBatchRequest) GetAdjust() Adjust {
+	if x != nil {
+		return x.Adjust
+	}
+	return Adjust_NONE
+}
+
+func (x *GetBarsBatchRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type SymbolBars struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Bars          []*Bar                 `protobuf:"bytes,2,rep,name=bars,proto3" json:"bars,omitempty"` // 时间升序；窗口内无该码行时整个 SymbolBars 缺席（缺席即缺数）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SymbolBars) Reset() {
+	*x = SymbolBars{}
+	mi := &file_api_market_v1_market_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SymbolBars) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SymbolBars) ProtoMessage() {}
+
+func (x *SymbolBars) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SymbolBars.ProtoReflect.Descriptor instead.
+func (*SymbolBars) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *SymbolBars) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *SymbolBars) GetBars() []*Bar {
+	if x != nil {
+		return x.Bars
+	}
+	return nil
+}
+
+type GetBarsBatchReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Freq          string                 `protobuf:"bytes,1,opt,name=freq,proto3" json:"freq,omitempty"` // 恒 "1d"
+	Results       []*SymbolBars          `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBarsBatchReply) Reset() {
+	*x = GetBarsBatchReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBarsBatchReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBarsBatchReply) ProtoMessage() {}
+
+func (x *GetBarsBatchReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBarsBatchReply.ProtoReflect.Descriptor instead.
+func (*GetBarsBatchReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *GetBarsBatchReply) GetFreq() string {
+	if x != nil {
+		return x.Freq
+	}
+	return ""
+}
+
+func (x *GetBarsBatchReply) GetResults() []*SymbolBars {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+// GetFinanceBrief 附录 B-3（只读）：财务排雷摘要，报告期倒序、同期多公告按公告日倒序全列。
+type GetFinanceBriefRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Periods       int32                  `protobuf:"varint,2,opt,name=periods,proto3" json:"periods,omitempty"` // 最近 N 个报告期；≤0 默认 4，>12 截 12
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFinanceBriefRequest) Reset() {
+	*x = GetFinanceBriefRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFinanceBriefRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFinanceBriefRequest) ProtoMessage() {}
+
+func (x *GetFinanceBriefRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFinanceBriefRequest.ProtoReflect.Descriptor instead.
+func (*GetFinanceBriefRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *GetFinanceBriefRequest) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetFinanceBriefRequest) GetPeriods() int32 {
+	if x != nil {
+		return x.Periods
+	}
+	return 0
+}
+
+type FinanceBriefRow struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EndDate       string                 `protobuf:"bytes,1,opt,name=end_date,json=endDate,proto3" json:"end_date,omitempty"`                          // 报告期 YYYY-MM-DD
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`                                               // forecast / express / indicator
+	AnnDate       string                 `protobuf:"bytes,3,opt,name=ann_date,json=annDate,proto3" json:"ann_date,omitempty"`                          // 公告日 YYYY-MM-DD
+	ForecastType  string                 `protobuf:"bytes,4,opt,name=forecast_type,json=forecastType,proto3" json:"forecast_type,omitempty"`           // 预增/预减/扭亏/首亏 等；非 forecast 行为空
+	NetProfit     *float64               `protobuf:"fixed64,5,opt,name=net_profit,json=netProfit,proto3,oneof" json:"net_profit,omitempty"`            // 净利润（元）；DB NULL ↔ 缺省
+	NetProfitYoy  *float64               `protobuf:"fixed64,6,opt,name=net_profit_yoy,json=netProfitYoy,proto3,oneof" json:"net_profit_yoy,omitempty"` // 净利润同比 %；同上
+	Summary       string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	Source        string                 `protobuf:"bytes,8,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FinanceBriefRow) Reset() {
+	*x = FinanceBriefRow{}
+	mi := &file_api_market_v1_market_proto_msgTypes[63]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinanceBriefRow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinanceBriefRow) ProtoMessage() {}
+
+func (x *FinanceBriefRow) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[63]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinanceBriefRow.ProtoReflect.Descriptor instead.
+func (*FinanceBriefRow) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{63}
+}
+
+func (x *FinanceBriefRow) GetEndDate() string {
+	if x != nil {
+		return x.EndDate
+	}
+	return ""
+}
+
+func (x *FinanceBriefRow) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *FinanceBriefRow) GetAnnDate() string {
+	if x != nil {
+		return x.AnnDate
+	}
+	return ""
+}
+
+func (x *FinanceBriefRow) GetForecastType() string {
+	if x != nil {
+		return x.ForecastType
+	}
+	return ""
+}
+
+func (x *FinanceBriefRow) GetNetProfit() float64 {
+	if x != nil && x.NetProfit != nil {
+		return *x.NetProfit
+	}
+	return 0
+}
+
+func (x *FinanceBriefRow) GetNetProfitYoy() float64 {
+	if x != nil && x.NetProfitYoy != nil {
+		return *x.NetProfitYoy
+	}
+	return 0
+}
+
+func (x *FinanceBriefRow) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *FinanceBriefRow) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type GetFinanceBriefReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Found         bool                   `protobuf:"varint,2,opt,name=found,proto3" json:"found,omitempty"` // false = 该券无披露行
+	Rows          []*FinanceBriefRow     `protobuf:"bytes,3,rep,name=rows,proto3" json:"rows,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetFinanceBriefReply) Reset() {
+	*x = GetFinanceBriefReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetFinanceBriefReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetFinanceBriefReply) ProtoMessage() {}
+
+func (x *GetFinanceBriefReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetFinanceBriefReply.ProtoReflect.Descriptor instead.
+func (*GetFinanceBriefReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *GetFinanceBriefReply) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *GetFinanceBriefReply) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetFinanceBriefReply) GetRows() []*FinanceBriefRow {
+	if x != nil {
+		return x.Rows
+	}
+	return nil
+}
+
+// SearchSecurities G2（只读）：代码/名称/拼音联想。
+type SearchSecuritiesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         string                 `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // ≤0 默认 20，>50 截 50
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchSecuritiesRequest) Reset() {
+	*x = SearchSecuritiesRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchSecuritiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchSecuritiesRequest) ProtoMessage() {}
+
+func (x *SearchSecuritiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchSecuritiesRequest.ProtoReflect.Descriptor instead.
+func (*SearchSecuritiesRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *SearchSecuritiesRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchSecuritiesRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type SecurityMatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Market        string                 `protobuf:"bytes,3,opt,name=market,proto3" json:"market,omitempty"` // SH / SZ / BJ
+	St            bool                   `protobuf:"varint,4,opt,name=st,proto3" json:"st,omitempty"`
+	Suspended     bool                   `protobuf:"varint,5,opt,name=suspended,proto3" json:"suspended,omitempty"`
+	MatchKind     string                 `protobuf:"bytes,6,opt,name=match_kind,json=matchKind,proto3" json:"match_kind,omitempty"` // code / name / pinyin（命中通道显式，便于前端排序解释）
+	Pinyin        string                 `protobuf:"bytes,7,opt,name=pinyin,proto3" json:"pinyin,omitempty"`                        // 名称拼音首字母串（诊断/前端高亮用）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SecurityMatch) Reset() {
+	*x = SecurityMatch{}
+	mi := &file_api_market_v1_market_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SecurityMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SecurityMatch) ProtoMessage() {}
+
+func (x *SecurityMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SecurityMatch.ProtoReflect.Descriptor instead.
+func (*SecurityMatch) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *SecurityMatch) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *SecurityMatch) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *SecurityMatch) GetMarket() string {
+	if x != nil {
+		return x.Market
+	}
+	return ""
+}
+
+func (x *SecurityMatch) GetSt() bool {
+	if x != nil {
+		return x.St
+	}
+	return false
+}
+
+func (x *SecurityMatch) GetSuspended() bool {
+	if x != nil {
+		return x.Suspended
+	}
+	return false
+}
+
+func (x *SecurityMatch) GetMatchKind() string {
+	if x != nil {
+		return x.MatchKind
+	}
+	return ""
+}
+
+func (x *SecurityMatch) GetPinyin() string {
+	if x != nil {
+		return x.Pinyin
+	}
+	return ""
+}
+
+type SearchSecuritiesReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Matches       []*SecurityMatch       `protobuf:"bytes,1,rep,name=matches,proto3" json:"matches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchSecuritiesReply) Reset() {
+	*x = SearchSecuritiesReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[67]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchSecuritiesReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchSecuritiesReply) ProtoMessage() {}
+
+func (x *SearchSecuritiesReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[67]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchSecuritiesReply.ProtoReflect.Descriptor instead.
+func (*SearchSecuritiesReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{67}
+}
+
+func (x *SearchSecuritiesReply) GetMatches() []*SecurityMatch {
+	if x != nil {
+		return x.Matches
+	}
+	return nil
+}
+
 var File_api_market_v1_market_proto protoreflect.FileDescriptor
 
 const file_api_market_v1_market_proto_rawDesc = "" +
@@ -5391,7 +5992,7 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\n" +
 	"QuoteLevel\x12\x14\n" +
 	"\x05price\x18\x01 \x01(\x01R\x05price\x12\x16\n" +
-	"\x06volume\x18\x02 \x01(\x03R\x06volume\"\xf2\x05\n" +
+	"\x06volume\x18\x02 \x01(\x03R\x06volume\"\xc9\x06\n" +
 	"\x05Quote\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -5422,7 +6023,12 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\x06source\x18\x19 \x01(\tR\x06source\x12\x13\n" +
 	"\x05as_of\x18\x1a \x01(\tR\x04asOf\x12\x14\n" +
 	"\x05stale\x18\x1b \x01(\bR\x05stale\x12\x14\n" +
-	"\x05found\x18\x1c \x01(\bR\x05found\"\xa4\x02\n" +
+	"\x05found\x18\x1c \x01(\bR\x05found\x12\x1e\n" +
+	"\bhigh_52w\x18\x1d \x01(\x01H\x00R\ahigh52w\x88\x01\x01\x12\x1c\n" +
+	"\alow_52w\x18\x1e \x01(\x01H\x01R\x06low52w\x88\x01\x01B\v\n" +
+	"\t_high_52wB\n" +
+	"\n" +
+	"\b_low_52w\"\xa4\x02\n" +
 	"\rSecurityBasic\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -5594,11 +6200,57 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\f_premium_pct\"2\n" +
 	"\fAHMissingLeg\x12\x10\n" +
 	"\x03leg\x18\x01 \x01(\tR\x03leg\x12\x10\n" +
-	"\x03why\x18\x02 \x01(\tR\x03why*$\n" +
+	"\x03why\x18\x02 \x01(\tR\x03why\"\x9c\x01\n" +
+	"\x13GetBarsBatchRequest\x12\x18\n" +
+	"\asymbols\x18\x01 \x03(\tR\asymbols\x12\x14\n" +
+	"\x05start\x18\x02 \x01(\tR\x05start\x12\x10\n" +
+	"\x03end\x18\x03 \x01(\tR\x03end\x12-\n" +
+	"\x06adjust\x18\x04 \x01(\x0e2\x15.api.market.v1.AdjustR\x06adjust\x12\x14\n" +
+	"\x05limit\x18\x05 \x01(\x05R\x05limit\"L\n" +
+	"\n" +
+	"SymbolBars\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12&\n" +
+	"\x04bars\x18\x02 \x03(\v2\x12.api.market.v1.BarR\x04bars\"\\\n" +
+	"\x11GetBarsBatchReply\x12\x12\n" +
+	"\x04freq\x18\x01 \x01(\tR\x04freq\x123\n" +
+	"\aresults\x18\x02 \x03(\v2\x19.api.market.v1.SymbolBarsR\aresults\"J\n" +
+	"\x16GetFinanceBriefRequest\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x18\n" +
+	"\aperiods\x18\x02 \x01(\x05R\aperiods\"\xa3\x02\n" +
+	"\x0fFinanceBriefRow\x12\x19\n" +
+	"\bend_date\x18\x01 \x01(\tR\aendDate\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x19\n" +
+	"\bann_date\x18\x03 \x01(\tR\aannDate\x12#\n" +
+	"\rforecast_type\x18\x04 \x01(\tR\fforecastType\x12\"\n" +
+	"\n" +
+	"net_profit\x18\x05 \x01(\x01H\x00R\tnetProfit\x88\x01\x01\x12)\n" +
+	"\x0enet_profit_yoy\x18\x06 \x01(\x01H\x01R\fnetProfitYoy\x88\x01\x01\x12\x18\n" +
+	"\asummary\x18\a \x01(\tR\asummary\x12\x16\n" +
+	"\x06source\x18\b \x01(\tR\x06sourceB\r\n" +
+	"\v_net_profitB\x11\n" +
+	"\x0f_net_profit_yoy\"x\n" +
+	"\x14GetFinanceBriefReply\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x14\n" +
+	"\x05found\x18\x02 \x01(\bR\x05found\x122\n" +
+	"\x04rows\x18\x03 \x03(\v2\x1e.api.market.v1.FinanceBriefRowR\x04rows\"E\n" +
+	"\x17SearchSecuritiesRequest\x12\x14\n" +
+	"\x05query\x18\x01 \x01(\tR\x05query\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\xb4\x01\n" +
+	"\rSecurityMatch\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
+	"\x06market\x18\x03 \x01(\tR\x06market\x12\x0e\n" +
+	"\x02st\x18\x04 \x01(\bR\x02st\x12\x1c\n" +
+	"\tsuspended\x18\x05 \x01(\bR\tsuspended\x12\x1d\n" +
+	"\n" +
+	"match_kind\x18\x06 \x01(\tR\tmatchKind\x12\x16\n" +
+	"\x06pinyin\x18\a \x01(\tR\x06pinyin\"O\n" +
+	"\x15SearchSecuritiesReply\x126\n" +
+	"\amatches\x18\x01 \x03(\v2\x1c.api.market.v1.SecurityMatchR\amatches*$\n" +
 	"\x06Adjust\x12\b\n" +
 	"\x04NONE\x10\x00\x12\a\n" +
 	"\x03QFQ\x10\x01\x12\a\n" +
-	"\x03HFQ\x10\x022\xd7\x12\n" +
+	"\x03HFQ\x10\x022\xd7\x15\n" +
 	"\x06Market\x12^\n" +
 	"\aGetBars\x12\x1d.api.market.v1.GetBarsRequest\x1a\x1b.api.market.v1.GetBarsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/market/bars\x12v\n" +
 	"\rGetIndicators\x12#.api.market.v1.GetIndicatorsRequest\x1a!.api.market.v1.GetIndicatorsReply\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/market/indicators\x12y\n" +
@@ -5620,7 +6272,10 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\x11GetSecurityBasics\x12'.api.market.v1.GetSecurityBasicsRequest\x1a%.api.market.v1.GetSecurityBasicsReply\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/market/security-basics\x12s\n" +
 	"\fGetSeatStats\x12\".api.market.v1.GetSeatStatsRequest\x1a .api.market.v1.GetSeatStatsReply\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/market/seat-stats\x12\x8f\x01\n" +
 	"\x13GetChipDistribution\x12).api.market.v1.GetChipDistributionRequest\x1a'.api.market.v1.GetChipDistributionReply\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/market/chip-distribution\x12\x8b\x01\n" +
-	"\x12GetReportEstimates\x12(.api.market.v1.GetReportEstimatesRequest\x1a&.api.market.v1.GetReportEstimatesReply\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/market/report-estimates\x12s\n" +
+	"\x12GetReportEstimates\x12(.api.market.v1.GetReportEstimatesRequest\x1a&.api.market.v1.GetReportEstimatesReply\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/market/report-estimates\x12v\n" +
+	"\fGetBarsBatch\x12\".api.market.v1.GetBarsBatchRequest\x1a .api.market.v1.GetBarsBatchReply\" \x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/market/bars-batch\x12\x7f\n" +
+	"\x0fGetFinanceBrief\x12%.api.market.v1.GetFinanceBriefRequest\x1a#.api.market.v1.GetFinanceBriefReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/market/finance-brief\x12\x84\x01\n" +
+	"\x10SearchSecurities\x12&.api.market.v1.SearchSecuritiesRequest\x1a$.api.market.v1.SearchSecuritiesReply\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/market/security-search\x12s\n" +
 	"\fGetAHPremium\x12\".api.market.v1.GetAHPremiumRequest\x1a .api.market.v1.GetAHPremiumReply\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/market/ah-premiumB\x19Z\x17server/api/market/v1;v1b\x06proto3"
 
 var (
@@ -5636,7 +6291,7 @@ func file_api_market_v1_market_proto_rawDescGZIP() []byte {
 }
 
 var file_api_market_v1_market_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_market_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
+var file_api_market_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
 var file_api_market_v1_market_proto_goTypes = []any{
 	(Adjust)(0),                        // 0: api.market.v1.Adjust
 	(*GetBarsRequest)(nil),             // 1: api.market.v1.GetBarsRequest
@@ -5698,16 +6353,25 @@ var file_api_market_v1_market_proto_goTypes = []any{
 	(*GetAHPremiumRequest)(nil),        // 57: api.market.v1.GetAHPremiumRequest
 	(*GetAHPremiumReply)(nil),          // 58: api.market.v1.GetAHPremiumReply
 	(*AHMissingLeg)(nil),               // 59: api.market.v1.AHMissingLeg
-	nil,                                // 60: api.market.v1.IndicatorPoint.ValuesEntry
-	nil,                                // 61: api.market.v1.FactorRow.ValuesEntry
+	(*GetBarsBatchRequest)(nil),        // 60: api.market.v1.GetBarsBatchRequest
+	(*SymbolBars)(nil),                 // 61: api.market.v1.SymbolBars
+	(*GetBarsBatchReply)(nil),          // 62: api.market.v1.GetBarsBatchReply
+	(*GetFinanceBriefRequest)(nil),     // 63: api.market.v1.GetFinanceBriefRequest
+	(*FinanceBriefRow)(nil),            // 64: api.market.v1.FinanceBriefRow
+	(*GetFinanceBriefReply)(nil),       // 65: api.market.v1.GetFinanceBriefReply
+	(*SearchSecuritiesRequest)(nil),    // 66: api.market.v1.SearchSecuritiesRequest
+	(*SecurityMatch)(nil),              // 67: api.market.v1.SecurityMatch
+	(*SearchSecuritiesReply)(nil),      // 68: api.market.v1.SearchSecuritiesReply
+	nil,                                // 69: api.market.v1.IndicatorPoint.ValuesEntry
+	nil,                                // 70: api.market.v1.FactorRow.ValuesEntry
 }
 var file_api_market_v1_market_proto_depIdxs = []int32{
 	0,  // 0: api.market.v1.GetBarsRequest.adjust:type_name -> api.market.v1.Adjust
 	2,  // 1: api.market.v1.GetBarsReply.bars:type_name -> api.market.v1.Bar
 	0,  // 2: api.market.v1.GetIndicatorsRequest.adjust:type_name -> api.market.v1.Adjust
-	60, // 3: api.market.v1.IndicatorPoint.values:type_name -> api.market.v1.IndicatorPoint.ValuesEntry
+	69, // 3: api.market.v1.IndicatorPoint.values:type_name -> api.market.v1.IndicatorPoint.ValuesEntry
 	5,  // 4: api.market.v1.GetIndicatorsReply.points:type_name -> api.market.v1.IndicatorPoint
-	61, // 5: api.market.v1.FactorRow.values:type_name -> api.market.v1.FactorRow.ValuesEntry
+	70, // 5: api.market.v1.FactorRow.values:type_name -> api.market.v1.FactorRow.ValuesEntry
 	8,  // 6: api.market.v1.GetFactorsCrossReply.rows:type_name -> api.market.v1.FactorRow
 	13, // 7: api.market.v1.GetLimitBoardsReply.boards:type_name -> api.market.v1.LimitBoard
 	16, // 8: api.market.v1.GetSectorHeatReply.sectors:type_name -> api.market.v1.SectorHeat
@@ -5730,51 +6394,62 @@ var file_api_market_v1_market_proto_depIdxs = []int32{
 	50, // 25: api.market.v1.GetSeatStatsReply.rows:type_name -> api.market.v1.SeatStatRow
 	55, // 26: api.market.v1.GetReportEstimatesReply.rows:type_name -> api.market.v1.ReportEstimateRow
 	59, // 27: api.market.v1.GetAHPremiumReply.missing:type_name -> api.market.v1.AHMissingLeg
-	1,  // 28: api.market.v1.Market.GetBars:input_type -> api.market.v1.GetBarsRequest
-	4,  // 29: api.market.v1.Market.GetIndicators:input_type -> api.market.v1.GetIndicatorsRequest
-	7,  // 30: api.market.v1.Market.GetFactorsCross:input_type -> api.market.v1.GetFactorsCrossRequest
-	10, // 31: api.market.v1.Market.GetSentiment:input_type -> api.market.v1.GetSentimentRequest
-	12, // 32: api.market.v1.Market.GetLimitBoards:input_type -> api.market.v1.GetLimitBoardsRequest
-	15, // 33: api.market.v1.Market.GetSectorHeat:input_type -> api.market.v1.GetSectorHeatRequest
-	18, // 34: api.market.v1.Market.SetWatchlist:input_type -> api.market.v1.SetWatchlistRequest
-	20, // 35: api.market.v1.Market.GetAuction:input_type -> api.market.v1.GetAuctionRequest
-	23, // 36: api.market.v1.Market.GetLadder:input_type -> api.market.v1.GetLadderRequest
-	27, // 37: api.market.v1.Market.GetLimitPremium:input_type -> api.market.v1.GetLimitPremiumRequest
-	31, // 38: api.market.v1.Market.GetBreadth:input_type -> api.market.v1.GetBreadthRequest
-	34, // 39: api.market.v1.Market.GetKlineGaps:input_type -> api.market.v1.GetKlineGapsRequest
-	37, // 40: api.market.v1.Market.GetEmotionPath:input_type -> api.market.v1.GetEmotionPathRequest
-	40, // 41: api.market.v1.Market.GetIntradayAlerts:input_type -> api.market.v1.GetIntradayAlertsRequest
-	43, // 42: api.market.v1.Market.GetQuote:input_type -> api.market.v1.GetQuoteRequest
-	47, // 43: api.market.v1.Market.GetSecurityBasics:input_type -> api.market.v1.GetSecurityBasicsRequest
-	49, // 44: api.market.v1.Market.GetSeatStats:input_type -> api.market.v1.GetSeatStatsRequest
-	52, // 45: api.market.v1.Market.GetChipDistribution:input_type -> api.market.v1.GetChipDistributionRequest
-	54, // 46: api.market.v1.Market.GetReportEstimates:input_type -> api.market.v1.GetReportEstimatesRequest
-	57, // 47: api.market.v1.Market.GetAHPremium:input_type -> api.market.v1.GetAHPremiumRequest
-	3,  // 48: api.market.v1.Market.GetBars:output_type -> api.market.v1.GetBarsReply
-	6,  // 49: api.market.v1.Market.GetIndicators:output_type -> api.market.v1.GetIndicatorsReply
-	9,  // 50: api.market.v1.Market.GetFactorsCross:output_type -> api.market.v1.GetFactorsCrossReply
-	11, // 51: api.market.v1.Market.GetSentiment:output_type -> api.market.v1.Sentiment
-	14, // 52: api.market.v1.Market.GetLimitBoards:output_type -> api.market.v1.GetLimitBoardsReply
-	17, // 53: api.market.v1.Market.GetSectorHeat:output_type -> api.market.v1.GetSectorHeatReply
-	19, // 54: api.market.v1.Market.SetWatchlist:output_type -> api.market.v1.SetWatchlistReply
-	22, // 55: api.market.v1.Market.GetAuction:output_type -> api.market.v1.GetAuctionReply
-	26, // 56: api.market.v1.Market.GetLadder:output_type -> api.market.v1.GetLadderReply
-	30, // 57: api.market.v1.Market.GetLimitPremium:output_type -> api.market.v1.GetLimitPremiumReply
-	33, // 58: api.market.v1.Market.GetBreadth:output_type -> api.market.v1.GetBreadthReply
-	36, // 59: api.market.v1.Market.GetKlineGaps:output_type -> api.market.v1.GetKlineGapsReply
-	39, // 60: api.market.v1.Market.GetEmotionPath:output_type -> api.market.v1.GetEmotionPathReply
-	42, // 61: api.market.v1.Market.GetIntradayAlerts:output_type -> api.market.v1.GetIntradayAlertsReply
-	45, // 62: api.market.v1.Market.GetQuote:output_type -> api.market.v1.Quote
-	48, // 63: api.market.v1.Market.GetSecurityBasics:output_type -> api.market.v1.GetSecurityBasicsReply
-	51, // 64: api.market.v1.Market.GetSeatStats:output_type -> api.market.v1.GetSeatStatsReply
-	53, // 65: api.market.v1.Market.GetChipDistribution:output_type -> api.market.v1.GetChipDistributionReply
-	56, // 66: api.market.v1.Market.GetReportEstimates:output_type -> api.market.v1.GetReportEstimatesReply
-	58, // 67: api.market.v1.Market.GetAHPremium:output_type -> api.market.v1.GetAHPremiumReply
-	48, // [48:68] is the sub-list for method output_type
-	28, // [28:48] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	0,  // 28: api.market.v1.GetBarsBatchRequest.adjust:type_name -> api.market.v1.Adjust
+	2,  // 29: api.market.v1.SymbolBars.bars:type_name -> api.market.v1.Bar
+	61, // 30: api.market.v1.GetBarsBatchReply.results:type_name -> api.market.v1.SymbolBars
+	64, // 31: api.market.v1.GetFinanceBriefReply.rows:type_name -> api.market.v1.FinanceBriefRow
+	67, // 32: api.market.v1.SearchSecuritiesReply.matches:type_name -> api.market.v1.SecurityMatch
+	1,  // 33: api.market.v1.Market.GetBars:input_type -> api.market.v1.GetBarsRequest
+	4,  // 34: api.market.v1.Market.GetIndicators:input_type -> api.market.v1.GetIndicatorsRequest
+	7,  // 35: api.market.v1.Market.GetFactorsCross:input_type -> api.market.v1.GetFactorsCrossRequest
+	10, // 36: api.market.v1.Market.GetSentiment:input_type -> api.market.v1.GetSentimentRequest
+	12, // 37: api.market.v1.Market.GetLimitBoards:input_type -> api.market.v1.GetLimitBoardsRequest
+	15, // 38: api.market.v1.Market.GetSectorHeat:input_type -> api.market.v1.GetSectorHeatRequest
+	18, // 39: api.market.v1.Market.SetWatchlist:input_type -> api.market.v1.SetWatchlistRequest
+	20, // 40: api.market.v1.Market.GetAuction:input_type -> api.market.v1.GetAuctionRequest
+	23, // 41: api.market.v1.Market.GetLadder:input_type -> api.market.v1.GetLadderRequest
+	27, // 42: api.market.v1.Market.GetLimitPremium:input_type -> api.market.v1.GetLimitPremiumRequest
+	31, // 43: api.market.v1.Market.GetBreadth:input_type -> api.market.v1.GetBreadthRequest
+	34, // 44: api.market.v1.Market.GetKlineGaps:input_type -> api.market.v1.GetKlineGapsRequest
+	37, // 45: api.market.v1.Market.GetEmotionPath:input_type -> api.market.v1.GetEmotionPathRequest
+	40, // 46: api.market.v1.Market.GetIntradayAlerts:input_type -> api.market.v1.GetIntradayAlertsRequest
+	43, // 47: api.market.v1.Market.GetQuote:input_type -> api.market.v1.GetQuoteRequest
+	47, // 48: api.market.v1.Market.GetSecurityBasics:input_type -> api.market.v1.GetSecurityBasicsRequest
+	49, // 49: api.market.v1.Market.GetSeatStats:input_type -> api.market.v1.GetSeatStatsRequest
+	52, // 50: api.market.v1.Market.GetChipDistribution:input_type -> api.market.v1.GetChipDistributionRequest
+	54, // 51: api.market.v1.Market.GetReportEstimates:input_type -> api.market.v1.GetReportEstimatesRequest
+	60, // 52: api.market.v1.Market.GetBarsBatch:input_type -> api.market.v1.GetBarsBatchRequest
+	63, // 53: api.market.v1.Market.GetFinanceBrief:input_type -> api.market.v1.GetFinanceBriefRequest
+	66, // 54: api.market.v1.Market.SearchSecurities:input_type -> api.market.v1.SearchSecuritiesRequest
+	57, // 55: api.market.v1.Market.GetAHPremium:input_type -> api.market.v1.GetAHPremiumRequest
+	3,  // 56: api.market.v1.Market.GetBars:output_type -> api.market.v1.GetBarsReply
+	6,  // 57: api.market.v1.Market.GetIndicators:output_type -> api.market.v1.GetIndicatorsReply
+	9,  // 58: api.market.v1.Market.GetFactorsCross:output_type -> api.market.v1.GetFactorsCrossReply
+	11, // 59: api.market.v1.Market.GetSentiment:output_type -> api.market.v1.Sentiment
+	14, // 60: api.market.v1.Market.GetLimitBoards:output_type -> api.market.v1.GetLimitBoardsReply
+	17, // 61: api.market.v1.Market.GetSectorHeat:output_type -> api.market.v1.GetSectorHeatReply
+	19, // 62: api.market.v1.Market.SetWatchlist:output_type -> api.market.v1.SetWatchlistReply
+	22, // 63: api.market.v1.Market.GetAuction:output_type -> api.market.v1.GetAuctionReply
+	26, // 64: api.market.v1.Market.GetLadder:output_type -> api.market.v1.GetLadderReply
+	30, // 65: api.market.v1.Market.GetLimitPremium:output_type -> api.market.v1.GetLimitPremiumReply
+	33, // 66: api.market.v1.Market.GetBreadth:output_type -> api.market.v1.GetBreadthReply
+	36, // 67: api.market.v1.Market.GetKlineGaps:output_type -> api.market.v1.GetKlineGapsReply
+	39, // 68: api.market.v1.Market.GetEmotionPath:output_type -> api.market.v1.GetEmotionPathReply
+	42, // 69: api.market.v1.Market.GetIntradayAlerts:output_type -> api.market.v1.GetIntradayAlertsReply
+	45, // 70: api.market.v1.Market.GetQuote:output_type -> api.market.v1.Quote
+	48, // 71: api.market.v1.Market.GetSecurityBasics:output_type -> api.market.v1.GetSecurityBasicsReply
+	51, // 72: api.market.v1.Market.GetSeatStats:output_type -> api.market.v1.GetSeatStatsReply
+	53, // 73: api.market.v1.Market.GetChipDistribution:output_type -> api.market.v1.GetChipDistributionReply
+	56, // 74: api.market.v1.Market.GetReportEstimates:output_type -> api.market.v1.GetReportEstimatesReply
+	62, // 75: api.market.v1.Market.GetBarsBatch:output_type -> api.market.v1.GetBarsBatchReply
+	65, // 76: api.market.v1.Market.GetFinanceBrief:output_type -> api.market.v1.GetFinanceBriefReply
+	68, // 77: api.market.v1.Market.SearchSecurities:output_type -> api.market.v1.SearchSecuritiesReply
+	58, // 78: api.market.v1.Market.GetAHPremium:output_type -> api.market.v1.GetAHPremiumReply
+	56, // [56:79] is the sub-list for method output_type
+	33, // [33:56] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_api_market_v1_market_proto_init() }
@@ -5786,17 +6461,19 @@ func file_api_market_v1_market_proto_init() {
 	file_api_market_v1_market_proto_msgTypes[28].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[38].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[40].OneofWrappers = []any{}
+	file_api_market_v1_market_proto_msgTypes[44].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[49].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[52].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[54].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[57].OneofWrappers = []any{}
+	file_api_market_v1_market_proto_msgTypes[63].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_market_v1_market_proto_rawDesc), len(file_api_market_v1_market_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   61,
+			NumMessages:   70,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

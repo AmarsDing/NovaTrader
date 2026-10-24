@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	historyDays     = 120 // 往前取多少个自然日的日线，约 80 个交易日
-	keepBars        = 60
-	snapMaxAge      = 2 * time.Minute
-	symbolFilter    = 1000 // 代码数超过这个就不加 IN 条件，直接按时间取全市场
-	barsConcurrency = 8    // 全市场日线经 market HTTP 按代码拉取时的并发上限
+	historyDays  = 120 // 往前取多少个自然日的日线，约 80 个交易日
+	keepBars     = 60
+	snapMaxAge   = 2 * time.Minute
+	symbolFilter = 1000 // 代码数超过这个就不加 IN 条件，直接按时间取全市场
 )
 
 // marketSource 用库里的证券字典、market 服务日线、Redis 最新快照拼出 rules.Snapshot。
@@ -158,9 +157,9 @@ func (m *marketSource) build(ctx context.Context, basics []*ent.StockBasic, asOf
 	return out, nil
 }
 
-// dailyBars 取 asOf 当天之前的日线。小批量（≤symbolFilter）按代码逐只拉取、不走缓存；
+// dailyBars 取 asOf 当天之前的日线。小批量（≤symbolFilter）批量直拉、不走缓存；
 // 全市场调研（>symbolFilter）结果按交易日缓存最多两天——陈腐窗口与失效口径见
-// dayBarsCache 注释，记录见 M06 开发进度。任一代码取不到都显式失败，不缺口交付。
+// dayBarsCache 注释，记录见 M06 开发进度。取数失败整体显式报错，不缺口交付。
 func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.Time) (map[string][]rules.Bar, error) {
 	day := dayStart(asOf)
 	if len(codes) > symbolFilter {
@@ -180,50 +179,14 @@ func (m *marketSource) dailyBars(ctx context.Context, codes []string, asOf time.
 	return m.fetchBars(ctx, codes, day)
 }
 
-// fetchBars 经 market HTTP 按代码并发拉日线（M13-T01：替代旧直读 market_data）。
-// 任何一只失败整体返回错误：缺代码的候选集若静默放行，漏斗的分就不是全集可比的分。
+// fetchBars 经 market HTTP 批量拉日线（M13-T01：替代旧直读 market_data；
+// W2 留账收敛：批量 POST 分包替代按代码 HTTP conc 8 读放大）。批量端任一非 2xx
+// 整体错误、不降级逐码重试；窗口内无行的码在结果中缺席（缺席即缺数，与旧口径同）。
 func (m *marketSource) fetchBars(ctx context.Context, codes []string, day time.Time) (map[string][]rules.Bar, error) {
 	if m.bars == nil {
 		return nil, fmt.Errorf("daily bars: %w", errNoMarketAddr)
 	}
-	out := make(map[string][]rules.Bar, len(codes))
-	sem := make(chan struct{}, barsConcurrency)
-	var (
-		mu   sync.Mutex
-		wg   sync.WaitGroup
-		fail error
-	)
-	for _, code := range codes {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		mu.Lock()
-		if fail != nil {
-			mu.Unlock()
-			break
-		}
-		mu.Unlock()
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(code string) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			bars, err := m.bars.dailyBars(ctx, code, day)
-			mu.Lock()
-			defer mu.Unlock()
-			switch {
-			case err != nil && fail == nil:
-				fail = fmt.Errorf("daily bars %s: %w", code, err)
-			case err == nil && len(bars) > 0:
-				out[code] = bars
-			}
-		}(code)
-	}
-	wg.Wait()
-	if fail != nil {
-		return nil, fail
-	}
-	return out, nil
+	return m.bars.dailyBarsBatch(ctx, codes, day)
 }
 
 // todayBars 读 Redis 最新快照。只在 asOf 与快照同一天、快照不晚于 asOf 且未过期时使用。

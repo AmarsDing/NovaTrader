@@ -22,10 +22,12 @@ const _ = http.SupportPackageIsVersion1
 const OperationMarketGetAHPremium = "/api.market.v1.Market/GetAHPremium"
 const OperationMarketGetAuction = "/api.market.v1.Market/GetAuction"
 const OperationMarketGetBars = "/api.market.v1.Market/GetBars"
+const OperationMarketGetBarsBatch = "/api.market.v1.Market/GetBarsBatch"
 const OperationMarketGetBreadth = "/api.market.v1.Market/GetBreadth"
 const OperationMarketGetChipDistribution = "/api.market.v1.Market/GetChipDistribution"
 const OperationMarketGetEmotionPath = "/api.market.v1.Market/GetEmotionPath"
 const OperationMarketGetFactorsCross = "/api.market.v1.Market/GetFactorsCross"
+const OperationMarketGetFinanceBrief = "/api.market.v1.Market/GetFinanceBrief"
 const OperationMarketGetIndicators = "/api.market.v1.Market/GetIndicators"
 const OperationMarketGetIntradayAlerts = "/api.market.v1.Market/GetIntradayAlerts"
 const OperationMarketGetKlineGaps = "/api.market.v1.Market/GetKlineGaps"
@@ -38,6 +40,7 @@ const OperationMarketGetSeatStats = "/api.market.v1.Market/GetSeatStats"
 const OperationMarketGetSectorHeat = "/api.market.v1.Market/GetSectorHeat"
 const OperationMarketGetSecurityBasics = "/api.market.v1.Market/GetSecurityBasics"
 const OperationMarketGetSentiment = "/api.market.v1.Market/GetSentiment"
+const OperationMarketSearchSecurities = "/api.market.v1.Market/SearchSecurities"
 const OperationMarketSetWatchlist = "/api.market.v1.Market/SetWatchlist"
 
 type MarketHTTPServer interface {
@@ -49,6 +52,10 @@ type MarketHTTPServer interface {
 	GetAuction(context.Context, *GetAuctionRequest) (*GetAuctionReply, error)
 	// GetBars K 线。freq 为 1m 或 1d。
 	GetBars(context.Context, *GetBarsRequest) (*GetBarsReply, error)
+	// GetBarsBatch 批量日线（M13 W2 留账收敛，只读）：一次取回多码日线，替代按代码 HTTP 逐码拉取；
+	// freq 恒 1d，POST 承载长 symbol 列表。无行的码在 results 中缺席——缺席即缺数，
+	// 消费方不得补 0 行（T01 缺码整体报错语义保持不变）。
+	GetBarsBatch(context.Context, *GetBarsBatchRequest) (*GetBarsBatchReply, error)
 	// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
 	GetBreadth(context.Context, *GetBreadthRequest) (*GetBreadthReply, error)
 	// GetChipDistribution 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
@@ -57,6 +64,10 @@ type MarketHTTPServer interface {
 	GetEmotionPath(context.Context, *GetEmotionPathRequest) (*GetEmotionPathReply, error)
 	// GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 	GetFactorsCross(context.Context, *GetFactorsCrossRequest) (*GetFactorsCrossReply, error)
+	// GetFinanceBrief 附录 B-2（只读）：52 周高低已由 Quote.high_52w / low_52w 携带（见 Quote 注释口径）。
+	// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
+	// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
+	GetFinanceBrief(context.Context, *GetFinanceBriefRequest) (*GetFinanceBriefReply, error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(context.Context, *GetIndicatorsRequest) (*GetIndicatorsReply, error)
 	// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
@@ -84,6 +95,10 @@ type MarketHTTPServer interface {
 	GetSecurityBasics(context.Context, *GetSecurityBasicsRequest) (*GetSecurityBasicsReply, error)
 	// GetSentiment 情绪截面，as_of 规则同上。
 	GetSentiment(context.Context, *GetSentimentRequest) (*Sentiment, error)
+	// SearchSecurities 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
+	// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
+	// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
+	SearchSecurities(context.Context, *SearchSecuritiesRequest) (*SearchSecuritiesReply, error)
 	// SetWatchlist 登记候选池。同一 owner 再次登记会整体替换并续租。
 	SetWatchlist(context.Context, *SetWatchlistRequest) (*SetWatchlistReply, error)
 }
@@ -109,6 +124,9 @@ func RegisterMarketHTTPServer(s *http.Server, srv MarketHTTPServer) {
 	r.GET("/v1/market/seat-stats", _Market_GetSeatStats0_HTTP_Handler(srv))
 	r.GET("/v1/market/chip-distribution", _Market_GetChipDistribution0_HTTP_Handler(srv))
 	r.GET("/v1/market/report-estimates", _Market_GetReportEstimates0_HTTP_Handler(srv))
+	r.POST("/v1/market/bars-batch", _Market_GetBarsBatch0_HTTP_Handler(srv))
+	r.GET("/v1/market/finance-brief", _Market_GetFinanceBrief0_HTTP_Handler(srv))
+	r.GET("/v1/market/security-search", _Market_SearchSecurities0_HTTP_Handler(srv))
 	r.GET("/v1/market/ah-premium", _Market_GetAHPremium0_HTTP_Handler(srv))
 }
 
@@ -476,6 +494,66 @@ func _Market_GetReportEstimates0_HTTP_Handler(srv MarketHTTPServer) func(ctx htt
 	}
 }
 
+func _Market_GetBarsBatch0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetBarsBatchRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetBarsBatch)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetBarsBatch(ctx, req.(*GetBarsBatchRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetBarsBatchReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetFinanceBrief0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetFinanceBriefRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetFinanceBrief)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetFinanceBrief(ctx, req.(*GetFinanceBriefRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*GetFinanceBriefReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_SearchSecurities0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SearchSecuritiesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketSearchSecurities)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SearchSecurities(ctx, req.(*SearchSecuritiesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SearchSecuritiesReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _Market_GetAHPremium0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in GetAHPremiumRequest
@@ -504,6 +582,10 @@ type MarketHTTPClient interface {
 	GetAuction(ctx context.Context, req *GetAuctionRequest, opts ...http.CallOption) (rsp *GetAuctionReply, err error)
 	// GetBars K 线。freq 为 1m 或 1d。
 	GetBars(ctx context.Context, req *GetBarsRequest, opts ...http.CallOption) (rsp *GetBarsReply, err error)
+	// GetBarsBatch 批量日线（M13 W2 留账收敛，只读）：一次取回多码日线，替代按代码 HTTP 逐码拉取；
+	// freq 恒 1d，POST 承载长 symbol 列表。无行的码在 results 中缺席——缺席即缺数，
+	// 消费方不得补 0 行（T01 缺码整体报错语义保持不变）。
+	GetBarsBatch(ctx context.Context, req *GetBarsBatchRequest, opts ...http.CallOption) (rsp *GetBarsBatchReply, err error)
 	// GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
 	GetBreadth(ctx context.Context, req *GetBreadthRequest, opts ...http.CallOption) (rsp *GetBreadthReply, err error)
 	// GetChipDistribution 目录册增补 B3（只读）：筹码分布 CYQ——换手衰减模型纯计算（前复权日K×换手率），不落库。
@@ -512,6 +594,10 @@ type MarketHTTPClient interface {
 	GetEmotionPath(ctx context.Context, req *GetEmotionPathRequest, opts ...http.CallOption) (rsp *GetEmotionPathReply, err error)
 	// GetFactorsCross 因子截面。as_of 为空时返回内存里的实时截面；否则返回 as_of 之前最新落库的值。
 	GetFactorsCross(ctx context.Context, req *GetFactorsCrossRequest, opts ...http.CallOption) (rsp *GetFactorsCrossReply, err error)
+	// GetFinanceBrief 附录 B-2（只读）：52 周高低已由 Quote.high_52w / low_52w 携带（见 Quote 注释口径）。
+	// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
+	// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
+	GetFinanceBrief(ctx context.Context, req *GetFinanceBriefRequest, opts ...http.CallOption) (rsp *GetFinanceBriefReply, err error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(ctx context.Context, req *GetIndicatorsRequest, opts ...http.CallOption) (rsp *GetIndicatorsReply, err error)
 	// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
@@ -539,6 +625,10 @@ type MarketHTTPClient interface {
 	GetSecurityBasics(ctx context.Context, req *GetSecurityBasicsRequest, opts ...http.CallOption) (rsp *GetSecurityBasicsReply, err error)
 	// GetSentiment 情绪截面，as_of 规则同上。
 	GetSentiment(ctx context.Context, req *GetSentimentRequest, opts ...http.CallOption) (rsp *Sentiment, err error)
+	// SearchSecurities 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
+	// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
+	// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
+	SearchSecurities(ctx context.Context, req *SearchSecuritiesRequest, opts ...http.CallOption) (rsp *SearchSecuritiesReply, err error)
 	// SetWatchlist 登记候选池。同一 owner 再次登记会整体替换并续租。
 	SetWatchlist(ctx context.Context, req *SetWatchlistRequest, opts ...http.CallOption) (rsp *SetWatchlistReply, err error)
 }
@@ -595,6 +685,22 @@ func (c *MarketHTTPClientImpl) GetBars(ctx context.Context, in *GetBarsRequest, 
 	return &out, nil
 }
 
+// GetBarsBatch 批量日线（M13 W2 留账收敛，只读）：一次取回多码日线，替代按代码 HTTP 逐码拉取；
+// freq 恒 1d，POST 承载长 symbol 列表。无行的码在 results 中缺席——缺席即缺数，
+// 消费方不得补 0 行（T01 缺码整体报错语义保持不变）。
+func (c *MarketHTTPClientImpl) GetBarsBatch(ctx context.Context, in *GetBarsBatchRequest, opts ...http.CallOption) (*GetBarsBatchReply, error) {
+	var out GetBarsBatchReply
+	pattern := "/v1/market/bars-batch"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationMarketGetBarsBatch))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetBreadth 监控驾驶舱 P2（只读）：20 日均线上占比（市场广度快照，收盘后落库）。
 func (c *MarketHTTPClientImpl) GetBreadth(ctx context.Context, in *GetBreadthRequest, opts ...http.CallOption) (*GetBreadthReply, error) {
 	var out GetBreadthReply
@@ -643,6 +749,22 @@ func (c *MarketHTTPClientImpl) GetFactorsCross(ctx context.Context, in *GetFacto
 	pattern := "/v1/market/factors"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetFactorsCross))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetFinanceBrief 附录 B-2（只读）：52 周高低已由 Quote.high_52w / low_52w 携带（见 Quote 注释口径）。
+// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
+// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
+func (c *MarketHTTPClientImpl) GetFinanceBrief(ctx context.Context, in *GetFinanceBriefRequest, opts ...http.CallOption) (*GetFinanceBriefReply, error) {
+	var out GetFinanceBriefReply
+	pattern := "/v1/market/finance-brief"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetFinanceBrief))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
@@ -814,6 +936,22 @@ func (c *MarketHTTPClientImpl) GetSentiment(ctx context.Context, in *GetSentimen
 	pattern := "/v1/market/sentiment"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetSentiment))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SearchSecurities 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
+// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
+// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
+func (c *MarketHTTPClientImpl) SearchSecurities(ctx context.Context, in *SearchSecuritiesRequest, opts ...http.CallOption) (*SearchSecuritiesReply, error) {
+	var out SearchSecuritiesReply
+	pattern := "/v1/market/security-search"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketSearchSecurities))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

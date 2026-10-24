@@ -157,6 +157,46 @@ func (s *MarketService) GetBars(ctx context.Context, req *v1.GetBarsRequest) (*v
 	return reply, nil
 }
 
+// GetBarsBatch 一次拉多码日线（M13 W2 留账：strategy/datahub 读放大收敛的读端）。
+// 缺码在 results 中缺席（缺席即缺数）；任一码解析失败整批 400，不做部分静默放行。
+func (s *MarketService) GetBarsBatch(ctx context.Context, req *v1.GetBarsBatchRequest) (*v1.GetBarsBatchReply, error) {
+	syms, err := parseSymbols(req.GetSymbols())
+	if err != nil {
+		return nil, err
+	}
+	if len(syms) == 0 {
+		return nil, badRequest("symbols required")
+	}
+	start, err := parseTime(req.GetStart())
+	if err != nil {
+		return nil, err
+	}
+	end, err := parseEnd(req.GetEnd())
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.uc.BarsBatch(ctx, syms, start, end, adjustOf(req.GetAdjust()), int(req.GetLimit()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetBarsBatchReply{Freq: "1d", Results: make([]*v1.SymbolBars, 0, len(res))}
+	for _, sym := range syms { // 结果按请求序稳定输出
+		rows, ok := res[sym]
+		if !ok || len(rows) == 0 {
+			continue // 缺席即缺数
+		}
+		sb := &v1.SymbolBars{Symbol: sym, Bars: make([]*v1.Bar, 0, len(rows))}
+		for _, r := range rows {
+			sb.Bars = append(sb.Bars, &v1.Bar{
+				Time: fmtDay(r.Time), Open: r.Open, High: r.High, Low: r.Low, Close: r.Close,
+				Volume: r.Volume, Amount: r.Amount, AdjFactor: r.Adj,
+			})
+		}
+		reply.Results = append(reply.Results, sb)
+	}
+	return reply, nil
+}
+
 func (s *MarketService) GetQuote(ctx context.Context, req *v1.GetQuoteRequest) (*v1.Quote, error) {
 	sym, err := parseSymbol(req.GetSymbol())
 	if err != nil {
@@ -174,6 +214,7 @@ func (s *MarketService) GetQuote(ctx context.Context, req *v1.GetQuoteRequest) (
 		TurnoverRate: q.TurnoverRate, Amplitude: q.Amplitude,
 		PeTtm: q.PeTtm, Pb: q.Pb, CircMv: q.CircMv, TotalMv: q.TotalMv,
 		LimitUpPrice: q.LimitUp, LimitDownPrice: q.LimitDown, NoLimit: q.NoLimit,
+		High_52W: q.High52, Low_52W: q.Low52, // proto high_52w/low_52w 的 Go 生成名（*float64 缺省直传）
 		Source: q.Source, AsOf: fmtTime(q.AsOf), Stale: q.Stale, Found: q.Found,
 	}
 	for _, l := range q.Bid {
@@ -558,6 +599,29 @@ func (s *MarketService) GetReportEstimates(ctx context.Context, req *v1.GetRepor
 	return reply, nil
 }
 
+// GetFinanceBrief 返回财务排雷摘要（附录 B-3，只读 finance_report）。
+// found=false = 该券无披露行——合法业务态，前端显「无」不告警；披露列指针直传，
+// DB NULL ↔ proto 缺省，不落 0。
+func (s *MarketService) GetFinanceBrief(ctx context.Context, req *v1.GetFinanceBriefRequest) (*v1.GetFinanceBriefReply, error) {
+	sym, err := parseSymbol(req.GetSymbol())
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.uc.FinanceBrief(ctx, sym, int(req.GetPeriods()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.GetFinanceBriefReply{Symbol: sym, Found: len(rows) > 0, Rows: make([]*v1.FinanceBriefRow, 0, len(rows))}
+	for _, r := range rows {
+		reply.Rows = append(reply.Rows, &v1.FinanceBriefRow{
+			EndDate: fmtDay(r.EndDate), Kind: r.Kind, AnnDate: fmtDay(r.AnnDate),
+			ForecastType: r.ForecastType, NetProfit: r.NetProfit, NetProfitYoy: r.NetProfitYoY,
+			Summary: r.Summary, Source: r.Source,
+		})
+	}
+	return reply, nil
+}
+
 // GetAHPremium 返回 A/H 配对与溢价（目录册增补 B5，查询时直抓，不落库）。
 // status 五态归属与衍生列缺省在 biz 收口；这里只做指针直传与时刻格式化。
 func (s *MarketService) GetAHPremium(ctx context.Context, req *v1.GetAHPremiumRequest) (*v1.GetAHPremiumReply, error) {
@@ -711,6 +775,23 @@ func (s *MarketService) GetSecurityBasics(ctx context.Context, req *v1.GetSecuri
 			StFlag: r.ST, SuspendFlag: r.Suspended,
 			PeTtm: r.PeTtm, Pb: r.Pb, CircMv: r.CircMv,
 			UpdateTime: fmtTime(r.UpdateTime), Concepts: r.Concepts,
+		})
+	}
+	return reply, nil
+}
+
+// SearchSecurities 代码/名称/拼音联想（G2 后端先落，四通道归组见 biz）。
+// query 为空返回空 matches，不报错——前端联想框清空即停。
+func (s *MarketService) SearchSecurities(ctx context.Context, req *v1.SearchSecuritiesRequest) (*v1.SearchSecuritiesReply, error) {
+	ms, err := s.uc.SearchSecurities(ctx, req.GetQuery(), int(req.GetLimit()))
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.SearchSecuritiesReply{Matches: make([]*v1.SecurityMatch, 0, len(ms))}
+	for _, m := range ms {
+		reply.Matches = append(reply.Matches, &v1.SecurityMatch{
+			Code: m.Code, Name: m.Name, Market: m.Market, St: m.ST, Suspended: m.Suspended,
+			MatchKind: m.MatchKind, Pinyin: m.Pinyin,
 		})
 	}
 	return reply, nil

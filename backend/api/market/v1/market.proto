@@ -128,6 +128,32 @@ service Market {
     };
   }
 
+  // 批量日线（M13 W2 留账收敛，只读）：一次取回多码日线，替代按代码 HTTP 逐码拉取；
+  // freq 恒 1d，POST 承载长 symbol 列表。无行的码在 results 中缺席——缺席即缺数，
+  // 消费方不得补 0 行（T01 缺码整体报错语义保持不变）。
+  rpc GetBarsBatch(GetBarsBatchRequest) returns (GetBarsBatchReply) {
+    option (google.api.http) = {
+      post: "/v1/market/bars-batch"
+      body: "*"
+    };
+  }
+  // 附录 B-2（只读）：52 周高低已由 Quote.high_52w / low_52w 携带（见 Quote 注释口径）。
+  // 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
+  // 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
+  rpc GetFinanceBrief(GetFinanceBriefRequest) returns (GetFinanceBriefReply) {
+    option (google.api.http) = {
+      get: "/v1/market/finance-brief"
+    };
+  }
+  // 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
+  // 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
+  // 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
+  rpc SearchSecurities(SearchSecuritiesRequest) returns (SearchSecuritiesReply) {
+    option (google.api.http) = {
+      get: "/v1/market/security-search"
+    };
+  }
+
   // 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
   // RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
   // HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
@@ -566,6 +592,10 @@ message Quote {
   string as_of = 26;         // RFC3339；快照口径取行情时间与写入时间中较早者
   bool stale = 27;
   bool found = 28;
+  // 近 250 交易日窗口的前复权最高/最低价（B-2）：以窗口末根 adj_factor 为基准折算；
+  // 窗口有效行不足 20 或含缺因子行不可复权时不返回——「没取到≠0」。不含当日未成 K 的盘中值。
+  optional double high_52w = 29;
+  optional double low_52w = 30;
 }
 
 /* ---------- 名称字典（UI 显示方案 §6.2 / 附录 B-1） ---------- */
@@ -755,4 +785,66 @@ message GetAHPremiumReply {
 message AHMissingLeg {
   string leg = 1;
   string why = 2;
+}
+
+// GetBarsBatchRequest 批量日线请求（M13 W2 留账）。
+message GetBarsBatchRequest {
+  repeated string symbols = 1; // 必传非空；任一码解析失败整批 400；>500 截 500（消费侧按 500 分包）
+  string start = 2;            // 同 GetBars 时间格式；空 = 按 limit×3 自然日自 end 反推起算
+  string end = 3;              // 空 = 现在；纯日期含当日
+  Adjust adjust = 4;           // 各码以自身窗口末根因子为基准（与 GetBars 同口径）
+  int32 limit = 5;             // 每码条数（升序取尾）；≤0 默认 250，>500 截 500
+}
+
+message SymbolBars {
+  string symbol = 1;
+  repeated Bar bars = 2; // 时间升序；窗口内无该码行时整个 SymbolBars 缺席（缺席即缺数）
+}
+
+message GetBarsBatchReply {
+  string freq = 1; // 恒 "1d"
+  repeated SymbolBars results = 2;
+}
+
+// GetFinanceBrief 附录 B-3（只读）：财务排雷摘要，报告期倒序、同期多公告按公告日倒序全列。
+message GetFinanceBriefRequest {
+  string symbol = 1;
+  int32 periods = 2; // 最近 N 个报告期；≤0 默认 4，>12 截 12
+}
+
+message FinanceBriefRow {
+  string end_date = 1;      // 报告期 YYYY-MM-DD
+  string kind = 2;          // forecast / express / indicator
+  string ann_date = 3;      // 公告日 YYYY-MM-DD
+  string forecast_type = 4; // 预增/预减/扭亏/首亏 等；非 forecast 行为空
+  optional double net_profit = 5;     // 净利润（元）；DB NULL ↔ 缺省
+  optional double net_profit_yoy = 6; // 净利润同比 %；同上
+  string summary = 7;
+  string source = 8;
+}
+
+message GetFinanceBriefReply {
+  string symbol = 1;
+  bool found = 2; // false = 该券无披露行
+  repeated FinanceBriefRow rows = 3;
+}
+
+// SearchSecurities G2（只读）：代码/名称/拼音联想。
+message SearchSecuritiesRequest {
+  string query = 1;
+  int32 limit = 2; // ≤0 默认 20，>50 截 50
+}
+
+message SecurityMatch {
+  string code = 1;
+  string name = 2;
+  string market = 3; // SH / SZ / BJ
+  bool st = 4;
+  bool suspended = 5;
+  string match_kind = 6; // code / name / pinyin（命中通道显式，便于前端排序解释）
+  string pinyin = 7;     // 名称拼音首字母串（诊断/前端高亮用）
+}
+
+message SearchSecuritiesReply {
+  repeated SecurityMatch matches = 1;
 }

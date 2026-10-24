@@ -49,6 +49,16 @@ type fakeRepo struct {
 	members map[string][]string
 	names   map[string]string
 	quotes  []market.Quote
+	// H5 批量日线 / E7 财务摘要桩数据（默认 nil；multiErr/finErr 供错误路径用例）。
+	// multiSyms/finPeriods 记录调用参，钉参数管道与截断默认。
+	barsMulti  map[string][]BarRow
+	multiErr   error
+	multiSyms  []string
+	finRows    []FinanceBriefRow
+	finErr     error
+	finPeriods int
+	// G2 联想用字典行（SecurityBasics 默认返回它），默认 nil = 空字典。
+	secBasics []SecurityBasicRow
 }
 
 func (f *fakeRepo) LoadStocks(context.Context) ([]market.StockInfo, error) { return f.stocks, nil }
@@ -130,6 +140,23 @@ func (f *fakeRepo) Bars(context.Context, string, string, time.Time, time.Time, i
 	}
 	return nil, nil
 }
+
+// H5 批量日线 / E7 财务摘要桩（BATCH-02）。
+func (f *fakeRepo) BarsMulti(_ context.Context, syms []string, _ string, _, _ time.Time) (map[string][]BarRow, error) {
+	f.multiSyms = append([]string(nil), syms...)
+	if f.multiErr != nil {
+		return nil, f.multiErr
+	}
+	return f.barsMulti, nil
+}
+func (f *fakeRepo) FinanceBriefRows(_ context.Context, _ string, periods int) ([]FinanceBriefRow, error) {
+	f.finPeriods = periods
+	if f.finErr != nil {
+		return nil, f.finErr
+	}
+	return f.finRows, nil
+}
+
 func (f *fakeRepo) FactorsAt(context.Context, time.Time, string, time.Time, []string) ([]FactorRecord, error) {
 	return nil, nil
 }
@@ -164,8 +191,9 @@ func (f *fakeRepo) ReportEstimateRows(_ context.Context, symbol string, since, a
 }
 
 // 并行会话加的名称字典接口：fakeRepo 统一兜底（N0 用例另行覆写桩）。
+// secBasics 非空时返回它（G2/SymbolName 用例注入字典行），默认空字典。
 func (f *fakeRepo) SecurityBasics(context.Context, []string) ([]SecurityBasicRow, time.Time, error) {
-	return nil, time.Time{}, nil
+	return f.secBasics, time.Time{}, nil
 }
 
 /* ---------- P2 测试桩 ---------- */

@@ -83,6 +83,12 @@ type Repo interface {
 	OverseasMappings(ctx context.Context) ([]market.Mapping, error)
 
 	Bars(ctx context.Context, symbol, freq string, start, end time.Time, limit int) ([]BarRow, error)
+	// BarsMulti 一次读多码 [start,end] 全部 K 线（symbol 分组、各自时间升序），
+	// M13 W2 批量日线读放大收敛用。窗口内无行的码在 map 中缺席（缺席即缺数）。
+	BarsMulti(ctx context.Context, symbols []string, freq string, start, end time.Time) (map[string][]BarRow, error)
+	// FinanceBriefRows 读 symbol 的 finance_report 行（end_date 倒序、ann_date 次之、
+	// 上限 periods×3 行——同一报告期三种 kind 各留位置；披露列保持 nil，缺省不落 0）。
+	FinanceBriefRows(ctx context.Context, symbol string, periods int) ([]FinanceBriefRow, error)
 	FactorsAt(ctx context.Context, day time.Time, kind string, asOf time.Time, symbols []string) ([]FactorRecord, error)
 	SentimentAt(ctx context.Context, day, asOf time.Time) (market.Sentiment, bool, error)
 	Boards(ctx context.Context, day time.Time, direction, status string) ([]market.LimitBoard, error)

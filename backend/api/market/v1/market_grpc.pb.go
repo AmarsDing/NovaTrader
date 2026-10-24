@@ -41,6 +41,9 @@ const (
 	Market_GetSeatStats_FullMethodName        = "/api.market.v1.Market/GetSeatStats"
 	Market_GetChipDistribution_FullMethodName = "/api.market.v1.Market/GetChipDistribution"
 	Market_GetReportEstimates_FullMethodName  = "/api.market.v1.Market/GetReportEstimates"
+	Market_GetBarsBatch_FullMethodName        = "/api.market.v1.Market/GetBarsBatch"
+	Market_GetFinanceBrief_FullMethodName     = "/api.market.v1.Market/GetFinanceBrief"
+	Market_SearchSecurities_FullMethodName    = "/api.market.v1.Market/SearchSecurities"
 	Market_GetAHPremium_FullMethodName        = "/api.market.v1.Market/GetAHPremium"
 )
 
@@ -89,6 +92,18 @@ type MarketClient interface {
 	// 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
 	// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
 	GetReportEstimates(ctx context.Context, in *GetReportEstimatesRequest, opts ...grpc.CallOption) (*GetReportEstimatesReply, error)
+	// 批量日线（M13 W2 留账收敛，只读）：一次取回多码日线，替代按代码 HTTP 逐码拉取；
+	// freq 恒 1d，POST 承载长 symbol 列表。无行的码在 results 中缺席——缺席即缺数，
+	// 消费方不得补 0 行（T01 缺码整体报错语义保持不变）。
+	GetBarsBatch(ctx context.Context, in *GetBarsBatchRequest, opts ...grpc.CallOption) (*GetBarsBatchReply, error)
+	// 附录 B-2（只读）：52 周高低已由 Quote.high_52w / low_52w 携带（见 Quote 注释口径）。
+	// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
+	// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
+	GetFinanceBrief(ctx context.Context, in *GetFinanceBriefRequest, opts ...grpc.CallOption) (*GetFinanceBriefReply, error)
+	// 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
+	// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
+	// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
+	SearchSecurities(ctx context.Context, in *SearchSecuritiesRequest, opts ...grpc.CallOption) (*SearchSecuritiesReply, error)
 	// 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
 	// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
 	// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
@@ -293,6 +308,36 @@ func (c *marketClient) GetReportEstimates(ctx context.Context, in *GetReportEsti
 	return out, nil
 }
 
+func (c *marketClient) GetBarsBatch(ctx context.Context, in *GetBarsBatchRequest, opts ...grpc.CallOption) (*GetBarsBatchReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBarsBatchReply)
+	err := c.cc.Invoke(ctx, Market_GetBarsBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) GetFinanceBrief(ctx context.Context, in *GetFinanceBriefRequest, opts ...grpc.CallOption) (*GetFinanceBriefReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetFinanceBriefReply)
+	err := c.cc.Invoke(ctx, Market_GetFinanceBrief_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *marketClient) SearchSecurities(ctx context.Context, in *SearchSecuritiesRequest, opts ...grpc.CallOption) (*SearchSecuritiesReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchSecuritiesReply)
+	err := c.cc.Invoke(ctx, Market_SearchSecurities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *marketClient) GetAHPremium(ctx context.Context, in *GetAHPremiumRequest, opts ...grpc.CallOption) (*GetAHPremiumReply, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetAHPremiumReply)
@@ -348,6 +393,18 @@ type MarketServer interface {
 	// 目录册增补 B4（只读）：券商研报盈利预测——report_estimate 表 PIT 多券商分歧明细，
 	// 发布日窗口查询（一份研报三年 1..3 行，est_year 区分预测年度）。
 	GetReportEstimates(context.Context, *GetReportEstimatesRequest) (*GetReportEstimatesReply, error)
+	// 批量日线（M13 W2 留账收敛，只读）：一次取回多码日线，替代按代码 HTTP 逐码拉取；
+	// freq 恒 1d，POST 承载长 symbol 列表。无行的码在 results 中缺席——缺席即缺数，
+	// 消费方不得补 0 行（T01 缺码整体报错语义保持不变）。
+	GetBarsBatch(context.Context, *GetBarsBatchRequest) (*GetBarsBatchReply, error)
+	// 附录 B-2（只读）：52 周高低已由 Quote.high_52w / low_52w 携带（见 Quote 注释口径）。
+	// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
+	// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
+	GetFinanceBrief(context.Context, *GetFinanceBriefRequest) (*GetFinanceBriefReply, error)
+	// 名称/拼音联想（G2 后端先落，UI 显示方案附录 B-1 读面延展，只读）：
+	// 命中通道 code 前缀 → 名称前缀 → 名称子串 → 拼音首字母前缀，四类按序归组、组内代码序；
+	// 多音字取常用读音（命中错位属已知口径），match_kind 显式通道。limit ≤ 50，默认 20。
+	SearchSecurities(context.Context, *SearchSecuritiesRequest) (*SearchSecuritiesReply, error)
 	// 目录册增补 B5（只读、查询时直抓）：A/H 两地上市配对与溢价——配对走东财 F10
 	// RPT_F10_BASIC_ORGINFO（24h/负 30min 进程内 TTL），三腿报价（A 现价、H 现价、
 	// HKDCNY）走腾讯 qt.gtimg.cn 一次 GET；不落库、不调度、不预聚合。
@@ -418,6 +475,15 @@ func (UnimplementedMarketServer) GetChipDistribution(context.Context, *GetChipDi
 }
 func (UnimplementedMarketServer) GetReportEstimates(context.Context, *GetReportEstimatesRequest) (*GetReportEstimatesReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetReportEstimates not implemented")
+}
+func (UnimplementedMarketServer) GetBarsBatch(context.Context, *GetBarsBatchRequest) (*GetBarsBatchReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBarsBatch not implemented")
+}
+func (UnimplementedMarketServer) GetFinanceBrief(context.Context, *GetFinanceBriefRequest) (*GetFinanceBriefReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetFinanceBrief not implemented")
+}
+func (UnimplementedMarketServer) SearchSecurities(context.Context, *SearchSecuritiesRequest) (*SearchSecuritiesReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchSecurities not implemented")
 }
 func (UnimplementedMarketServer) GetAHPremium(context.Context, *GetAHPremiumRequest) (*GetAHPremiumReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAHPremium not implemented")
@@ -785,6 +851,60 @@ func _Market_GetReportEstimates_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Market_GetBarsBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBarsBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetBarsBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetBarsBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetBarsBatch(ctx, req.(*GetBarsBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_GetFinanceBrief_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFinanceBriefRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).GetFinanceBrief(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_GetFinanceBrief_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).GetFinanceBrief(ctx, req.(*GetFinanceBriefRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Market_SearchSecurities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchSecuritiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MarketServer).SearchSecurities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Market_SearchSecurities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MarketServer).SearchSecurities(ctx, req.(*SearchSecuritiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Market_GetAHPremium_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetAHPremiumRequest)
 	if err := dec(in); err != nil {
@@ -885,6 +1005,18 @@ var Market_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetReportEstimates",
 			Handler:    _Market_GetReportEstimates_Handler,
+		},
+		{
+			MethodName: "GetBarsBatch",
+			Handler:    _Market_GetBarsBatch_Handler,
+		},
+		{
+			MethodName: "GetFinanceBrief",
+			Handler:    _Market_GetFinanceBrief_Handler,
+		},
+		{
+			MethodName: "SearchSecurities",
+			Handler:    _Market_SearchSecurities_Handler,
 		},
 		{
 			MethodName: "GetAHPremium",

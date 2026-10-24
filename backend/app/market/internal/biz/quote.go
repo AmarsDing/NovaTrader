@@ -36,7 +36,8 @@ type QuoteRow struct {
 	PeTtm, Pb, CircMv, TotalMv   float64
 	LimitUp, LimitDown           float64
 	NoLimit                      bool
-	Source                       string // snap / 1d / ""
+	High52, Low52                *float64 // 近 250 交易日前复权极值（B-2）；窗口无效缺省
+	Source                       string   // snap / 1d / ""
 	AsOf                         time.Time
 	Stale                        bool
 	Found                        bool
@@ -61,6 +62,9 @@ func (u *Usecase) Quote(ctx context.Context, symbol string) (QuoteRow, error) {
 	if !base.Found {
 		return q, nil
 	}
+
+	// 52 周极值（B-2）：与实时价无关的历史窗口，先算好再拼盘中口径。
+	q.High52, q.Low52 = u.week52Extremes(ctx, symbol, now)
 
 	tradeDay := market.DateOf(now)
 	snap := u.lookupSnapshot(ctx, symbol, tradeDay)
@@ -145,4 +149,52 @@ func levels5(book [][2]float64) [][2]float64 {
 		return book[:5]
 	}
 	return book
+}
+
+const (
+	week52Window   = 250 // 约一年的交易日数（B-2 “52 周”）
+	week52MinValid = 20  // 窗口有效行不足则整体缺省
+)
+
+// week52Extremes 近 250 交易日窗口的前复权最高/最低价（B-2）。复权基准取
+// 窗口内最后一根有效因子；Adj<=0 的缺因子行跳过；有效行不足 week52MinValid
+// 或取数失败整体缺省（nil 透出，proto optional 不落 0）。
+func (u *Usecase) week52Extremes(ctx context.Context, symbol string, now time.Time) (hi, lo *float64) {
+	rows, err := u.repo.Bars(ctx, symbol, "1d", now.AddDate(0, 0, -week52Window*2), now, week52Window)
+	if err != nil {
+		u.log.Warnf("week52 bars read failed symbol=%s: %v", symbol, err)
+		return nil, nil
+	}
+	base := 0.0
+	for i := len(rows) - 1; i >= 0; i-- {
+		if rows[i].Adj > 0 {
+			base = rows[i].Adj
+			break
+		}
+	}
+	if base <= 0 {
+		return nil, nil
+	}
+	maxH, minL, valid := 0.0, 0.0, 0
+	for _, r := range rows {
+		if r.Adj <= 0 {
+			continue
+		}
+		b := market.AdjustBar(r.Bar, r.Adj, base, market.AdjustForward)
+		if b.High <= 0 || b.Low <= 0 {
+			continue
+		}
+		valid++
+		if maxH <= 0 || b.High > maxH {
+			maxH = b.High
+		}
+		if minL <= 0 || b.Low < minL {
+			minL = b.Low
+		}
+	}
+	if valid < week52MinValid {
+		return nil, nil
+	}
+	h, l := maxH, minL
+	return &h, &l
 }
