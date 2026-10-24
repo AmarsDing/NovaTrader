@@ -105,7 +105,7 @@ func TestDesktopPushStitchesParentEnvelope(t *testing.T) {
 
 // 无父路径（无父直发、静默后 Flush 重投）：链号仍以行内 note.TraceID 为准。
 // Flush 触发 ctx 顶多带「触发事件自己的链号」——那既不是父也不是本行链号，
-// 绝不能顶掉行内链号，也绝不能编 causation_id。
+// 绝不能顶掉行内链号；EventID 为空的合成 note 没有真父，也绝不能编 causation_id。
 func TestDesktopPushWithoutParentKeepsNoteTrace(t *testing.T) {
 	pub := &capturePublisher{}
 	d := &Desktop{bus: pub}
@@ -131,5 +131,28 @@ func TestDesktopPushWithoutParentKeepsNoteTrace(t *testing.T) {
 				t.Fatalf("no real parent means no causation: %+v", env)
 			}
 		})
+	}
+}
+
+// 静默 Flush/Recover 重投（N2-02 续链）：ctx 无父信封时，行内 EventID 是建行
+// 入站事件的持久 id——真因果父沿它续上；触发链号仍无权顶掉行内 trace。
+// 与直发链（ctx 父信封 EventID 与建行值同源）同一个父，静默窗口不产生孤儿段。
+func TestDesktopPushResumeTrueParentFromRow(t *testing.T) {
+	pub := &capturePublisher{}
+	d := &Desktop{bus: pub}
+	note := biz.DesktopNote{Title: "held", EventID: "evt-inbound-9", TraceID: "trace-row-9"}
+	ctx := events.WithTraceID(context.Background(), "trace-trigger-4")
+	if err := d.Push(ctx, note); err != nil {
+		t.Fatal(err)
+	}
+	if len(pub.envs) != 1 {
+		t.Fatalf("envs=%d", len(pub.envs))
+	}
+	env := pub.envs[0]
+	if env.TraceID != note.TraceID {
+		t.Fatalf("row trace must stay authoritative: %q want %q", env.TraceID, note.TraceID)
+	}
+	if env.CausationID != note.EventID {
+		t.Fatalf("causation must resume the persisted inbound parent: %q want %q", env.CausationID, note.EventID)
 	}
 }

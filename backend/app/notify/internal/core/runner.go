@@ -148,7 +148,8 @@ func (r *Runner) onMsg(ctx context.Context, m *nats.Msg, flush bool) {
 	var handleErr error
 	if flush {
 		// Flush 的触发事件只是重投指令，不是被重投消息的因果父——父信封不下放；
-		// 各行链号仍以行内携带的 trace（DesktopNote.TraceID）为准，不编因果。
+		// 各行链号仍以行内携带的 trace（DesktopNote.TraceID）为准，真因果父由
+		// Desktop.Push 沿持久化的 note.EventID（建行入站事件 id）续上，不编因果。
 		handleErr = r.p.Flush(ctx)
 	} else {
 		// 直发消费：父信封完整下传，notify.desktop 才能经发射缝续上真实因果父。

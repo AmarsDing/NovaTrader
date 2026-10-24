@@ -38,8 +38,14 @@ func (d *Desktop) Push(ctx context.Context, note biz.DesktopNote) error {
 		// 直发链：消费侧放进 ctx 的父信封是真因果，trace/causation/correlation/source_time 全续。
 		env, err = events.NewWithContext(ctx, "notify", events.SubjectNotifyDesktop, note)
 	} else {
-		// 无父直发与静默重投：行内链号仍为准，没有真实父就不编 causation_id。
+		// 无父（静默后 Flush 重投、Recover 与无父直发）：链号仍以行内 note.TraceID 为准。
+		// note.EventID 是建行入站事件的 id（event_id 唯一持久，即本行唯一真父）——
+		// 重投沿它续真因果；直发链 ctx 父信封与该值同源，两条路径父级一致。
+		// EventID 为空的合成 note 没有真父，维持无 causation，绝不编造。
 		env, err = events.New("notify", events.SubjectNotifyDesktop, note.TraceID, note)
+		if err == nil && note.EventID != "" {
+			env.CausationID = note.EventID
+		}
 	}
 	if err != nil {
 		return err
