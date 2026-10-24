@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"strconv"
 	"testing"
 	"time"
 )
@@ -173,4 +174,80 @@ func TestComputeFrozenEmpty(t *testing.T) {
 	if f.UpCount != nil || f.Promo12 != nil {
 		t.Fatalf("scalars must stay nil when nothing fetched")
 	}
+}
+
+// M05 P0-1 钉样：limit_pool.reason 为空（含纯空白）的涨停股归并进「未标注」桶，
+// 不静默丢弃、不虚构题材；桶内计数/最高板/代表股（≤8 只）照常汇总。
+func TestComputeFrozenThemeUnlabeled(t *testing.T) {
+	unl := []PoolRow{}
+	// 10 只 reason 为空：U1 三连板最高，其余一板；代表股按输入序取前 8。
+	for i, sym := range []string{"U1", "U2", "U3", "U4", "U5", "U6", "U7", "U8", "U9", "U10"} {
+		con := 1
+		if i == 0 {
+			con = 3
+		}
+		unl = append(unl, PoolRow{Symbol: sym, Name: sym, Pool: "up", Consecutive: con})
+	}
+	// 2 只纯空白 reason：应与空串同桶。
+	unl = append(unl,
+		PoolRow{Symbol: "W1", Name: "W1", Pool: "up", Consecutive: 2, Reason: "   "},
+		PoolRow{Symbol: "W2", Name: "W2", Pool: "up", Consecutive: 2, Reason: ""},
+	)
+	// 1 只有标注的对照组。
+	unl = append(unl, PoolRow{Symbol: "A1", Name: "A1", Pool: "up", Consecutive: 1, Reason: "a"})
+	f := computeFrozen(unl, nil, map[string]TierBar{}, "test")
+
+	if len(f.ThemeTree) != 2 {
+		t.Fatalf("themeTree len = %d, want 2: %+v", len(f.ThemeTree), f.ThemeTree)
+	}
+	top := f.ThemeTree[0]
+	if top.Reason != "未标注" {
+		t.Fatalf("theme[0].Reason = %q, want 未标注", top.Reason)
+	}
+	if top.Count != 12 {
+		t.Fatalf("theme[0].Count = %d, want 12（10 空 + 2 空白同桶）", top.Count)
+	}
+	if top.MaxHeight != 3 {
+		t.Fatalf("theme[0].MaxHeight = %d, want 3", top.MaxHeight)
+	}
+	if len(top.Symbols) != 8 || top.Symbols[0] != "U1" {
+		t.Fatalf("theme[0].Symbols = %v, want 首 8 只且以 U1 开头", top.Symbols)
+	}
+	if f.ThemeTree[1].Reason != "a" || f.ThemeTree[1].Count != 1 {
+		t.Fatalf("theme[1] = %+v, want a×1", f.ThemeTree[1])
+	}
+}
+
+// buildThemeTree 钉样：同排行先按数后按题材名；总数超 20 只截 top20。
+func TestThemeTreeTop20(t *testing.T) {
+	ups := []PoolRow{}
+	// 21 个不同题材各 1 只，其中 t00 再加 1 只成 2 只 → 排头；t20 应被挤出。
+	ups = append(ups, PoolRow{Symbol: "S00a", Pool: "up", Consecutive: 1, Reason: "t00"})
+	ups = append(ups, PoolRow{Symbol: "S00b", Pool: "up", Consecutive: 1, Reason: "t00"})
+	for i := 1; i <= 20; i++ {
+		ups = append(ups, PoolRow{Symbol: "S" + twoDigit(i), Pool: "up", Consecutive: 1, Reason: "t" + twoDigit(i)})
+	}
+	f := &Frozen{}
+	buildThemeTree(f, ups)
+	if len(f.ThemeTree) != 20 {
+		t.Fatalf("themeTree len = %d, want 20", len(f.ThemeTree))
+	}
+	if f.ThemeTree[0].Reason != "t00" || f.ThemeTree[0].Count != 2 {
+		t.Fatalf("theme[0] = %+v, want t00×2", f.ThemeTree[0])
+	}
+	for _, it := range f.ThemeTree {
+		if it.Reason == "t20" {
+			t.Fatalf("t20 应被 top20 截出: %+v", f.ThemeTree)
+		}
+	}
+	if f.ThemeTree[1].Reason != "t01" {
+		t.Fatalf("同计数按题材名升序, theme[1] = %q, want t01", f.ThemeTree[1].Reason)
+	}
+}
+
+func twoDigit(i int) string {
+	if i < 10 {
+		return "0" + strconv.Itoa(i)
+	}
+	return strconv.Itoa(i)
 }
