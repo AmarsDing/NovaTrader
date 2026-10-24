@@ -85,6 +85,7 @@ var definitions = map[string][]definition{
 	"notify": {
 		{"recover", "business", "startup", "notification_held_state_restore_returned_success"},
 		{"message_handle", "business", "registered_notification_subjects", "notification_pipeline_returned_success_not_channel_delivery_or_user_read"},
+		{"market_alert_handle", "notification", "market.alert", "notification_pipeline_returned_success_not_channel_delivery_or_user_read"},
 		{"held_flush", "business", "flush_timer_or_session_changed", "notification_flush_returned_success_not_channel_delivery_or_user_read"},
 	},
 	"strategy": {

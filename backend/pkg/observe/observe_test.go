@@ -3,8 +3,13 @@ package observe
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -184,5 +189,53 @@ func TestEveryRegisteredServiceHasClosedValidHTTPContract(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+// 调用点⊆注册表静态守卫：app 各服务代码里的 Op("key") 字面量必须属于该文件中
+// ForService("svc") 声明过的服务注册集，漏注册（如 market_alert_handle 曾路过
+// 只判 def 存在性的测试）在此显红，不等到运行时 panic 才暴露。
+func TestOpCallSitesRegistered(t *testing.T) {
+	forService := regexp.MustCompile(`ForService\("([a-z0-9_]+)"\)`)
+	opKey := regexp.MustCompile(`\.Op\("([a-z0-9_.]+)"\)`)
+	root := filepath.Join("..", "..", "app")
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		services := map[string]bool{}
+		for _, m := range forService.FindAllSubmatch(raw, -1) {
+			services[string(m[1])] = true
+		}
+		if len(services) == 0 {
+			return nil
+		}
+		for _, m := range opKey.FindAllSubmatch(raw, -1) {
+			key := string(m[1])
+			ok := false
+			for svc := range services {
+				defs, known := definitions[svc]
+				if !known {
+					continue
+				}
+				for _, def := range defs {
+					if def.key == key {
+						ok = true
+						break
+					}
+				}
+			}
+			if !ok {
+				t.Errorf("%s: Op(%q) 不在该文件 ForService 声明的服务注册集内（漏注册会运行时 panic）", path, key)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

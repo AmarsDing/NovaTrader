@@ -86,3 +86,43 @@ func TestObservationSeparatesPipelineCompletionFromChannelDelivery(t *testing.T)
 	}
 	t.Fatal("notification operation missing")
 }
+
+// onMarketAlert 走 Op("market_alert_handle")：该键曾注册缺失（9a324e3 引入调用点、
+// 注册表未跟随），真实触发即 panic。钉样：坏信封记 Rejected 不 panic，
+// 成功链路与 channel 失败照常区分。
+func TestOnMarketAlertObservation(t *testing.T) {
+	st := &observationStore{}
+	p := biz.NewPipeline(biz.Config{RetryMax: 1}, st, failedChannel{}, failedChannel{})
+	r := NewRunner(p, nil, nil, nil, log.NewStdLogger(io.Discard))
+	reg := observe.ForService("notify")
+	counts := func(want bool) (uint64, uint64, bool) {
+		for _, op := range reg.Snapshot().Operations {
+			if op.Key == "market_alert_handle" {
+				return op.Total.Succeeded, op.Total.Rejected, true
+			}
+		}
+		return 0, 0, false
+	}
+	s0, rj0, ok := counts(true)
+	if !ok {
+		t.Fatal("market_alert_handle op 未注册（会运行时 panic）")
+	}
+	r.onMarketAlert(context.Background(), []byte("invalid-json"))
+	_, rj1, _ := counts(true)
+	if rj1 != rj0+1 {
+		t.Fatalf("坏信封应记 Rejected: %d -> %d", rj0, rj1)
+	}
+	env, err := events.New("market", events.SubjectMarketAlert, "isolated-trace", map[string]string{"kind": "limit_up", "message": "isolated fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := env.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.onMarketAlert(context.Background(), raw) // channel 失败但 pipeline 已落定失败状态 → 操作成功
+	s1, rj2, _ := counts(true)
+	if s1 != s0+1 || rj2 != rj1 {
+		t.Fatalf("成功/拒绝计数不符: s %d->%d rj %d->%d", s0, s1, rj1, rj2)
+	}
+}
