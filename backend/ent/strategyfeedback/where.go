@@ -309,6 +309,16 @@ func PredictedReturnLTE(v float64) predicate.StrategyFeedback {
 	return predicate.StrategyFeedback(sql.FieldLTE(FieldPredictedReturn, v))
 }
 
+// PredictedReturnIsNil applies the IsNil predicate on the "predicted_return" field.
+func PredictedReturnIsNil() predicate.StrategyFeedback {
+	return predicate.StrategyFeedback(sql.FieldIsNull(FieldPredictedReturn))
+}
+
+// PredictedReturnNotNil applies the NotNil predicate on the "predicted_return" field.
+func PredictedReturnNotNil() predicate.StrategyFeedback {
+	return predicate.StrategyFeedback(sql.FieldNotNull(FieldPredictedReturn))
+}
+
 // ActualReturnEQ applies the EQ predicate on the "actual_return" field.
 func ActualReturnEQ(v float64) predicate.StrategyFeedback {
 	return predicate.StrategyFeedback(sql.FieldEQ(FieldActualReturn, v))

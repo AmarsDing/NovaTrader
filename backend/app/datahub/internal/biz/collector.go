@@ -38,6 +38,9 @@ type Options struct {
 	CompletenessWarn float64
 	// CompletenessFail 覆盖率低于它认为该源结果不可用，换下一源，默认 0.5
 	CompletenessFail float64
+	// CompletenessPartial 覆盖率低于它标记 partial（可用但不完整，写 Ready.Partial/Issue 警告），
+	// 默认 0.90（vibe shortline_emotion 双闸的上档）。
+	CompletenessPartial float64
 }
 
 func (o *Options) defaults() {
@@ -59,6 +62,9 @@ func (o *Options) defaults() {
 	if o.CompletenessFail <= 0 {
 		o.CompletenessFail = 0.5
 	}
+	if o.CompletenessPartial <= 0 {
+		o.CompletenessPartial = 0.90
+	}
 }
 
 // Collector 是全部采集用例。
@@ -77,6 +83,27 @@ type Collector struct {
 	staleOnce sync.Map
 	selfheal  selfhealState // D2 对账自修复窗口（内存近似，见 reconcile_selfheal.go）
 	sunkDone  sunkDoneState // D10 确认回执的进程级已裁决集（见 backfill_sunk.go）
+
+	expectMu    sync.Mutex // expectDay/expectCount 按日缓存锁（快照轮 3 秒一轮：成功后当日直取缓存；失败故意不入负缓存、每轮重查——当日一旦取到分母即刻生效，避免整轮自封覆盖率缺口）
+	expectDay   string
+	expectCount int
+}
+
+// expectSymbolCount 返回当日活跃代码数（快照覆盖率分母），按日缓存；取不到时 ok=false，
+// 调用方只做可见性标记，绝不把未知当满覆盖。
+func (c *Collector) expectSymbolCount(ctx context.Context, day time.Time) (int, bool) {
+	key := dateOf(day).Format("2006-01-02")
+	c.expectMu.Lock()
+	defer c.expectMu.Unlock()
+	if c.expectDay == key {
+		return c.expectCount, c.expectCount > 0
+	}
+	syms, err := c.repo.ActiveSymbols(ctx, day)
+	if err != nil || len(syms) == 0 {
+		return 0, false
+	}
+	c.expectDay, c.expectCount = key, len(syms)
+	return c.expectCount, true
 }
 
 // sunkDoneState 记录已经裁决过的 sunk 任务 ID（确认/登记重查/终止周期均终态）。
@@ -189,6 +216,17 @@ func (c *Collector) collectSnapshot(ctx context.Context) (SnapshotMeta, error) {
 		}
 	}
 	meta := SnapshotMeta{AsOf: asOf, Source: src, Count: len(batch.Items), LatencyMs: asOf.Sub(start).Milliseconds(), Seq: c.seq.Add(1)}
+	// 覆盖率双闸上档（vibe 语义）：不可用闸由 SnapshotRules.MinCount 在清洗阶段执行（默认 3000≈半数市场），
+	// 这里补 partial 档与覆盖率可见性——低覆盖原样进 M02/brain 是「小样本冒充全市场」假阳性通道。
+	if n, ok := c.expectSymbolCount(ctx, start); ok {
+		cov := float64(len(batch.Items)) / float64(n)
+		meta.Coverage = &cov
+		if cov < c.opt.CompletenessPartial {
+			meta.Partial = true
+			issues = append(issues, Issue{Check: CheckCompleteness, Severity: "warn",
+				Message: fmt.Sprintf("快照覆盖 %.1f%%（%d/%d），按 partial 标记", cov*100, len(batch.Items), n)})
+		}
+	}
 	if err := c.snap.WriteSnapshots(ctx, batch.Items, meta); err != nil {
 		return meta, fmt.Errorf("datahub: write snapshots: %w", err)
 	}

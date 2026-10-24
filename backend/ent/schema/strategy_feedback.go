@@ -27,7 +27,10 @@ func (StrategyFeedback) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "date"}),
 		field.String("stock_code").MaxLen(16).NotEmpty(),
 		field.Int("signal_id").Optional().Nillable(),
+		// 空 = 未记录预测（数据纪律「没取到≠0」；复盘回填实绩时不得写 0）。
 		field.Float("predicted_return").
+			Optional().
+			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "numeric(12,6)"}),
 		field.Float("actual_return").
 			SchemaType(map[string]string{dialect.Postgres: "numeric(12,6)"}),

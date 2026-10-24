@@ -18,7 +18,7 @@ vi.mock('@/api/trade', () => ({
 }))
 vi.mock('@/api/risk', () => ({ getRiskState: mock.risk, previewOrder: mock.preview }))
 vi.mock('@/api/signals', () => ({ getSignal: mock.signal }))
-vi.mock('@/store/confirm', () => ({ askConfirm: mock.confirm }))
+vi.mock('@/stores/confirm', () => ({ askConfirm: mock.confirm }))
 vi.mock('@/stores/account', () => ({ useAccountStore: () => mock.accountStore }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => false, operatorName: 'tester' }) }))
 vi.mock('@/stores/risk', () => ({ useRiskStore: () => ({ buysToday: 0 }) }))

@@ -366,7 +366,7 @@ func sensitive(action string) bool {
 	}
 	switch action {
 	case "login", "risk.mode", "risk.killswitch", "risk.killswitch.reset", "risk.params", "config.save",
-		"trade.order", "trade.cancel", "trade.confirm", "trade.grant_live", "trade.revoke_live", "strategy.approve", "strategy.reject", "strategy.rollback",
+		"trade.order", "trade.cancel", "trade.confirm", "trade.grant_live", "trade.revoke_live", "trade.cash_baseline", "strategy.approve", "strategy.reject", "strategy.rollback",
 		"ops.backup", "ops.disposition", "ops.dead_letter_replay":
 		return true
 	default:
@@ -402,6 +402,10 @@ func auditAction(method, path string) string {
 		return "trade.grant_live"
 	case method == http.MethodPost && strings.HasSuffix(path, "/api/trade/admission/live/revoke"):
 		return "trade.revoke_live"
+	// LIVE 资金基线种子同属「先写审计后转发」（与 grant/revoke 同纪律）；
+	// owner 闸门由 forward 对所有非 GET 统一收口。
+	case method == http.MethodPost && path == "/api/trade/live/cash-baseline":
+		return "trade.cash_baseline"
 	case method == http.MethodPost && strings.Contains(path, "/approve"):
 		return "strategy.approve"
 	case method == http.MethodPost && strings.Contains(path, "/reject"):

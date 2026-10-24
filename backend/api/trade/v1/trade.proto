@@ -54,6 +54,15 @@ service Trade {
       body: "*"
     };
   }
+  // LIVE 资金基线种子（自身债高危：此前全仓无写入口，LIVE 买单被现金闸恒拒）。
+  // 操作员按柜台实际可用资金一次性人工写入并留人核口；基线已存在返回冲突，
+  // 其后资金变动只走柜台回报归并与对账链。
+  rpc SeedLiveCashBaseline(SeedLiveCashBaselineRequest) returns (Account) {
+    option (google.api.http) = {
+      post: "/v1/trade/live/cash-baseline"
+      body: "*"
+    };
+  }
   // G7 执行通道状态读面：只回服务端真实跟踪的通道（sim；emfile 服务端未接线，不回）。
   rpc GetChannelStatus(GetChannelStatusRequest) returns (ChannelStatusReply) {
     option (google.api.http) = {
@@ -172,6 +181,15 @@ message ReconcileReply {
   bool matched = 1;
   bool open_halted = 2;
   repeated string diffs = 3;
+}
+
+message SeedLiveCashBaselineRequest {
+  // 柜台实际可用资金（人工抄录，必须 > 0；绝不自动写入）。
+  double available = 1;
+  // 操作员（必填，审计留痕）。
+  string operator = 2;
+  // 来源备注（必填：终端读数/结单口径与时间，供人核回溯）。
+  string source_note = 3;
 }
 
 message GetChannelStatusRequest {}

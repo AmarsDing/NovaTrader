@@ -11,7 +11,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
 import SymbolName from '@/display/SymbolName.vue'
-import { statusOf } from '@/ui/status-map'
+import { statusOf, type StatusTone } from '@/ui/status-map'
 import { useAuthStore } from '@/stores/auth'
 import { clock, messageOf } from '@/utils/format'
 
@@ -26,6 +26,8 @@ const error = ref('')
 
 /** 降级章文案/tone 出自状态册（§7.1，一字锁定）：degraded.model = 模型降级(danger)。 */
 const degradedModel = statusOf('degraded.model')
+/** 数字核对 magnitude 档文案/tone 出自状态册（brain.scrub.magnitude = 量级畸变(danger)，按 omitted 计数）。 */
+const scrubMagnitude = statusOf('brain.scrub.magnitude')
 
 /** 晨报是一份/日的产物：超过 30h 还没新晨报才染 warn（§7.3 年龄超阈）。 */
 const DAILY_FRESH_MS = 30 * 3600 * 1000
@@ -37,10 +39,11 @@ const briefingAt = computed<number | null>(() => {
   return Number.isFinite(t) ? t : null
 })
 
-const VERDICTS: { v: string; t: string; tone: 'success' | 'info' | 'danger' }[] = [
+const VERDICTS: { v: string; t: string; tone: StatusTone }[] = [
   { v: 'sourced', t: '有出处', tone: 'success' },
   { v: 'recomputed', t: '重算通过', tone: 'info' },
   { v: 'omitted', t: '已略※', tone: 'danger' },
+  { v: 'magnitude', t: scrubMagnitude.text, tone: scrubMagnitude.tone },
 ]
 
 function verdictOf(e: EvidenceItem) {

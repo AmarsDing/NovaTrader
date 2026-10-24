@@ -31,7 +31,7 @@ const mock = vi.hoisted(() => ({
   },
 }))
 vi.mock('@/api/risk', () => ({ previewOrder: mock.preview }))
-vi.mock('@/store/confirm', () => ({ askConfirm: mock.confirm }))
+vi.mock('@/stores/confirm', () => ({ askConfirm: mock.confirm }))
 vi.mock('@/utils/notify', () => ({ deskNotify: mock.notify }))
 vi.mock('@/ui/useToast', () => ({ useToast: () => mock.toast }))
 vi.mock('@/ws/hub', () => ({ isLive: () => mock.live }))

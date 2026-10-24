@@ -6,7 +6,6 @@ import logging
 import os
 import struct
 import threading
-import traceback
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -360,20 +359,63 @@ def tcp_snapshots(symbols: list[str]):
     return 200, {"items": items}
 
 
+def _tcp_bj_items(client) -> list[dict]:
+    """BJ 证券枚举（gap⑤/S10）：绕 mootdx 高层包装走 pytdx 原生接口。
+
+    已核实本机 mootdx 0.11.7：Stocks.stocks(market) 对 market=2 直接 raise
+    MootdxValidationException（只放行 0/1），而 stock_count() 放行 0/1/2、
+    底层 client.get_security_list(market=2, start=) 协议层支持 BJ——故按
+    stock_count 真分页整取。失败分级钉死：计数失败（或整表为空）→ 返回空、
+    调用侧标 skipped_markets=["BJ"]，绝不拿空表冒充「BJ 无证券」；
+    中间断页 → 保留已取前缀、仅告警（部分枚举优于整体缺失，不标 skipped）。
+    注：920 开头的新号段在 mootdx get_stock_market 里会被推断成 SH，
+    这批代码的 quote/bars 会静默缺数（不会张冠李戴：SH 无同码证券）；
+    待 mootdx 上游支持前按已知边界接受，枚举本身不受影响。
+    """
+    items: list[dict] = []
+    try:
+        count = int(client.stock_count(market=2) or 0)
+    except Exception as e:
+        logger.warning("tdx_tcp BJ 证券计数失败，BJ 市场本轮整体跳过（显式缺失）：%s", e)
+        return items
+    for start in range(0, count, 1000):
+        try:
+            rows = client.client.get_security_list(market=2, start=start)
+        except Exception as e:
+            logger.warning("tdx_tcp BJ 证券分页中断 start=%d，保留已取 %d 只：%s", start, len(items), e)
+            break
+        if not rows:
+            # 中间页为空即停。start < count 恒成立（计数承诺仍有券），这里空页不是
+            # 「正常翻到底」而是真实 pytdx 的失败形态——静默返空不抛错（W3 复核第⑧条）。
+            # 不告警就和「BJ 恰好只有这么几只」无法区分，必须显式留痕；
+            # 仍按部分枚举保留已取前缀，不标 skipped（部分覆盖优于整体缺失）。
+            logger.warning(
+                "tdx_tcp BJ 证券分页中途空页 start=%d（计数承诺 %d 只），保留已取 %d 只",
+                start, count, len(items),
+            )
+            break
+        for row in rows:
+            code = str(row.get("code", "")).zfill(6)
+            name = str(row.get("name", "") or row.get("code", ""))
+            items.append({"symbol": f"{code}.BJ", "name": name, "market": "BJ"})
+    return items
+
+
 def tcp_securities_items() -> list[dict]:
     client = tcp_client()
     items = []
+    # SH/SZ：已核实 mootdx 0.11.7 stocks() 内部按 stock_count 全量翻页
+    # （range(0, counts, 1000) 循环 get_security_list），一次调用拿整市场；
+    # 旧版这里套「while True 单页即 break」死壳，易让人误以为各地仍要手动翻页。
     for market, suffix in ((1, "SH"), (0, "SZ")):
-        start = 0
-        while True:
-            df = client.stocks(market=market)
-            if df is None or getattr(df, "empty", True):
-                break
-            for _, row in df.iterrows():
-                code = str(row.get("code", "")).zfill(6)
-                name = str(row.get("name", "") or row.get("code", ""))
-                items.append({"symbol": f"{code}.{suffix}", "name": name, "market": suffix})
-            break
+        df = client.stocks(market=market)
+        if df is None or getattr(df, "empty", True):
+            continue
+        for _, row in df.iterrows():
+            code = str(row.get("code", "")).zfill(6)
+            name = str(row.get("name", "") or row.get("code", ""))
+            items.append({"symbol": f"{code}.{suffix}", "name": name, "market": suffix})
+    items.extend(_tcp_bj_items(client))
     return items
 
 
@@ -381,7 +423,14 @@ def tcp_securities():
     items = tcp_securities_items()
     if len(items) < 100:
         return unavailable("7709 证券列表过短，主站可能不可用")
-    return 200, {"items": items}
+    bj = sum(1 for x in items if x["market"] == "BJ")
+    body = {"items": items}
+    if bj == 0:
+        # BJ 整市场本轮未取到：显式标 skipped_markets，不让「全市场」清单静默缺一个市场。
+        # Go 消费端（datahub pyworker.go）只解 items 键，新增字段向后兼容。
+        logger.warning("tdx_tcp 证券枚举：BJ 市场本轮无数据（计数失败或服务器不支持），skipped_markets 已显式标注")
+        body["skipped_markets"] = ["BJ"]
+    return 200, body
 
 
 def tcp_bars(body: dict):
@@ -510,11 +559,6 @@ def ak_global():
     import akshare as ak
 
     items = []
-    mapping = [
-        ("USDCNY", "美元兑人民币", lambda: ak.fx_spot_quote(symbol="美元人民币")),
-        ("HSI", "恒生指数", lambda: ak.stock_hk_index_spot_em()),
-        ("IXIC", "纳斯达克", lambda: ak.index_us_stock_sina(symbol=".IXIC") if False else None),
-    ]
     try:
         df = ak.stock_us_spot_em()
         if df is not None and not df.empty:
@@ -754,7 +798,12 @@ def bs_module():
 
 
 def _bs_symbol(code: str) -> str | None:
-    """600519.SH → sh.600519（baostock 代码形）。BJ 市场不支持，返回 None。"""
+    """600519.SH → sh.600519（baostock 代码形）。
+
+    BJ 市场不支持：返回 None，调用点显式进 skipped（静默丢与拿错市场数据都禁止）。
+    BJ 回补改走 tdx_tcp（枚举/取数已支持 BJ，见 _tcp_bj_items）或东财链，
+    不要在 baostock 链硬凑。S10 明示口径。
+    """
     s = code.strip().upper()
     if "." not in s:
         return None
@@ -1011,14 +1060,18 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             self.handle_get()
-        except Exception as e:
-            self.send(500, {"error": str(e), "trace": traceback.format_exc()[-800:]})
+        except Exception:
+            # 不外泄异常文本与 traceback（对齐 source-worker/http_worker.py 纪律：
+            # 堆栈里含内部路径与依赖细节）。响应体只给通用文案，全文进服务端日志。
+            logger.error("pyworker GET %s 未捕获异常", self.path, exc_info=True)
+            self.send(500, {"error": "internal error"})
 
     def do_POST(self):
         try:
             self.handle_post()
-        except Exception as e:
-            self.send(500, {"error": str(e), "trace": traceback.format_exc()[-800:]})
+        except Exception:
+            logger.error("pyworker POST %s 未捕获异常", self.path, exc_info=True)
+            self.send(500, {"error": "internal error"})
 
     def handle_get(self):
         u = urlparse(self.path)

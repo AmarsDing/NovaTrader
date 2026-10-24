@@ -1,0 +1,19 @@
+{
+  "id": "qiniu",
+  "name": "七牛云代理（Google AI / OpenAI 兼容代理）",
+  "base_url": "https://api.qiniu.com/v1",
+  "env_key": "QINIU_API_KEY",
+  "default_model": "gemini-2.5-flash",
+  "context_limit_tokens": null,
+  "verified_at": "",
+  "verified_scope": "",
+  "known_incompatibilities": [
+    "代理层 stage2（分类/结构化 JSON）实测恒失败（2026-10-23 自动分类器验证批）——上游模型变动、代理转发弃帧或 response_format 不支持均不可见，排障无窗口。",
+    "代理地址各厂商不同步、文档口径漂移快，未实测的模型名一律不得进配置默认。"
+  ],
+  "notes": [
+    "未实测分级：verified_at 为空即「不得进生产启用档」。",
+    "2026-10-23 已把代理类默认从七牛挪开（defaultMode=bypassPermissions 波及排查后落地 bypass 为副产物，不豁免本坑）。",
+    "走代理的场景建议直接换官方端点重新验收，别在代理上修。"
+  ]
+}

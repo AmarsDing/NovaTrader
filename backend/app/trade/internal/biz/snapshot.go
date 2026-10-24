@@ -67,6 +67,7 @@ func (e *Engine) accountSnapshot(ctx context.Context, book string) (AccountView,
 	}
 	sort.Strings(s.ObservedOrders)
 	sort.Slice(s.OpenOrders, func(i, j int) bool { return s.OpenOrders[i].ClientID < s.OpenOrders[j].ClientID })
+	anchors := e.exitAnchors(ctx, book)
 	for _, p := range positions {
 		if p.Quantity <= 0 {
 			continue
@@ -75,7 +76,11 @@ func (e *Engine) accountSnapshot(ctx context.Context, book string) (AccountView,
 		if px <= 0 {
 			px = p.AvgCost
 		}
-		s.Holdings = append(s.Holdings, risk.Holding{Symbol: p.Symbol, Quantity: p.Quantity, Available: p.Available, FrozenSell: frozenSells[p.Symbol], AvgCost: p.AvgCost, MarketValue: px * float64(p.Quantity)})
+		h := risk.Holding{Symbol: p.Symbol, Quantity: p.Quantity, Available: p.Available, FrozenSell: frozenSells[p.Symbol], AvgCost: p.AvgCost, MarketValue: px * float64(p.Quantity)}
+		if a, ok := anchors[p.Symbol]; ok {
+			h.StopPrice, h.TakePrice = a.stop, a.take
+		}
+		s.Holdings = append(s.Holdings, h)
 		view.Equity += px * float64(p.Quantity)
 		view.UnrealizedPnL += (px - p.AvgCost) * float64(p.Quantity)
 		view.PositionCount++
@@ -85,6 +90,37 @@ func (e *Engine) accountSnapshot(ctx context.Context, book string) (AccountView,
 	// Do not clamp a broken reserve into a valid account: persistence/consumer
 	// validation must reject the complete snapshot and keep the last valid one.
 	return view, cash, s, nil
+}
+
+// exitAnchor 是一只代码的退出锚：最近执行买单计划给出的止损/止盈位。
+type exitAnchor struct {
+	stop, take float64
+	at         time.Time
+}
+
+// exitAnchors 回填 Holdings 的 StopPrice/TakePrice——risk.WatchPosition 的 ExitTakeProfit
+// 依赖 Holding.TakePrice，不回填时止盈档是事实死代码（止损仅剩 StopPct 兜底）。
+// 只取「已执行」状态的买单计划，同代码多份按形成时间取最新。计划仓储未接入
+// （内存账本或自动化未装配）或查不到时静默零锚：止盈/止损按未配置处理，绝不臆造。
+func (e *Engine) exitAnchors(ctx context.Context, book string) map[string]exitAnchor {
+	store, err := e.automationStore()
+	if err != nil {
+		return nil
+	}
+	plans, err := store.ListPlans(ctx, book, "executed")
+	if err != nil {
+		return nil
+	}
+	out := map[string]exitAnchor{}
+	for _, r := range plans {
+		if r.Plan.Side != "buy" || (r.Plan.StopLoss <= 0 && r.Plan.TakeProfit <= 0) {
+			continue
+		}
+		if cur, ok := out[r.Plan.Symbol]; !ok || r.Snapshot.FormedAt.After(cur.at) {
+			out[r.Plan.Symbol] = exitAnchor{stop: r.Plan.StopLoss, take: r.Plan.TakeProfit, at: r.Snapshot.FormedAt}
+		}
+	}
+	return out
 }
 
 func reserving(o Order) bool {

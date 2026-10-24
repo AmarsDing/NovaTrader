@@ -69,11 +69,11 @@ NovaTrader：部署在 NVIDIA DGX Spark 上的**私有化 A 股超短线量化�
 NovaTrader/
 ├── CLAUDE.md                 ← 本文档
 ├── backend/                  ← Go 后端（module: server）
-│   ├── api/                  ← Protobuf API 定义（admin、demo 两套）
+│   ├── api/                  ← Protobuf API 定义（admin 中原配置/观测三件套 + 各服务分域）
 │   │   └── admin/v1/*.proto  ← ⚠ 当前是模板残留示例（airport/ntp/snmp 等），待裁剪
 │   ├── app/
 │   │   ├── admin/            ← 主服务：cmd/main.go + internal/{biz,core,data,middleware,server,service}
-│   │   ├── demo/             ← 示例服务（可参照，业务不依赖）
+│   │   ├── demo/             ← 示例服务（已移出主 config、自带 conf；业务不依赖，退役另立项）
 │   │   └── discovery/        ← 注册中心（第三方独立 module，勿动）
 │   ├── conf/conf.proto       ← 配置结构定义（已含 postgres 节）
 │   ├── configs/config.yaml   ← 运行配置（端口/中间件/数据源）
@@ -94,7 +94,7 @@ NovaTrader/
 
 ## 4. 后端分层规范（Kratos）
 
-`backend/app/admin/internal/` 为标准 Kratos 四层，新增业务必须按此分层：
+业务服务（trade / risk / market / intel / brain / strategy / datahub / backtest / notify）的 `internal/` 为标准 Kratos 四层，新增业务必须按此分层：
 
 | 目录 | 职责 | 规则 |
 |------|------|------|
@@ -104,7 +104,9 @@ NovaTrader/
 | `core/` | 长连接/常驻逻辑 | WebSocket、定时任务、状态维护。不持有 `*ent.Client`；调度与 outbox 走 data/pkg 端口 |
 
 约定：
-- **Proto-first**：新增接口先写 `backend/api/admin/v1/*.proto`，再生成 pb 代码，再实现 service。
+
+- **Proto-first**：新增接口先写 `backend/api/<服务>/v1/*.proto`，再生成 pb 代码，再实现 service。
+- **admin 是网关不是四层**：`app/admin/internal/` 无 biz，业务聚合落在 `gateway/`（in-gate 聚合/转发/审计闸门），`service/` 空、gRPC :2002 未注册业务。新增前端可见接口：业务路由走各服务四层 + admin `gateway` 加转发与闸门映射，不要在 admin 里新开 biz/service。
 - 依赖注入走 wire：ProviderSet 改动后重新 `wire ./...`。
 - 配置结构改动：先改 `conf/conf.proto` → 重新生成 `conf.pb.go` → 再改 `configs/config.yaml`。
 
@@ -147,11 +149,13 @@ backend/ent/
 | 2001 | admin HTTP（前端 REST 调用） |
 | 2002 | admin gRPC |
 | 2003 | admin WebSocket（前端实时推送） |
-| 2004–2006 | demo 服务（http/grpc/ws） |
 | 7171 | discovery 注册中心 |
 | 4222 | NATS |
 | 5432 | PostgreSQL |
 | 14269 | Jaeger 追踪 |
+
+> demo 示例服务不列本表：`app/demo/` 已移出主 `configs/config.yaml`（自带 conf 独立运行），
+> 业务链不依赖；正式退役去向另立项，未立项前沿 `doc/` 口径「可参照、勿接入」。
 
 ## 8. AI 工作约定
 

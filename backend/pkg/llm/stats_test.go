@@ -10,6 +10,8 @@ import (
 // Gateway.Stats 的熔断/vLLM 字段/未配置回退；本文件钉 tierStats 本体：
 // 200 条延迟环形窗、失败计数但不进窗、百分位取值口径与 μs→ms 换算、
 // Stats 对计数/百分位的汇聚以及抓取失败的三字段 -1 回退。
+// Succeeded 与 Calls 分列：全失败档 Calls>0 但 p50/p95 必须缺省（0ms 不是分位读数），
+// 消费方（brain Stats 口）按 Succeeded>0 决定是否展示分位。
 
 func TestTierStatsRingEvictsOldest(t *testing.T) {
 	// 窗口 200 条（stats.go :15），装满后最旧的一条被挤出（stats.go :41-42）。
@@ -17,9 +19,9 @@ func TestTierStatsRingEvictsOldest(t *testing.T) {
 	for i := 1; i <= 200; i++ {
 		s.observe(time.Duration(i)*time.Millisecond, true)
 	}
-	calls, failures, p50, p95 := s.snapshot()
-	if calls != 200 || failures != 0 {
-		t.Fatalf("counts = %d %d", calls, failures)
+	calls, failures, succeeded, p50, p95 := s.snapshot()
+	if calls != 200 || failures != 0 || succeeded != 200 {
+		t.Fatalf("counts = %d %d %d", calls, failures, succeeded)
 	}
 	// pick：i = int(q*(n-1)+0.5)（stats.go :54-57）。n=200 有序 1..200ms：
 	// p50 → sorted[100] = 101ms；p95 → int(189.05+0.5)=189 → sorted[189] = 190ms。
@@ -28,9 +30,9 @@ func TestTierStatsRingEvictsOldest(t *testing.T) {
 	}
 	// 第 201 条 999ms 覆盖最旧的 1ms：窗内变成 2..200 + 999。
 	s.observe(999*time.Millisecond, true)
-	calls, failures, p50, p95 = s.snapshot()
-	if calls != 201 || failures != 0 {
-		t.Fatalf("counts after wrap = %d %d", calls, failures)
+	calls, failures, succeeded, p50, p95 = s.snapshot()
+	if calls != 201 || failures != 0 || succeeded != 201 {
+		t.Fatalf("counts after wrap = %d %d %d", calls, failures, succeeded)
 	}
 	// 有序 [2,3,…,200,999]：p50 → sorted[100] = 102ms；p95 → sorted[189] = 191ms。
 	if p50 != 102 || p95 != 191 {
@@ -47,9 +49,9 @@ func TestTierStatsFailuresCountedButNotInWindow(t *testing.T) {
 	s.observe(30*time.Millisecond, true)
 	s.observe(9*time.Second, false)
 	s.observe(9*time.Second, false)
-	calls, failures, p50, p95 := s.snapshot()
-	if calls != 5 || failures != 2 {
-		t.Fatalf("counts = %d %d", calls, failures)
+	calls, failures, succeeded, p50, p95 := s.snapshot()
+	if calls != 5 || failures != 2 || succeeded != 3 {
+		t.Fatalf("counts = %d %d %d", calls, failures, succeeded)
 	}
 	// n=3：p50 → int(0.5*2+0.5)=1 → 20ms；p95 → int(0.95*2+0.5)=2 → 30ms。
 	// 两个 9s 失败样本必须不影响百分位。
@@ -59,20 +61,36 @@ func TestTierStatsFailuresCountedButNotInWindow(t *testing.T) {
 }
 
 func TestTierStatsEmptyAndMilliseconds(t *testing.T) {
-	// 空窗：计数照给，百分位为 0（stats.go :50-51），不抛下标越界。
+	// 空窗：计数照给，百分位为 0（stats.go :54-55），不抛下标越界。
 	s := newTierStats()
-	if calls, failures, p50, p95 := s.snapshot(); calls != 0 || failures != 0 || p50 != 0 || p95 != 0 {
-		t.Fatalf("empty snapshot = %d %d %v %v", calls, failures, p50, p95)
+	if calls, failures, succeeded, p50, p95 := s.snapshot(); calls != 0 || failures != 0 || succeeded != 0 || p50 != 0 || p95 != 0 {
+		t.Fatalf("empty snapshot = %d %d %d %v %v", calls, failures, succeeded, p50, p95)
 	}
-	// μs→ms 保留小数（stats.go :56）：1500μs = 1.5ms，单样本 p50==p95。
+	// μs→ms 保留小数（stats.go :60）：1500μs = 1.5ms，单样本 p50==p95。
 	s.observe(1500*time.Microsecond, true)
-	if _, _, p50, p95 := s.snapshot(); p50 != 1.5 || p95 != 1.5 {
+	if _, _, _, p50, p95 := s.snapshot(); p50 != 1.5 || p95 != 1.5 {
 		t.Fatalf("fractional ms = %v %v", p50, p95)
 	}
 }
 
+// TestTierStatsAllFailedTierKeepsZeroPercentiles 钉死分离判据：全失败档 Calls>0、
+// Succeeded==0、p50/p95 仍为 0——消费方（brain Stats）按 Succeeded 决定展示与否，
+// 若退回 Calls 判据，全失败档会把 0ms 当分位读数展示出去。
+func TestTierStatsAllFailedTierKeepsZeroPercentiles(t *testing.T) {
+	s := newTierStats()
+	s.observe(5*time.Second, false)
+	s.observe(7*time.Second, false)
+	calls, failures, succeeded, p50, p95 := s.snapshot()
+	if calls != 2 || failures != 2 || succeeded != 0 {
+		t.Fatalf("all-failed counts = %d %d %d", calls, failures, succeeded)
+	}
+	if p50 != 0 || p95 != 0 {
+		t.Fatalf("all-failed percentiles must stay 0（缺省标记）: %v %v", p50, p95)
+	}
+}
+
 func TestGatewayStatsCarriesCallsAndPercentiles(t *testing.T) {
-	// Gateway.Stats 只转交 snapshot 的四元组（stats.go :89），不改写口径。
+	// Gateway.Stats 只转交 snapshot 的五元组（stats.go :98），不改写口径。
 	srv := fakeVLLM(t, func(chatBody) (int, string) { return 200, "{}" })
 	g := New(map[Tier]ModelConfig{Small: {BaseURL: srv.URL + "/v1", Model: "qwen"}}, nil)
 	tr := g.tiers[Small]
@@ -85,7 +103,7 @@ func TestGatewayStatsCarriesCallsAndPercentiles(t *testing.T) {
 	}
 	// n=2 有效样本 {100,300}：p50 → int(0.5+0.5)=1 → 300；p95 → int(1.45)=1 → 300。
 	row := st[0]
-	if row.Calls != 3 || row.Failures != 1 || row.P50MS != 300 || row.P95MS != 300 {
+	if row.Calls != 3 || row.Failures != 1 || row.Succeeded != 2 || row.P50MS != 300 || row.P95MS != 300 {
 		t.Fatalf("gateway stats row = %+v", row)
 	}
 	if row.InFlight != 0 || row.Queued != 0 || row.CircuitOpen {

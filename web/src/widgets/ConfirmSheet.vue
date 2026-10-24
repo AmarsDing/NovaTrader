@@ -5,7 +5,7 @@
  * 红涨绿跌：买入红、卖出绿。
  */
 import { computed } from 'vue'
-import { acceptConfirm, confirmState, dismissConfirm } from '@/store/confirm'
+import { acceptConfirm, confirmState, dismissConfirm } from '@/stores/confirm'
 import { useAuthStore } from '@/stores/auth'
 import { price } from '@/utils/format'
 import SymbolName from '@/display/SymbolName.vue'

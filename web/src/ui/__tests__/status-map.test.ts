@@ -1,7 +1,7 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第五批 brain 晨报域 1 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流；批次行随并入提交滚动改写）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
@@ -163,5 +163,12 @@ describe('业务状态册（第三批 board 板块标识域 3 键，一字不差
     expect(statusOf('risk.killswitch')).toEqual({ text: '已触发', tone: 'danger' })
     expect(statusOf('quote.stale')).toEqual({ text: '已过期', tone: 'warn' })
     expect(statusOf('order.filled')).toEqual({ text: '已成', tone: 'success' })
+  })
+})
+
+describe('业务状态册（第五批 brain 晨报域 1 键，一字不差）', () => {
+  it('brain.scrub.magnitude 入册且锁定：量级畸变按 omitted 计数，danger 档与同级词一致', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('brain.')).length).toBe(1)
+    expect(statusOf('brain.scrub.magnitude')).toEqual({ text: '量级畸变', tone: 'danger' })
   })
 })

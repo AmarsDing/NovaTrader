@@ -1,0 +1,17 @@
+{
+  "id": "kimi",
+  "name": "月之暗面 Kimi（官方 API）",
+  "base_url": "https://api.moonshot.cn/v1",
+  "env_key": "MOONSHOT_API_KEY",
+  "default_model": "kimi-k2-0905-preview",
+  "context_limit_tokens": null,
+  "verified_at": "",
+  "verified_scope": "",
+  "known_incompatibilities": [
+    "json_object 支持未实测：启用前必须复走 S9 验收口径。",
+    "流式增量与 usage 回传口径与 OpenAI 不完全同款：别照搬统计推断逻辑。"
+  ],
+  "notes": [
+    "未实测登记（借 vibe 模板法备档）。"
+  ]
+}

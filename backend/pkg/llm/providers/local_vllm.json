@@ -1,0 +1,16 @@
+{
+  "id": "local_vllm",
+  "name": "本地 vLLM（DGX Spark）",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "env_key": "",
+  "default_model": "Qwen3.5-122B-A10B-GPTQ-Int4",
+  "context_limit_tokens": null,
+  "verified_at": "2026-10-23",
+  "verified_scope": "启动配置档唯一主用通道（指标、队列、熔断、留痕全链覆盖）",
+  "known_incompatibilities": [],
+  "notes": [
+    "api_key 留空即不加鉴权头（本机部署现状）。",
+    "json_object、排队、熔断实测正常；模型名随服务本地部署档变化。",
+    "升级模型（大档换 Qwen3.5 之外的量化档）后必须重走活验收（看 llm_call_log + stats 生效配置）。"
+  ]
+}

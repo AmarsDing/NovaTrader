@@ -2498,7 +2498,7 @@ var (
 		{Name: "trade_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"}},
 		{Name: "stock_code", Type: field.TypeString, Size: 16},
 		{Name: "signal_id", Type: field.TypeInt, Nullable: true},
-		{Name: "predicted_return", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
+		{Name: "predicted_return", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
 		{Name: "actual_return", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(12,6)"}},
 		{Name: "signal_correct", Type: field.TypeBool, Nullable: true},
 		{Name: "false_negative", Type: field.TypeBool, Default: false},

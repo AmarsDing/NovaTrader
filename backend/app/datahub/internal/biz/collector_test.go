@@ -18,6 +18,11 @@ func (r *snapshotIssueRepo) SaveIssues(_ context.Context, issues []Issue) error 
 	return nil
 }
 
+// ActiveSymbols 桩：测试不提供分母——覆盖率标记按「分母未知」处理（不冒充满覆盖）。
+func (r *snapshotIssueRepo) ActiveSymbols(context.Context, time.Time) ([]string, error) {
+	return nil, nil
+}
+
 type snapshotMemoryStore struct {
 	SnapshotStore
 	items  []Snapshot

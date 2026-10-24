@@ -581,7 +581,8 @@ func (r *Repo) SaveFeedback(ctx context.Context, rows []biz.Feedback) error {
 		}
 		c := r.client.StrategyFeedback.Create().
 			SetTradeDate(row.TradeDate).SetStockCode(row.Symbol).SetStrategy(row.Strategy).
-			SetNillableSignalID(row.SignalID).SetPredictedReturn(0).SetActualReturn(row.Actual).
+			// predicted_return 保持 NULL：复盘只有实绩，写 0 会污染「没取到≠0」。
+			SetNillableSignalID(row.SignalID).SetActualReturn(row.Actual).
 			SetNillableSignalCorrect(row.Correct).SetFalseNegative(row.FalseNegative).
 			SetAttribution(row.Attribution)
 		if row.Analysis != "" {

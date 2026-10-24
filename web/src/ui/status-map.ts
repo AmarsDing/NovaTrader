@@ -36,6 +36,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
 } satisfies Record<DotStatus, StatusEntry>)
 
 /** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -108,6 +109,10 @@ export const STATUS_MAP = Object.freeze({
   'board.cyb': { text: '创业板', tone: 'accent' },
   'board.kcb': { text: '科创板', tone: 'accent' },
   'board.bj': { text: '北交所', tone: 'warn' },
+  // —— 第五批（brain 晨报域，1 键；S3 magnitude 判定徽注配套）——
+  // magnitude：有效数字与出处一致但量级差 ≥3 个数量级（如 1.2 万写成 1.2 亿），按 omitted 计数——
+  // 故 tone 与 omitted 同级取 danger；正文已按出处更正表达，不冒充无出处缺失。
+  'brain.scrub.magnitude': { text: '量级畸变', tone: 'danger' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP

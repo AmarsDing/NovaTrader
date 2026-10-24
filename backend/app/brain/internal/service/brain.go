@@ -212,11 +212,22 @@ func (s *BrainService) Ask(ctx context.Context, req *v1.AskRequest) (*v1.AskRepl
 func (s *BrainService) Stats(ctx context.Context, _ *v1.StatsRequest) (*v1.StatsReply, error) {
 	out := &v1.StatsReply{}
 	for _, t := range s.uc.Stats(ctx) {
-		out.Tiers = append(out.Tiers, &v1.TierStats{
+		ts := &v1.TierStats{
 			Tier: string(t.Tier), Model: t.Model, Configured: t.Configured, Calls: t.Calls, Failures: t.Failures,
-			P50Ms: t.P50MS, P95Ms: t.P95MS, InFlight: int32(t.InFlight), Queued: int32(t.Queued),
-			CircuitOpen: t.CircuitOpen, KvCacheUsage: t.KVCacheUsage, Running: t.Running, Waiting: t.Waiting,
-		})
+			InFlight: int32(t.InFlight), Queued: int32(t.Queued),
+			CircuitOpen: t.CircuitOpen, Running: t.Running, Waiting: t.Waiting,
+		}
+		// 「没取到≠0」：无成功调用时 p50/p95 缺省（0ms 不是分位读数）；vLLM 指标读不到（-1）时 KV 缺省。
+		// 判据是 Succeeded 不是 Calls——全失败档 Calls>0 但无成功样本，旧口径会把 0ms 当分位展示。
+		if t.Succeeded > 0 {
+			p50, p95 := t.P50MS, t.P95MS
+			ts.P50Ms, ts.P95Ms = &p50, &p95
+		}
+		if t.KVCacheUsage >= 0 {
+			kv := t.KVCacheUsage
+			ts.KvCacheUsage = &kv
+		}
+		out.Tiers = append(out.Tiers, ts)
 	}
 	return out, nil
 }
@@ -271,7 +282,11 @@ func (s *BrainService) LatencyHistogram(ctx context.Context, req *v1.LatencyHist
 	}
 	out := &v1.LatencyHistogramReply{
 		WindowMinutes: int32(h.WindowMinutes), Total: h.Total,
-		P50Ms: h.P50Ms, P95Ms: h.P95Ms,
+	}
+	// 「没取到≠0」：空窗时分位缺省（not present），前端显「样本不足」而不是 0ms。
+	if h.Total > 0 {
+		p50, p95 := h.P50Ms, h.P95Ms
+		out.P50Ms, out.P95Ms = &p50, &p95
 	}
 	for _, b := range h.Buckets {
 		out.Buckets = append(out.Buckets, &v1.LatencyBucket{LeMs: b.LeMs, Count: b.Count})

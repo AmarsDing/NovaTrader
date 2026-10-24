@@ -14,16 +14,19 @@ func TestLiveGateAuditMapping(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/trade/admission/live/grant", "trade.grant_live"},
 		{http.MethodPost, "/api/trade/admission/live/revoke", "trade.revoke_live"},
+		{http.MethodPost, "/api/trade/live/cash-baseline", "trade.cash_baseline"},
 		{http.MethodGet, "/api/trade/admission/live/grant", ""},
+		{http.MethodGet, "/api/trade/live/cash-baseline", ""},
 		{http.MethodPost, "/api/trade/admission/live/grantx", ""},
 		{http.MethodPost, "/api/trade/admission", ""},
+		{http.MethodPost, "/api/trade/live", ""},
 	}
 	for _, tc := range cases {
 		if got := auditAction(tc.method, tc.path); got != tc.want {
 			t.Errorf("%s %s: got %q want %q", tc.method, tc.path, got, tc.want)
 		}
 	}
-	if !sensitive("trade.grant_live") || !sensitive("trade.revoke_live") {
+	if !sensitive("trade.grant_live") || !sensitive("trade.revoke_live") || !sensitive("trade.cash_baseline") {
 		t.Fatal("live gate actions must stay sensitive so audit-off aborts the proxy")
 	}
 }

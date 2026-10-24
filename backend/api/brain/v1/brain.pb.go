@@ -1582,20 +1582,22 @@ func (*StatsRequest) Descriptor() ([]byte, []int) {
 }
 
 type TierStats struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tier          string                 `protobuf:"bytes,1,opt,name=tier,proto3" json:"tier,omitempty"`
-	Model         string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
-	Configured    bool                   `protobuf:"varint,3,opt,name=configured,proto3" json:"configured,omitempty"`
-	Calls         int64                  `protobuf:"varint,4,opt,name=calls,proto3" json:"calls,omitempty"`
-	Failures      int64                  `protobuf:"varint,5,opt,name=failures,proto3" json:"failures,omitempty"`
-	P50Ms         float64                `protobuf:"fixed64,6,opt,name=p50_ms,json=p50Ms,proto3" json:"p50_ms,omitempty"`
-	P95Ms         float64                `protobuf:"fixed64,7,opt,name=p95_ms,json=p95Ms,proto3" json:"p95_ms,omitempty"`
-	InFlight      int32                  `protobuf:"varint,8,opt,name=in_flight,json=inFlight,proto3" json:"in_flight,omitempty"`
-	Queued        int32                  `protobuf:"varint,9,opt,name=queued,proto3" json:"queued,omitempty"`
-	CircuitOpen   bool                   `protobuf:"varint,10,opt,name=circuit_open,json=circuitOpen,proto3" json:"circuit_open,omitempty"`
-	KvCacheUsage  float64                `protobuf:"fixed64,11,opt,name=kv_cache_usage,json=kvCacheUsage,proto3" json:"kv_cache_usage,omitempty"` // 0–1，读不到为 -1
-	Running       float64                `protobuf:"fixed64,12,opt,name=running,proto3" json:"running,omitempty"`
-	Waiting       float64                `protobuf:"fixed64,13,opt,name=waiting,proto3" json:"waiting,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Tier       string                 `protobuf:"bytes,1,opt,name=tier,proto3" json:"tier,omitempty"`
+	Model      string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	Configured bool                   `protobuf:"varint,3,opt,name=configured,proto3" json:"configured,omitempty"`
+	Calls      int64                  `protobuf:"varint,4,opt,name=calls,proto3" json:"calls,omitempty"`
+	Failures   int64                  `protobuf:"varint,5,opt,name=failures,proto3" json:"failures,omitempty"`
+	// 「没取到≠0」：calls=0 时分位缺省（0ms 不是合法分位读数）。
+	P50Ms       *float64 `protobuf:"fixed64,6,opt,name=p50_ms,json=p50Ms,proto3,oneof" json:"p50_ms,omitempty"`
+	P95Ms       *float64 `protobuf:"fixed64,7,opt,name=p95_ms,json=p95Ms,proto3,oneof" json:"p95_ms,omitempty"`
+	InFlight    int32    `protobuf:"varint,8,opt,name=in_flight,json=inFlight,proto3" json:"in_flight,omitempty"`
+	Queued      int32    `protobuf:"varint,9,opt,name=queued,proto3" json:"queued,omitempty"`
+	CircuitOpen bool     `protobuf:"varint,10,opt,name=circuit_open,json=circuitOpen,proto3" json:"circuit_open,omitempty"`
+	// 0–1；vLLM 指标读不到时缺省（not present），不再用 -1 哨兵。
+	KvCacheUsage  *float64 `protobuf:"fixed64,11,opt,name=kv_cache_usage,json=kvCacheUsage,proto3,oneof" json:"kv_cache_usage,omitempty"`
+	Running       float64  `protobuf:"fixed64,12,opt,name=running,proto3" json:"running,omitempty"`
+	Waiting       float64  `protobuf:"fixed64,13,opt,name=waiting,proto3" json:"waiting,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1666,15 +1668,15 @@ func (x *TierStats) GetFailures() int64 {
 }
 
 func (x *TierStats) GetP50Ms() float64 {
-	if x != nil {
-		return x.P50Ms
+	if x != nil && x.P50Ms != nil {
+		return *x.P50Ms
 	}
 	return 0
 }
 
 func (x *TierStats) GetP95Ms() float64 {
-	if x != nil {
-		return x.P95Ms
+	if x != nil && x.P95Ms != nil {
+		return *x.P95Ms
 	}
 	return 0
 }
@@ -1701,8 +1703,8 @@ func (x *TierStats) GetCircuitOpen() bool {
 }
 
 func (x *TierStats) GetKvCacheUsage() float64 {
-	if x != nil {
-		return x.KvCacheUsage
+	if x != nil && x.KvCacheUsage != nil {
+		return *x.KvCacheUsage
 	}
 	return 0
 }
@@ -2232,9 +2234,10 @@ type LatencyHistogramReply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WindowMinutes int32                  `protobuf:"varint,1,opt,name=window_minutes,json=windowMinutes,proto3" json:"window_minutes,omitempty"`
 	Total         int64                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	P50Ms         float64                `protobuf:"fixed64,3,opt,name=p50_ms,json=p50Ms,proto3" json:"p50_ms,omitempty"`
-	P95Ms         float64                `protobuf:"fixed64,4,opt,name=p95_ms,json=p95Ms,proto3" json:"p95_ms,omitempty"`
-	Buckets       []*LatencyBucket       `protobuf:"bytes,5,rep,name=buckets,proto3" json:"buckets,omitempty"` // 固定 8 桶
+	// 「没取到≠0」：空窗（total=0）时分位缺省（not present），消费方显「样本不足」。
+	P50Ms         *float64         `protobuf:"fixed64,3,opt,name=p50_ms,json=p50Ms,proto3,oneof" json:"p50_ms,omitempty"`
+	P95Ms         *float64         `protobuf:"fixed64,4,opt,name=p95_ms,json=p95Ms,proto3,oneof" json:"p95_ms,omitempty"`
+	Buckets       []*LatencyBucket `protobuf:"bytes,5,rep,name=buckets,proto3" json:"buckets,omitempty"` // 固定 8 桶
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2284,15 +2287,15 @@ func (x *LatencyHistogramReply) GetTotal() int64 {
 }
 
 func (x *LatencyHistogramReply) GetP50Ms() float64 {
-	if x != nil {
-		return x.P50Ms
+	if x != nil && x.P50Ms != nil {
+		return *x.P50Ms
 	}
 	return 0
 }
 
 func (x *LatencyHistogramReply) GetP95Ms() float64 {
-	if x != nil {
-		return x.P95Ms
+	if x != nil && x.P95Ms != nil {
+		return *x.P95Ms
 	}
 	return 0
 }
@@ -3307,7 +3310,7 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"aiDegraded\x12\x1c\n" +
 	"\tdiscarded\x18\x05 \x01(\bR\tdiscarded\x12\x16\n" +
 	"\x06reason\x18\x06 \x01(\tR\x06reason\"\x0e\n" +
-	"\fStatsRequest\"\xe7\x02\n" +
+	"\fStatsRequest\"\x9f\x03\n" +
 	"\tTierStats\x12\x12\n" +
 	"\x04tier\x18\x01 \x01(\tR\x04tier\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12\x1e\n" +
@@ -3315,16 +3318,19 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"configured\x18\x03 \x01(\bR\n" +
 	"configured\x12\x14\n" +
 	"\x05calls\x18\x04 \x01(\x03R\x05calls\x12\x1a\n" +
-	"\bfailures\x18\x05 \x01(\x03R\bfailures\x12\x15\n" +
-	"\x06p50_ms\x18\x06 \x01(\x01R\x05p50Ms\x12\x15\n" +
-	"\x06p95_ms\x18\a \x01(\x01R\x05p95Ms\x12\x1b\n" +
+	"\bfailures\x18\x05 \x01(\x03R\bfailures\x12\x1a\n" +
+	"\x06p50_ms\x18\x06 \x01(\x01H\x00R\x05p50Ms\x88\x01\x01\x12\x1a\n" +
+	"\x06p95_ms\x18\a \x01(\x01H\x01R\x05p95Ms\x88\x01\x01\x12\x1b\n" +
 	"\tin_flight\x18\b \x01(\x05R\binFlight\x12\x16\n" +
 	"\x06queued\x18\t \x01(\x05R\x06queued\x12!\n" +
 	"\fcircuit_open\x18\n" +
-	" \x01(\bR\vcircuitOpen\x12$\n" +
-	"\x0ekv_cache_usage\x18\v \x01(\x01R\fkvCacheUsage\x12\x18\n" +
+	" \x01(\bR\vcircuitOpen\x12)\n" +
+	"\x0ekv_cache_usage\x18\v \x01(\x01H\x02R\fkvCacheUsage\x88\x01\x01\x12\x18\n" +
 	"\arunning\x18\f \x01(\x01R\arunning\x12\x18\n" +
-	"\awaiting\x18\r \x01(\x01R\awaiting\"7\n" +
+	"\awaiting\x18\r \x01(\x01R\awaitingB\t\n" +
+	"\a_p50_msB\t\n" +
+	"\a_p95_msB\x11\n" +
+	"\x0f_kv_cache_usage\"7\n" +
 	"\n" +
 	"StatsReply\x12)\n" +
 	"\x05tiers\x18\x01 \x03(\v2\x13.brain.v1.TierStatsR\x05tiers\"&\n" +
@@ -3365,13 +3371,15 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\x0ewindow_minutes\x18\x01 \x01(\x05R\rwindowMinutes\":\n" +
 	"\rLatencyBucket\x12\x13\n" +
 	"\x05le_ms\x18\x01 \x01(\x01R\x04leMs\x12\x14\n" +
-	"\x05count\x18\x02 \x01(\x03R\x05count\"\xb5\x01\n" +
+	"\x05count\x18\x02 \x01(\x03R\x05count\"\xd5\x01\n" +
 	"\x15LatencyHistogramReply\x12%\n" +
 	"\x0ewindow_minutes\x18\x01 \x01(\x05R\rwindowMinutes\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x15\n" +
-	"\x06p50_ms\x18\x03 \x01(\x01R\x05p50Ms\x12\x15\n" +
-	"\x06p95_ms\x18\x04 \x01(\x01R\x05p95Ms\x121\n" +
-	"\abuckets\x18\x05 \x03(\v2\x17.brain.v1.LatencyBucketR\abuckets\"A\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x1a\n" +
+	"\x06p50_ms\x18\x03 \x01(\x01H\x00R\x05p50Ms\x88\x01\x01\x12\x1a\n" +
+	"\x06p95_ms\x18\x04 \x01(\x01H\x01R\x05p95Ms\x88\x01\x01\x121\n" +
+	"\abuckets\x18\x05 \x03(\v2\x17.brain.v1.LatencyBucketR\abucketsB\t\n" +
+	"\a_p50_msB\t\n" +
+	"\a_p95_ms\"A\n" +
 	"\x17GetProgramReviewRequest\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\"\x8c\x01\n" +
@@ -3625,6 +3633,8 @@ func file_api_brain_v1_brain_proto_init() {
 		return
 	}
 	file_api_brain_v1_brain_proto_msgTypes[14].OneofWrappers = []any{}
+	file_api_brain_v1_brain_proto_msgTypes[20].OneofWrappers = []any{}
+	file_api_brain_v1_brain_proto_msgTypes[29].OneofWrappers = []any{}
 	file_api_brain_v1_brain_proto_msgTypes[34].OneofWrappers = []any{}
 	file_api_brain_v1_brain_proto_msgTypes[36].OneofWrappers = []any{}
 	file_api_brain_v1_brain_proto_msgTypes[38].OneofWrappers = []any{}

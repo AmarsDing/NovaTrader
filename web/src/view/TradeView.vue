@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { askConfirm } from '@/store/confirm'
+import { askConfirm } from '@/stores/confirm'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'

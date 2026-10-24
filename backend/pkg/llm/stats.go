@@ -15,11 +15,12 @@ import (
 const latencyWindow = 200
 
 type tierStats struct {
-	mu       sync.Mutex
-	calls    int64
-	failures int64
-	window   []time.Duration
-	next     int
+	mu        sync.Mutex
+	calls     int64
+	failures  int64
+	succeeded int64
+	window    []time.Duration
+	next      int
 }
 
 func newTierStats() *tierStats {
@@ -34,6 +35,7 @@ func (s *tierStats) observe(d time.Duration, ok bool) {
 		s.failures++
 		return
 	}
+	s.succeeded++
 	if len(s.window) < latencyWindow {
 		s.window = append(s.window, d)
 		return
@@ -42,29 +44,33 @@ func (s *tierStats) observe(d time.Duration, ok bool) {
 	s.next = (s.next + 1) % latencyWindow
 }
 
-func (s *tierStats) snapshot() (calls, failures int64, p50, p95 float64) {
+// snapshot 返回计数与成功样本的百分位。succeeded 单独给：Calls>0 含全失败档，
+// 消费方不能拿 Calls 当「有过成功延迟样本」的判定（0ms 不是分位读数）。
+func (s *tierStats) snapshot() (calls, failures, succeeded int64, p50, p95 float64) {
 	s.mu.Lock()
 	sorted := append([]time.Duration(nil), s.window...)
-	calls, failures = s.calls, s.failures
+	calls, failures, succeeded = s.calls, s.failures, s.succeeded
 	s.mu.Unlock()
 	if len(sorted) == 0 {
-		return calls, failures, 0, 0
+		return calls, failures, succeeded, 0, 0
 	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 	pick := func(q float64) float64 {
 		i := int(q*float64(len(sorted)-1) + 0.5)
 		return float64(sorted[i].Microseconds()) / 1000
 	}
-	return calls, failures, pick(0.50), pick(0.95)
+	return calls, failures, succeeded, pick(0.50), pick(0.95)
 }
 
 // TierStats 是某档模型的运行情况。vLLM 指标读不到时 KVCacheUsage、Running、Waiting 为 -1。
+// Succeeded 是成功样本数：p50/p95 只有成功样本才有意义，消费方按 Succeeded>0 决定是否展示。
 type TierStats struct {
 	Tier         Tier
 	Model        string
 	Configured   bool
 	Calls        int64
 	Failures     int64
+	Succeeded    int64
 	P50MS        float64
 	P95MS        float64
 	InFlight     int
@@ -85,12 +91,15 @@ func (g *Gateway) Stats(ctx context.Context) []TierStats {
 	out := make([]TierStats, 0, len(names))
 	for _, name := range names {
 		tr := g.tiers[Tier(name)]
-		st := TierStats{Tier: Tier(name), Model: tr.cfg.Model, Configured: tr.cfg.BaseURL != "", KVCacheUsage: -1, Running: -1, Waiting: -1}
-		st.Calls, st.Failures, st.P50MS, st.P95MS = tr.stats.snapshot()
+		// 读运行时覆盖（SetLive）：「是否配置/用哪个模型/去哪取指标」以生效值为准，
+		// 不能只看启动配置——启动后从配置页改了 base_url，启动值始终是旧口径。
+		eff := g.overlay(Tier(name), tr.cfg)
+		st := TierStats{Tier: Tier(name), Model: eff.Model, Configured: eff.BaseURL != "", KVCacheUsage: -1, Running: -1, Waiting: -1}
+		st.Calls, st.Failures, st.Succeeded, st.P50MS, st.P95MS = tr.stats.snapshot()
 		st.InFlight, st.Queued = tr.queue.load()
 		st.CircuitOpen = tr.breakerOpen(g.now())
 		if st.Configured {
-			if m, err := g.scrape(ctx, tr.cfg); err == nil {
+			if m, err := g.scrape(ctx, eff); err == nil {
 				st.KVCacheUsage = pickMetric(m, -1, "vllm:gpu_cache_usage_perc", "vllm:kv_cache_usage_perc")
 				st.Running = pickMetric(m, -1, "vllm:num_requests_running")
 				st.Waiting = pickMetric(m, -1, "vllm:num_requests_waiting")

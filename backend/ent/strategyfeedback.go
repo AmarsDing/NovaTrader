@@ -24,7 +24,7 @@ type StrategyFeedback struct {
 	// SignalID holds the value of the "signal_id" field.
 	SignalID *int `json:"signal_id,omitempty"`
 	// PredictedReturn holds the value of the "predicted_return" field.
-	PredictedReturn float64 `json:"predicted_return,omitempty"`
+	PredictedReturn *float64 `json:"predicted_return,omitempty"`
 	// ActualReturn holds the value of the "actual_return" field.
 	ActualReturn float64 `json:"actual_return,omitempty"`
 	// SignalCorrect holds the value of the "signal_correct" field.
@@ -103,7 +103,8 @@ func (_m *StrategyFeedback) assignValues(columns []string, values []any) error {
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field predicted_return", values[i])
 			} else if value.Valid {
-				_m.PredictedReturn = value.Float64
+				_m.PredictedReturn = new(float64)
+				*_m.PredictedReturn = value.Float64
 			}
 		case strategyfeedback.FieldActualReturn:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -203,8 +204,10 @@ func (_m *StrategyFeedback) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("predicted_return=")
-	builder.WriteString(fmt.Sprintf("%v", _m.PredictedReturn))
+	if v := _m.PredictedReturn; v != nil {
+		builder.WriteString("predicted_return=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("actual_return=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ActualReturn))

@@ -12,28 +12,56 @@ import (
 	"server/pkg/llm"
 )
 
-var numberToken = regexp.MustCompile(`\d+(?:,\d{3})*(?:\.\d+)?%?`)
+var numberToken = regexp.MustCompile(`\d+(?:,\d{3})*(?:\.\d+)?(?:%|万亿|亿|万)?`)
 
 const relTolerance = 0.005
 
-// numberSet 是本次输入里出现过的数字及其出处。输出正文里的数字按三档判定（P1-5，
-// vibe-astock verifier 口径）：①事实包内有出处（sourced）②算式重算通过（recomputed）
-// ③无出处（omitted，正文替换为「（略※）」）。本地判定只在事实包以外纯文本数字时发生。
+// unitScaleOf 中文记账单位 → 真实量纲换算（万*→1e4、亿*→1e8、万亿→1e12）；不带单位返 1。
+// 按前缀归并，覆盖在用的复合单位（亿元、万股、亿股等）：正文 token 的单位后缀只管
+// 万/亿/万亿 三档（后面的「股/元/手」等量词不进 token），事实 Unit 必须与之同口径，
+// 否则「2亿股」写成事实 2/亿股 时对不上真实值 2e8（W3 复核根修回归实证）。
+func unitScaleOf(u string) float64 {
+	switch {
+	case strings.HasPrefix(u, "万亿"):
+		return 1e12
+	case strings.HasPrefix(u, "亿"):
+		return 1e8
+	case strings.HasPrefix(u, "万"):
+		return 1e4
+	default:
+		return 1
+	}
+}
+
+// numberSet 是本次输入里出现过的数字及其出处。输出正文里的数字按四档判定（P1-5，
+// vibe-astock verifier 口径 + 量级档）：①事实包内有出处（sourced）②算式重算通过
+// （recomputed）③无出处（omitted，正文替换）④量级畸变（magnitude，按 omitted 计数）。
+// 本地判定只在事实包以外纯文本数字时发生。带 万/亿/万亿 单位的正文 token 按真实量纲
+// 核对（单位是对量纲的断言，不许被 ÷1万/÷1亿 换算位兜住——该场景走量级档）。
 type numberSet struct {
 	vals    []float64
 	srcs    []string       // 与 vals 同长：事实标签或含该数字的文本片段
 	closure []closureEntry // 由事实原始值两两四则运算预生成（算式重算档）
+	// orig/origSrc 是「真实量纲」的证据锚（Fact.Unit 折进 Value、文本单位后缀折进数值），
+	// 只供量级档（scrub.magnitudeMatch）对照 writtenScale vs evidenceScale、以及带单位
+	// token 的直查（matchOfTrue）用；无单位 token 的旧口径匹配仍走 vals 的换算位。
+	orig    []float64
+	origSrc []string
 }
 
 // newNumberSet 收集输入文本里的数字并记下出处，给数值因子补上常见换算（×100、÷100、÷1万、÷1亿），
-// 再用事实原始值两两运算生成算式重算档的校验池。
+// 再用事实原始值两两运算生成算式重算档的校验池。文本数字按真实量纲入 orig（单位后缀折进）；
+// 事实的 orig 锚同样取真实量纲（Value×Unit 换算）。
 func newNumberSet(facts []Fact, texts ...string) numberSet {
 	var s numberSet
 	for _, t := range texts {
 		for _, loc := range numberToken.FindAllStringIndex(t, -1) {
-			if v, _, _, ok := parseNumber(t[loc[0]:loc[1]]); ok {
-				s.vals = append(s.vals, v)
+			if v, sc, _, _, ok := parseNumber(t[loc[0]:loc[1]]); ok {
+				val := v * sc
+				s.vals = append(s.vals, val)
 				s.srcs = append(s.srcs, excerpt(t, loc))
+				s.orig = append(s.orig, val)
+				s.origSrc = append(s.origSrc, excerpt(t, loc))
 			}
 		}
 	}
@@ -48,6 +76,10 @@ func newNumberSet(facts []Fact, texts ...string) numberSet {
 		for range 5 {
 			s.srcs = append(s.srcs, f.Label)
 		}
+		// 真实量纲锚：Fact.Unit 显式带单位的折进数值（成交额=7400/亿 → 7.4e11）。
+		// 系数空间照旧留在 vals 供无单位 token 匹配，两边各归各。
+		s.orig = append(s.orig, v*unitScaleOf(f.Unit))
+		s.origSrc = append(s.origSrc, f.Label)
 	}
 	s.closure = buildClosure(base)
 	return s
@@ -72,21 +104,36 @@ func excerpt(text string, loc []int) string {
 	return strings.TrimSpace(snip)
 }
 
-func parseNumber(tok string) (v float64, decimals int, pct bool, ok bool) {
-	pct = strings.HasSuffix(tok, "%")
-	tok = strings.ReplaceAll(strings.TrimSuffix(tok, "%"), ",", "")
+// parseNumber 解析数字 token。万/亿/万亿 后缀按中文记账单位折算返回 scale（>1 表示带单位；
+// 百分号按系数↔百分比口径返回 pct，不与单位后缀同现）。调用方按 v×scale 落真实量纲。
+func parseNumber(tok string) (v float64, scale float64, decimals int, pct bool, ok bool) {
+	scale = 1
+	switch {
+	case strings.HasSuffix(tok, "%"):
+		pct, tok = true, strings.TrimSuffix(tok, "%")
+	default:
+		for _, u := range []string{"万亿", "亿", "万"} {
+			if strings.HasSuffix(tok, u) {
+				scale, tok = unitScaleOf(u), strings.TrimSuffix(tok, u)
+				break
+			}
+		}
+	}
+	tok = strings.ReplaceAll(tok, ",", "")
 	if i := strings.IndexByte(tok, '.'); i >= 0 {
 		decimals = len(tok) - i - 1
 	}
 	v, err := strconv.ParseFloat(tok, 64)
 	if err != nil {
-		return 0, 0, false, false
+		return 0, 0, 0, false, false
 	}
-	return v, decimals, pct, true
+	return v, scale, decimals, pct, true
 }
 
 // matchOf 按输出的小数位匹配数字，返回出处（事实标签或文本片段）。
 // 百分比文本允许按 ×100 命中（事实常以系数存、正文以 % 写）。
+// 只供无单位 token：带单位 token 必须走 matchOfTrue——「1.2 亿」若被 ÷1万 换算位兜住
+// 盖 sourced 章，等于替 10^4 级错数背书（W3 复核根因）。
 func (s numberSet) matchOf(x float64, decimals int, pct bool) (string, bool) {
 	for i, v := range s.vals {
 		if matches(x, decimals, v) || (pct && matches(x, decimals, v*100)) {
@@ -96,8 +143,24 @@ func (s numberSet) matchOf(x float64, decimals int, pct bool) (string, bool) {
 	return "", false
 }
 
+// matchOfTrue 带单位 token 的直查：只在真实量纲锚（orig，Fact.Unit 与文本单位后缀
+// 均已折进）上匹配，不碰系数空间的换算位。
+func (s numberSet) matchOfTrue(x float64, decimals int) (string, bool) {
+	for i, v := range s.orig {
+		if matches(x, decimals, v) {
+			return s.origSrc[i], true
+		}
+	}
+	return "", false
+}
+
 func (s numberSet) has(x float64, decimals int, pct bool) bool {
 	_, ok := s.matchOf(x, decimals, pct)
+	return ok
+}
+
+func (s numberSet) hasTrue(x float64, decimals int) bool {
+	_, ok := s.matchOfTrue(x, decimals)
 	return ok
 }
 
@@ -112,13 +175,21 @@ func matches(x float64, decimals int, v float64) bool {
 	return math.Abs(x-v) <= relTolerance*math.Abs(v)
 }
 
-// check 返回正文里找不到出处的数字。
+// check 返回正文里找不到出处的数字。带 万/亿/万亿 单位的 token 按真实量纲核对：
+// 单位是对量纲的断言，失配必须算「找不到出处」，不许被换算位兜住（致死因同上）。
 func (s numberSet) check(texts ...string) error {
 	var bad []string
 	for _, t := range texts {
 		for _, m := range numberToken.FindAllString(t, -1) {
-			v, dec, pct, ok := parseNumber(m)
-			if !ok || s.has(v, dec, pct) {
+			v, scale, dec, pct, ok := parseNumber(m)
+			if !ok {
+				continue
+			}
+			if scale > 1 {
+				if s.hasTrue(v*scale, dec) {
+					continue
+				}
+			} else if s.has(v, dec, pct) {
 				continue
 			}
 			bad = append(bad, m)

@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"server/conf"
+	"server/pkg/appcfg"
 	"server/pkg/events"
+	"server/pkg/llm/providers"
 	"server/pkg/metrics"
 	"server/pkg/symbol"
 	"server/pkg/tradecal"
@@ -105,6 +107,24 @@ func NewUsecase(repo Repo, model Model, c *conf.Intel, logger log.Logger) *Useca
 		}
 		review := int(llmConf.GetReviewImportance())
 		u.llm = NewLLMScorer(model, llmConf.GetEnabled(), llmConf.GetSmallModel() != "", llmConf.GetLargeModel() != "", review)
+		// 启动校验：复核门第二级未就绪时给一次显式告警（运行期仍可在配置页补 app.intel.large；
+		// 重要情报复核一旦被跳过会逐条标 degraded）。判据直用 ready() 的运行期复合口径——
+		// 与每条情报实际走的门同一条函数；只看 yaml enabled 会在「配置页开了开关、yaml 没开」
+		// 时漏告警、在「yaml 开了、配置页关了」时误告警（W3 复核第⑥条）。
+		if small, large := u.llm.ready(); small && !large {
+			u.log.Warn("双级评分门第二级未启用：large 档未配置，importance 达复核线的情报将只走小模型并标 degraded")
+		}
+		// 供应商坑位登记册（S9）：intel 模型地址匹配已登记供应商的未实测/已知坑时启动告警一次；
+		// 未登记供应商同样提示登记——坑只留在 pkg/llm/providers，不散在代码与记忆。
+		if base := strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.url")); base != "" {
+			for _, w := range providers.Warns(base) {
+				u.log.Warnf("供应商坑位（%s）：%s", base, w)
+			}
+		} else if base = strings.TrimSpace(llmConf.GetBaseUrl()); base != "" {
+			for _, w := range providers.Warns(base) {
+				u.log.Warnf("供应商坑位（%s）：%s", base, w)
+			}
+		}
 	}
 	u.dict.Store(BuildDictionary(nil, nil))
 	return u

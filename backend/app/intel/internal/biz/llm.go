@@ -63,9 +63,15 @@ type modelOutput struct {
 	Reason     string   `json:"reason"`
 }
 
+// appcfgGet 是运行期配置覆盖的读口缝：测试可替换为表驱动存根。
+var appcfgGet = appcfg.Get
+
+// ready 返回运行期生效的（小档, 大档）就绪位：yaml enabled 可被配置页 app.intel.enabled
+// 覆盖，small/large 档 yaml 与配置页任一有值即成。运行期每一次评分都走这条函数，
+// 所以启动期告警也必须以它为准，不能另写一套只看 yaml 的口径。
 func (s *LLMScorer) ready() (small, large bool) {
 	on := s.enabled
-	switch strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.enabled")) {
+	switch strings.TrimSpace(appcfgGet(context.Background(), "app.intel.enabled")) {
 	case "true":
 		on = true
 	case "false":
@@ -74,8 +80,8 @@ func (s *LLMScorer) ready() (small, large bool) {
 	if !on {
 		return false, false
 	}
-	small = s.small || strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.small")) != ""
-	large = s.large || strings.TrimSpace(appcfg.Get(context.Background(), "app.intel.large")) != ""
+	small = s.small || strings.TrimSpace(appcfgGet(context.Background(), "app.intel.small")) != ""
+	large = s.large || strings.TrimSpace(appcfgGet(context.Background(), "app.intel.large")) != ""
 	return small, large
 }
 
@@ -93,12 +99,20 @@ func (s *LLMScorer) Score(ctx context.Context, it *Item, rule Score) (Score, err
 		return Score{}, err
 	}
 	got.Scorer = ScorerSmall
-	if !large || got.Importance < s.reviewImportance {
+	if got.Importance < s.reviewImportance {
+		return got, nil
+	}
+	// 复核门第二级：未启用或调用失败都必须显式降级（原来的「静默只走小模型」不可见，
+	// 借 vibe quality_gate 双门状态可见的口径——degraded 徽注比悄悄省一级更诚实）。
+	if !large {
+		got.Reason += "（大模型复核通道未启用）"
+		got.Degraded = true
 		return got, nil
 	}
 	reviewed, err := s.ask(ctx, "large", it, got)
 	if err != nil {
 		got.Reason += "（大模型复核失败）"
+		got.Degraded = true
 		return got, nil
 	}
 	reviewed.Scorer = ScorerLarge

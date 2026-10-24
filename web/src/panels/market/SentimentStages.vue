@@ -2,16 +2,10 @@
 /**
  * 市场情绪五阶段（M02 §6）：冰点 → 修复 → 升温 → 高潮 → 退潮。
  * 当前阶段高亮，并显示评分系数 / 仓位系数 / 风险等级（缺省用规则表默认值）。
+ * 五阶段口径单源在 utils/format.ts 的 SENTIMENT_STAGES；这里只消费不重定义。
  */
 import { computed } from 'vue'
-
-const STAGES = [
-  { code: 'ICE', label: '冰点', coef: 0.8, scale: 0.3 },
-  { code: 'RECOVER', label: '修复', coef: 0.95, scale: 0.6 },
-  { code: 'WARM', label: '升温', coef: 1.0, scale: 1.0 },
-  { code: 'HOT', label: '高潮', coef: 1.05, scale: 0.8 },
-  { code: 'FADE', label: '退潮', coef: 0.85, scale: 0.3 },
-] as const
+import { SENTIMENT_STAGES as STAGES } from '@/utils/format'
 
 const props = withDefaults(
   defineProps<{

@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue'
 import * as echarts from 'echarts/core'
-import { BarChart, HeatmapChart, LineChart, PieChart, RadarChart } from 'echarts/charts'
+import { BarChart, HeatmapChart, LineChart } from 'echarts/charts'
 import {
-  DataZoomComponent,
   GridComponent,
   LegendComponent,
-  TitleComponent,
-  ToolboxComponent,
   TooltipComponent,
   VisualMapComponent,
   type TooltipComponentOption,
@@ -19,15 +16,10 @@ import { useVisualRendering } from '@/theme/visual-quality'
 echarts.use([
   LineChart,
   BarChart,
-  PieChart,
-  RadarChart,
   HeatmapChart,
-  TitleComponent,
   TooltipComponent,
   GridComponent,
   LegendComponent,
-  ToolboxComponent,
-  DataZoomComponent,
   VisualMapComponent,
   CanvasRenderer,
 ])
@@ -88,7 +80,7 @@ watch(() => props.option, render)
 watch(palette, render)
 watch(visual, () => {
   if (!chart || !props.option) return
-  // Merge only motion flags; preserve dataZoom and all user navigation state.
+  // Merge only motion flags; leave the rest of the option (and ECharts' interaction state) untouched.
   chart.setOption(motionOption(false))
   if (visual.value.reducedMotion || !visual.value.visible) {
     const renderer = chart.getZr?.()

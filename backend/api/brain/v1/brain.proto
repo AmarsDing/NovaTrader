@@ -247,12 +247,14 @@ message TierStats {
   bool configured = 3;
   int64 calls = 4;
   int64 failures = 5;
-  double p50_ms = 6;
-  double p95_ms = 7;
+  // 「没取到≠0」：calls=0 时分位缺省（0ms 不是合法分位读数）。
+  optional double p50_ms = 6;
+  optional double p95_ms = 7;
   int32 in_flight = 8;
   int32 queued = 9;
   bool circuit_open = 10;
-  double kv_cache_usage = 11; // 0–1，读不到为 -1
+  // 0–1；vLLM 指标读不到时缺省（not present），不再用 -1 哨兵。
+  optional double kv_cache_usage = 11;
   double running = 12;
   double waiting = 13;
 }
@@ -316,8 +318,9 @@ message LatencyBucket {
 message LatencyHistogramReply {
   int32 window_minutes = 1;
   int64 total = 2;
-  double p50_ms = 3;
-  double p95_ms = 4;
+  // 「没取到≠0」：空窗（total=0）时分位缺省（not present），消费方显「样本不足」。
+  optional double p50_ms = 3;
+  optional double p95_ms = 4;
   repeated LatencyBucket buckets = 5; // 固定 8 桶
 }
 

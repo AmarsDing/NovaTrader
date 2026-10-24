@@ -11,7 +11,7 @@
  */
 import { reactive } from 'vue'
 import { healthz } from '@/api/system'
-import { askConfirm } from '@/store/confirm'
+import { askConfirm } from '@/stores/confirm'
 import { wsUrl } from '@/utils/endpoint'
 import { deskNotify } from '@/utils/notify'
 import type { AlertEventView } from '@/ui/alert-levels'

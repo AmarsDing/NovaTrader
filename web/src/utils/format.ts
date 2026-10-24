@@ -86,14 +86,22 @@ export function clock(value: unknown): string {
   return formatClock(value)
 }
 
-// 与 panels/market/SentimentStages.vue 的五阶段口径一致，全仓只用这一套中文。
-const PHASE: Record<string, string> = {
-  ICE: '冰点',
-  RECOVER: '修复',
-  WARM: '升温',
-  HOT: '高潮',
-  FADE: '退潮',
-}
+/**
+ * 市场情绪五阶段（M02 §6）唯一定义：冰点 → 修复 → 升温 → 高潮 → 退潮。
+ * coef = 评分系数默认；scale = 仓位系数默认（props 显式给值时调用方覆盖）。
+ * 全仓只认这一套：SentimentStages.vue、phaseName、监控 HUD/KB 全部从这里取。
+ */
+export const SENTIMENT_STAGES = [
+  { code: 'ICE', label: '冰点', coef: 0.8, scale: 0.3 },
+  { code: 'RECOVER', label: '修复', coef: 0.95, scale: 0.6 },
+  { code: 'WARM', label: '升温', coef: 1.0, scale: 1.0 },
+  { code: 'HOT', label: '高潮', coef: 1.05, scale: 0.8 },
+  { code: 'FADE', label: '退潮', coef: 0.85, scale: 0.3 },
+] as const
+
+export type SentimentStageCode = (typeof SENTIMENT_STAGES)[number]['code']
+
+const PHASE: Record<string, string> = Object.fromEntries(SENTIMENT_STAGES.map((s) => [s.code, s.label]))
 
 export function phaseName(code: unknown): string {
   if (!code) return '—'

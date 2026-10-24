@@ -127,3 +127,65 @@ func TestScrubBriefingDedupesAndCounts(t *testing.T) {
 		t.Fatalf("字段归属缺失 risks: %+v", items)
 	}
 }
+
+// TestScrubMagnitudeTier 量级档：数字对但差 ≥3 个数量级（1.2 万写成 1.2 亿）单列 magnitude 留痕。
+func TestScrubMagnitudeTier(t *testing.T) {
+	facts := []Fact{{ID: "F:flow.main", Label: "主力净流入", Value: 12000}}
+	nums := newNumberSet(facts)
+	text, items, omitted := nums.scrubText("主力净流入 12000000 元")
+	if omitted != 1 || !strings.Contains(text, scrubPlaceholder) {
+		t.Fatalf("量级畸变应替换并计数: %q omitted=%d", text, omitted)
+	}
+	if len(items) != 1 || items[0].Verdict != "magnitude" || !strings.Contains(items[0].Match, "主力净流入") {
+		t.Fatalf("magnitude 留痕不对: %+v", items)
+	}
+	// 同值不触发量级档；差一个数量级（10^1）也不触发（12000×10 属内置换算位，直接断言判据）。
+	okText, okItems, okOmitted := nums.scrubText("主力净流入 12000 元")
+	if okOmitted != 0 || okText != "主力净流入 12000 元" || okItems[0].Verdict != "sourced" {
+		t.Fatalf("同值应命中 sourced: %q %+v", okText, okItems)
+	}
+	if _, found := nums.magnitudeMatch(120000, 0, false); found {
+		t.Fatal("10^1 差不该触发量级档")
+	}
+}
+
+// TestScrubChineseUnitFlagshipReachesMagnitude 旗舰场景（W3 复核第③条根修）：
+// 事实口径 1.2 万（Value 12000、无单位），正文写成「1.2亿」——带单位 token 断言了量纲，
+// 必须按真实量纲核对：1.2e8 在 orig 锚（12000）上差 10^4 → 量级档；若被 ÷1万 系数位
+// 兜住盖 sourced 章，就是在替 10^4 级错数背书。（units 需紧贴数字才入 token，正则口径如此。）
+func TestScrubChineseUnitFlagshipReachesMagnitude(t *testing.T) {
+	facts := []Fact{{ID: "F:flow.main", Label: "主力净流入", Value: 12000}}
+	nums := newNumberSet(facts)
+	text, items, omitted := nums.scrubText("今日主力净流入约1.2亿")
+	if omitted != 1 || !strings.Contains(text, scrubPlaceholder) {
+		t.Fatalf("1.2 万写成 1.2亿 应替换并计数: %q omitted=%d", text, omitted)
+	}
+	if len(items) != 1 || items[0].Verdict != "magnitude" || !strings.Contains(items[0].Match, "10^4") {
+		t.Fatalf("量级留痕应为 magnitude 且带 10^4 位移: %+v", items)
+	}
+	if !strings.Contains(items[0].Match, "主力净流入") {
+		t.Fatalf("量级留痕应指出处: %+v", items[0])
+	}
+}
+
+// TestScrubUnitTokenMatchesUnitFact 带单位 token 与带 Unit 事实的同尺命中：
+// 事实口径 7400/亿（7.4e11），正文「7400亿」必须仍是 sourced——根修若把系数空间
+// 错当唯一判据，会把这条正道扳成量级档。
+func TestScrubUnitTokenMatchesUnitFact(t *testing.T) {
+	nums := newNumberSet(scrubFacts())
+	text, items, omitted := nums.scrubText("两市成交额7400亿")
+	if omitted != 0 || text != "两市成交额7400亿" {
+		t.Fatalf("同口径带单位数字不应被略: %q omitted=%d", text, omitted)
+	}
+	if len(items) != 1 || items[0].Verdict != "sourced" || items[0].Match != "成交额" {
+		t.Fatalf("7400亿应命中成交额事实: %+v", items)
+	}
+	// 同事实但正文误写为「7400万」：真实量纲差 10^4（向下），进量级档而非侥幸 sourced。
+	text2, items2, omitted2 := nums.scrubText("两市成交额7400万")
+	if omitted2 != 1 || !strings.Contains(text2, scrubPlaceholder) {
+		t.Fatalf("7400亿口径写成 7400万 应替换并计数: %q omitted=%d", text2, omitted2)
+	}
+	if len(items2) != 1 || items2[0].Verdict != "magnitude" || !strings.Contains(items2[0].Match, "10^-4") {
+		t.Fatalf("7400万应为 magnitude 10^-4 留痕: %+v", items2)
+	}
+}

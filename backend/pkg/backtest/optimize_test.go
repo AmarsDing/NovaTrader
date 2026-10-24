@@ -416,36 +416,101 @@ func TestDecayByOOSBothBranches(t *testing.T) {
 	}
 }
 
-// 设计 :211「拼接测试窗权益得到前推指标」的承重语义：optimize.go :531-537 把每窗末权益
-// 滚入下一窗（scale = 累计权益 / 初始资金）并把拼接点 Benchmark 清零。两窗都有非零成交时，
-// 拼接曲线的总收益必须等于各窗收益的复利乘积——scale 恒 1 或漏清零在这里都必红。
-func TestWalkForwardStitchScalesWindowsAndClearsBenchmark(t *testing.T) {
-	m := market(5, 140, 5, false)
+// 设计 :211「拼接测试窗权益得到前推指标」的承重语义，S7 新口径（optimize.go :542-547）：
+// 各窗引擎先把基准按窗首日前收归一到初始资金（fillBenchmark，engine.go :790-814），拼接时
+// 与净值同链按 scale 续乘——不再清零。本钉注入确定性基准线（收 +2/日），并用三窗布局钉死
+// 「累计 scale 接力」：窗 0 的 scale 恒为 1（恒等盲区），「接力链读拼接累计而非未缩放窗末」
+// 只在第三窗可被钉死——raw-relay 突变（relay 取 res.Equity 原值）在 w2 断言必红。
+// 断言与实现同表达式序（round2 后再乘 scale；scale 直读实现落盘的 combined.Equity 槽位），
+// 浮点等式合法而非运气；r0≠0 ⟺ scale1≠1（metrics.go TotalReturn 与 scale 同一次 IEEE 除法），
+// 故三窗接力见证真正有牙齿。
+func TestWalkForwardStitchScalesWindowsAndBenchmarkRelay(t *testing.T) {
+	m := market(5, 150, 5, false)
+	// 确定性基准线：000300.SH 每交易日收 +2，锚点（窗首日前收）与比值可精确手算。
+	bench := make([]DayBar, len(m.Days))
+	for i, dd := range m.Days {
+		c := 4000 + float64(i+1)*2
+		bench[i] = DayBar{Day: dd, Adj: 1, PreClose: 4000 + float64(i)*2, Open: c, High: c, Low: c, Close: c, Volume: 1, Amount: c}
+	}
+	m.Daily["000300.SH"] = bench
 	cur = &script{buy: map[string]bool{sym: true}, shares: 1000, buys: 100000}
 	cfg := scriptOptimizeCfg(m)
-	wf, combined, err := WalkForward(context.Background(), cfg, SearchConfig{MinTrades: 1, TrainDays: 60, TestDays: 30}, m, nil)
+	sc := SearchConfig{MinTrades: 1, TrainDays: 60, TestDays: 30}
+	wf, combined, err := WalkForward(context.Background(), cfg, sc, m, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(wf.Windows) != 2 {
-		t.Fatalf("windows = %d", len(wf.Windows))
+	if len(wf.Windows) != 3 {
+		t.Fatalf("windows = %d, want 3（三窗布局是累计接力的必需见证）", len(wf.Windows))
 	}
-	r0, r1 := wf.Windows[0].Test.TotalReturn, wf.Windows[1].Test.TotalReturn
-	if wf.Windows[0].Test.Rounds == 0 || wf.Windows[1].Test.Rounds == 0 {
-		t.Fatalf("both test windows must trade: %+v / %+v", wf.Windows[0].Test, wf.Windows[1].Test)
+	for w, win := range wf.Windows {
+		if win.Test.Rounds == 0 {
+			t.Fatalf("window %d must trade: %+v", w, win.Test)
+		}
 	}
-	if r0 == 0 {
+	if wf.Windows[0].Test.TotalReturn == 0 {
 		t.Fatalf("window0 return must be non-zero for the scale witness to bite: %+v", wf.Windows[0].Test)
 	}
-	if want := (1+r0)*(1+r1) - 1; !near(wf.Combined.TotalReturn, want) {
+	comp := 1.0
+	for _, win := range wf.Windows {
+		comp *= 1 + win.Test.TotalReturn
+	}
+	if want := comp - 1; !near(wf.Combined.TotalReturn, want) {
 		t.Fatalf("stitched total return = %v, want compounded %v", wf.Combined.TotalReturn, want)
+	}
+	if len(combined.Equity) != 3*sc.TestDays {
+		t.Fatalf("combined equity len = %d, want %d", len(combined.Equity), 3*sc.TestDays)
+	}
+	cash := cfg.InitialCash
+	// 窗 0（scale=1）：基准逐点跟基准序列，锚 = 窗首日前收（days[59]）。
+	tr0, base0 := sc.TrainDays, bench[sc.TrainDays-1].Close
+	for i := 0; i < sc.TestDays; i++ {
+		if want := round2(cash * bench[tr0+i].Close / base0); combined.Equity[i].Benchmark != want {
+			t.Fatalf("w0 equity[%d].Benchmark = %v, want %v（基准未逐点跟序列）", i, combined.Equity[i].Benchmark, want)
+		}
+	}
+	// 窗 1：局部基准（锚 days[89]）× scale1；scale1 = 窗 0 拼接末权益 / 初始资金，
+	// 与 optimize.go :543-547 同表达式序；拼接首点（i=0）即接力水位。
+	tr1, base1 := sc.TrainDays+sc.TestDays, bench[sc.TrainDays+sc.TestDays-1].Close
+	scale1 := combined.Equity[sc.TestDays-1].Equity / cash
+	if scale1 == 1.0 {
+		t.Fatal("scale1 exact 1：窗 0 收益为零导致接力见证失明（不应发生，r0≠0 已钉）")
+	}
+	for i := 0; i < sc.TestDays; i++ {
+		p := combined.Equity[sc.TestDays+i]
+		if want := round2(cash*bench[tr1+i].Close/base1) * scale1; p.Benchmark != want {
+			t.Fatalf("w1 equity[%d].Benchmark = %v, want %v（接力续乘断链）", i, p.Benchmark, want)
+		}
+	}
+	// 窗 2：累计接力的真见证——scale2 必须含 scale1 折叠（读拼接累计净值）；
+	// 若实现接力链读未缩放窗末（raw-relay 突变），因 scale1≠1 此处必红。
+	tr2, base2 := sc.TrainDays+2*sc.TestDays, bench[sc.TrainDays+2*sc.TestDays-1].Close
+	scale2 := combined.Equity[2*sc.TestDays-1].Equity / cash
+	for i := 0; i < sc.TestDays; i++ {
+		p := combined.Equity[2*sc.TestDays+i]
+		if want := round2(cash*bench[tr2+i].Close/base2) * scale2; p.Benchmark != want {
+			t.Fatalf("w2 equity[%d].Benchmark = %v, want %v（累计接力断链）", i, p.Benchmark, want)
+		}
+	}
+}
+
+// 缺基准 = 显式缺失（没取到≠0）：夹具没有该代码时，各窗局部基准与拼接结果全程保持 0，
+// 不得凭空续乘出读数、不得拿别的序列顶上（metrics 消费端同款口径见 metrics_test.go）。
+func TestWalkForwardStitchBenchmarkMissingStaysZero(t *testing.T) {
+	m := market(5, 140, 5, false)
+	cur = &script{buy: map[string]bool{sym: true}, shares: 1000, buys: 100000}
+	cfg := scriptOptimizeCfg(m)
+	cfg.Benchmark = "399006.SZ" // 夹具未注入该代码
+	_, combined, err := WalkForward(context.Background(), cfg, SearchConfig{MinTrades: 1, TrainDays: 60, TestDays: 30}, m, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if len(combined.Equity) == 0 {
 		t.Fatal("combined equity empty")
 	}
 	for i, p := range combined.Equity {
 		if p.Benchmark != 0 {
-			t.Fatalf("combined equity[%d].Benchmark = %v, stitch must zero it", i, p.Benchmark)
+			t.Fatalf("combined equity[%d].Benchmark = %v, 缺基准必须保持 0（显式缺失）", i, p.Benchmark)
 		}
 	}
 }

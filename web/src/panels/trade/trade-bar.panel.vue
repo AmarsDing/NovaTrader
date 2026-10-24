@@ -8,7 +8,7 @@
  * - 授权徽标常显；下单回报 toast 必带原因，网络层异常显「待核」并指引去交易面板核对。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { askConfirm } from '@/store/confirm'
+import { askConfirm } from '@/stores/confirm'
 import { previewOrder, type PreviewBody, type PreviewReply } from '@/api/risk'
 import type { OrderDraft } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'

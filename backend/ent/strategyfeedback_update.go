@@ -104,6 +104,12 @@ func (_u *StrategyFeedbackUpdate) AddPredictedReturn(v float64) *StrategyFeedbac
 	return _u
 }
 
+// ClearPredictedReturn clears the value of the "predicted_return" field.
+func (_u *StrategyFeedbackUpdate) ClearPredictedReturn() *StrategyFeedbackUpdate {
+	_u.mutation.ClearPredictedReturn()
+	return _u
+}
+
 // SetActualReturn sets the "actual_return" field.
 func (_u *StrategyFeedbackUpdate) SetActualReturn(v float64) *StrategyFeedbackUpdate {
 	_u.mutation.ResetActualReturn()
@@ -327,6 +333,9 @@ func (_u *StrategyFeedbackUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.AddedPredictedReturn(); ok {
 		_spec.AddField(strategyfeedback.FieldPredictedReturn, field.TypeFloat64, value)
 	}
+	if _u.mutation.PredictedReturnCleared() {
+		_spec.ClearField(strategyfeedback.FieldPredictedReturn, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.ActualReturn(); ok {
 		_spec.SetField(strategyfeedback.FieldActualReturn, field.TypeFloat64, value)
 	}
@@ -456,6 +465,12 @@ func (_u *StrategyFeedbackUpdateOne) SetNillablePredictedReturn(v *float64) *Str
 // AddPredictedReturn adds value to the "predicted_return" field.
 func (_u *StrategyFeedbackUpdateOne) AddPredictedReturn(v float64) *StrategyFeedbackUpdateOne {
 	_u.mutation.AddPredictedReturn(v)
+	return _u
+}
+
+// ClearPredictedReturn clears the value of the "predicted_return" field.
+func (_u *StrategyFeedbackUpdateOne) ClearPredictedReturn() *StrategyFeedbackUpdateOne {
+	_u.mutation.ClearPredictedReturn()
 	return _u
 }
 
@@ -711,6 +726,9 @@ func (_u *StrategyFeedbackUpdateOne) sqlSave(ctx context.Context) (_node *Strate
 	}
 	if value, ok := _u.mutation.AddedPredictedReturn(); ok {
 		_spec.AddField(strategyfeedback.FieldPredictedReturn, field.TypeFloat64, value)
+	}
+	if _u.mutation.PredictedReturnCleared() {
+		_spec.ClearField(strategyfeedback.FieldPredictedReturn, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ActualReturn(); ok {
 		_spec.SetField(strategyfeedback.FieldActualReturn, field.TypeFloat64, value)

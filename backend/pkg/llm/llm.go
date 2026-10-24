@@ -70,6 +70,8 @@ type ModelConfig struct {
 	MaxTokens      int
 	// DisableJSONMode 为 true 时请求体不带 response_format，适配不支持 json_object
 	// 的模型或第三方网关（M13-T06）。默认 false 保持请求 response_format=json_object。
+	// 各供应商的已知坑（含哪些模型必须置此开关）统一登记在 pkg/llm/providers/*.json——
+	// 改这里必须同步登记册，禁止只改注释。
 	DisableJSONMode bool
 }
 
@@ -211,10 +213,10 @@ func (g *Gateway) overlay(t Tier, cfg ModelConfig) ModelConfig {
 	return cfg
 }
 
-// Configured 表示该档位填了地址。
+// Configured 表示该档位生效配置里有地址（含 SetLive 运行时覆盖；只看启动配置会漏报降级）。
 func (g *Gateway) Configured(t Tier) bool {
 	tr, ok := g.tiers[t]
-	return ok && tr.cfg.BaseURL != ""
+	return ok && g.overlay(t, tr.cfg).BaseURL != ""
 }
 
 // Chat 排队后调用一次模型，不做重试。重试由调用方带上错误原因再发。

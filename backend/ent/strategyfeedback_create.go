@@ -54,6 +54,14 @@ func (_c *StrategyFeedbackCreate) SetPredictedReturn(v float64) *StrategyFeedbac
 	return _c
 }
 
+// SetNillablePredictedReturn sets the "predicted_return" field if the given value is not nil.
+func (_c *StrategyFeedbackCreate) SetNillablePredictedReturn(v *float64) *StrategyFeedbackCreate {
+	if v != nil {
+		_c.SetPredictedReturn(*v)
+	}
+	return _c
+}
+
 // SetActualReturn sets the "actual_return" field.
 func (_c *StrategyFeedbackCreate) SetActualReturn(v float64) *StrategyFeedbackCreate {
 	_c.mutation.SetActualReturn(v)
@@ -224,9 +232,6 @@ func (_c *StrategyFeedbackCreate) check() error {
 			return &ValidationError{Name: "stock_code", err: fmt.Errorf(`ent: validator failed for field "StrategyFeedback.stock_code": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.PredictedReturn(); !ok {
-		return &ValidationError{Name: "predicted_return", err: errors.New(`ent: missing required field "StrategyFeedback.predicted_return"`)}
-	}
 	if _, ok := _c.mutation.ActualReturn(); !ok {
 		return &ValidationError{Name: "actual_return", err: errors.New(`ent: missing required field "StrategyFeedback.actual_return"`)}
 	}
@@ -293,7 +298,7 @@ func (_c *StrategyFeedbackCreate) createSpec() (*StrategyFeedback, *sqlgraph.Cre
 	}
 	if value, ok := _c.mutation.PredictedReturn(); ok {
 		_spec.SetField(strategyfeedback.FieldPredictedReturn, field.TypeFloat64, value)
-		_node.PredictedReturn = value
+		_node.PredictedReturn = &value
 	}
 	if value, ok := _c.mutation.ActualReturn(); ok {
 		_spec.SetField(strategyfeedback.FieldActualReturn, field.TypeFloat64, value)
@@ -442,6 +447,12 @@ func (u *StrategyFeedbackUpsert) UpdatePredictedReturn() *StrategyFeedbackUpsert
 // AddPredictedReturn adds v to the "predicted_return" field.
 func (u *StrategyFeedbackUpsert) AddPredictedReturn(v float64) *StrategyFeedbackUpsert {
 	u.Add(strategyfeedback.FieldPredictedReturn, v)
+	return u
+}
+
+// ClearPredictedReturn clears the value of the "predicted_return" field.
+func (u *StrategyFeedbackUpsert) ClearPredictedReturn() *StrategyFeedbackUpsert {
+	u.SetNull(strategyfeedback.FieldPredictedReturn)
 	return u
 }
 
@@ -679,6 +690,13 @@ func (u *StrategyFeedbackUpsertOne) AddPredictedReturn(v float64) *StrategyFeedb
 func (u *StrategyFeedbackUpsertOne) UpdatePredictedReturn() *StrategyFeedbackUpsertOne {
 	return u.Update(func(s *StrategyFeedbackUpsert) {
 		s.UpdatePredictedReturn()
+	})
+}
+
+// ClearPredictedReturn clears the value of the "predicted_return" field.
+func (u *StrategyFeedbackUpsertOne) ClearPredictedReturn() *StrategyFeedbackUpsertOne {
+	return u.Update(func(s *StrategyFeedbackUpsert) {
+		s.ClearPredictedReturn()
 	})
 }
 
@@ -1100,6 +1118,13 @@ func (u *StrategyFeedbackUpsertBulk) AddPredictedReturn(v float64) *StrategyFeed
 func (u *StrategyFeedbackUpsertBulk) UpdatePredictedReturn() *StrategyFeedbackUpsertBulk {
 	return u.Update(func(s *StrategyFeedbackUpsert) {
 		s.UpdatePredictedReturn()
+	})
+}
+
+// ClearPredictedReturn clears the value of the "predicted_return" field.
+func (u *StrategyFeedbackUpsertBulk) ClearPredictedReturn() *StrategyFeedbackUpsertBulk {
+	return u.Update(func(s *StrategyFeedbackUpsert) {
+		s.ClearPredictedReturn()
 	})
 }
 

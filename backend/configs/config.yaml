@@ -22,16 +22,8 @@ admin:
       display_name: 观察
       role: viewer
       password_hash: "$2a$10$cMEZz5.sLqpSDeLLRalDwen68h28syHR3rWGG0bt.TPZGgoMswBQO"
-demo:
-  http:
-    addr: 0.0.0.0:2004
-    timeout: 1s
-  grpc:
-    addr: 0.0.0.0:2005
-    timeout: 1s
-  websocket:
-    addr: 0.0.0.0:2006
-    timeout: 1s
+# demo 段已移除：主配置不再携带示例服务端口（2004-2006）。app/demo 如仍需运行
+# 自带 conf 注入；conf.proto 的 Demo 消息退役（连同 app/demo 去留）另立项决策，勿在此段复刻。
 # 服务发现与注册配置
 discovery:
   nodes:
@@ -101,7 +93,7 @@ datahub:
   grpc:
     addr: 0.0.0.0:2012
     timeout: 30s
-  # 本机通达信正式版没有 PYPlugins，关掉后盘中快照会空
+  # 正式版通达信没有 PYPlugins，pyworker 的 local_* 是恒 503 的结构性死源（app.py:501-517 的 local_reason/local_*）
   allow_unofficial: true
   breaker_failures: 3
   breaker_cooldown: 60s
@@ -123,7 +115,7 @@ datahub:
       timeout: 15s
       concurrency: 2
     tdx_local:
-      enabled: true
+      enabled: false   # 结构性死源（正式版无 PYPlugins 恒 503）：占链首只会先失败再降级、断路器空转探测；照 E04 裁决默认 disabled
       official: true
       url: http://127.0.0.1:18080
       timeout: 3s
@@ -208,7 +200,8 @@ datahub:
       sources: [tdx_file, tdx_tcp, akshare]
     snapshot:
       enabled: true
-      sources: [tdx_local, tdx_tcp, eastmoney, sina, tencent]
+      # tdx_local 死源已移出链首（避免每拍先失败再降级）
+      sources: [tdx_tcp, eastmoney, sina, tencent]
     limit_pool:
       enabled: true
       sources: [eastmoney, akshare]
@@ -442,7 +435,9 @@ backtest:
     timeout: 30s
   workers: 1
   search_workers: 2
-  evolve_strategies: [breakout_ref]
+  # 自进化白名单（策略学习闭环）：breakout_ref 为参考策略；first_board_weak2strong /
+  # pullback_dip 两个实盘模板已按 P1-S6 开闸（proposal 仍走人审链，变更不自动生效）。
+  evolve_strategies: [breakout_ref, first_board_weak2strong, pullback_dip]
   introspect_book: paper
   introspect:
     window_days: 30

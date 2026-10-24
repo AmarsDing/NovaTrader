@@ -164,6 +164,18 @@ func (s *TradeService) Reconcile(ctx context.Context, req *v1.ReconcileRequest) 
 	return &v1.ReconcileReply{Matched: ok, OpenHalted: !ok, Diffs: diffs}, nil
 }
 
+// SeedLiveCashBaseline 是 LIVE 资金基线的唯一写入口（网关侧非 GET 一律 owner 闸门，
+// gate.go 另有 trade.cash_baseline 审计动作名）。
+func (s *TradeService) SeedLiveCashBaseline(ctx context.Context, req *v1.SeedLiveCashBaselineRequest) (*v1.Account, error) {
+	view, err := s.e.SeedLiveCashBaseline(ctx, biz.LiveCashSeed{
+		Available: req.GetAvailable(), Operator: req.GetOperator(), SourceNote: req.GetSourceNote(),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return toAccount(view), nil
+}
+
 func quoteOf(b *v1.Bar) *biz.Quote {
 	if b == nil {
 		return &biz.Quote{}

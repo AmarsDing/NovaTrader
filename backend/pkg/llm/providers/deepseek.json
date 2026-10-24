@@ -1,0 +1,21 @@
+{
+  "id": "deepseek",
+  "name": "DeepSeek（官方 API）",
+  "base_url": "https://api.deepseek.com/v1",
+  "env_key": "DEEPSEEK_API_KEY",
+  "default_model": "deepseek-chat",
+  "context_limit_tokens": 131072,
+  "verified_at": "2026-10-23",
+  "verified_scope": "brain 晨报 + intel 重评活接入验收（env:DEEPSEEK_API_KEY 配置页路径）",
+  "known_incompatibilities": [
+    "reasoner 系（deepseek-reasoner 等）不支持 response_format=json_object：必须按档设 disable_json_mode=true，否则恒报错（2026-10-23 实测）。",
+    "DeepSeek 官方只有 json_object 模式，不支持按 JSON Schema 强制：结构要求写进提示词，产物照常由本方校验（沿用 vibe 模板核实记录）。",
+    "思考模式下工具循环的每一轮 reasoning_content 必须原样传回，漏传直接 400；NT 现不给模型工具，改代码时别按字段重新拼消息。",
+    "云雾/七牛等第三方代理只是转发：代理层自身的兼容问题（见 qiniu.json）与官方坑分别登记，互相不豁免。"
+  ],
+  "notes": [
+    "验收看 usage 记账 + llm_call_log，别看 stats.configured（S5 修复前 configured 只读启动配置）。",
+    "2026-10-23 已实测：briefing degraded:false，调用留痕完整。",
+    "知识库嵌入维持 none（嵌入另走 kb 配置，不在本模板验收范围）。"
+  ]
+}

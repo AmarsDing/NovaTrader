@@ -119,7 +119,12 @@ func (c *Collector) collectBars(ctx context.Context, domain, freq string, day ti
 		issues = append(issues, Issue{Check: CheckStale, Severity: "error",
 			Message: fmt.Sprintf("本地数据最后日期 %s，应为 %s；已入库的只有历史部分", batch.LastDate, batch.Expect)})
 	}
-	n, err := c.repo.UpsertBars(ctx, batch.Bars, src, ready(domain, day, len(batch.Bars), src, batch.Stale))
+	r := ready(domain, day, len(batch.Bars), src, batch.Stale)
+	if coverage >= 0 {
+		r.Coverage = &coverage
+		r.Partial = coverage < c.opt.CompletenessPartial
+	}
+	n, err := c.repo.UpsertBars(ctx, batch.Bars, src, r)
 	c.saveIssues(ctx, domain, src, day, issues)
 	if err != nil {
 		return CollectSummary{Domain: domain, Source: src}, err
@@ -161,14 +166,36 @@ func (c *Collector) CollectAdjFactors(ctx context.Context, day time.Time, symbol
 // CollectLimitPool 采涨停、跌停、炸板池。盘中每 10 秒，收盘后再采一次定稿。
 func (c *Collector) CollectLimitPool(ctx context.Context, day time.Time, only string) (CollectSummary, error) {
 	day = dateOf(day)
+	var issues []Issue
 	items, src, err := Run(ctx, c.p, DomainLimitPool, RunOptions{Only: only},
 		func(ctx context.Context, s Source) ([]LimitEntry, error) {
 			return s.(LimitPoolSource).LimitPool(ctx, day)
-		}, nonEmpty[LimitEntry]("涨停池"))
+		},
+		func(v []LimitEntry) error {
+			if err := nonEmpty[LimitEntry]("涨跌停池")(v); err != nil {
+				return err
+			}
+			// 池型缺席按缺失记而非零（「没取到≠0」）：当日某池无条目可能是真实市况，
+			// 也可能是源丢块，标注 partial 让下游自行降权，而不是原样冒充完整三池。
+			present := map[string]bool{}
+			for _, e := range v {
+				present[e.Pool] = true
+			}
+			for _, p := range []string{PoolUp, PoolDown, PoolBroken} {
+				if !present[p] {
+					issues = append(issues, Issue{Check: CheckCompleteness, Severity: "warn",
+						Message: p + " 池当日无条目：按未知记录，不冒充整池为零"})
+				}
+			}
+			return nil
+		})
 	if err != nil {
 		return CollectSummary{Domain: DomainLimitPool}, err
 	}
-	n, err := c.repo.UpsertLimitPool(ctx, day, items, src, ready(DomainLimitPool, day, len(items), src, false))
+	r := ready(DomainLimitPool, day, len(items), src, false)
+	r.Partial = len(issues) > 0
+	n, err := c.repo.UpsertLimitPool(ctx, day, items, src, r)
+	c.saveIssues(ctx, DomainLimitPool, src, day, issues)
 	return CollectSummary{Domain: DomainLimitPool, Source: src, Rows: n}, err
 }
 
@@ -179,6 +206,10 @@ func (c *Collector) CollectMoneyFlow(ctx context.Context, day time.Time, only st
 	if err != nil {
 		return CollectSummary{Domain: DomainMoneyFlow}, err
 	}
+	var (
+		coverage *float64
+		issues   []Issue
+	)
 	items, src, err := Run(ctx, c.p, DomainMoneyFlow, RunOptions{Only: only, Timeout: 2 * time.Minute},
 		func(ctx context.Context, s Source) ([]MoneyFlow, error) {
 			fs, ok := s.(MoneyFlowSource)
@@ -192,11 +223,20 @@ func (c *Collector) CollectMoneyFlow(ctx context.Context, day time.Time, only st
 			for i, m := range v {
 				syms[i] = m.Symbol
 			}
+			coverage = nil
+			issues = nil
 			// 「没取到≠满分」：expect 分母为空时 Completeness 返回 Missing，此处放行
 			// （无分母无从判定），但不会再被误读成覆盖率 100%。
 			if cov, _ := Completeness(syms, expect); cov.IsOK() {
-				if v, ok := cov.Value(); ok && v < c.opt.CompletenessFail {
-					return fmt.Errorf("资金流向覆盖率 %.1f%%", v*100)
+				if val, ok := cov.Value(); ok {
+					coverage = &val
+					if val < c.opt.CompletenessFail {
+						return fmt.Errorf("资金流向覆盖率 %.1f%%", val*100)
+					}
+					if val < c.opt.CompletenessPartial {
+						issues = append(issues, Issue{Check: CheckCompleteness, Severity: "warn",
+							Message: fmt.Sprintf("资金流向覆盖 %.1f%%，按 partial 标记", val*100)})
+					}
 				}
 			}
 			return nil
@@ -204,7 +244,11 @@ func (c *Collector) CollectMoneyFlow(ctx context.Context, day time.Time, only st
 	if err != nil {
 		return CollectSummary{Domain: DomainMoneyFlow}, err
 	}
-	n, err := c.repo.UpsertMoneyFlows(ctx, day, items, src, ready(DomainMoneyFlow, day, len(items), src, false))
+	r := ready(DomainMoneyFlow, day, len(items), src, false)
+	r.Coverage = coverage
+	r.Partial = coverage != nil && *coverage < c.opt.CompletenessPartial
+	n, err := c.repo.UpsertMoneyFlows(ctx, day, items, src, r)
+	c.saveIssues(ctx, DomainMoneyFlow, src, day, issues)
 	return CollectSummary{Domain: DomainMoneyFlow, Source: src, Rows: n}, err
 }
 

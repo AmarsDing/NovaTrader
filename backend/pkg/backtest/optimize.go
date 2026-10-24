@@ -541,7 +541,9 @@ func WalkForward(ctx context.Context, cfg Config, sc SearchConfig, src Source, p
 		out.Windows = append(out.Windows, win)
 		scale := equity / cfg.InitialCash
 		for _, p := range res.Equity {
-			p.Equity, p.Cash, p.Benchmark = p.Equity*scale, p.Cash*scale, 0
+			// 基准与净值同链归一：各窗引擎把基准归一到窗口首日前收（fillBenchmark），
+			// 拼接时按累计 scale 续乘——此前清零会让样本外基准读数全空，违反「没取到≠0」的反向（凭空造缺）。
+			p.Equity, p.Cash, p.Benchmark = p.Equity*scale, p.Cash*scale, p.Benchmark*scale
 			combined.Equity = append(combined.Equity, p)
 		}
 		if n := len(combined.Equity); n > 0 {

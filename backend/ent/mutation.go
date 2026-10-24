@@ -79364,7 +79364,7 @@ func (m *StrategyFeedbackMutation) PredictedReturn() (r float64, exists bool) {
 // OldPredictedReturn returns the old "predicted_return" field's value of the StrategyFeedback entity.
 // If the StrategyFeedback object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *StrategyFeedbackMutation) OldPredictedReturn(ctx context.Context) (v float64, err error) {
+func (m *StrategyFeedbackMutation) OldPredictedReturn(ctx context.Context) (v *float64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldPredictedReturn is only allowed on UpdateOne operations")
 	}
@@ -79396,10 +79396,24 @@ func (m *StrategyFeedbackMutation) AddedPredictedReturn() (r float64, exists boo
 	return *v, true
 }
 
+// ClearPredictedReturn clears the value of the "predicted_return" field.
+func (m *StrategyFeedbackMutation) ClearPredictedReturn() {
+	m.predicted_return = nil
+	m.addpredicted_return = nil
+	m.clearedFields[strategyfeedback.FieldPredictedReturn] = struct{}{}
+}
+
+// PredictedReturnCleared returns if the "predicted_return" field was cleared in this mutation.
+func (m *StrategyFeedbackMutation) PredictedReturnCleared() bool {
+	_, ok := m.clearedFields[strategyfeedback.FieldPredictedReturn]
+	return ok
+}
+
 // ResetPredictedReturn resets all changes to the "predicted_return" field.
 func (m *StrategyFeedbackMutation) ResetPredictedReturn() {
 	m.predicted_return = nil
 	m.addpredicted_return = nil
+	delete(m.clearedFields, strategyfeedback.FieldPredictedReturn)
 }
 
 // SetActualReturn sets the "actual_return" field.
@@ -80050,6 +80064,9 @@ func (m *StrategyFeedbackMutation) ClearedFields() []string {
 	if m.FieldCleared(strategyfeedback.FieldSignalID) {
 		fields = append(fields, strategyfeedback.FieldSignalID)
 	}
+	if m.FieldCleared(strategyfeedback.FieldPredictedReturn) {
+		fields = append(fields, strategyfeedback.FieldPredictedReturn)
+	}
 	if m.FieldCleared(strategyfeedback.FieldSignalCorrect) {
 		fields = append(fields, strategyfeedback.FieldSignalCorrect)
 	}
@@ -80075,6 +80092,9 @@ func (m *StrategyFeedbackMutation) ClearField(name string) error {
 	switch name {
 	case strategyfeedback.FieldSignalID:
 		m.ClearSignalID()
+		return nil
+	case strategyfeedback.FieldPredictedReturn:
+		m.ClearPredictedReturn()
 		return nil
 	case strategyfeedback.FieldSignalCorrect:
 		m.ClearSignalCorrect()

@@ -30,6 +30,7 @@ import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { isLive, onPush, subscribe, type WsPushMessage } from '@/ws/hub'
 import { dataFrame } from '@/ws/data-frame'
 import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
+import { buildSyntheticDepth, type SynthDepth } from '@/viz/depth-synth'
 
 const symbolStore = useSymbolStore()
 const security = useSecurityStore()
@@ -230,6 +231,18 @@ const valuationFields = computed<FieldItem[]>(() => {
   ]
 })
 
+/** 五档合成兜底（gap⑪/S1，口径与 viz/NtDepthBoard 一致）：真实 bid/ask 全无且最近价为真值时，
+ * 按 last±tick、涨/跌停封顶（preClose 缺失或无涨跌幅不封顶）合成占位阶梯——只画价格不伪造挂单量
+ * （量恒「—」），真/合不混档；合成输入也不可得（last=0 是「没取到」非真价）→ null，保留纯文字空态。 */
+const synthDepth = computed<SynthDepth | null>(() => {
+  const q = quote.value
+  if (!q || !q.found || q.bid.length || q.ask.length) return null
+  return buildSyntheticDepth(q.last > 0 ? q.last : null, {
+    symbol: q.symbol,
+    preClose: q.noLimit || q.prevClose <= 0 ? null : q.prevClose,
+  })
+})
+
 function openIntel(item?: IntelItem) {
   getWorkbench()?.openPanel('intel', {
     symbol: code.value || undefined,
@@ -309,7 +322,8 @@ onBeforeUnmount(() => {
       </header>
 
       <section class="book nt-panel">
-        <h2 class="nt-panel__title">五档盘口</h2>
+        <!-- 合成档徽注（gap⑪/S1）：与 viz/NtDepthBoard 同口径「合成·待数据」+ warn tone，明示非真实盘口。 -->
+        <h2 class="nt-panel__title">五档盘口<NtBadge v-if="synthDepth" tone="warn" class="book__syn">合成·待数据</NtBadge></h2>
         <div v-if="quote.bid.length || quote.ask.length" class="ladder">
           <div class="ladder__col">
             <p v-for="(l, i) in [...quote.ask].reverse()" :key="`a${i}`" class="level down">
@@ -324,6 +338,26 @@ onBeforeUnmount(() => {
               <span class="side">买{{ i + 1 }}</span>
               <b>{{ price(l.price) }}</b>
               <span class="vol">{{ compactAmount(l.volume) }}</span>
+            </p>
+          </div>
+        </div>
+        <!-- 空态合成兜底：真实档全无但有合成输入时按同一 ladder 结构画占位阶梯——只画价不伪造量
+             （量恒「—」，.level--syn 降价标明占位，方向色沿用既有 ladder 卖 .down/买 .up 体系）；
+             合成输入也不可得时落到原纯文字空态。 -->
+        <div v-else-if="synthDepth" class="ladder">
+          <div class="ladder__col">
+            <p v-for="(l, i) in [...synthDepth.asks].reverse()" :key="`sa${i}`" class="level level--syn down">
+              <span class="side">卖{{ synthDepth.asks.length - i }}</span>
+              <b>{{ price(l.price) }}</b>
+              <span class="vol">—</span>
+            </p>
+          </div>
+          <div class="ladder__sep" />
+          <div class="ladder__col">
+            <p v-for="(l, i) in synthDepth.bids" :key="`sb${i}`" class="level level--syn up">
+              <span class="side">买{{ i + 1 }}</span>
+              <b>{{ price(l.price) }}</b>
+              <span class="vol">—</span>
             </p>
           </div>
         </div>
@@ -523,6 +557,16 @@ onBeforeUnmount(() => {
   margin-left: auto;
   color: var(--nt-text-2);
   font-size: 11.5px;
+}
+
+/* 五档合成占位徽注（warn tone，与 viz/NtDepthBoard「合成·待数据」同口径）。 */
+.book__syn {
+  margin-left: 8px;
+}
+
+/* 合成档降价不降准：保留卖 .down/买 .up 方向语义，用透明度标明是占位（同 viz/NtDepthBoard --syn 口径）。 */
+.level--syn b {
+  opacity: 0.55;
 }
 
 .pairs {

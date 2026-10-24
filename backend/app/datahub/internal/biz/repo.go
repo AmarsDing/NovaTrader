@@ -15,6 +15,10 @@ type Ready struct {
 	Count     int    `json:"count"`
 	Source    string `json:"source"`
 	Stale     bool   `json:"stale"`
+	// Coverage 覆盖率（vibe 双闸语义）；nil = 该域无权威分母，「没取到≠满分」，不冒充 100%。
+	Coverage *float64 `json:"coverage,omitempty"`
+	// Partial 为真表示有覆盖但不完整（coverage 低于 CompletenessPartial 档，或池型缺席）。
+	Partial bool `json:"partial,omitempty"`
 }
 
 // Repo 是 datahub 的持久化端口，由 data 层用 ent 实现。全部写入为 upsert，可重复执行。
@@ -128,7 +132,12 @@ type SnapshotMeta struct {
 	Count     int       `json:"count"`
 	LatencyMs int64     `json:"latency_ms"`
 	Seq       int64     `json:"seq"`
-	Stale     bool      `json:"stale"`
+	// Stale 为真表示本轮数据不可用于自动决策（M08 拒单闸，不变）。
+	Stale bool `json:"stale"`
+	// Coverage 相对当日活跃代码的覆盖率；nil = 分母未知（没取到≠满分）。
+	Coverage *float64 `json:"coverage,omitempty"`
+	// Partial 为真表示覆盖低于 CompletenessPartial 档：可用但不完整，消费方自行降权。
+	Partial bool `json:"partial,omitempty"`
 }
 
 // SnapshotStore 是 Redis 上的实时数据。
