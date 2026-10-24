@@ -30,6 +30,22 @@ export interface DeskDef {
   focus: string
 }
 
+/**
+ * 盘中全览默认屏：中决策台，右涨停/行情/信号/情报同组，单券侧栏独立一列，
+ * 下交易＋下单条。U10 单源——DockHost 构建与 registry-integrity「core 集合
+ * 断言」同读这份表；布局版本升级后旧布局作废。
+ */
+export const DEFAULT_LAYOUT: DeskPanelSpec[] = [
+  { id: 'overview' },
+  { id: 'limit-ladder', ref: 'overview', direction: 'right' },
+  { id: 'market', ref: 'limit-ladder', direction: 'within' },
+  { id: 'signals', ref: 'limit-ladder', direction: 'within' },
+  { id: 'intel', ref: 'limit-ladder', direction: 'within' },
+  { id: 'quote-sidebar', ref: 'limit-ladder', direction: 'right' },
+  { id: 'trade', ref: 'overview', direction: 'below' },
+  { id: 'trade-bar', ref: 'trade', direction: 'within' },
+]
+
 export const DESKS: DeskDef[] = [
   {
     id: 'preopen',

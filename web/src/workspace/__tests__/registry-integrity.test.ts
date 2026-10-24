@@ -3,10 +3,13 @@
  * - 每个面板必须挂 shortcut（新增面板漏挂即刻红）；
  * - prefix/aliases 全局唯一（大小写不敏感）——命令面板精确匹配的根基；
  * - 助记符表与功能卡快照：任何表变更必须显式更新快照进评审。
+ * - U10：core 集合必须恰好等于默认屏 ids 且同序（移动 DEFAULT_LAYOUT
+ *   在 desks.ts 单源，测试与 DockHost 构建同读）。
  */
 import { describe, expect, it } from 'vitest'
 import { functionIndex } from '../command-grammar'
 import { listPanels } from '../panel-registry'
+import { DEFAULT_LAYOUT } from '../desks'
 
 const PREFIX_RE = /^[A-Z][A-Z0-9]{1,3}$/
 
@@ -39,6 +42,18 @@ describe('panel-registry shortcut 完整性', () => {
   it('面板数量与 popout 白名单不自相矛盾', () => {
     // +1 datasource-center（含 /api/config 凭证写面，与 settings 同级禁弹——不在 POPOUT_ALLOWED）
     expect(listPanels()).toHaveLength(23 + 3 + 1)
+  })
+
+  it('U10 core 集合恰为默认屏 ids（集合互证 + 默认屏内部序）', () => {
+    const cores = listPanels().filter((d) => d.core === true).map((d) => d.id)
+    const layoutIds = DEFAULT_LAYOUT.map((s) => s.id)
+    expect([...cores].sort()).toEqual([...layoutIds].sort())
+    // 默认屏落位参照必须先于依赖者出现（buildPanels 顺序构建的前提）。
+    const seen = new Set<string>()
+    for (const s of DEFAULT_LAYOUT) {
+      if (s.ref) expect(seen.has(s.ref), `默认屏 ${s.id} 的 ref=${s.ref} 未先于它出现`).toBe(true)
+      seen.add(s.id)
+    }
   })
 })
 

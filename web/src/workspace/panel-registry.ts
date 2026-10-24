@@ -29,6 +29,12 @@ export interface PanelDef {
   loader: () => Promise<{ default: Component }>
   group: 'center' | 'left' | 'right' | 'bottom'
   singleton: boolean
+  /**
+   * U10 核心面板标记：默认屏（desks.DEFAULT_LAYOUT）成员置 true。
+   * 本批只落元数据；defaultHidden 等消费点后置，registry-integrity
+   * 以「core 集合 === DEFAULT_LAYOUT ids 集合」「数量恒定」双断言锁死。
+   */
+  core?: boolean
   shortcut?: PanelShortcut
 }
 
@@ -69,6 +75,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/OverviewView.vue'),
     group: 'center',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'JT',
       argKind: 'none',
@@ -82,6 +89,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/SignalView.vue'),
     group: 'right',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'XG',
       argKind: 'none',
@@ -95,6 +103,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/MarketView.vue'),
     group: 'center',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'GP',
       aliases: ['HQ'],
@@ -110,6 +119,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/TradeView.vue'),
     group: 'bottom',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'JY',
       argKind: 'side',
@@ -124,6 +134,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/panels/trade/trade-bar.panel.vue'),
     group: 'bottom',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'XD',
       argKind: 'side',
@@ -138,6 +149,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/IntelView.vue'),
     group: 'right',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'QB',
       argKind: 'ticker',
@@ -191,6 +203,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/panels/market/limit-ladder.panel.vue'),
     group: 'right',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'DB',
       argKind: 'none',
@@ -217,6 +230,7 @@ const defs: PanelDef[] = [
     loader: () => import('@/panels/market/quote-sidebar.panel.vue'),
     group: 'right',
     singleton: true,
+    core: true,
     shortcut: {
       prefix: 'QL',
       argKind: 'ticker',

@@ -12,24 +12,12 @@ import { useLayoutStore } from '@/stores/layout'
 import { registerWorkbench, unregisterWorkbench, type WorkbenchApi } from './inject'
 import { stagePanelParams } from './panel-bus'
 import { getPanel, listPanels, canPopout } from './panel-registry'
-import { DESKS, getDesk, type DeskPanelSpec } from './desks'
+import { DEFAULT_LAYOUT, DESKS, getDesk, type DeskPanelSpec } from './desks'
 import { recordLayout, undoLayout, redoLayout } from './layout-history'
 import { createVueRenderers } from './vue-renderer'
 import { buildPanelTabMenu } from './panel-tab-menu'
 
 const SAVE_DEBOUNCE_MS = 500
-
-/** 盘中全览：中决策台，右涨停/行情/信号/情报同组，单券侧栏独立一列，下交易＋下单条。布局版本升级后旧布局作废。 */
-const DEFAULT_LAYOUT: DeskPanelSpec[] = [
-  { id: 'overview' },
-  { id: 'limit-ladder', ref: 'overview', direction: 'right' },
-  { id: 'market', ref: 'limit-ladder', direction: 'within' },
-  { id: 'signals', ref: 'limit-ladder', direction: 'within' },
-  { id: 'intel', ref: 'limit-ladder', direction: 'within' },
-  { id: 'quote-sidebar', ref: 'limit-ladder', direction: 'right' },
-  { id: 'trade', ref: 'overview', direction: 'below' },
-  { id: 'trade-bar', ref: 'trade', direction: 'within' },
-]
 
 const ntTheme: DockviewTheme = {
   name: 'nt',
