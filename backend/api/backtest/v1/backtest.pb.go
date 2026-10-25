@@ -647,6 +647,9 @@ type Task struct {
 	FinishedAt    string           `protobuf:"bytes,22,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
 	Config        *structpb.Struct `protobuf:"bytes,23,opt,name=config,proto3" json:"config,omitempty"`
 	Summary       *TaskSummary     `protobuf:"bytes,24,opt,name=summary,proto3" json:"summary,omitempty"`
+	// W8a 信任条：结果页首屏「能不能信」的判据位（契约锚 biz.TrustBar；判据计算=W8c）。
+	// 零值/缺省=未验证——前端显「未验证」，禁止伪造绿勾（R-UI-20/23）。
+	TrustBar      *TrustBar `protobuf:"bytes,25,opt,name=trust_bar,json=trustBar,proto3" json:"trust_bar,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -849,6 +852,153 @@ func (x *Task) GetSummary() *TaskSummary {
 	return nil
 }
 
+func (x *Task) GetTrustBar() *TrustBar {
+	if x != nil {
+		return x.TrustBar
+	}
+	return nil
+}
+
+// W8a 信任条（UI 宪法 R-UI-20/23 配套）：所有判据位缺省语义=未验证/未声明，
+// 数值字段 0=未统计（没取到≠0），字符串空=未声明；前端不得用零值渲染「已验证」。
+type TrustBar struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 样本覆盖：K 线根数与交易日数（bars_total 0=未统计）。
+	BarsTotal   int64 `protobuf:"varint,1,opt,name=bars_total,json=barsTotal,proto3" json:"bars_total,omitempty"`
+	TradingDays int32 `protobuf:"varint,2,opt,name=trading_days,json=tradingDays,proto3" json:"trading_days,omitempty"`
+	// 成交样本：0 笔=「样本不足」结论位，不是 0% 胜率。
+	TradeCount int32 `protobuf:"varint,3,opt,name=trade_count,json=tradeCount,proto3" json:"trade_count,omitempty"`
+	// 样本区间起止（YYYY-MM-DD）；空串=未声明。
+	WindowStart string `protobuf:"bytes,4,opt,name=window_start,json=windowStart,proto3" json:"window_start,omitempty"`
+	WindowEnd   string `protobuf:"bytes,5,opt,name=window_end,json=windowEnd,proto3" json:"window_end,omitempty"`
+	// 成本假设口径；空串/fee_bps=0=未声明（不回填 0 冒充）。
+	CostModel   string  `protobuf:"bytes,6,opt,name=cost_model,json=costModel,proto3" json:"cost_model,omitempty"`
+	FeeBps      float64 `protobuf:"fixed64,7,opt,name=fee_bps,json=feeBps,proto3" json:"fee_bps,omitempty"`
+	SlippageBps float64 `protobuf:"fixed64,8,opt,name=slippage_bps,json=slippageBps,proto3" json:"slippage_bps,omitempty"`
+	// 盲测与 PBO 判据位：true=已按判据通过；缺省 false=未验证。
+	BlindVerified bool `protobuf:"varint,9,opt,name=blind_verified,json=blindVerified,proto3" json:"blind_verified,omitempty"`
+	PboVerified   bool `protobuf:"varint,10,opt,name=pbo_verified,json=pboVerified,proto3" json:"pbo_verified,omitempty"`
+	// 数据集冻结凭据：manifest_id + 冻结哈希，供前端核对样本未换源；空=未冻结声明。
+	DatasetManifestId string `protobuf:"bytes,11,opt,name=dataset_manifest_id,json=datasetManifestId,proto3" json:"dataset_manifest_id,omitempty"`
+	DatasetHash       string `protobuf:"bytes,12,opt,name=dataset_hash,json=datasetHash,proto3" json:"dataset_hash,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *TrustBar) Reset() {
+	*x = TrustBar{}
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TrustBar) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TrustBar) ProtoMessage() {}
+
+func (x *TrustBar) ProtoReflect() protoreflect.Message {
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TrustBar.ProtoReflect.Descriptor instead.
+func (*TrustBar) Descriptor() ([]byte, []int) {
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *TrustBar) GetBarsTotal() int64 {
+	if x != nil {
+		return x.BarsTotal
+	}
+	return 0
+}
+
+func (x *TrustBar) GetTradingDays() int32 {
+	if x != nil {
+		return x.TradingDays
+	}
+	return 0
+}
+
+func (x *TrustBar) GetTradeCount() int32 {
+	if x != nil {
+		return x.TradeCount
+	}
+	return 0
+}
+
+func (x *TrustBar) GetWindowStart() string {
+	if x != nil {
+		return x.WindowStart
+	}
+	return ""
+}
+
+func (x *TrustBar) GetWindowEnd() string {
+	if x != nil {
+		return x.WindowEnd
+	}
+	return ""
+}
+
+func (x *TrustBar) GetCostModel() string {
+	if x != nil {
+		return x.CostModel
+	}
+	return ""
+}
+
+func (x *TrustBar) GetFeeBps() float64 {
+	if x != nil {
+		return x.FeeBps
+	}
+	return 0
+}
+
+func (x *TrustBar) GetSlippageBps() float64 {
+	if x != nil {
+		return x.SlippageBps
+	}
+	return 0
+}
+
+func (x *TrustBar) GetBlindVerified() bool {
+	if x != nil {
+		return x.BlindVerified
+	}
+	return false
+}
+
+func (x *TrustBar) GetPboVerified() bool {
+	if x != nil {
+		return x.PboVerified
+	}
+	return false
+}
+
+func (x *TrustBar) GetDatasetManifestId() string {
+	if x != nil {
+		return x.DatasetManifestId
+	}
+	return ""
+}
+
+func (x *TrustBar) GetDatasetHash() string {
+	if x != nil {
+		return x.DatasetHash
+	}
+	return ""
+}
+
 type ListTasksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
@@ -862,7 +1012,7 @@ type ListTasksRequest struct {
 
 func (x *ListTasksRequest) Reset() {
 	*x = ListTasksRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[10]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -874,7 +1024,7 @@ func (x *ListTasksRequest) String() string {
 func (*ListTasksRequest) ProtoMessage() {}
 
 func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[10]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -887,7 +1037,7 @@ func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksRequest.ProtoReflect.Descriptor instead.
 func (*ListTasksRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{10}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListTasksRequest) GetStatus() string {
@@ -935,7 +1085,7 @@ type ListTasksReply struct {
 
 func (x *ListTasksReply) Reset() {
 	*x = ListTasksReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[11]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -947,7 +1097,7 @@ func (x *ListTasksReply) String() string {
 func (*ListTasksReply) ProtoMessage() {}
 
 func (x *ListTasksReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[11]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -960,7 +1110,7 @@ func (x *ListTasksReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksReply.ProtoReflect.Descriptor instead.
 func (*ListTasksReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{11}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListTasksReply) GetTasks() []*Task {
@@ -986,7 +1136,7 @@ type GetTaskRequest struct {
 
 func (x *GetTaskRequest) Reset() {
 	*x = GetTaskRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[12]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -998,7 +1148,7 @@ func (x *GetTaskRequest) String() string {
 func (*GetTaskRequest) ProtoMessage() {}
 
 func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[12]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1011,7 +1161,7 @@ func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskRequest.ProtoReflect.Descriptor instead.
 func (*GetTaskRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{12}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetTaskRequest) GetId() int64 {
@@ -1032,7 +1182,7 @@ type ReportReply struct {
 
 func (x *ReportReply) Reset() {
 	*x = ReportReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[13]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1044,7 +1194,7 @@ func (x *ReportReply) String() string {
 func (*ReportReply) ProtoMessage() {}
 
 func (x *ReportReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[13]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1057,7 +1207,7 @@ func (x *ReportReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportReply.ProtoReflect.Descriptor instead.
 func (*ReportReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{13}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ReportReply) GetTaskId() int64 {
@@ -1086,7 +1236,7 @@ type ListTradesRequest struct {
 
 func (x *ListTradesRequest) Reset() {
 	*x = ListTradesRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[14]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1098,7 +1248,7 @@ func (x *ListTradesRequest) String() string {
 func (*ListTradesRequest) ProtoMessage() {}
 
 func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[14]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1111,7 +1261,7 @@ func (x *ListTradesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTradesRequest.ProtoReflect.Descriptor instead.
 func (*ListTradesRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{14}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListTradesRequest) GetId() int64 {
@@ -1162,7 +1312,7 @@ type Trade struct {
 
 func (x *Trade) Reset() {
 	*x = Trade{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[15]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1174,7 +1324,7 @@ func (x *Trade) String() string {
 func (*Trade) ProtoMessage() {}
 
 func (x *Trade) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[15]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1337,7 @@ func (x *Trade) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Trade.ProtoReflect.Descriptor instead.
 func (*Trade) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{15}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Trade) GetSeq() int32 {
@@ -1277,7 +1427,7 @@ type ListTradesReply struct {
 
 func (x *ListTradesReply) Reset() {
 	*x = ListTradesReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[16]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1289,7 +1439,7 @@ func (x *ListTradesReply) String() string {
 func (*ListTradesReply) ProtoMessage() {}
 
 func (x *ListTradesReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[16]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1302,7 +1452,7 @@ func (x *ListTradesReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTradesReply.ProtoReflect.Descriptor instead.
 func (*ListTradesReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{16}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListTradesReply) GetTrades() []*Trade {
@@ -1331,7 +1481,7 @@ type ShadowStatsRequest struct {
 
 func (x *ShadowStatsRequest) Reset() {
 	*x = ShadowStatsRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[17]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1343,7 +1493,7 @@ func (x *ShadowStatsRequest) String() string {
 func (*ShadowStatsRequest) ProtoMessage() {}
 
 func (x *ShadowStatsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[17]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1356,7 +1506,7 @@ func (x *ShadowStatsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShadowStatsRequest.ProtoReflect.Descriptor instead.
 func (*ShadowStatsRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{17}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ShadowStatsRequest) GetModel() string {
@@ -1400,7 +1550,7 @@ type HorizonStat struct {
 
 func (x *HorizonStat) Reset() {
 	*x = HorizonStat{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[18]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1412,7 +1562,7 @@ func (x *HorizonStat) String() string {
 func (*HorizonStat) ProtoMessage() {}
 
 func (x *HorizonStat) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[18]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1425,7 +1575,7 @@ func (x *HorizonStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HorizonStat.ProtoReflect.Descriptor instead.
 func (*HorizonStat) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{18}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *HorizonStat) GetHorizon() int32 {
@@ -1470,7 +1620,7 @@ type BucketStat struct {
 
 func (x *BucketStat) Reset() {
 	*x = BucketStat{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[19]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1482,7 +1632,7 @@ func (x *BucketStat) String() string {
 func (*BucketStat) ProtoMessage() {}
 
 func (x *BucketStat) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[19]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1495,7 +1645,7 @@ func (x *BucketStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BucketStat.ProtoReflect.Descriptor instead.
 func (*BucketStat) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{19}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *BucketStat) GetBucket() string {
@@ -1547,7 +1697,7 @@ type ShadowStatsReply struct {
 
 func (x *ShadowStatsReply) Reset() {
 	*x = ShadowStatsReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[20]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1559,7 +1709,7 @@ func (x *ShadowStatsReply) String() string {
 func (*ShadowStatsReply) ProtoMessage() {}
 
 func (x *ShadowStatsReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[20]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1572,7 +1722,7 @@ func (x *ShadowStatsReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShadowStatsReply.ProtoReflect.Descriptor instead.
 func (*ShadowStatsReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{20}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ShadowStatsReply) GetTotal() int32 {
@@ -1635,7 +1785,7 @@ type Introspection struct {
 
 func (x *Introspection) Reset() {
 	*x = Introspection{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[21]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1647,7 +1797,7 @@ func (x *Introspection) String() string {
 func (*Introspection) ProtoMessage() {}
 
 func (x *Introspection) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[21]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1660,7 +1810,7 @@ func (x *Introspection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Introspection.ProtoReflect.Descriptor instead.
 func (*Introspection) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{21}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Introspection) GetId() int64 {
@@ -1792,7 +1942,7 @@ type ListIntrospectionsRequest struct {
 
 func (x *ListIntrospectionsRequest) Reset() {
 	*x = ListIntrospectionsRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[22]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1804,7 +1954,7 @@ func (x *ListIntrospectionsRequest) String() string {
 func (*ListIntrospectionsRequest) ProtoMessage() {}
 
 func (x *ListIntrospectionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[22]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1817,7 +1967,7 @@ func (x *ListIntrospectionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIntrospectionsRequest.ProtoReflect.Descriptor instead.
 func (*ListIntrospectionsRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{22}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ListIntrospectionsRequest) GetBook() string {
@@ -1843,7 +1993,7 @@ type ListIntrospectionsReply struct {
 
 func (x *ListIntrospectionsReply) Reset() {
 	*x = ListIntrospectionsReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[23]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1855,7 +2005,7 @@ func (x *ListIntrospectionsReply) String() string {
 func (*ListIntrospectionsReply) ProtoMessage() {}
 
 func (x *ListIntrospectionsReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[23]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1868,7 +2018,7 @@ func (x *ListIntrospectionsReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIntrospectionsReply.ProtoReflect.Descriptor instead.
 func (*ListIntrospectionsReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{23}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListIntrospectionsReply) GetItems() []*Introspection {
@@ -1889,7 +2039,7 @@ type RunIntrospectionRequest struct {
 
 func (x *RunIntrospectionRequest) Reset() {
 	*x = RunIntrospectionRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[24]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1901,7 +2051,7 @@ func (x *RunIntrospectionRequest) String() string {
 func (*RunIntrospectionRequest) ProtoMessage() {}
 
 func (x *RunIntrospectionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[24]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1914,7 +2064,7 @@ func (x *RunIntrospectionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunIntrospectionRequest.ProtoReflect.Descriptor instead.
 func (*RunIntrospectionRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{24}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *RunIntrospectionRequest) GetDate() string {
@@ -1954,7 +2104,7 @@ type Proposal struct {
 
 func (x *Proposal) Reset() {
 	*x = Proposal{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[25]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1966,7 +2116,7 @@ func (x *Proposal) String() string {
 func (*Proposal) ProtoMessage() {}
 
 func (x *Proposal) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[25]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1979,7 +2129,7 @@ func (x *Proposal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Proposal.ProtoReflect.Descriptor instead.
 func (*Proposal) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{25}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Proposal) GetId() int64 {
@@ -2091,7 +2241,7 @@ type ListProposalsRequest struct {
 
 func (x *ListProposalsRequest) Reset() {
 	*x = ListProposalsRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[26]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2103,7 +2253,7 @@ func (x *ListProposalsRequest) String() string {
 func (*ListProposalsRequest) ProtoMessage() {}
 
 func (x *ListProposalsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[26]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2116,7 +2266,7 @@ func (x *ListProposalsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProposalsRequest.ProtoReflect.Descriptor instead.
 func (*ListProposalsRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{26}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListProposalsRequest) GetStatus() string {
@@ -2149,7 +2299,7 @@ type ListProposalsReply struct {
 
 func (x *ListProposalsReply) Reset() {
 	*x = ListProposalsReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[27]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2161,7 +2311,7 @@ func (x *ListProposalsReply) String() string {
 func (*ListProposalsReply) ProtoMessage() {}
 
 func (x *ListProposalsReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[27]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2174,7 +2324,7 @@ func (x *ListProposalsReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProposalsReply.ProtoReflect.Descriptor instead.
 func (*ListProposalsReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{27}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListProposalsReply) GetProposals() []*Proposal {
@@ -2194,7 +2344,7 @@ type DecideProposalRequest struct {
 
 func (x *DecideProposalRequest) Reset() {
 	*x = DecideProposalRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[28]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2206,7 +2356,7 @@ func (x *DecideProposalRequest) String() string {
 func (*DecideProposalRequest) ProtoMessage() {}
 
 func (x *DecideProposalRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[28]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2219,7 +2369,7 @@ func (x *DecideProposalRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideProposalRequest.ProtoReflect.Descriptor instead.
 func (*DecideProposalRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{28}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DecideProposalRequest) GetId() int64 {
@@ -2245,7 +2395,7 @@ type RollbackStrategyRequest struct {
 
 func (x *RollbackStrategyRequest) Reset() {
 	*x = RollbackStrategyRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[29]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2257,7 +2407,7 @@ func (x *RollbackStrategyRequest) String() string {
 func (*RollbackStrategyRequest) ProtoMessage() {}
 
 func (x *RollbackStrategyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[29]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2270,7 +2420,7 @@ func (x *RollbackStrategyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackStrategyRequest.ProtoReflect.Descriptor instead.
 func (*RollbackStrategyRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{29}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *RollbackStrategyRequest) GetName() string {
@@ -2292,7 +2442,7 @@ type PeriodReportRequest struct {
 
 func (x *PeriodReportRequest) Reset() {
 	*x = PeriodReportRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[30]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2304,7 +2454,7 @@ func (x *PeriodReportRequest) String() string {
 func (*PeriodReportRequest) ProtoMessage() {}
 
 func (x *PeriodReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[30]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2317,7 +2467,7 @@ func (x *PeriodReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeriodReportRequest.ProtoReflect.Descriptor instead.
 func (*PeriodReportRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{30}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *PeriodReportRequest) GetPeriod() string {
@@ -2346,7 +2496,7 @@ type PeriodReportReply struct {
 
 func (x *PeriodReportReply) Reset() {
 	*x = PeriodReportReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[31]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2358,7 +2508,7 @@ func (x *PeriodReportReply) String() string {
 func (*PeriodReportReply) ProtoMessage() {}
 
 func (x *PeriodReportReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[31]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2371,7 +2521,7 @@ func (x *PeriodReportReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeriodReportReply.ProtoReflect.Descriptor instead.
 func (*PeriodReportReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{31}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *PeriodReportReply) GetPeriod() string {
@@ -2411,7 +2561,7 @@ type AdmissionRequest struct {
 
 func (x *AdmissionRequest) Reset() {
 	*x = AdmissionRequest{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[32]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2423,7 +2573,7 @@ func (x *AdmissionRequest) String() string {
 func (*AdmissionRequest) ProtoMessage() {}
 
 func (x *AdmissionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[32]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2436,7 +2586,7 @@ func (x *AdmissionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdmissionRequest.ProtoReflect.Descriptor instead.
 func (*AdmissionRequest) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{32}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *AdmissionRequest) GetStrategy() string {
@@ -2459,7 +2609,7 @@ type AdmissionItem struct {
 
 func (x *AdmissionItem) Reset() {
 	*x = AdmissionItem{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[33]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2471,7 +2621,7 @@ func (x *AdmissionItem) String() string {
 func (*AdmissionItem) ProtoMessage() {}
 
 func (x *AdmissionItem) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[33]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2484,7 +2634,7 @@ func (x *AdmissionItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdmissionItem.ProtoReflect.Descriptor instead.
 func (*AdmissionItem) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{33}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *AdmissionItem) GetKey() string {
@@ -2526,7 +2676,7 @@ type AdmissionReply struct {
 
 func (x *AdmissionReply) Reset() {
 	*x = AdmissionReply{}
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[34]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2538,7 +2688,7 @@ func (x *AdmissionReply) String() string {
 func (*AdmissionReply) ProtoMessage() {}
 
 func (x *AdmissionReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_backtest_v1_backtest_proto_msgTypes[34]
+	mi := &file_api_backtest_v1_backtest_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2551,7 +2701,7 @@ func (x *AdmissionReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdmissionReply.ProtoReflect.Descriptor instead.
 func (*AdmissionReply) Descriptor() ([]byte, []int) {
-	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{34}
+	return file_api_backtest_v1_backtest_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *AdmissionReply) GetStrategy() string {
@@ -2628,7 +2778,7 @@ const file_api_backtest_v1_backtest_proto_rawDesc = "" +
 	"\vtrade_count\x18\x06 \x01(\x05R\n" +
 	"tradeCount\x12\x1d\n" +
 	"\n" +
-	"has_report\x18\a \x01(\bR\thasReport\"\xcd\x05\n" +
+	"has_report\x18\a \x01(\bR\thasReport\"\x85\x06\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
@@ -2661,7 +2811,26 @@ const file_api_backtest_v1_backtest_proto_rawDesc = "" +
 	"\vfinished_at\x18\x16 \x01(\tR\n" +
 	"finishedAt\x12/\n" +
 	"\x06config\x18\x17 \x01(\v2\x17.google.protobuf.StructR\x06config\x126\n" +
-	"\asummary\x18\x18 \x01(\v2\x1c.api.backtest.v1.TaskSummaryR\asummary\"\x88\x01\n" +
+	"\asummary\x18\x18 \x01(\v2\x1c.api.backtest.v1.TaskSummaryR\asummary\x126\n" +
+	"\ttrust_bar\x18\x19 \x01(\v2\x19.api.backtest.v1.TrustBarR\btrustBar\"\xa7\x03\n" +
+	"\bTrustBar\x12\x1d\n" +
+	"\n" +
+	"bars_total\x18\x01 \x01(\x03R\tbarsTotal\x12!\n" +
+	"\ftrading_days\x18\x02 \x01(\x05R\vtradingDays\x12\x1f\n" +
+	"\vtrade_count\x18\x03 \x01(\x05R\n" +
+	"tradeCount\x12!\n" +
+	"\fwindow_start\x18\x04 \x01(\tR\vwindowStart\x12\x1d\n" +
+	"\n" +
+	"window_end\x18\x05 \x01(\tR\twindowEnd\x12\x1d\n" +
+	"\n" +
+	"cost_model\x18\x06 \x01(\tR\tcostModel\x12\x17\n" +
+	"\afee_bps\x18\a \x01(\x01R\x06feeBps\x12!\n" +
+	"\fslippage_bps\x18\b \x01(\x01R\vslippageBps\x12%\n" +
+	"\x0eblind_verified\x18\t \x01(\bR\rblindVerified\x12!\n" +
+	"\fpbo_verified\x18\n" +
+	" \x01(\bR\vpboVerified\x12.\n" +
+	"\x13dataset_manifest_id\x18\v \x01(\tR\x11datasetManifestId\x12!\n" +
+	"\fdataset_hash\x18\f \x01(\tR\vdatasetHash\"\x88\x01\n" +
 	"\x10ListTasksRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1a\n" +
 	"\bstrategy\x18\x02 \x01(\tR\bstrategy\x12\x12\n" +
@@ -2850,7 +3019,7 @@ func file_api_backtest_v1_backtest_proto_rawDescGZIP() []byte {
 	return file_api_backtest_v1_backtest_proto_rawDescData
 }
 
-var file_api_backtest_v1_backtest_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
+var file_api_backtest_v1_backtest_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_api_backtest_v1_backtest_proto_goTypes = []any{
 	(*ListStrategiesRequest)(nil),     // 0: api.backtest.v1.ListStrategiesRequest
 	(*ParamInfo)(nil),                 // 1: api.backtest.v1.ParamInfo
@@ -2862,102 +3031,104 @@ var file_api_backtest_v1_backtest_proto_goTypes = []any{
 	(*DatasetReply)(nil),              // 7: api.backtest.v1.DatasetReply
 	(*TaskSummary)(nil),               // 8: api.backtest.v1.TaskSummary
 	(*Task)(nil),                      // 9: api.backtest.v1.Task
-	(*ListTasksRequest)(nil),          // 10: api.backtest.v1.ListTasksRequest
-	(*ListTasksReply)(nil),            // 11: api.backtest.v1.ListTasksReply
-	(*GetTaskRequest)(nil),            // 12: api.backtest.v1.GetTaskRequest
-	(*ReportReply)(nil),               // 13: api.backtest.v1.ReportReply
-	(*ListTradesRequest)(nil),         // 14: api.backtest.v1.ListTradesRequest
-	(*Trade)(nil),                     // 15: api.backtest.v1.Trade
-	(*ListTradesReply)(nil),           // 16: api.backtest.v1.ListTradesReply
-	(*ShadowStatsRequest)(nil),        // 17: api.backtest.v1.ShadowStatsRequest
-	(*HorizonStat)(nil),               // 18: api.backtest.v1.HorizonStat
-	(*BucketStat)(nil),                // 19: api.backtest.v1.BucketStat
-	(*ShadowStatsReply)(nil),          // 20: api.backtest.v1.ShadowStatsReply
-	(*Introspection)(nil),             // 21: api.backtest.v1.Introspection
-	(*ListIntrospectionsRequest)(nil), // 22: api.backtest.v1.ListIntrospectionsRequest
-	(*ListIntrospectionsReply)(nil),   // 23: api.backtest.v1.ListIntrospectionsReply
-	(*RunIntrospectionRequest)(nil),   // 24: api.backtest.v1.RunIntrospectionRequest
-	(*Proposal)(nil),                  // 25: api.backtest.v1.Proposal
-	(*ListProposalsRequest)(nil),      // 26: api.backtest.v1.ListProposalsRequest
-	(*ListProposalsReply)(nil),        // 27: api.backtest.v1.ListProposalsReply
-	(*DecideProposalRequest)(nil),     // 28: api.backtest.v1.DecideProposalRequest
-	(*RollbackStrategyRequest)(nil),   // 29: api.backtest.v1.RollbackStrategyRequest
-	(*PeriodReportRequest)(nil),       // 30: api.backtest.v1.PeriodReportRequest
-	(*PeriodReportReply)(nil),         // 31: api.backtest.v1.PeriodReportReply
-	(*AdmissionRequest)(nil),          // 32: api.backtest.v1.AdmissionRequest
-	(*AdmissionItem)(nil),             // 33: api.backtest.v1.AdmissionItem
-	(*AdmissionReply)(nil),            // 34: api.backtest.v1.AdmissionReply
-	nil,                               // 35: api.backtest.v1.Introspection.AttributionEntry
-	nil,                               // 36: api.backtest.v1.Proposal.BaseParamsEntry
-	nil,                               // 37: api.backtest.v1.Proposal.ParamsEntry
-	(*structpb.Struct)(nil),           // 38: google.protobuf.Struct
+	(*TrustBar)(nil),                  // 10: api.backtest.v1.TrustBar
+	(*ListTasksRequest)(nil),          // 11: api.backtest.v1.ListTasksRequest
+	(*ListTasksReply)(nil),            // 12: api.backtest.v1.ListTasksReply
+	(*GetTaskRequest)(nil),            // 13: api.backtest.v1.GetTaskRequest
+	(*ReportReply)(nil),               // 14: api.backtest.v1.ReportReply
+	(*ListTradesRequest)(nil),         // 15: api.backtest.v1.ListTradesRequest
+	(*Trade)(nil),                     // 16: api.backtest.v1.Trade
+	(*ListTradesReply)(nil),           // 17: api.backtest.v1.ListTradesReply
+	(*ShadowStatsRequest)(nil),        // 18: api.backtest.v1.ShadowStatsRequest
+	(*HorizonStat)(nil),               // 19: api.backtest.v1.HorizonStat
+	(*BucketStat)(nil),                // 20: api.backtest.v1.BucketStat
+	(*ShadowStatsReply)(nil),          // 21: api.backtest.v1.ShadowStatsReply
+	(*Introspection)(nil),             // 22: api.backtest.v1.Introspection
+	(*ListIntrospectionsRequest)(nil), // 23: api.backtest.v1.ListIntrospectionsRequest
+	(*ListIntrospectionsReply)(nil),   // 24: api.backtest.v1.ListIntrospectionsReply
+	(*RunIntrospectionRequest)(nil),   // 25: api.backtest.v1.RunIntrospectionRequest
+	(*Proposal)(nil),                  // 26: api.backtest.v1.Proposal
+	(*ListProposalsRequest)(nil),      // 27: api.backtest.v1.ListProposalsRequest
+	(*ListProposalsReply)(nil),        // 28: api.backtest.v1.ListProposalsReply
+	(*DecideProposalRequest)(nil),     // 29: api.backtest.v1.DecideProposalRequest
+	(*RollbackStrategyRequest)(nil),   // 30: api.backtest.v1.RollbackStrategyRequest
+	(*PeriodReportRequest)(nil),       // 31: api.backtest.v1.PeriodReportRequest
+	(*PeriodReportReply)(nil),         // 32: api.backtest.v1.PeriodReportReply
+	(*AdmissionRequest)(nil),          // 33: api.backtest.v1.AdmissionRequest
+	(*AdmissionItem)(nil),             // 34: api.backtest.v1.AdmissionItem
+	(*AdmissionReply)(nil),            // 35: api.backtest.v1.AdmissionReply
+	nil,                               // 36: api.backtest.v1.Introspection.AttributionEntry
+	nil,                               // 37: api.backtest.v1.Proposal.BaseParamsEntry
+	nil,                               // 38: api.backtest.v1.Proposal.ParamsEntry
+	(*structpb.Struct)(nil),           // 39: google.protobuf.Struct
 }
 var file_api_backtest_v1_backtest_proto_depIdxs = []int32{
 	1,  // 0: api.backtest.v1.StrategyInfo.params:type_name -> api.backtest.v1.ParamInfo
 	2,  // 1: api.backtest.v1.ListStrategiesReply.strategies:type_name -> api.backtest.v1.StrategyInfo
-	38, // 2: api.backtest.v1.ListStrategiesReply.defaults:type_name -> google.protobuf.Struct
-	38, // 3: api.backtest.v1.CreateTaskRequest.config:type_name -> google.protobuf.Struct
-	38, // 4: api.backtest.v1.CreateTaskRequest.search:type_name -> google.protobuf.Struct
-	38, // 5: api.backtest.v1.FreezeDatasetRequest.config:type_name -> google.protobuf.Struct
-	38, // 6: api.backtest.v1.Task.config:type_name -> google.protobuf.Struct
+	39, // 2: api.backtest.v1.ListStrategiesReply.defaults:type_name -> google.protobuf.Struct
+	39, // 3: api.backtest.v1.CreateTaskRequest.config:type_name -> google.protobuf.Struct
+	39, // 4: api.backtest.v1.CreateTaskRequest.search:type_name -> google.protobuf.Struct
+	39, // 5: api.backtest.v1.FreezeDatasetRequest.config:type_name -> google.protobuf.Struct
+	39, // 6: api.backtest.v1.Task.config:type_name -> google.protobuf.Struct
 	8,  // 7: api.backtest.v1.Task.summary:type_name -> api.backtest.v1.TaskSummary
-	9,  // 8: api.backtest.v1.ListTasksReply.tasks:type_name -> api.backtest.v1.Task
-	38, // 9: api.backtest.v1.ReportReply.report:type_name -> google.protobuf.Struct
-	15, // 10: api.backtest.v1.ListTradesReply.trades:type_name -> api.backtest.v1.Trade
-	18, // 11: api.backtest.v1.ShadowStatsReply.horizons:type_name -> api.backtest.v1.HorizonStat
-	19, // 12: api.backtest.v1.ShadowStatsReply.buckets:type_name -> api.backtest.v1.BucketStat
-	35, // 13: api.backtest.v1.Introspection.attribution:type_name -> api.backtest.v1.Introspection.AttributionEntry
-	21, // 14: api.backtest.v1.ListIntrospectionsReply.items:type_name -> api.backtest.v1.Introspection
-	36, // 15: api.backtest.v1.Proposal.base_params:type_name -> api.backtest.v1.Proposal.BaseParamsEntry
-	37, // 16: api.backtest.v1.Proposal.params:type_name -> api.backtest.v1.Proposal.ParamsEntry
-	38, // 17: api.backtest.v1.Proposal.base_metrics:type_name -> google.protobuf.Struct
-	38, // 18: api.backtest.v1.Proposal.new_metrics:type_name -> google.protobuf.Struct
-	25, // 19: api.backtest.v1.ListProposalsReply.proposals:type_name -> api.backtest.v1.Proposal
-	38, // 20: api.backtest.v1.PeriodReportReply.report:type_name -> google.protobuf.Struct
-	33, // 21: api.backtest.v1.AdmissionReply.items:type_name -> api.backtest.v1.AdmissionItem
-	5,  // 22: api.backtest.v1.Backtest.FreezeDataset:input_type -> api.backtest.v1.FreezeDatasetRequest
-	6,  // 23: api.backtest.v1.Backtest.GetDataset:input_type -> api.backtest.v1.GetDatasetRequest
-	0,  // 24: api.backtest.v1.Backtest.ListStrategies:input_type -> api.backtest.v1.ListStrategiesRequest
-	4,  // 25: api.backtest.v1.Backtest.CreateTask:input_type -> api.backtest.v1.CreateTaskRequest
-	10, // 26: api.backtest.v1.Backtest.ListTasks:input_type -> api.backtest.v1.ListTasksRequest
-	12, // 27: api.backtest.v1.Backtest.GetTask:input_type -> api.backtest.v1.GetTaskRequest
-	12, // 28: api.backtest.v1.Backtest.CancelTask:input_type -> api.backtest.v1.GetTaskRequest
-	12, // 29: api.backtest.v1.Backtest.RerunTask:input_type -> api.backtest.v1.GetTaskRequest
-	12, // 30: api.backtest.v1.Backtest.GetReport:input_type -> api.backtest.v1.GetTaskRequest
-	14, // 31: api.backtest.v1.Backtest.ListTrades:input_type -> api.backtest.v1.ListTradesRequest
-	17, // 32: api.backtest.v1.Backtest.ShadowStats:input_type -> api.backtest.v1.ShadowStatsRequest
-	22, // 33: api.backtest.v1.Backtest.ListIntrospections:input_type -> api.backtest.v1.ListIntrospectionsRequest
-	24, // 34: api.backtest.v1.Backtest.RunIntrospection:input_type -> api.backtest.v1.RunIntrospectionRequest
-	26, // 35: api.backtest.v1.Backtest.ListProposals:input_type -> api.backtest.v1.ListProposalsRequest
-	28, // 36: api.backtest.v1.Backtest.ApproveProposal:input_type -> api.backtest.v1.DecideProposalRequest
-	28, // 37: api.backtest.v1.Backtest.RejectProposal:input_type -> api.backtest.v1.DecideProposalRequest
-	29, // 38: api.backtest.v1.Backtest.RollbackStrategy:input_type -> api.backtest.v1.RollbackStrategyRequest
-	30, // 39: api.backtest.v1.Backtest.PeriodReport:input_type -> api.backtest.v1.PeriodReportRequest
-	32, // 40: api.backtest.v1.Backtest.Admission:input_type -> api.backtest.v1.AdmissionRequest
-	7,  // 41: api.backtest.v1.Backtest.FreezeDataset:output_type -> api.backtest.v1.DatasetReply
-	7,  // 42: api.backtest.v1.Backtest.GetDataset:output_type -> api.backtest.v1.DatasetReply
-	3,  // 43: api.backtest.v1.Backtest.ListStrategies:output_type -> api.backtest.v1.ListStrategiesReply
-	9,  // 44: api.backtest.v1.Backtest.CreateTask:output_type -> api.backtest.v1.Task
-	11, // 45: api.backtest.v1.Backtest.ListTasks:output_type -> api.backtest.v1.ListTasksReply
-	9,  // 46: api.backtest.v1.Backtest.GetTask:output_type -> api.backtest.v1.Task
-	9,  // 47: api.backtest.v1.Backtest.CancelTask:output_type -> api.backtest.v1.Task
-	9,  // 48: api.backtest.v1.Backtest.RerunTask:output_type -> api.backtest.v1.Task
-	13, // 49: api.backtest.v1.Backtest.GetReport:output_type -> api.backtest.v1.ReportReply
-	16, // 50: api.backtest.v1.Backtest.ListTrades:output_type -> api.backtest.v1.ListTradesReply
-	20, // 51: api.backtest.v1.Backtest.ShadowStats:output_type -> api.backtest.v1.ShadowStatsReply
-	23, // 52: api.backtest.v1.Backtest.ListIntrospections:output_type -> api.backtest.v1.ListIntrospectionsReply
-	21, // 53: api.backtest.v1.Backtest.RunIntrospection:output_type -> api.backtest.v1.Introspection
-	27, // 54: api.backtest.v1.Backtest.ListProposals:output_type -> api.backtest.v1.ListProposalsReply
-	25, // 55: api.backtest.v1.Backtest.ApproveProposal:output_type -> api.backtest.v1.Proposal
-	25, // 56: api.backtest.v1.Backtest.RejectProposal:output_type -> api.backtest.v1.Proposal
-	25, // 57: api.backtest.v1.Backtest.RollbackStrategy:output_type -> api.backtest.v1.Proposal
-	31, // 58: api.backtest.v1.Backtest.PeriodReport:output_type -> api.backtest.v1.PeriodReportReply
-	34, // 59: api.backtest.v1.Backtest.Admission:output_type -> api.backtest.v1.AdmissionReply
-	41, // [41:60] is the sub-list for method output_type
-	22, // [22:41] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	10, // 8: api.backtest.v1.Task.trust_bar:type_name -> api.backtest.v1.TrustBar
+	9,  // 9: api.backtest.v1.ListTasksReply.tasks:type_name -> api.backtest.v1.Task
+	39, // 10: api.backtest.v1.ReportReply.report:type_name -> google.protobuf.Struct
+	16, // 11: api.backtest.v1.ListTradesReply.trades:type_name -> api.backtest.v1.Trade
+	19, // 12: api.backtest.v1.ShadowStatsReply.horizons:type_name -> api.backtest.v1.HorizonStat
+	20, // 13: api.backtest.v1.ShadowStatsReply.buckets:type_name -> api.backtest.v1.BucketStat
+	36, // 14: api.backtest.v1.Introspection.attribution:type_name -> api.backtest.v1.Introspection.AttributionEntry
+	22, // 15: api.backtest.v1.ListIntrospectionsReply.items:type_name -> api.backtest.v1.Introspection
+	37, // 16: api.backtest.v1.Proposal.base_params:type_name -> api.backtest.v1.Proposal.BaseParamsEntry
+	38, // 17: api.backtest.v1.Proposal.params:type_name -> api.backtest.v1.Proposal.ParamsEntry
+	39, // 18: api.backtest.v1.Proposal.base_metrics:type_name -> google.protobuf.Struct
+	39, // 19: api.backtest.v1.Proposal.new_metrics:type_name -> google.protobuf.Struct
+	26, // 20: api.backtest.v1.ListProposalsReply.proposals:type_name -> api.backtest.v1.Proposal
+	39, // 21: api.backtest.v1.PeriodReportReply.report:type_name -> google.protobuf.Struct
+	34, // 22: api.backtest.v1.AdmissionReply.items:type_name -> api.backtest.v1.AdmissionItem
+	5,  // 23: api.backtest.v1.Backtest.FreezeDataset:input_type -> api.backtest.v1.FreezeDatasetRequest
+	6,  // 24: api.backtest.v1.Backtest.GetDataset:input_type -> api.backtest.v1.GetDatasetRequest
+	0,  // 25: api.backtest.v1.Backtest.ListStrategies:input_type -> api.backtest.v1.ListStrategiesRequest
+	4,  // 26: api.backtest.v1.Backtest.CreateTask:input_type -> api.backtest.v1.CreateTaskRequest
+	11, // 27: api.backtest.v1.Backtest.ListTasks:input_type -> api.backtest.v1.ListTasksRequest
+	13, // 28: api.backtest.v1.Backtest.GetTask:input_type -> api.backtest.v1.GetTaskRequest
+	13, // 29: api.backtest.v1.Backtest.CancelTask:input_type -> api.backtest.v1.GetTaskRequest
+	13, // 30: api.backtest.v1.Backtest.RerunTask:input_type -> api.backtest.v1.GetTaskRequest
+	13, // 31: api.backtest.v1.Backtest.GetReport:input_type -> api.backtest.v1.GetTaskRequest
+	15, // 32: api.backtest.v1.Backtest.ListTrades:input_type -> api.backtest.v1.ListTradesRequest
+	18, // 33: api.backtest.v1.Backtest.ShadowStats:input_type -> api.backtest.v1.ShadowStatsRequest
+	23, // 34: api.backtest.v1.Backtest.ListIntrospections:input_type -> api.backtest.v1.ListIntrospectionsRequest
+	25, // 35: api.backtest.v1.Backtest.RunIntrospection:input_type -> api.backtest.v1.RunIntrospectionRequest
+	27, // 36: api.backtest.v1.Backtest.ListProposals:input_type -> api.backtest.v1.ListProposalsRequest
+	29, // 37: api.backtest.v1.Backtest.ApproveProposal:input_type -> api.backtest.v1.DecideProposalRequest
+	29, // 38: api.backtest.v1.Backtest.RejectProposal:input_type -> api.backtest.v1.DecideProposalRequest
+	30, // 39: api.backtest.v1.Backtest.RollbackStrategy:input_type -> api.backtest.v1.RollbackStrategyRequest
+	31, // 40: api.backtest.v1.Backtest.PeriodReport:input_type -> api.backtest.v1.PeriodReportRequest
+	33, // 41: api.backtest.v1.Backtest.Admission:input_type -> api.backtest.v1.AdmissionRequest
+	7,  // 42: api.backtest.v1.Backtest.FreezeDataset:output_type -> api.backtest.v1.DatasetReply
+	7,  // 43: api.backtest.v1.Backtest.GetDataset:output_type -> api.backtest.v1.DatasetReply
+	3,  // 44: api.backtest.v1.Backtest.ListStrategies:output_type -> api.backtest.v1.ListStrategiesReply
+	9,  // 45: api.backtest.v1.Backtest.CreateTask:output_type -> api.backtest.v1.Task
+	12, // 46: api.backtest.v1.Backtest.ListTasks:output_type -> api.backtest.v1.ListTasksReply
+	9,  // 47: api.backtest.v1.Backtest.GetTask:output_type -> api.backtest.v1.Task
+	9,  // 48: api.backtest.v1.Backtest.CancelTask:output_type -> api.backtest.v1.Task
+	9,  // 49: api.backtest.v1.Backtest.RerunTask:output_type -> api.backtest.v1.Task
+	14, // 50: api.backtest.v1.Backtest.GetReport:output_type -> api.backtest.v1.ReportReply
+	17, // 51: api.backtest.v1.Backtest.ListTrades:output_type -> api.backtest.v1.ListTradesReply
+	21, // 52: api.backtest.v1.Backtest.ShadowStats:output_type -> api.backtest.v1.ShadowStatsReply
+	24, // 53: api.backtest.v1.Backtest.ListIntrospections:output_type -> api.backtest.v1.ListIntrospectionsReply
+	22, // 54: api.backtest.v1.Backtest.RunIntrospection:output_type -> api.backtest.v1.Introspection
+	28, // 55: api.backtest.v1.Backtest.ListProposals:output_type -> api.backtest.v1.ListProposalsReply
+	26, // 56: api.backtest.v1.Backtest.ApproveProposal:output_type -> api.backtest.v1.Proposal
+	26, // 57: api.backtest.v1.Backtest.RejectProposal:output_type -> api.backtest.v1.Proposal
+	26, // 58: api.backtest.v1.Backtest.RollbackStrategy:output_type -> api.backtest.v1.Proposal
+	32, // 59: api.backtest.v1.Backtest.PeriodReport:output_type -> api.backtest.v1.PeriodReportReply
+	35, // 60: api.backtest.v1.Backtest.Admission:output_type -> api.backtest.v1.AdmissionReply
+	42, // [42:61] is the sub-list for method output_type
+	23, // [23:42] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_api_backtest_v1_backtest_proto_init() }
@@ -2971,7 +3142,7 @@ func file_api_backtest_v1_backtest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_backtest_v1_backtest_proto_rawDesc), len(file_api_backtest_v1_backtest_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   38,
+			NumMessages:   39,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

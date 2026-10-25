@@ -112,6 +112,25 @@ type Task struct {
 	StartedAt     *time.Time
 	FinishedAt    *time.Time
 	Summary       *Summary
+	// W8a 信任条判据位（零值=未验证；判据计算=W8c，落库列与统计随 data 批次）。
+	TrustBar TrustBar
+}
+
+// TrustBar 是结果页首屏「能不能信」的判据位（W8a；R-UI-20/23 配套）。
+// 零值语义=未验证/未统计/未声明——前端显「未验证」，禁止拿零值渲染已验证。
+type TrustBar struct {
+	BarsTotal         int64
+	TradingDays       int32
+	TradeCount        int32
+	WindowStart       string // YYYY-MM-DD；空=未声明
+	WindowEnd         string
+	CostModel         string // 成本假设口径；空=未声明
+	FeeBps            float64
+	SlippageBps       float64
+	BlindVerified     bool // true=盲测判据已通过；缺省=未验证
+	PboVerified       bool
+	DatasetManifestID string
+	DatasetHash       string
 }
 
 type TaskFilter struct {

@@ -203,6 +203,32 @@ message Task {
   string finished_at = 22;
   google.protobuf.Struct config = 23;
   TaskSummary summary = 24;
+  // W8a 信任条：结果页首屏「能不能信」的判据位（契约锚 biz.TrustBar；判据计算=W8c）。
+  // 零值/缺省=未验证——前端显「未验证」，禁止伪造绿勾（R-UI-20/23）。
+  TrustBar trust_bar = 25;
+}
+
+// W8a 信任条（UI 宪法 R-UI-20/23 配套）：所有判据位缺省语义=未验证/未声明，
+// 数值字段 0=未统计（没取到≠0），字符串空=未声明；前端不得用零值渲染「已验证」。
+message TrustBar {
+  // 样本覆盖：K 线根数与交易日数（bars_total 0=未统计）。
+  int64 bars_total = 1;
+  int32 trading_days = 2;
+  // 成交样本：0 笔=「样本不足」结论位，不是 0% 胜率。
+  int32 trade_count = 3;
+  // 样本区间起止（YYYY-MM-DD）；空串=未声明。
+  string window_start = 4;
+  string window_end = 5;
+  // 成本假设口径；空串/fee_bps=0=未声明（不回填 0 冒充）。
+  string cost_model = 6;
+  double fee_bps = 7;
+  double slippage_bps = 8;
+  // 盲测与 PBO 判据位：true=已按判据通过；缺省 false=未验证。
+  bool blind_verified = 9;
+  bool pbo_verified = 10;
+  // 数据集冻结凭据：manifest_id + 冻结哈希，供前端核对样本未换源；空=未冻结声明。
+  string dataset_manifest_id = 11;
+  string dataset_hash = 12;
 }
 
 message ListTasksRequest {

@@ -253,6 +253,14 @@ func toTask(t *biz.Task) (*v1.Task, error) {
 			Sharpe: s.Sharpe, WinRate: s.WinRate, TradeCount: int32(s.Rounds), HasReport: true,
 		}
 	}
+	// W8a：信任条零值透传=全部「未验证」，判据计算（W8c）落位前前端不得渲染已验证。
+	out.TrustBar = &v1.TrustBar{
+		BarsTotal: t.TrustBar.BarsTotal, TradingDays: t.TrustBar.TradingDays, TradeCount: t.TrustBar.TradeCount,
+		WindowStart: t.TrustBar.WindowStart, WindowEnd: t.TrustBar.WindowEnd,
+		CostModel: t.TrustBar.CostModel, FeeBps: t.TrustBar.FeeBps, SlippageBps: t.TrustBar.SlippageBps,
+		BlindVerified: t.TrustBar.BlindVerified, PboVerified: t.TrustBar.PboVerified,
+		DatasetManifestId: t.TrustBar.DatasetManifestID, DatasetHash: t.TrustBar.DatasetHash,
+	}
 	return out, nil
 }
 
