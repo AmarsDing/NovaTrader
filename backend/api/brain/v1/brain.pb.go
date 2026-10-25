@@ -512,8 +512,11 @@ type Analysis struct {
 	Reason          string                 `protobuf:"bytes,13,opt,name=reason,proto3" json:"reason,omitempty"` // 降级或丢弃原因
 	LatencyMs       int64                  `protobuf:"varint,14,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
 	RuleScore       float64                `protobuf:"fixed64,15,opt,name=rule_score,json=ruleScore,proto3" json:"rule_score,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 报告契约版号（W2a）：0 = 契约落地前的旧数据；消费方先校验再渲染，
+	// 不识别的版号显降级横幅，禁止硬渲染未知结构（R-UI-25）。现行值 = 1，唯一出处 biz.report_contract.go。
+	SchemaVersion int32 `protobuf:"varint,16,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Analysis) Reset() {
@@ -647,6 +650,13 @@ func (x *Analysis) GetLatencyMs() int64 {
 func (x *Analysis) GetRuleScore() float64 {
 	if x != nil {
 		return x.RuleScore
+	}
+	return 0
+}
+
+func (x *Analysis) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
 	}
 	return 0
 }
@@ -1085,20 +1095,22 @@ func (x *EvidenceItem) GetMatch() string {
 }
 
 type Briefing struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
-	Degraded      bool                   `protobuf:"varint,2,opt,name=degraded,proto3" json:"degraded,omitempty"`
-	Headline      string                 `protobuf:"bytes,3,opt,name=headline,proto3" json:"headline,omitempty"`
-	MarketView    string                 `protobuf:"bytes,4,opt,name=market_view,json=marketView,proto3" json:"market_view,omitempty"`
-	Risks         []string               `protobuf:"bytes,5,rep,name=risks,proto3" json:"risks,omitempty"`
-	Watchlist     []*WatchItem           `protobuf:"bytes,6,rep,name=watchlist,proto3" json:"watchlist,omitempty"`
-	Positions     []*PositionView        `protobuf:"bytes,7,rep,name=positions,proto3" json:"positions,omitempty"`
-	News          []*NewsLine            `protobuf:"bytes,8,rep,name=news,proto3" json:"news,omitempty"` // 晨报引用的原始情报
-	DecisionId    int64                  `protobuf:"varint,9,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	Reason        string                 `protobuf:"bytes,11,opt,name=reason,proto3" json:"reason,omitempty"`
-	Evidence      []*EvidenceItem        `protobuf:"bytes,12,rep,name=evidence,proto3" json:"evidence,omitempty"`                                    // P1-5 数字核对明细；核对落地前的旧晨报为空
-	OmittedCount  *int32                 `protobuf:"varint,13,opt,name=omitted_count,json=omittedCount,proto3,oneof" json:"omitted_count,omitempty"` // 被替换为「（略※）」的数字个数；旧晨报/降级晨报 = null
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Date         string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
+	Degraded     bool                   `protobuf:"varint,2,opt,name=degraded,proto3" json:"degraded,omitempty"`
+	Headline     string                 `protobuf:"bytes,3,opt,name=headline,proto3" json:"headline,omitempty"`
+	MarketView   string                 `protobuf:"bytes,4,opt,name=market_view,json=marketView,proto3" json:"market_view,omitempty"`
+	Risks        []string               `protobuf:"bytes,5,rep,name=risks,proto3" json:"risks,omitempty"`
+	Watchlist    []*WatchItem           `protobuf:"bytes,6,rep,name=watchlist,proto3" json:"watchlist,omitempty"`
+	Positions    []*PositionView        `protobuf:"bytes,7,rep,name=positions,proto3" json:"positions,omitempty"`
+	News         []*NewsLine            `protobuf:"bytes,8,rep,name=news,proto3" json:"news,omitempty"` // 晨报引用的原始情报
+	DecisionId   int64                  `protobuf:"varint,9,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`
+	CreatedAt    string                 `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Reason       string                 `protobuf:"bytes,11,opt,name=reason,proto3" json:"reason,omitempty"`
+	Evidence     []*EvidenceItem        `protobuf:"bytes,12,rep,name=evidence,proto3" json:"evidence,omitempty"`                                    // P1-5 数字核对明细；核对落地前的旧晨报为空
+	OmittedCount *int32                 `protobuf:"varint,13,opt,name=omitted_count,json=omittedCount,proto3,oneof" json:"omitted_count,omitempty"` // 被替换为「（略※）」的数字个数；旧晨报/降级晨报 = null
+	// 报告契约版号（W2a，语义同 Analysis.schema_version）：现行值 = 1。
+	SchemaVersion int32 `protobuf:"varint,14,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1220,6 +1232,13 @@ func (x *Briefing) GetEvidence() []*EvidenceItem {
 func (x *Briefing) GetOmittedCount() int32 {
 	if x != nil && x.OmittedCount != nil {
 		return *x.OmittedCount
+	}
+	return 0
+}
+
+func (x *Briefing) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
 	}
 	return 0
 }
@@ -2360,12 +2379,15 @@ func (x *GetProgramReviewRequest) GetKind() string {
 }
 
 type ProgramReview struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Date          string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`                            // 实际落行的日期（ai_week 对齐到本周最后交易日，可能与请求不同）
-	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`                      // program：八格文本；ai/ai_week：汇总段总评
-	StatsJson     string                 `protobuf:"bytes,3,opt,name=stats_json,json=statsJson,proto3" json:"stats_json,omitempty"` // program：八格读数；ai：五段+留痕；ai_week：逐日读数+周聚合+留痕
-	Lessons       []string               `protobuf:"bytes,4,rep,name=lessons,proto3" json:"lessons,omitempty"`                      // ai/ai_week：教训要点；program 为空
-	Model         string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`                          // ai/ai_week：参与模型（逗号拼接）；program 为空
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Date      string                 `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`                            // 实际落行的日期（ai_week 对齐到本周最后交易日，可能与请求不同）
+	Content   string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`                      // program：八格文本；ai/ai_week：汇总段总评
+	StatsJson string                 `protobuf:"bytes,3,opt,name=stats_json,json=statsJson,proto3" json:"stats_json,omitempty"` // program：八格读数；ai：六段+留痕；ai_week：逐日读数+周聚合+留痕
+	Lessons   []string               `protobuf:"bytes,4,rep,name=lessons,proto3" json:"lessons,omitempty"`                      // ai/ai_week：教训要点；program 为空
+	Model     string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`                          // ai/ai_week：参与模型（逗号拼接）；program 为空
+	// 报告契约版号（W2a）：约束 content 与 stats_json 的 payload 形状；
+	// v1 键集（program 八格 / ai 六段+留痕 / ai_week 逐日+周聚合）唯一出处 biz.report_contract.go。
+	SchemaVersion int32 `protobuf:"varint,6,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2433,6 +2455,13 @@ func (x *ProgramReview) GetModel() string {
 		return x.Model
 	}
 	return ""
+}
+
+func (x *ProgramReview) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
 }
 
 type GenerateAIReviewRequest struct {
@@ -2954,8 +2983,10 @@ type PredictionCheck struct {
 	Missing        []string               `protobuf:"bytes,11,rep,name=missing,proto3" json:"missing,omitempty"`
 	Candidates     []*CheckCandidateRow   `protobuf:"bytes,12,rep,name=candidates,proto3" json:"candidates,omitempty"`
 	Results        []*CheckResultRow      `protobuf:"bytes,13,rep,name=results,proto3" json:"results,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 报告契约版号（W2a，语义同 Analysis.schema_version）：现行值 = 1。
+	SchemaVersion int32 `protobuf:"varint,14,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PredictionCheck) Reset() {
@@ -3077,6 +3108,13 @@ func (x *PredictionCheck) GetResults() []*CheckResultRow {
 		return x.Results
 	}
 	return nil
+}
+
+func (x *PredictionCheck) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
 }
 
 type PredictionCheckList struct {
@@ -3206,7 +3244,7 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\areasons\x18\x03 \x03(\v2\x10.brain.v1.ReasonR\areasons\x12\x14\n" +
 	"\x05risks\x18\x04 \x03(\tR\x05risks\x12\x16\n" +
 	"\x06source\x18\x05 \x01(\tR\x06source\x12\x14\n" +
-	"\x05model\x18\x06 \x01(\tR\x05model\"\xf7\x03\n" +
+	"\x05model\x18\x06 \x01(\tR\x05model\"\x9e\x04\n" +
 	"\bAnalysis\x12\x1f\n" +
 	"\vdecision_id\x18\x01 \x01(\x03R\n" +
 	"decisionId\x12\x19\n" +
@@ -3230,7 +3268,8 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\n" +
 	"latency_ms\x18\x0e \x01(\x03R\tlatencyMs\x12\x1d\n" +
 	"\n" +
-	"rule_score\x18\x0f \x01(\x01R\truleScore\"E\n" +
+	"rule_score\x18\x0f \x01(\x01R\truleScore\x12%\n" +
+	"\x0eschema_version\x18\x10 \x01(\x05R\rschemaVersion\"E\n" +
 	"\x13AnalyzeBatchRequest\x12.\n" +
 	"\x05items\x18\x01 \x03(\v2\x18.brain.v1.AnalyzeRequestR\x05items\"=\n" +
 	"\x11AnalyzeBatchReply\x12(\n" +
@@ -3258,7 +3297,7 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12\x12\n" +
 	"\x04span\x18\x02 \x01(\tR\x04span\x12\x18\n" +
 	"\averdict\x18\x03 \x01(\tR\averdict\x12\x14\n" +
-	"\x05match\x18\x04 \x01(\tR\x05match\"\xe6\x03\n" +
+	"\x05match\x18\x04 \x01(\tR\x05match\"\x8d\x04\n" +
 	"\bBriefing\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x1a\n" +
 	"\bdegraded\x18\x02 \x01(\bR\bdegraded\x12\x1a\n" +
@@ -3276,7 +3315,8 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	" \x01(\tR\tcreatedAt\x12\x16\n" +
 	"\x06reason\x18\v \x01(\tR\x06reason\x122\n" +
 	"\bevidence\x18\f \x03(\v2\x16.brain.v1.EvidenceItemR\bevidence\x12(\n" +
-	"\romitted_count\x18\r \x01(\x05H\x00R\fomittedCount\x88\x01\x01B\x10\n" +
+	"\romitted_count\x18\r \x01(\x05H\x00R\fomittedCount\x88\x01\x01\x12%\n" +
+	"\x0eschema_version\x18\x0e \x01(\x05R\rschemaVersionB\x10\n" +
 	"\x0e_omitted_count\"\x99\x01\n" +
 	"\x0eExplainRequest\x12\x16\n" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x14\n" +
@@ -3382,14 +3422,15 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\a_p95_ms\"A\n" +
 	"\x17GetProgramReviewRequest\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x12\n" +
-	"\x04kind\x18\x02 \x01(\tR\x04kind\"\x8c\x01\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\"\xb3\x01\n" +
 	"\rProgramReview\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x1d\n" +
 	"\n" +
 	"stats_json\x18\x03 \x01(\tR\tstatsJson\x12\x18\n" +
 	"\alessons\x18\x04 \x03(\tR\alessons\x12\x14\n" +
-	"\x05model\x18\x05 \x01(\tR\x05model\"A\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\x12%\n" +
+	"\x0eschema_version\x18\x06 \x01(\x05R\rschemaVersion\"A\n" +
 	"\x17GenerateAIReviewRequest\x12\x12\n" +
 	"\x04date\x18\x01 \x01(\tR\x04date\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\"-\n" +
@@ -3453,7 +3494,7 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x12\n" +
-	"\x04text\x18\x04 \x01(\tR\x04text\"\xbd\x04\n" +
+	"\x04text\x18\x04 \x01(\tR\x04text\"\xe4\x04\n" +
 	"\x0fPredictionCheck\x12\x1f\n" +
 	"\vsignal_date\x18\x01 \x01(\tR\n" +
 	"signalDate\x12\x1d\n" +
@@ -3472,7 +3513,8 @@ const file_api_brain_v1_brain_proto_rawDesc = "" +
 	"\n" +
 	"candidates\x18\f \x03(\v2\x1b.brain.v1.CheckCandidateRowR\n" +
 	"candidates\x122\n" +
-	"\aresults\x18\r \x03(\v2\x18.brain.v1.CheckResultRowR\aresultsB\x12\n" +
+	"\aresults\x18\r \x03(\v2\x18.brain.v1.CheckResultRowR\aresults\x12%\n" +
+	"\x0eschema_version\x18\x0e \x01(\x05R\rschemaVersionB\x12\n" +
 	"\x10_candidate_countB\f\n" +
 	"\n" +
 	"_hit_countB\x10\n" +

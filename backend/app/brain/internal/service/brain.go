@@ -90,6 +90,7 @@ func toReply(a *biz.Analysis) *v1.Analysis {
 		Summary: a.Summary, SummaryEvidence: a.SummaryEvidence,
 		AiDegraded: a.Degraded, Discarded: a.Discarded, Reason: a.Reason,
 		LatencyMs: a.LatencyMS, RuleScore: a.RuleScore,
+		SchemaVersion: biz.SchemaVersionAnalysis,
 	}
 	for _, d := range a.Dims {
 		ds := &v1.DimensionScore{Dim: string(d.Dim), Score: int32(d.Score), Risks: d.Risks, Source: d.Source, Model: d.Model}
@@ -137,6 +138,7 @@ func toBriefing(b *biz.Briefing) *v1.Briefing {
 	out := &v1.Briefing{
 		Date: b.Date.Format("2006-01-02"), Degraded: b.Degraded, Headline: b.Headline, MarketView: b.MarketView,
 		Risks: b.Risks, DecisionId: int64(b.DecisionID), Reason: b.Reason,
+		SchemaVersion: biz.SchemaVersionBriefing,
 	}
 	if !b.CreatedAt.IsZero() {
 		out.CreatedAt = b.CreatedAt.Format(time.RFC3339)
@@ -316,6 +318,7 @@ func (s *BrainService) GetProgramReview(ctx context.Context, req *v1.GetProgramR
 	return &v1.ProgramReview{
 		Date: effDay.Format("2006-01-02"), Content: content, StatsJson: string(raw),
 		Lessons: lessons, Model: model,
+		SchemaVersion: biz.SchemaVersionProgramReview,
 	}, nil
 }
 
@@ -405,6 +408,7 @@ func toCheck(c *biz.Check) *v1.PredictionCheck {
 		Source: c.Source, CandidateCount: opti32(c.CandidateCount), HitCount: opti32(c.HitCount),
 		RelimitCount: opti32(c.RelimitCount), HitRate: c.HitRate, AvgPct: c.AvgPct, MaxPct: c.MaxPct,
 		Partial: c.Partial, Missing: c.Missing,
+		SchemaVersion: biz.SchemaVersionPredictionCheck,
 	}
 	for _, cd := range c.Candidates {
 		out.Candidates = append(out.Candidates, &v1.CheckCandidateRow{Symbol: cd.Symbol, Name: cd.Name, Reason: cd.Reason, Text: cd.Text})

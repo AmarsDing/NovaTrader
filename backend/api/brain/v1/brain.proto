@@ -143,6 +143,9 @@ message Analysis {
   string reason = 13; // 降级或丢弃原因
   int64 latency_ms = 14;
   double rule_score = 15;
+  // 报告契约版号（W2a）：0 = 契约落地前的旧数据；消费方先校验再渲染，
+  // 不识别的版号显降级横幅，禁止硬渲染未知结构（R-UI-25）。现行值 = 1，唯一出处 biz.report_contract.go。
+  int32 schema_version = 16;
 }
 
 message AnalyzeBatchRequest {
@@ -202,6 +205,8 @@ message Briefing {
   string reason = 11;
   repeated EvidenceItem evidence = 12; // P1-5 数字核对明细；核对落地前的旧晨报为空
   optional int32 omitted_count = 13;   // 被替换为「（略※）」的数字个数；旧晨报/降级晨报 = null
+  // 报告契约版号（W2a，语义同 Analysis.schema_version）：现行值 = 1。
+  int32 schema_version = 14;
 }
 
 message ExplainRequest {
@@ -334,9 +339,12 @@ message GetProgramReviewRequest {
 message ProgramReview {
   string date = 1;             // 实际落行的日期（ai_week 对齐到本周最后交易日，可能与请求不同）
   string content = 2;          // program：八格文本；ai/ai_week：汇总段总评
-  string stats_json = 3;       // program：八格读数；ai：五段+留痕；ai_week：逐日读数+周聚合+留痕
+  string stats_json = 3;       // program：八格读数；ai：六段+留痕；ai_week：逐日读数+周聚合+留痕
   repeated string lessons = 4; // ai/ai_week：教训要点；program 为空
   string model = 5;            // ai/ai_week：参与模型（逗号拼接）；program 为空
+  // 报告契约版号（W2a）：约束 content 与 stats_json 的 payload 形状；
+  // v1 键集（program 八格 / ai 六段+留痕 / ai_week 逐日+周聚合）唯一出处 biz.report_contract.go。
+  int32 schema_version = 6;
 }
 
 message GenerateAIReviewRequest {
@@ -407,6 +415,8 @@ message PredictionCheck {
   repeated string missing = 11;
   repeated CheckCandidateRow candidates = 12;
   repeated CheckResultRow results = 13;
+  // 报告契约版号（W2a，语义同 Analysis.schema_version）：现行值 = 1。
+  int32 schema_version = 14;
 }
 
 message PredictionCheckList {
