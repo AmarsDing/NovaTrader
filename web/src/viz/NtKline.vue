@@ -20,6 +20,7 @@ import {
 } from 'lightweight-charts'
 import { colorWithAlpha, useChartPalette } from '@/theme/tokens'
 import { chartTime, price } from '@/utils/format'
+import { withCostLine } from '@/utils/kline-transform'
 import { limitState } from '@/utils/limit'
 import { createMeasurePrimitive, measureStats, type MeasurePrimitive, type MeasureStats } from './measure-box'
 import { createSessionBandPaneView, sessionBandData, type BandSeriesApi } from './session-bands'
@@ -46,6 +47,8 @@ const props = defineProps({
   indicators: { type: Array as PropType<MarketIndicator[]>, default: () => [] },
   markers: { type: Array as PropType<KlineMarker[]>, default: () => [] },
   levels: { type: Array as PropType<KlineLevel[]>, default: () => [] },
+  /** W6a 持仓成本线：null/价非正不画（未持仓不显线，不伪造 0 成本）；与 levels 同价时成本语义优先。 */
+  cost: { type: Object as PropType<{ price: number; title?: string } | null>, default: null },
   /** 图表中央的法式水印文本（通常传证券代码）；空串不画。 */
   watermark: { type: String, default: '' },
   /** 证券代码：推断涨跌幅档做「封板」高亮；空串不推断。与 watermark 各自独立传参。 */
@@ -278,7 +281,8 @@ function applyLevels() {
   priceLines.forEach((line) => candle!.removePriceLine(line))
   priceLines = []
   const seen = new Set<number>()
-  props.levels.forEach((level) => {
+  // W6a：成本线先并入（同价时占位优先，实线），未持仓则原样。
+  withCostLine(props.levels, props.cost, palette.value.accent).forEach((level) => {
     if (!Number.isFinite(level.price) || level.price <= 0 || seen.has(level.price)) return
     seen.add(level.price)
     priceLines.push(
@@ -514,7 +518,7 @@ onMounted(() => {
 // 非 deep 监听：数组整体替换（首载/重载/切 symbol/freq）才全量套用；
 // 盘中 tick 在同一个引用上原地改，由父级走 updateLast 增量通道。
 watch(
-  () => [props.bars, props.indicators, props.markers, props.levels, props.watermark, props.symbol, props.freq] as const,
+  () => [props.bars, props.indicators, props.markers, props.levels, props.cost, props.watermark, props.symbol, props.freq] as const,
   () => apply(),
 )
 
