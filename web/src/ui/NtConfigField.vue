@@ -9,6 +9,7 @@
  */
 import { computed } from 'vue'
 import NtBadge, { type BadgeTone } from './NtBadge.vue'
+import NtButton from './NtButton.vue'
 import NtInput from './NtInput.vue'
 import NtSelect from './NtSelect.vue'
 import NtSwitch from './NtSwitch.vue'
@@ -138,7 +139,10 @@ function onUpdate(value: unknown) {
         <div v-else class="nt-config-field__secret">
           <span class="nt-config-field__mask" aria-label="密文不回显明文">••••••</span>
           <NtBadge :tone="secretSet ? 'accent' : 'neutral'" dot>{{ secretSet ? '已设置' : '未设置' }}</NtBadge>
-          <button type="button" class="nt-config-field__clear" :disabled="secretClearDisabled" @click="emit('clear')">清除</button>
+          <!-- 基件从自己做起：清除钮走 NtButton quiet 档（保留 __clear 类名作测试钩子，attrs 落到根 button） -->
+          <NtButton class="nt-config-field__clear" size="sm" variant="quiet" :disabled="secretClearDisabled" @click="emit('clear')"
+            >清除</NtButton
+          >
         </div>
       </div>
       <span v-if="field.unit && (kind === 'number' || kind === 'int')" class="nt-config-field__unit">{{ field.unit }}</span>

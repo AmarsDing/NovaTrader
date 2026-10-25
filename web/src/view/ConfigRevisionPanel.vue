@@ -54,13 +54,13 @@ const stageClass = (stage: TripleStage) => ({ [`stage--${stage}`]: true, 'stage-
   </section>
 </template>
 <style scoped>
-.revision-panel { margin: 12px 0; padding: 12px; border: 1px solid var(--nt-border); border-radius: 8px; background: var(--nt-bg-2); font-size: 12px; }
+.revision-panel { margin: 12px 0; padding: 12px; border: 1px solid var(--nt-border-1); border-radius: 8px; background: var(--nt-bg-2); font-size: var(--nt-fs-caption); }
 header,.history { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 p,small { color:var(--nt-text-2); line-height:1.6; }
-.receipt,.change { display:grid; gap:4px; padding:8px 0; border-bottom:1px solid var(--nt-border); overflow-wrap:anywhere; }
+.receipt,.change { display:grid; gap:4px; padding:8px 0; border-bottom:1px solid var(--nt-border-1); overflow-wrap:anywhere; }
 .preview { margin-top:12px; border-top:1px solid var(--nt-accent); padding-top:12px; }
 .warn { color:var(--nt-warn); }
-button { color:var(--nt-accent); border:1px solid var(--nt-border); border-radius:4px; padding:4px 8px; background:transparent; cursor:pointer; }
+button { color:var(--nt-accent); border:1px solid var(--nt-border-1); border-radius:4px; padding:4px 8px; background:transparent; cursor:pointer; }
 summary { cursor:pointer; padding:8px 0; }
 /* 生效三态（§9.2）：当前档按其 tone 高亮（编辑中 accent / 待生效 warn / 生效 success），其余淡化。 */
 .triple { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin:8px 0 4px; font-size: var(--nt-fs-caption); }

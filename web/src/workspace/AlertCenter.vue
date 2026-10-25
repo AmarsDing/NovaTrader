@@ -206,7 +206,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 24px;
   background: color-mix(in srgb, var(--nt-danger) 6%, var(--nt-scrim));
-  backdrop-filter: blur(6px);
+  backdrop-filter: var(--nt-glass-filter); /* 收编自 blur(6px) 裸值（§6 玻璃统一令牌） */
 }
 
 .ac-sheet {

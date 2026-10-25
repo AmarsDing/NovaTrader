@@ -6,11 +6,12 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getSentimentDetail, listLimits, type LimitBoard, type Sentiment } from '@/api/market'
 import NtButton from '@/ui/NtButton.vue'
+import NtFreshness from '@/ui/NtFreshness.vue'
 import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
-import { clock, compactAmount, intText, messageOf, pctText, ratioPct } from '@/utils/format'
+import { compactAmount, intText, messageOf, pctText, ratioPct } from '@/utils/format'
 import { dataFrame } from '@/ws/data-frame'
 import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
 import SentimentStages from './SentimentStages.vue'
@@ -85,6 +86,11 @@ const totalSealAmount = computed(() => {
 /** 最高连板标（梯队里第一梯队的带队股）。 */
 const topLeader = computed(() => tiers.value[0]?.stocks[0] ?? null)
 const asOf = computed(() => detail.value?.asOf || upBoards.value[0]?.asOf || '')
+/** NtFreshness 收 epoch 毫秒；asOf 是 ISO 串，解析失败按缺失（null）交给册件自述。 */
+const asOfMs = computed(() => {
+  const t = asOf.value ? Date.parse(asOf.value) : NaN
+  return Number.isFinite(t) ? t : null
+})
 
 const brokenColumns: NtTableColumn<LimitBoard & Record<string, unknown>>[] = [
   { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
@@ -147,12 +153,13 @@ onBeforeUnmount(() => {
     <header class="nt-head">
       <div>
         <h1 class="nt-title">涨停梯队</h1>
-        <p class="nt-note">
-          封板按连板高度分列，炸板单独统计。
-          <span v-if="asOf">截至 {{ clock(asOf) }}</span>
-        </p>
+        <p class="nt-note">封板按连板高度分列，炸板单独统计。</p>
       </div>
-      <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+      <div class="nt-head__actions">
+        <!-- 手搓「截至」换 NtFreshness 册件（直觉5 新鲜度锚点统一单源，stale 徽注自动带） -->
+        <NtFreshness label="梯队" :at="asOfMs" :stale-after-ms="PUSH_RELOAD_MIN_INTERVAL_MS * 3" />
+        <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+      </div>
     </header>
 
     <SentimentStages
@@ -210,6 +217,12 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.nt-head__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 /* 跌停名称串：中文名走在 sans 上，仅保留长串折行。 */
 .break {
   word-break: break-all;

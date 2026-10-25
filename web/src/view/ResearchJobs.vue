@@ -42,6 +42,11 @@ const metrics = computed(() => {
   const v = output.value?.metrics
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 })
+/** KPI 注脚口径：观测期数是这组数的分母，缺失直说不留空。 */
+const periodsText = computed(() => {
+  const n = metrics.value ? num(metrics.value.return_periods) : null
+  return n == null ? '观测期数未返回' : `共 ${n} 期观测`
+})
 const weights = computed(() => {
   const v = output.value?.weights
   return v && typeof v === 'object' && !Array.isArray(v)
@@ -188,12 +193,15 @@ onBeforeUnmount(() => {
         <p v-if="selected.cancelRequested" class="warn">已请求取消，等待服务器停止与状态回执。</p>
         <p v-if="selected.reason" class="warn">{{ selected.reason }}</p>
         <div v-if="metrics" class="metrics">
-          <NtStatCard label="费用后累计收益" :value="ratioPct(metrics.total_return)" /><NtStatCard
+          <!-- KPI 注脚给口径与分母：收益挂观测期、回撤挂峰谷、观测期数挂样本量 -->
+          <NtStatCard label="费用后累计收益" :value="ratioPct(metrics.total_return)" :sub="periodsText" /><NtStatCard
             label="最大回撤"
             :value="ratioPct(metrics.max_drawdown)"
-          /><NtStatCard label="Sharpe" :value="num(metrics.sharpe)?.toFixed(2) ?? '—'" /><NtStatCard
+            sub="净值峰谷口径"
+          /><NtStatCard label="Sharpe" :value="num(metrics.sharpe)?.toFixed(2) ?? '—'" :sub="periodsText" /><NtStatCard
             label="收益观测期数"
             :value="num(metrics.return_periods) == null ? '—' : String(metrics.return_periods)"
+            sub="样本量"
           />
         </div>
         <template v-if="weights.length"

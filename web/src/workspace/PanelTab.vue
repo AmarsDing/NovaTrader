@@ -1,5 +1,7 @@
 <script setup lang="ts">
-/** 自定义标签页：标题 + 链路状态点 + 告警角标（§8.6）+ 弹窗（白名单内，按 panelId 判定）+ 关闭。关闭走 dockview panel api。 */
+/** 自定义标签页：标题 + 链路状态点 + 告警角标（§8.6）+ 弹窗（白名单内，按 panelId 判定）+ 关闭。关闭走 dockview panel api。
+ *  状态点「异常才现身」（直觉1 零信息像素）：27 个页签复制同一全局链路态=27 份零信息；
+ *  仅在 stale/down 时渲染，正常态由底栏聚合灯承载。 */
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import type { DockviewPanelApi } from 'dockview-core'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
@@ -14,10 +16,10 @@ const props = defineProps<{
   api: DockviewPanelApi
 }>()
 
-const status = computed<'ok' | 'stale' | 'down' | 'off'>(() => {
-  if (isLive()) return 'ok'
+const status = computed<'stale' | 'down' | null>(() => {
+  if (isLive()) return null
   if (link.ws === 'open' || link.ws === 'connecting' || link.lastAt) return 'stale'
-  return link.health === 'down' ? 'down' : 'off'
+  return link.health === 'down' ? 'down' : null
 })
 
 const poppable = computed(() => canPopout(props.panelId))
@@ -49,7 +51,7 @@ function close() {
 
 <template>
   <span class="nt-tab">
-    <NtStatusDot :status="status" />
+    <NtStatusDot v-if="status" :status="status" />
     <span class="nt-tab__title">{{ title }}</span>
     <span v-if="attention" class="nt-tab__badge" :data-level="attention.level">×{{ attention.count }}</span>
     <button v-if="poppable" type="button" class="nt-tab__pop" title="弹出为独立窗口" @click.stop="popout">⧉</button>

@@ -9,6 +9,7 @@ import NovaStatusPulse from '@/component/NovaStatusPulse.vue'
 import KillSwitchBar from '@/widgets/KillSwitchBar.vue'
 import NtButton from '@/ui/NtButton.vue'
 import { useAccountStore } from '@/stores/account'
+import { useAlertsStore } from '@/stores/alerts'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useSignalsStore } from '@/stores/signals'
@@ -161,8 +162,9 @@ function exportPresets() {
     a.download = 'novatrader-layout-presets.json'
     a.click()
     URL.revokeObjectURL(url)
+    useAlertsStore().pushToast('success', '布局预设已导出', a.download)
   } catch {
-    /* 下载不可用时忽略：预设仍在本地 */
+    useAlertsStore().pushToast('error', '导出失败，未生成文件', '预设仍在本地，可重试')
   }
 }
 
@@ -178,8 +180,9 @@ async function onImport(event: Event) {
   try {
     const parsed = JSON.parse(await file.text()) as Record<string, unknown>
     Object.entries(parsed).forEach(([name, value]) => layout.savePreset(name, value))
+    useAlertsStore().pushToast('success', '布局预设已导入', `${Object.keys(parsed).length} 个模板`)
   } catch {
-    /* 非法 JSON 直接忽略 */
+    useAlertsStore().pushToast('error', '导入失败', '文件不是合法的预设 JSON')
   }
 }
 
@@ -215,7 +218,7 @@ function logout() {
     <div class="actions">
       <KillSwitchBar />
       <NtButton size="sm" title="打开三维监控驾驶舱" @click="router.push('/monitor')">监控</NtButton>
-      <NtButton size="sm" title="回到决策台默认排列，已保存的模板还在" @click="resetLayout">恢复盘中</NtButton>
+      <NtButton size="sm" title="回到决策台默认排列，已保存的模板还在" @click="resetLayout">重置布局</NtButton>
       <NtButton size="sm" title="给当前面板排列起名，存成可切换的模板" @click="openSave">保存布局</NtButton>
       <NtButton size="sm" title="按分类配置选股、风控、情绪和外观" @click="emit('config')">配置</NtButton>
       <NtButton size="sm" title="Ctrl+K" @click="emit('palette')">命令面板</NtButton>
@@ -261,7 +264,7 @@ function logout() {
             </button>
           </div>
           <div class="preset-menu__foot">
-            <button type="button" @click="resetLayout">重置为默认</button>
+            <button type="button" @click="resetLayout">重置布局</button>
             <button type="button" @click="exportPresets">导出</button>
             <button type="button" @click="pickImport">导入</button>
           </div>
@@ -287,18 +290,7 @@ function logout() {
   backdrop-filter: var(--nt-glass-filter);
   border-top: 1px solid var(--nt-glass-highlight);
   border-bottom: 1px solid var(--nt-glass-border);
-  box-shadow: var(--nt-edge-light), var(--nt-glow-soft);
-}
-
-.bar::after {
-  content: '';
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: -1px;
-  height: 1px;
-  background: var(--nt-track-gradient);
-  pointer-events: none;
+  box-shadow: var(--nt-edge-light); /* §7 glow 白名单：顶栏非常驻发光件，glow-soft 删、栏底光轨删 */
 }
 
 .brand,
@@ -323,7 +315,6 @@ function logout() {
   border: 2px solid var(--nt-accent);
   background: var(--nt-accent-soft);
   transform: rotate(45deg);
-  box-shadow: var(--nt-glow-soft);
 }
 
 .sub {

@@ -54,7 +54,7 @@ const ICON: Record<string, IconName> = {
   border: 1px solid var(--nt-border-2);
   border-radius: var(--nt-radius-m);
   box-shadow: var(--nt-shadow-depth);
-  backdrop-filter: blur(10px);
+  backdrop-filter: var(--nt-glass-filter); /* 收编自 blur(10px) 裸值（§6 玻璃统一令牌） */
   pointer-events: auto;
 }
 

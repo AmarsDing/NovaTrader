@@ -6,8 +6,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { analyzeBrain, type Analysis } from '@/api/brain'
 import { useBrainStore } from '@/stores/brain'
+import NtBadge, { type BadgeTone } from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
+import NtStatCard, { type StatTone } from '@/display/NtStatCard.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
@@ -72,6 +74,34 @@ const rows = computed<TierRow[]>(() =>
 )
 
 const lastScore = computed(() => (result.value?.score == null ? '—' : String(Math.round(result.value.score))))
+/** 评分着色与四维同一阈值（≥60 行动主色，<60 琥珀）——分数在同屏两套标尺是撒谎。 */
+const scoreTone = computed(() => (result.value?.score == null ? '' : result.value.score >= 60 ? 'ok' : 'low'))
+
+/** 汇总口径：逐层缺失不计入、全缺返回 null（数据纪律「没取到≠0」，null 由 intText 显「—」）。 */
+function sumNullable(vals: (number | null)[]): number | null {
+  let acc = 0
+  let seen = false
+  for (const v of vals) {
+    if (v != null) {
+      acc += v
+      seen = true
+    }
+  }
+  return seen ? acc : null
+}
+
+/** 层级状态章色调（词随 status-map 在途波入 brain.state 册后迁 statusOf，同 model-stats 口径）。 */
+function tierBadgeTone(state: string): BadgeTone {
+  if (state === '熔断') return 'danger'
+  if (state === '正常') return 'success'
+  return 'neutral'
+}
+
+const totalCalls = computed(() => sumNullable(brain.tiers.map((t) => t.calls)))
+const totalFailures = computed(() => sumNullable(brain.tiers.map((t) => t.failures)))
+const circuitCount = computed(() => brain.tiers.filter((t) => t.circuitOpen).length)
+const failuresTone = computed<StatTone>(() => (totalFailures.value ? 'danger' : 'neutral'))
+const circuitTone = computed<StatTone>(() => (circuitCount.value ? 'danger' : 'neutral'))
 
 /** §10-15：四维得分→链路状态键（无分 off / <60 stale / 其余 ok），tone 由 NtStatusDot 承接，文案走 linkStatus 册。 */
 function dimStatus(dim: { score: number | null }): 'off' | 'stale' | 'ok' {
@@ -138,7 +168,23 @@ onBeforeUnmount(() => {
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">分层统计</h2>
-      <NtTable :columns="columns" :rows="rows" row-key="tier" dense empty="还没有模型统计" />
+      <!-- 先给结论再给明细：总量/失败/熔断三卡收口，熔断红章在明细行里点名 -->
+      <div class="nt-cards kpi">
+        <NtStatCard label="总调用" :value="intText(totalCalls)" sub="全层合计" />
+        <NtStatCard label="失败" :value="intText(totalFailures)" sub="全层合计" :tone="failuresTone" />
+        <NtStatCard label="熔断层" :value="`${circuitCount} / ${rows.length}`" sub="熔断 / 已上报" :tone="circuitTone" />
+      </div>
+      <NtTable
+        :columns="columns"
+        :rows="rows"
+        row-key="tier"
+        dense
+        :empty="brain.loading ? '读取中…' : brain.ready ? '还没有模型层上报统计' : '统计未返回——模型服务无应答，点右上刷新统计重试'"
+      >
+        <template #cell-state="{ row }">
+          <NtBadge :tone="tierBadgeTone(row.state)" dot>{{ row.state }}</NtBadge>
+        </template>
+      </NtTable>
     </section>
 
     <section class="nt-panel">
@@ -147,7 +193,7 @@ onBeforeUnmount(() => {
         <NtInput v-model="symbol" placeholder="如 000001.SZ" class="run__symbol" @keydown.enter="runAnalysis" />
         <NtButton size="sm" :loading="analyzing" :disabled="!symbol.trim()" @click="runAnalysis">分析</NtButton>
         <span v-if="result" class="run__score">
-          得分 <b>{{ lastScore }}</b> · {{ result.verdict || '—' }}
+          得分 <b :class="scoreTone">{{ lastScore }}</b> · {{ result.verdict || '—' }}
         </span>
       </div>
       <p v-if="error" class="nt-err">{{ error }}</p>
@@ -216,6 +262,14 @@ onBeforeUnmount(() => {
 .run__score b {
   font-family: var(--nt-font-mono);
   color: var(--nt-accent);
+}
+
+.run__score b.low {
+  color: var(--nt-warn);
+}
+
+.kpi {
+  margin-bottom: 10px;
 }
 
 .dims {

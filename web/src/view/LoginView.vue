@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NovaStatusPulse from '@/component/NovaStatusPulse.vue'
 import BlankLayout from '@/layout/BlankLayout.vue'
@@ -18,6 +18,11 @@ const username = ref('')
 const password = ref('')
 const host = ref(getHost())
 const health = ref('检测中')
+
+/** 连接三态按结局着色（直觉5/2）：检测中=中性，可达=success，无响应=danger——不再同色装傻。 */
+const healthTone = computed(() =>
+  health.value === '检测中' ? 'checking' : health.value === '2001 可达' ? 'ok' : 'bad',
+)
 
 function goNext() {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
@@ -66,11 +71,11 @@ onMounted(check)
 
       <form class="form" @submit.prevent="onSubmit">
         <NtInput v-model="host" label="admin 主机" mono @blur="check" />
-        <p class="status">连接 {{ health }} · HTTP 2001 · WebSocket 2003</p>
+        <p class="status" :class="`status--${healthTone}`">连接 {{ health }} · HTTP 2001 · WebSocket 2003</p>
         <NtInput v-model="username" label="账号" placeholder="用户名 / 邮箱" />
         <NtInput v-model="password" label="密码" type="password" placeholder="••••••••" />
 
-        <p v-if="auth.error" class="err">{{ auth.error }}</p>
+        <p v-if="auth.error" class="err">{{ auth.error }}<span v-if="healthTone === 'bad'">——先启动 admin 服务再登录</span></p>
 
         <NtButton type="submit" variant="primary" block :loading="auth.loading">
           {{ auth.loading ? '验证中…' : '进入驾驶舱' }}
@@ -101,14 +106,14 @@ onMounted(check)
 
 .title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--nt-fs-hero); /* 收编自 20px 裸值（§5.3 hero 档 24 单面板≤1 组——登录页唯一焦点恰是它） */
   font-weight: 700;
   color: var(--nt-text-1);
 }
 
 .desc {
   margin: 4px 0 0;
-  font-size: 13px;
+  font-size: var(--nt-fs-panel); /* 收编自 13px（panel 档，同值） */
   color: var(--nt-text-2);
 }
 
@@ -120,13 +125,21 @@ onMounted(check)
 
 .status {
   margin: -8px 0 0;
-  font-size: 11.5px;
+  font-size: var(--nt-fs-caption); /* 收编自 11.5px 裸值（caption 档，同值） */
   color: var(--nt-text-2);
+}
+
+.status--ok {
+  color: var(--nt-success);
+}
+
+.status--bad {
+  color: var(--nt-danger);
 }
 
 .err {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--nt-fs-body); /* 收编自 12.5px（body 档，同值） */
   color: var(--nt-danger);
 }
 

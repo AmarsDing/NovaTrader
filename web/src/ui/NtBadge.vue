@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warn' | 'danger' | 'info'
+export type BadgeTone = 'neutral' | 'accent' | 'success' | 'warn' | 'danger' | 'info' | 'up' | 'down'
 
 withDefaults(defineProps<{ tone?: BadgeTone; dot?: boolean }>(), { tone: 'neutral', dot: false })
 </script>
@@ -55,6 +55,19 @@ withDefaults(defineProps<{ tone?: BadgeTone; dot?: boolean }>(), { tone: 'neutra
   color: color-mix(in srgb, var(--nt-info) 75%, var(--nt-text-1));
   border-color: color-mix(in srgb, var(--nt-info) 40%, transparent);
   background: color-mix(in srgb, var(--nt-info) 8%, transparent);
+}
+
+/* 涨跌方向章（红涨绿跌 §0.3 冻结）：封板等市场语义不再借 danger/success。 */
+.nt-badge--up {
+  color: color-mix(in srgb, var(--nt-up) 75%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-up) 40%, transparent);
+  background: color-mix(in srgb, var(--nt-up) 8%, transparent);
+}
+
+.nt-badge--down {
+  color: color-mix(in srgb, var(--nt-down) 75%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-down) 40%, transparent);
+  background: color-mix(in srgb, var(--nt-down) 8%, transparent);
 }
 
 .nt-badge__dot {

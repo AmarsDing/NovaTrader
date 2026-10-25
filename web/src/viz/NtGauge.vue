@@ -92,7 +92,7 @@ const color = computed(() => TONE_COLOR[props.tone])
 
 .nt-gauge__value {
   font-family: var(--nt-font-mono);
-  font-size: 17px;
+  font-size: var(--nt-fs-num-lg); /* 收编自 17px 裸值（§5.3 num-lg 档，同值） */
   font-weight: 700;
 }
 

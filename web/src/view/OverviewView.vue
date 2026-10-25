@@ -407,6 +407,8 @@ watch(
     </section>
 
     <section class="nt-cards">
+      <!-- 双 hero 例外（改造单决策台条 P0-8 登记在案）：当日盈亏=第一答案、权益=第二答案，两格同档；
+           攻心版结构重排收单焦点属 B3，本批不破布局。 -->
       <NtStatCard
         label="当日盈亏"
         :value="signed(dayPnlValue)"
@@ -793,7 +795,7 @@ watch(
 }
 
 .rows b.hot {
-  color: var(--nt-warn, var(--nt-accent));
+  color: var(--nt-warn); /* 删 fallback 遮羞布 */
 }
 
 .words b {
@@ -943,7 +945,7 @@ watch(
 }
 
 .lane li b.hot {
-  color: var(--nt-warn, var(--nt-accent));
+  color: var(--nt-warn); /* 删 fallback 遮羞布 */
 }
 
 .mono {
@@ -1010,12 +1012,12 @@ watch(
 .ticket__head .score {
   margin-left: auto;
   font-family: var(--nt-font-mono);
-  font-size: 18px;
+  font-size: var(--nt-fs-num-lg); /* 收编自 18px 裸值（§5.3 num-lg 档 17，归并入档；分数是配角不抢 hero） */
   font-weight: 600;
 }
 
 .ticket__head .score.hot {
-  color: var(--nt-warn, var(--nt-accent));
+  color: var(--nt-warn); /* 删裸值级联 fallback（--nt-warn 已冻结定义，fallback 是遮羞布） */
 }
 
 .ticket__grid {

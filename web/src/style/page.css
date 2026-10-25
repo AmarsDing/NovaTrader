@@ -28,14 +28,14 @@
 .nt-empty {
   margin: 0;
   color: var(--nt-text-2);
-  font-size: 12px;
+  font-size: var(--nt-fs-caption);
   line-height: 1.5;
 }
 
 .nt-err {
   margin: 0;
   color: var(--nt-danger);
-  font-size: 12.5px;
+  font-size: var(--nt-fs-body);
 }
 
 .nt-cards {

@@ -40,6 +40,13 @@ const paramRows = computed(() =>
     .sort((a, b) => a.key.localeCompare(b.key)),
 )
 
+/** 今日买入上限读参数册（原来 /5 硬编码，参数改了文案就撒谎）；
+ *  键=配置目录 risk.max_daily_buys；键不存在即缺失显「未设」，不猜一个数冒充。 */
+const buyLimit = computed(() => {
+  const v = risk.params['max_daily_buys']
+  return v == null ? null : String(v)
+})
+
 const canCheck = computed(() => /^\d{6}\.(SZ|SH|BJ)$/i.test(symbol.value.trim()) && Number(price.value) > 0 && Number(qty.value) >= 100)
 
 async function runCheck() {
@@ -84,14 +91,15 @@ onMounted(() => {
                breaker 行情熔断 warn；「Kill Switch」固定标识与熔断器名动态后缀按原样拼接，原信息不丢。 -->
           <NtBadge v-if="risk.killActive" :tone="statusOf('risk.killswitch').tone" dot>Kill Switch {{ statusOf('risk.killswitch').text }}</NtBadge>
           <NtBadge v-if="risk.marketBreaker" :tone="statusOf('risk.breaker').tone">{{ statusOf('risk.breaker').text }} {{ risk.marketBreaker }}</NtBadge>
-          <span v-if="risk.buysToday != null" class="meta">今日已买入 {{ risk.buysToday }}/5</span>
+          <span v-if="risk.buysToday != null" class="meta">今日已买入 {{ risk.buysToday }}/{{ buyLimit ?? '上限未设' }}</span>
         </p>
       </div>
     </header>
 
-    <section v-if="paramRows.length" class="nt-panel">
+    <section class="nt-panel">
       <h2 class="nt-panel__title">当前阈值</h2>
-      <ul class="params">
+      <p v-if="!paramRows.length" class="nt-empty">阈值未返回——风控参数服务无应答，点命令面板「刷新账户 / 行情 / 风控 / 模型」重试</p>
+      <ul v-else class="params">
         <li v-for="row in paramRows" :key="row.key">
           <span class="params__k">{{ row.key }}</span>
           <b>{{ row.value }}</b>
@@ -133,7 +141,7 @@ onMounted(() => {
         </NtBadge>
       </h2>
       <p class="nt-note">
-        {{ passedCount }}/{{ hits.length }} 条规则通过 · {{ clock(result.at) }}
+        {{ passedCount }}/{{ hits.length }} 条规则通过 · {{ clock(result.at) || '时点未返回' }}
         <span v-if="result.rule"> · 拦截规则 {{ result.rule }}</span>
       </p>
       <p v-if="result.detail" class="detail">{{ result.detail }}</p>

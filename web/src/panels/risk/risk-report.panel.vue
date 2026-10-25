@@ -7,6 +7,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getRiskReport, type RiskReport } from '@/api/risk'
 import NtButton from '@/ui/NtButton.vue'
+import NtStatCard from '@/display/NtStatCard.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
@@ -60,6 +61,21 @@ async function load() {
 }
 
 onMounted(load)
+
+/** 三分态诚呈（同 alert-rules:182 约定）：首载中 / 读取失败 / 真空表分说，不把失败误示为「暂无」。 */
+const metricsEmpty = computed(() => {
+  if (loading.value) return '读取中…'
+  if (error.value) return '风控指标未返回——点上方刷新重试'
+  return '今天还没有风控校验记录'
+})
+const eventsEmpty = computed(() => {
+  if (loading.value) return '读取中…'
+  if (error.value) return '风控事件未返回——点上方刷新重试'
+  return '今天没有风控事件'
+})
+
+/** KPI 句式补齐（survey：数字要有重量）：校验/放行/拒绝/P99 四格大卡，明细仍走下表。 */
+const kpiRows = computed<Row[]>(() => rows.value.slice(0, 4))
 </script>
 
 <template>
@@ -84,12 +100,15 @@ onMounted(load)
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">指标明细</h2>
-      <NtTable :columns="columns" :rows="rows" row-key="metric" dense empty="今天还没有风控校验记录" />
+      <div v-if="kpiRows.length" class="nt-cards">
+        <NtStatCard v-for="k in kpiRows" :key="k.metric" :label="k.metric" :value="k.value" :sub="k.note || undefined" />
+      </div>
+      <NtTable :columns="columns" :rows="rows" row-key="metric" dense :empty="metricsEmpty" />
     </section>
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">风控事件（急停 / 模式 / 熔断）</h2>
-      <NtTable :columns="eventColumns" :rows="eventRows" row-key="at" dense empty="今天没有风控事件" />
+      <NtTable :columns="eventColumns" :rows="eventRows" row-key="at" dense :empty="eventsEmpty" />
     </section>
   </div>
 </template>

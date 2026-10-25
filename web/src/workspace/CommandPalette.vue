@@ -13,6 +13,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { askBrain } from '@/api/brain'
+import { useAlertsStore } from '@/stores/alerts'
 import { useAuthStore } from '@/stores/auth'
 import { useLayoutStore } from '@/stores/layout'
 import { useRecentStore } from '@/stores/recent'
@@ -209,11 +210,15 @@ const allItems = computed<Item[]>(() => {
     },
     {
       id: 'cmd:refresh',
-      label: '刷新账户 / 行情 / 风控',
-      hint: '立即拉取',
+      label: '刷新账户 / 行情 / 风控 / 模型',
+      hint: '立即拉取全部域',
       keywords: 'reload',
       kind: 'command',
-      run: () => void refreshAll(),
+      run: () => {
+        void refreshAll().then(() => {
+          useAlertsStore().pushToast('info', '已发起全域刷新', '账户 / 行情 / 风控 / 模型')
+        })
+      },
     },
     {
       id: 'cmd:monitor',
@@ -233,11 +238,11 @@ const allItems = computed<Item[]>(() => {
     },
     {
       id: 'cmd:hotkeys',
-      label: '热键：B/S 买卖、Shift+1~4 切桌、Shift+K 急停、Shift+T 交易、Shift+M 涨停、Shift+R 风控、1-9 切面板、Ctrl+Z 撤销布局',
-      hint: '参考',
+      label: '查看全部热键',
+      hint: 'F1 功能卡 · 热键速查',
       keywords: 'hotkey shortcut key',
       kind: 'command',
-      run: () => getWorkbench()?.openPanel('settings'),
+      run: () => window.dispatchEvent(new CustomEvent<{ panelId?: string }>('nt:open-help', { detail: {} })),
     },
     {
       id: 'cmd:theme',
@@ -257,9 +262,9 @@ const allItems = computed<Item[]>(() => {
     },
     {
       id: 'cmd:reset-layout',
-      label: '重置工作台布局',
+      label: '重置布局',
       hint: '回默认预设',
-      keywords: 'layout reset',
+      keywords: 'layout reset 恢复盘中 重置为默认',
       kind: 'command',
       run: () => getWorkbench()?.resetToDefault(),
     },
@@ -562,7 +567,7 @@ defineExpose({ open, close })
   align-items: flex-start;
   padding: 12vh 16px 16px;
   background: var(--nt-scrim-light);
-  backdrop-filter: blur(3px);
+  backdrop-filter: var(--nt-glass-filter); /* 收编自 blur(3px) 裸值（§6 玻璃统一令牌） */
 }
 
 .sheet {

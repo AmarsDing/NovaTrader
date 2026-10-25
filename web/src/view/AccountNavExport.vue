@@ -220,7 +220,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   white-space: nowrap;
-  font: 11px var(--nt-font-mono);
+  font: var(--nt-fs-caption) var(--nt-font-mono); /* 收编自 11px 裸值（§5.3 caption 档 11.5，归并入档） */
 }
 th,
 td {

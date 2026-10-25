@@ -95,7 +95,7 @@ function close() {
 
 .nt-modal__title {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--nt-fs-title); /* 收编自 15px 裸值（§5.3 title 档，同值） */
   font-weight: 600;
   color: var(--nt-text-1);
 }

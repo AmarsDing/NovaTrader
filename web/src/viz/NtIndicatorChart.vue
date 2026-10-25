@@ -74,4 +74,15 @@ const option = computed<EChartsCoreOption | null>(() => {
 
 <template>
   <NtEChart v-if="option" :option="option" :height="height" />
+  <!-- 指标点不足/全缺：显态占位，不渲染空气（golden 用例传数据走 v-if 分支不受影响） -->
+  <p v-else class="nt-empty" :style="{ height }">指标数据未返回</p>
 </template>
+
+<style scoped>
+.nt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+</style>

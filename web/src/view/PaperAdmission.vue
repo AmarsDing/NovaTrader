@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
       <div class="headline">
         <strong
           >{{ report.consecutive_days }}<small> / {{ report.required_days }} 个连续合格交易日</small></strong
-        ><span>{{ report.run_evidence_ready ? '运行证据已达门槛' : '运行证据尚未达标' }}</span>
+        ><span :class="{ ok: report.run_evidence_ready }">{{ report.run_evidence_ready ? '运行证据已达门槛' : '运行证据尚未达标' }}</span>
       </div>
       <p class="note">
         截至 {{ clock(report.evaluated_at) }} · 最近已闭市交易日 {{ report.latest_closed_trading_day }}。每 30
@@ -107,7 +107,8 @@ onBeforeUnmount(() => {
                 <td>{{ d.missing_slots }} / {{ d.unhealthy_slots }}</td>
                 <td>{{ d.closing_proof ? '已核验' : '未核验' }}</td>
                 <td>
-                  <b :class="{ good: d.status === 'qualified' }">{{
+                  <!-- 「运行中」是在途不是警告：琥珀只留「证据不足」；合格走 accent。 -->
+                  <b :class="{ good: d.status === 'qualified', bad: d.status !== 'qualified' && d.status !== 'running' }">{{
                     d.status === 'qualified' ? '合格' : d.status === 'running' ? '运行中' : '证据不足'
                   }}</b>
                   <p v-for="(n, reason) in d.reasons" :key="reason">{{ reasons[reason] || reason }} · {{ n }}</p>
@@ -124,14 +125,15 @@ onBeforeUnmount(() => {
   </section>
 </template>
 <style scoped>
+/* §6 玻璃只许壳层：本卡内含准入日报数据表（数据背板），去 glass-sheen/blur、accent 描边收边框档，
+ * 走 0.94+ 无模糊数据背板。 */
 .admission {
   padding: var(--nt-pad-panel);
   margin-block: 12px;
-  background: var(--nt-glass-sheen), var(--nt-glass-bg);
-  border: 1px solid var(--nt-accent-border);
+  background: var(--nt-data-bg);
+  border: 1px solid var(--nt-border-1);
   border-radius: var(--nt-radius-m);
-  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth);
-  backdrop-filter: var(--nt-glass-filter);
+  box-shadow: var(--nt-shadow-depth);
 }
 header,
 .headline {
@@ -142,30 +144,34 @@ header,
   flex-wrap: wrap;
 }
 .eyebrow {
-  font: 10px var(--nt-font-mono);
+  font: var(--nt-fs-micro) var(--nt-font-mono); /* 收编自 10px（§5.3 micro 档 10.5，抵近档） */
   letter-spacing: 0.16em;
   color: var(--nt-accent);
 }
 h3 {
   margin: 4px 0 12px;
-  font-size: 14px;
+  font-size: var(--nt-fs-title); /* 收编自 14px（§5.3 title 档 15，归并入档） */
 }
 .headline strong {
-  font: 24px var(--nt-font-mono);
+  font: var(--nt-fs-hero) var(--nt-font-mono); /* 收编自 24px（§5.3 hero 档，同值） */
   color: var(--nt-text-1);
 }
 small {
-  font-size: 11px;
+  font-size: var(--nt-fs-caption); /* 收编自 11px（caption 档 11.5，归并入档） */
   color: var(--nt-text-2);
 }
 .headline span {
-  font-size: 12px;
-  color: var(--nt-warn);
+  font-size: var(--nt-fs-caption); /* 收编自 12px（caption 档，归并入档） */
+  color: var(--nt-warn); /* 「尚未达标」是真警告，保持琥珀 */
+}
+
+.headline span.ok {
+  color: var(--nt-text-2); /* 已达门槛退回中性注，警报位让出 */
 }
 .note,
 .authority,
 details {
-  font-size: 11px;
+  font-size: var(--nt-fs-caption); /* 收编自 11px（caption 档，归并入档） */
   color: var(--nt-text-2);
   line-height: 1.7;
 }
@@ -199,9 +205,12 @@ td p {
   margin: 0;
 }
 b {
-  color: var(--nt-warn);
+  color: var(--nt-text-2); /* 默认（含「运行中」）休眠灰；警告只留 .bad */
 }
 b.good {
   color: var(--nt-accent);
+}
+b.bad {
+  color: var(--nt-warn);
 }
 </style>

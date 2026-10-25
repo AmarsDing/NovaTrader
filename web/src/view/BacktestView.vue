@@ -85,6 +85,14 @@ const hasActive = computed(() =>
 )
 let timer: ReturnType<typeof setInterval> | null = null
 
+/** KPI 注脚：区间缺腿就直说，不拿空串糊弄（数据纪律「没取到≠空」）。 */
+const rangeText = computed(() => {
+  const task = selected.value
+  if (!task) return ''
+  return task.start && task.end ? `${task.start} ~ ${task.end}` : '区间未返回'
+})
+const sampleText = computed(() => (trades.value.length ? `${trades.value.length} 笔成交样本` : '暂无成交样本'))
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -185,7 +193,12 @@ onBeforeUnmount(() => {
     <p v-if="hint" class="nt-note">{{ hint }}</p>
     <ResearchJobs />
 
-    <NtTable :columns="taskColumns" :rows="tasks as TaskRow[]" row-key="id" :empty="loading ? '读取中…' : '暂无任务'">
+    <NtTable
+      :columns="taskColumns"
+      :rows="tasks as TaskRow[]"
+      row-key="id"
+      :empty="loading ? '读取中…' : '还没有回测任务——先用上方表单建一个，收益 / 回撤 / 胜率和每笔成交都会在这里展开'"
+    >
       <template #cell-name="{ row }">{{ row.name || row.id }}</template>
       <template #cell-strategy="{ row }">{{ row.strategy }} · {{ row.freq }}</template>
       <template #cell-status="{ row }">{{ taskStatus(row) }}</template>
@@ -200,16 +213,17 @@ onBeforeUnmount(() => {
     <section v-if="selected" class="nt-panel">
       <h2 class="nt-panel__title">报告 · {{ selected.name || selected.id }}</h2>
       <div v-if="report" class="nt-cards report">
-        <NtStatCard label="总收益" :value="ratioPct(report.metrics.totalReturn)" />
-        <NtStatCard label="年化" :value="ratioPct(report.metrics.annualReturn)" />
+        <!-- KPI 注脚给口径：收益/年化挂算式区间，胜率/回合挂样本量——裸数字不让人猜分母 -->
+        <NtStatCard label="总收益" :value="ratioPct(report.metrics.totalReturn)" :sub="rangeText" />
+        <NtStatCard label="年化" :value="ratioPct(report.metrics.annualReturn)" :sub="rangeText" />
         <NtStatCard label="最大回撤" :value="ratioPct(report.metrics.maxDrawdown)" />
-        <NtStatCard label="胜率" :value="ratioPct(report.metrics.winRate)" />
-        <NtStatCard label="夏普" :value="report.metrics.sharpe != null ? String(report.metrics.sharpe) : '—'" />
-        <NtStatCard label="回合" :value="report.metrics.rounds != null ? String(report.metrics.rounds) : '—'" />
+        <NtStatCard label="胜率" :value="ratioPct(report.metrics.winRate)" :sub="sampleText" />
+        <NtStatCard label="夏普" :value="report.metrics.sharpe != null ? String(report.metrics.sharpe) : '—'" sub="按区间成交与净值" />
+        <NtStatCard label="回合" :value="report.metrics.rounds != null ? String(report.metrics.rounds) : '—'" :sub="sampleText" />
       </div>
       <NtEquityCurve v-if="report" :points="report.equity" height="280px" />
       <p v-for="(line, index) in report?.warnings || []" :key="index" class="nt-note">{{ line }}</p>
-      <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="暂无成交">
+      <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="该区间无成交——策略未触发任何交易">
         <template #cell-price="{ value }">{{ price(value) }}</template>
         <template #cell-pnl="{ value }">{{ signed(value) }}</template>
       </NtTable>

@@ -34,7 +34,10 @@ const area = computed(() => {
 </script>
 
 <template>
+  <!-- 数据不足两点：显态占位（直觉5 数据缺失先设计），断线/全 null 不留空白装没事 -->
+  <span v-if="!points" class="nt-spark__empty" :style="{ width: `${width}px`, height: `${height}px` }">无数据</span>
   <svg
+    v-else
     class="nt-spark"
     :viewBox="`0 0 ${width} ${height}`"
     preserveAspectRatio="none"
@@ -43,7 +46,7 @@ const area = computed(() => {
     aria-hidden="true"
   >
     <polygon v-if="fill && area" :points="area" :fill="stroke" opacity="0.14" />
-    <polyline v-if="points" :points="points" fill="none" :stroke="stroke" stroke-width="1.4" />
+    <polyline :points="points" fill="none" :stroke="stroke" stroke-width="1.4" />
   </svg>
 </template>
 
@@ -51,5 +54,13 @@ const area = computed(() => {
 .nt-spark {
   display: block;
   overflow: visible;
+}
+
+.nt-spark__empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--nt-fs-micro);
+  color: var(--nt-text-3);
 }
 </style>

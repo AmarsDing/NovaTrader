@@ -199,7 +199,8 @@ onMounted(load)
       </section>
     </template>
 
-    <p v-else-if="!loading" class="nt-empty">这一天还没有晨报</p>
+    <!-- 直觉5：error 与「还没有晨报」不得同屏——非 404 失败时真空态必须让位错误引导。 -->
+    <p v-else-if="!loading && !error" class="nt-empty">这一天还没有晨报</p>
   </div>
 </template>
 
@@ -216,15 +217,15 @@ onMounted(load)
 
 .headline {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--nt-fs-title);
   line-height: 1.7;
   font-weight: 600;
-  color: var(--nt-text-0);
+  color: var(--nt-text-1); /* text-0 是 hero 档禁段落正文（tokens.css §5.3）——晨报头版退回 text-1 */
 }
 
 .body {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--nt-fs-panel); /* 收编自 13px 裸值（§5.3 panel 档，同值） */
   line-height: 1.7;
   color: var(--nt-text-1);
   white-space: pre-wrap;

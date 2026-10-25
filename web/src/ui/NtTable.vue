@@ -55,7 +55,9 @@ function onRow(row: T) {
       </thead>
       <tbody>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length" class="nt-table__empty">{{ empty }}</td>
+          <!-- 空态富化预留：named slot 供消费方传「图标+一句话+动作」（B3 NtEmpty 落位即插）；
+               默认渲染与原「一句灰字」逐像素一致（'table' golden 不晃）。 -->
+          <td :colspan="columns.length" class="nt-table__empty"><slot name="empty">{{ empty }}</slot></td>
         </tr>
         <tr
           v-for="(row, index) in rows"

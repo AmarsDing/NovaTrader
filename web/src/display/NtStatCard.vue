@@ -46,7 +46,7 @@ withDefaults(
 }
 
 .nt-stat--hero .nt-stat__v {
-  font-size: 24px;
+  font-size: var(--nt-fs-hero); /* 收编自 24px 裸值（§5.3 hero 档，同值） */
   /* hero 档（方案 §5.1/§5.2-4 第 2 处：权益/当日盈亏大数字）；须排在本文件 tone 规则之前，
      等优先级下后写者胜，涨跌等语义色仍压过 hero 档（红涨绿跌纪律）。 */
   color: var(--nt-text-0, var(--nt-text-1));

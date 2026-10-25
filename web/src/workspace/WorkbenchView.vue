@@ -10,7 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { VISUAL_DOCUMENT_EVENT } from '@/theme/visual-quality'
 import { clock } from '@/utils/format'
-import { isLive, link } from '@/ws/hub'
+import { isLive, link, restartLink } from '@/ws/hub'
 import CommandBar from './CommandBar.vue'
 import CommandPalette from './CommandPalette.vue'
 import FunctionIndexOverlay from './FunctionIndexOverlay.vue'
@@ -150,7 +150,10 @@ watch(() => route.fullPath, consumeDeepLink)
 <template>
   <div class="shell">
     <CommandBar @palette="palette?.open('panel')" @config="openConfig" />
-    <p v-if="banner" class="stale">{{ banner }}</p>
+    <p v-if="banner" class="stale">
+      {{ banner }}
+      <button type="button" class="stale__act" @click="restartLink()">重连</button>
+    </p>
     <DockHost ref="dock" />
     <StatusBar />
     <ConfirmSheet />
@@ -191,7 +194,23 @@ watch(() => route.fullPath, consumeDeepLink)
   color: color-mix(in srgb, var(--nt-warn) 80%, var(--nt-text-1));
   background: color-mix(in srgb, var(--nt-warn) 9%, var(--nt-bg-1));
   border: 1px solid color-mix(in srgb, var(--nt-warn) 45%, var(--nt-border-1));
-  font-size: 12.5px;
+  font-size: var(--nt-fs-body);
   box-shadow: inset 3px 0 var(--nt-warn);
+}
+
+/* 状态给了话还要给门路：重连是唯一的行动件，零动效，静态本身即优点。 */
+.stale__act {
+  margin-left: 10px;
+  padding: 1px 10px;
+  border: 1px solid color-mix(in srgb, var(--nt-warn) 55%, var(--nt-border-1));
+  border-radius: var(--nt-radius-s);
+  background: transparent;
+  color: inherit;
+  font-size: var(--nt-fs-body);
+  cursor: pointer;
+}
+
+.stale__act:hover {
+  background: color-mix(in srgb, var(--nt-warn) 16%, transparent);
 }
 </style>

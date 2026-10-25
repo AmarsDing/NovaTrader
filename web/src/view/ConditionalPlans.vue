@@ -183,7 +183,8 @@ onBeforeUnmount(() => {
         </div>
         <div>
           <dt>有效至</dt>
-          <dd>{{ clock(r.plan.valid_until) }}</dd>
+          <!-- 交易时点缺失必须大声说，不能悄声空白（有效期直接关系到还作不作数） -->
+          <dd>{{ clock(r.plan.valid_until) || '有效期未返回' }}</dd>
         </div>
       </dl>
       <p class="meta">
@@ -252,14 +253,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* §6 玻璃只许壳层：本卡装着执行意图明细（数据背板），去 glass-sheen/blur、去 accent 描边，
+ * 走数据背板不透明档（0.94+ 无模糊）。 */
 .plans {
   padding: var(--nt-pad-panel);
   margin-block: 12px;
-  border: 1px solid var(--nt-accent-border);
+  border: 1px solid var(--nt-border-1);
   border-radius: var(--nt-radius-m);
-  background: var(--nt-glass-sheen), var(--nt-glass-bg);
-  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth);
-  backdrop-filter: var(--nt-glass-filter);
+  background: var(--nt-data-bg, var(--nt-bg-1));
+  box-shadow: var(--nt-shadow-depth);
 }
 header,
 .plan-title,
@@ -273,17 +275,17 @@ header > div {
   flex: 1;
 }
 .eyebrow {
-  font: 10px var(--nt-font-mono);
+  font: var(--nt-fs-micro) var(--nt-font-mono); /* 收编自 10px 裸值（§5.3 micro 档 10.5，抵近档） */
   letter-spacing: 0.16em;
   color: var(--nt-accent);
 }
 h3 {
   margin: 4px 0;
-  font-size: 14px;
+  font-size: var(--nt-fs-title); /* 收编自 14px 裸值（§5.3 title 档 15，归并入档） */
 }
 .note,
 .meta {
-  font-size: 11px;
+  font-size: var(--nt-fs-caption); /* 收编自 11px 裸值（§5.3 caption 档 11.5，归并入档） */
   color: var(--nt-text-2);
 }
 .plan {
@@ -333,7 +335,7 @@ summary {
 }
 .unresolved,
 .warn {
-  color: var(--nt-warn) !important;
+  color: var(--nt-warn); /* 删 !important：同色冲突交还级联，局部语义色不该压制全站 */
 }
 .unresolved {
   padding: 8px;

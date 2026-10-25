@@ -81,7 +81,6 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 
 .nt-ring--hot .nt-ring__value {
   color: var(--nt-accent);
-  text-shadow: 0 0 8px color-mix(in srgb, var(--nt-accent) 60%, transparent);
 }
 
 /* 用量色阶（§5.3 限额环形）：>80% 橙、=100% 红，不发光 */
@@ -111,7 +110,7 @@ const dash = computed(() => `${(clamped.value / 100) * CIRC} ${CIRC}`)
 .nt-ring__label {
   position: absolute;
   bottom: -16px;
-  font-size: 10px;
+  font-size: 10px; /* B1.5 → var(--nt-fs-micro)：golden 重刷批同步（'feedback' 用例钉住本行） */
   color: var(--nt-text-3);
   white-space: nowrap;
 }

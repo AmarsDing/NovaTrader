@@ -407,7 +407,7 @@ onBeforeUnmount(() => {
           <p v-if="!news.length" class="nt-empty">{{ newsReady ? '没有相关消息。' : '读取中……' }}</p>
           <ul v-else class="news">
             <li v-for="item in news" :key="item.id || item.time + item.title" @click="openIntel(item)">
-              <b>{{ clock(item.time) }}</b>
+              <b>{{ clock(item.time) || '—' }}</b><!-- 时点缺失显占位，不留空白让人猜 -->
               <span>{{ item.title }}</span>
             </li>
           </ul>

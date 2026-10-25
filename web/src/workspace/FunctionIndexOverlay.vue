@@ -134,7 +134,7 @@ defineExpose({ open })
   border-radius: var(--nt-radius-m);
   background: var(--nt-glass-sheen), var(--nt-glass-bg);
   backdrop-filter: var(--nt-glass-filter);
-  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth), var(--nt-glow-soft);
+  box-shadow: var(--nt-edge-light), var(--nt-shadow-depth); /* §7 glow 白名单：阅读型浮层不发光，glow-soft 删 */
   display: flex;
   flex-direction: column;
   gap: 12px;

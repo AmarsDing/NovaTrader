@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 
 withDefaults(defineProps<{ text?: string; placement?: 'top' | 'bottom' }>(), {
   text: '',
@@ -21,7 +21,6 @@ function hide() {
   open.value = false
 }
 
-onMounted(() => {})
 onUnmounted(() => {
   if (timer) clearTimeout(timer)
 })

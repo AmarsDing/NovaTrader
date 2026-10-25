@@ -52,7 +52,8 @@ onBeforeUnmount(() => {
     </p>
     <p v-if="error" class="nt-err">{{ error }}</p>
     <template v-if="preview"
-      ><p class="conclusion">
+      ><!-- 结论按结局着色：可调整=行动主色，有阻断/未知=琥珀警告——「暂不能动」不是好消息不该 accent -->
+      <p class="conclusion" :class="{ blocked: !preview.allocation_ready }">
         {{
           preview.allocation_ready ? '离散约束已核验，仍需审阅和最终风控' : '当前组合存在阻断或未知，暂不能按目标调整'
         }}
@@ -155,6 +156,9 @@ h4 {
   color: var(--nt-accent);
   font-weight: 600;
   font-size: 12px;
+}
+.conclusion.blocked {
+  color: var(--nt-warn); /* 阻断/未知是警告不是行动号召 */
 }
 .metrics {
   display: grid;

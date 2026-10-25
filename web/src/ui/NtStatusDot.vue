@@ -30,10 +30,9 @@ withDefaults(defineProps<{ status?: DotStatus; label?: string }>(), { status: 'o
   color: var(--nt-text-2);
 }
 
+/* §7 禁常驻呼吸灯：live 常亮实点，状态迁移由父级重挂载/翻转类承担，不留眨眼。 */
 .nt-dot--live .nt-dot__core {
   background: var(--nt-success);
-  box-shadow: none;
-  animation: nt-dot-blink 2s ease-in-out infinite;
 }
 
 .nt-dot--ok .nt-dot__core {
@@ -46,15 +45,5 @@ withDefaults(defineProps<{ status?: DotStatus; label?: string }>(), { status: 'o
 
 .nt-dot--down .nt-dot__core {
   background: var(--nt-danger);
-}
-
-@keyframes nt-dot-blink {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.45;
-  }
 }
 </style>

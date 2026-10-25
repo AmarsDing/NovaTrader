@@ -109,7 +109,7 @@ const scale = computed(() => props.positionScale ?? stage.value?.scale ?? null)
 
 .stage__code {
   font-family: var(--nt-font-mono);
-  font-size: 10px;
+  font-size: var(--nt-fs-micro); /* 收编自 10px 裸值（§5.3 micro 档 10.5，抵近档） */
   color: var(--nt-text-3);
 }
 
