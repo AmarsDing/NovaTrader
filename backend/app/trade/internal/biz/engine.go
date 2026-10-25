@@ -130,6 +130,7 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 		ClientOrderID: req.ClientOrderID, Book: book, Symbol: req.Symbol, Side: req.Side,
 		Status: StatusSubmitted, Price: req.Price, Volume: req.Volume, Source: req.Source,
 		Operator: req.Operator, SignalID: req.SignalID, StrategyVersion: req.StrategyVersion,
+		IntentID: req.IntentID, ReferencePrice: req.ReferencePrice,
 		Channel: ChannelSim, CreatedAt: e.clock(),
 	}
 	var trails []Trail
@@ -263,6 +264,75 @@ func (e *Engine) place(ctx context.Context, req PlaceRequest) (Order, error) {
 		return Order{}, err
 	}
 	return order, nil
+}
+
+// OrderPreviewResult 是干跑回执（W5a）：校验结论 + 估算读数，Accepted=false 时 Reasons 逐条说明。
+type OrderPreviewResult struct {
+	Accepted    bool
+	Reasons     []string
+	Symbol      string
+	Side        string
+	Price       float64
+	Volume      int
+	Amount      float64
+	DistancePct *float64 // 相对 ReferencePrice 的偏离%；缺参考价时为 nil（没取到≠0，不回填 0）。
+}
+
+// Preview 干跑校验 + 估算：只读，不持锁、不落单、不动账（W5a PreviewOrder 的 biz 承载）。
+// 校验口径与 place 对齐（字段/符号/方向/账户/手动操作人/LIVE 四闸），缺哪条记哪条不短路。
+func (e *Engine) Preview(ctx context.Context, req PlaceRequest) (OrderPreviewResult, error) {
+	out := OrderPreviewResult{
+		Symbol: strings.TrimSpace(req.Symbol),
+		Side:   strings.ToLower(strings.TrimSpace(req.Side)),
+		Price:  req.Price, Volume: req.Volume,
+		Amount: req.Price * float64(req.Volume),
+	}
+	var reasons []string
+	if req.Price <= 0 {
+		reasons = append(reasons, "委托价必须为正")
+	}
+	if req.Volume <= 0 {
+		reasons = append(reasons, "委托数量必须为正")
+	}
+	if out.Symbol != "" {
+		if _, err := symbol.Parse(out.Symbol); err != nil {
+			reasons = append(reasons, "证券代码不合法: "+err.Error())
+		}
+	} else {
+		reasons = append(reasons, "缺证券代码")
+	}
+	if out.Side != string(brokerif.Buy) && out.Side != string(brokerif.Sell) {
+		reasons = append(reasons, "方向只能是 buy 或 sell")
+	}
+	book, err := bookOf(req.Account)
+	if err != nil {
+		reasons = append(reasons, "账户只能是 SIM 或 LIVE")
+	}
+	if strings.ToLower(strings.TrimSpace(req.Source)) == "manual" && strings.TrimSpace(req.Operator) == "" {
+		reasons = append(reasons, "手动下单必须填写操作人")
+	}
+	if err == nil && book == BookLive {
+		if !e.set.BrokerConnected {
+			reasons = append(reasons, "实盘柜台通道尚未接入或未完成对账")
+		}
+		if !e.set.LiveEnabled {
+			reasons = append(reasons, "实盘通道未打开")
+		}
+		evidence, err := e.PaperAdmission(ctx, "SIM", 40)
+		if err != nil || !evidence.RunEvidenceReady || evidence.RequiredDays < 20 {
+			reasons = append(reasons, "连续真实交易日运行证据未通过")
+		}
+		if e.fileBroker == nil {
+			reasons = append(reasons, "实盘文件单出口未装配")
+		}
+	}
+	if req.ReferencePrice > 0 {
+		pct := (req.Price - req.ReferencePrice) / req.ReferencePrice * 100
+		out.DistancePct = &pct
+	}
+	out.Accepted = len(reasons) == 0
+	out.Reasons = reasons
+	return out, nil
 }
 
 func (e *Engine) fill(ctx context.Context, batch *Batch, order *Order, pos Position, q Quote) error {

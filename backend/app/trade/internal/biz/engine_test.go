@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,103 @@ func newEngine(t *testing.T, risk Checker) (*Engine, *MemStore) {
 
 func bar() Quote {
 	return Quote{Open: 10, High: 10.2, Low: 9.9, Close: 10.05, Volume: 100000, LimitUp: 11, LimitDown: 9}
+}
+
+// W5a：intent_id 幂等 + Preview 干跑。
+func TestIntentIdempotentReplay(t *testing.T) {
+	e, mem := newEngine(t, allow{})
+	q := bar()
+	first, err := e.Place(context.Background(), PlaceRequest{
+		ClientOrderID: "i1", Account: "SIM", Symbol: "600519.SH", Side: "buy",
+		Price: 10.5, Volume: 100, Quote: &q, IntentID: "intent-alpha",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 同 intent_id、换了 client_order_id 的重试：返回首单，不重复成交。
+	retry, err := e.Place(context.Background(), PlaceRequest{
+		ClientOrderID: "i1-retry", Account: "SIM", Symbol: "600519.SH", Side: "buy",
+		Price: 10.5, Volume: 100, Quote: &q, IntentID: "intent-alpha",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.ClientOrderID != first.ClientOrderID {
+		t.Fatalf("同 intent_id 应返回首单，got %s want %s", retry.ClientOrderID, first.ClientOrderID)
+	}
+	if retry.Filled != first.Filled || retry.Filled == 0 {
+		t.Fatalf("重试不应改变成交：first %+v retry %+v", first, retry)
+	}
+	orders, _ := mem.ListOrders(context.Background(), BookPaper, 10)
+	if got := len(orders); got != 1 {
+		t.Fatalf("同 intent_id 只许落一单，实际 %d", got)
+	}
+}
+
+// 同 intent_id 但请求实质不同（价格变了）= 冲突，不得静默套旧单。
+func TestIntentSameIdDifferentRequestConflicts(t *testing.T) {
+	e, _ := newEngine(t, allow{})
+	q := bar()
+	if _, err := e.Place(context.Background(), PlaceRequest{
+		ClientOrderID: "c1", Account: "SIM", Symbol: "600519.SH", Side: "buy",
+		Price: 10, Volume: 100, Quote: &q, IntentID: "intent-beta",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.Place(context.Background(), PlaceRequest{
+		ClientOrderID: "c2", Account: "SIM", Symbol: "600519.SH", Side: "buy",
+		Price: 10.5, Volume: 100, Quote: &q, IntentID: "intent-beta",
+	})
+	if err == nil {
+		t.Fatal("同 intent_id 不同价格必须冲突，不得静默复用")
+	}
+}
+
+func TestPreviewDoesNotFill(t *testing.T) {
+	e, mem := newEngine(t, allow{})
+	p, err := e.Preview(context.Background(), PlaceRequest{
+		Account: "SIM", Symbol: "600519.SH", Side: "buy",
+		Price: 10, Volume: 100, ReferencePrice: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Accepted || len(p.Reasons) != 0 {
+		t.Fatalf("合法委托应 accepted，got %+v", p)
+	}
+	if p.DistancePct == nil || *p.DistancePct != 0 {
+		t.Fatalf("同价偏离应为 0%%，got %+v", p.DistancePct)
+	}
+	orders, _ := mem.ListOrders(context.Background(), BookPaper, 10)
+	if got := len(orders); got != 0 {
+		t.Fatalf("干跑不得落单，实际 %d", got)
+	}
+	if p.Amount != 1000 {
+		t.Fatalf("估算金额 10*100=1000，got %v", p.Amount)
+	}
+}
+
+func TestPreviewMissingFieldsCollectReasons(t *testing.T) {
+	e, _ := newEngine(t, allow{})
+	p, err := e.Preview(context.Background(), PlaceRequest{
+		Account: "SIM", Side: "hold", Price: -1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Accepted {
+		t.Fatalf("非法委托不得 accepted：%+v", p)
+	}
+	joined := strings.Join(p.Reasons, ";")
+	for _, want := range []string{"委托价必须为正", "委托数量必须为正", "缺证券代码", "方向只能是 buy 或 sell"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("理由应含 %q，实际 %s", want, joined)
+		}
+	}
+	// 没取到≠0：无 reference_price 时偏离缺省，不回填 0。
+	if p.DistancePct != nil {
+		t.Fatalf("缺参考价时 DistancePct 应为 nil，got %v", *p.DistancePct)
+	}
 }
 
 func TestLimitUpDoesNotFill(t *testing.T) {

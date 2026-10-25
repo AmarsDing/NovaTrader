@@ -19,9 +19,12 @@ type Order struct {
 	Operator        string
 	SignalID        string
 	StrategyVersion string
-	Reason          string
-	Channel         string
-	CreatedAt       time.Time
+	// W5a：幂等键与参考价随单走（内存/durable 进程内透传；落库列追加随 data 批次）。
+	IntentID       string
+	ReferencePrice float64
+	Reason         string
+	Channel        string
+	CreatedAt      time.Time
 }
 
 type Fill struct {
@@ -85,16 +88,20 @@ type PlaceRequest struct {
 	PlanID                 string
 	PlanRevision           int
 	ClientOrderID          string
-	Account                string
-	Symbol                 string
-	Side                   string
-	Price                  float64
-	Volume                 int
-	Source                 string
-	Operator               string
-	SignalID               string
-	StrategyVersion        string
-	Quote                  *Quote
+	// W5a 幂等键：book+intent_id 为服务端持久去重身份（见 placeDurable）。
+	IntentID string
+	// W5a 参考价：R 倍数/偏离检查锚；0=缺省。
+	ReferencePrice  float64
+	Account         string
+	Symbol          string
+	Side            string
+	Price           float64
+	Volume          int
+	Source          string
+	Operator        string
+	SignalID        string
+	StrategyVersion string
+	Quote           *Quote
 }
 
 // Quote 是撮合用的一根不复权 K 线。

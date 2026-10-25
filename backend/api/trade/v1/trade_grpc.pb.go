@@ -31,6 +31,7 @@ const (
 	Trade_Reconcile_FullMethodName            = "/api.trade.v1.Trade/Reconcile"
 	Trade_SeedLiveCashBaseline_FullMethodName = "/api.trade.v1.Trade/SeedLiveCashBaseline"
 	Trade_GetChannelStatus_FullMethodName     = "/api.trade.v1.Trade/GetChannelStatus"
+	Trade_PreviewOrder_FullMethodName         = "/api.trade.v1.Trade/PreviewOrder"
 )
 
 // TradeClient is the client API for Trade service.
@@ -52,6 +53,8 @@ type TradeClient interface {
 	SeedLiveCashBaseline(ctx context.Context, in *SeedLiveCashBaselineRequest, opts ...grpc.CallOption) (*Account, error)
 	// G7 执行通道状态读面：只回服务端真实跟踪的通道（sim；emfile 服务端未接线，不回）。
 	GetChannelStatus(ctx context.Context, in *GetChannelStatusRequest, opts ...grpc.CallOption) (*ChannelStatusReply, error)
+	// W5a 执行契约：干跑校验 + 估算，不落单不记账。请求体与 PlaceOrderRequest 同形。
+	PreviewOrder(ctx context.Context, in *PlaceOrderRequest, opts ...grpc.CallOption) (*OrderPreview, error)
 }
 
 type tradeClient struct {
@@ -162,6 +165,16 @@ func (c *tradeClient) GetChannelStatus(ctx context.Context, in *GetChannelStatus
 	return out, nil
 }
 
+func (c *tradeClient) PreviewOrder(ctx context.Context, in *PlaceOrderRequest, opts ...grpc.CallOption) (*OrderPreview, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OrderPreview)
+	err := c.cc.Invoke(ctx, Trade_PreviewOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TradeServer is the server API for Trade service.
 // All implementations must embed UnimplementedTradeServer
 // for forward compatibility.
@@ -181,6 +194,8 @@ type TradeServer interface {
 	SeedLiveCashBaseline(context.Context, *SeedLiveCashBaselineRequest) (*Account, error)
 	// G7 执行通道状态读面：只回服务端真实跟踪的通道（sim；emfile 服务端未接线，不回）。
 	GetChannelStatus(context.Context, *GetChannelStatusRequest) (*ChannelStatusReply, error)
+	// W5a 执行契约：干跑校验 + 估算，不落单不记账。请求体与 PlaceOrderRequest 同形。
+	PreviewOrder(context.Context, *PlaceOrderRequest) (*OrderPreview, error)
 	mustEmbedUnimplementedTradeServer()
 }
 
@@ -220,6 +235,9 @@ func (UnimplementedTradeServer) SeedLiveCashBaseline(context.Context, *SeedLiveC
 }
 func (UnimplementedTradeServer) GetChannelStatus(context.Context, *GetChannelStatusRequest) (*ChannelStatusReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetChannelStatus not implemented")
+}
+func (UnimplementedTradeServer) PreviewOrder(context.Context, *PlaceOrderRequest) (*OrderPreview, error) {
+	return nil, status.Error(codes.Unimplemented, "method PreviewOrder not implemented")
 }
 func (UnimplementedTradeServer) mustEmbedUnimplementedTradeServer() {}
 func (UnimplementedTradeServer) testEmbeddedByValue()               {}
@@ -422,6 +440,24 @@ func _Trade_GetChannelStatus_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Trade_PreviewOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PlaceOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TradeServer).PreviewOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Trade_PreviewOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TradeServer).PreviewOrder(ctx, req.(*PlaceOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Trade_ServiceDesc is the grpc.ServiceDesc for Trade service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -468,6 +504,10 @@ var Trade_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetChannelStatus",
 			Handler:    _Trade_GetChannelStatus_Handler,
+		},
+		{
+			MethodName: "PreviewOrder",
+			Handler:    _Trade_PreviewOrder_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

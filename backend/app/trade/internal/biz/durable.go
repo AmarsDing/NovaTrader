@@ -62,8 +62,14 @@ func (e *Engine) placeDurable(ctx context.Context, req PlaceRequest) (Order, err
 	if strings.TrimSpace(req.SignalID) != "" {
 		key = "signal:" + accountOf(book) + ":default:" + strings.TrimSpace(req.SignalID)
 	}
+	fromIntent := false
 	if req.BusinessKey != "" {
 		key = req.BusinessKey
+	} else if intent := strings.TrimSpace(req.IntentID); intent != "" {
+		// W5a：客户端幂等键优先于 signal/order 键——重试允许换 client_order_id，
+		// 只要 intent_id 不变即命中同一意图返原单（去重身份=book+intent_id）。
+		key = "intent:" + accountOf(book) + ":" + intent
+		fromIntent = true
 	}
 	hash := orderRequestHash(req, book)
 	if hash == "" {
@@ -73,7 +79,9 @@ func (e *Engine) placeDurable(ctx context.Context, req PlaceRequest) (Order, err
 	if err != nil {
 		return Order{}, err
 	}
-	if in.RequestHash != hash || in.ClientOrderID != req.ClientOrderID {
+	if in.RequestHash != hash || (!fromIntent && in.ClientOrderID != req.ClientOrderID) {
+		// fromIntent 豁免 ClientOrderID 一致性：intent 幂等语义就是「允许重试换新单号」，
+		// 单号只是回查指针；hash 仍把实质请求（价/量/券/向）钉死，换实质=冲突。
 		return Order{}, fmt.Errorf("%w: 同一委托身份对应不同请求", ErrConflict)
 	}
 	if !created {

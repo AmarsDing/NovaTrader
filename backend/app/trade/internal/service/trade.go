@@ -81,12 +81,39 @@ func (s *TradeService) PlaceOrder(ctx context.Context, req *v1.PlaceOrderRequest
 		Side: req.GetSide(), Price: req.GetPrice(), Volume: int(req.GetVolume()),
 		Source: req.GetSource(), Operator: req.GetOperator(),
 		SignalID: req.GetSignalId(), StrategyVersion: req.GetStrategyVersion(),
+		IntentID: req.GetIntentId(), ReferencePrice: req.GetReferencePrice(),
 	}
 	o, err := s.e.Place(ctx, in)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	return toOrder(o), nil
+}
+
+// PreviewOrder 干跑（W5a）：同形请求只读校验+估算，不落单不记账。
+func (s *TradeService) PreviewOrder(ctx context.Context, req *v1.PlaceOrderRequest) (*v1.OrderPreview, error) {
+	if req.GetBar() != nil {
+		return nil, kerrors.BadRequest("CLIENT_MARKET_INPUT_DISABLED", "预览不能携带客户端撮合行情")
+	}
+	p, err := s.e.Preview(ctx, biz.PlaceRequest{
+		ClientOrderID: req.GetClientOrderId(), Account: req.GetAccount(), Symbol: req.GetSymbol(),
+		Side: req.GetSide(), Price: req.GetPrice(), Volume: int(req.GetVolume()),
+		Source: req.GetSource(), Operator: req.GetOperator(),
+		SignalID: req.GetSignalId(), StrategyVersion: req.GetStrategyVersion(),
+		ReferencePrice: req.GetReferencePrice(),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.OrderPreview{
+		Accepted: p.Accepted, Reasons: p.Reasons,
+		EstimatedAmount: p.Amount, Price: p.Price, Volume: int32(p.Volume),
+		Side: p.Side, Symbol: p.Symbol,
+	}
+	if p.DistancePct != nil {
+		out.PriceDistancePct = p.DistancePct
+	}
+	return out, nil
 }
 
 func (s *TradeService) CancelOrder(ctx context.Context, req *v1.CancelOrderRequest) (*v1.Order, error) {
@@ -195,6 +222,7 @@ func toOrder(o biz.Order) *v1.Order {
 		ClientOrderId: o.ClientOrderID, Account: account, Symbol: o.Symbol, Side: o.Side,
 		Status: o.Status, Price: o.Price, Volume: int32(o.Volume), Filled: int32(o.Filled),
 		Reason: o.Reason, SignalId: o.SignalID, StrategyVersion: o.StrategyVersion,
+		IntentId: o.IntentID, ReferencePrice: o.ReferencePrice,
 	}
 }
 

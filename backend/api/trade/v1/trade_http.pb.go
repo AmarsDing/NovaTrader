@@ -26,6 +26,7 @@ const OperationTradeGetChannelStatus = "/api.trade.v1.Trade/GetChannelStatus"
 const OperationTradeGetOrder = "/api.trade.v1.Trade/GetOrder"
 const OperationTradeListPositions = "/api.trade.v1.Trade/ListPositions"
 const OperationTradePlaceOrder = "/api.trade.v1.Trade/PlaceOrder"
+const OperationTradePreviewOrder = "/api.trade.v1.Trade/PreviewOrder"
 const OperationTradeReconcile = "/api.trade.v1.Trade/Reconcile"
 const OperationTradeRollDay = "/api.trade.v1.Trade/RollDay"
 const OperationTradeSeedLiveCashBaseline = "/api.trade.v1.Trade/SeedLiveCashBaseline"
@@ -40,6 +41,8 @@ type TradeHTTPServer interface {
 	GetOrder(context.Context, *GetOrderRequest) (*Order, error)
 	ListPositions(context.Context, *ListPositionsRequest) (*ListPositionsReply, error)
 	PlaceOrder(context.Context, *PlaceOrderRequest) (*Order, error)
+	// PreviewOrder W5a 执行契约：干跑校验 + 估算，不落单不记账。请求体与 PlaceOrderRequest 同形。
+	PreviewOrder(context.Context, *PlaceOrderRequest) (*OrderPreview, error)
 	Reconcile(context.Context, *ReconcileRequest) (*ReconcileReply, error)
 	RollDay(context.Context, *RollDayRequest) (*Account, error)
 	// SeedLiveCashBaseline LIVE 资金基线种子（自身债高危：此前全仓无写入口，LIVE 买单被现金闸恒拒）。
@@ -60,6 +63,7 @@ func RegisterTradeHTTPServer(s *http.Server, srv TradeHTTPServer) {
 	r.POST("/v1/trade/reconcile", _Trade_Reconcile0_HTTP_Handler(srv))
 	r.POST("/v1/trade/live/cash-baseline", _Trade_SeedLiveCashBaseline0_HTTP_Handler(srv))
 	r.GET("/v1/trade/channel/status", _Trade_GetChannelStatus0_HTTP_Handler(srv))
+	r.POST("/v1/trade/orders/preview", _Trade_PreviewOrder0_HTTP_Handler(srv))
 }
 
 func _Trade_PlaceOrder0_HTTP_Handler(srv TradeHTTPServer) func(ctx http.Context) error {
@@ -276,6 +280,28 @@ func _Trade_GetChannelStatus0_HTTP_Handler(srv TradeHTTPServer) func(ctx http.Co
 	}
 }
 
+func _Trade_PreviewOrder0_HTTP_Handler(srv TradeHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in PlaceOrderRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationTradePreviewOrder)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.PreviewOrder(ctx, req.(*PlaceOrderRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*OrderPreview)
+		return ctx.Result(200, reply)
+	}
+}
+
 type TradeHTTPClient interface {
 	// ApplyBar 兼容保留；服务器拒绝公开撮合输入。仅内部行情消费者可驱动模拟成交。
 	ApplyBar(ctx context.Context, req *ApplyBarRequest, opts ...http.CallOption) (rsp *ApplyBarReply, err error)
@@ -286,6 +312,8 @@ type TradeHTTPClient interface {
 	GetOrder(ctx context.Context, req *GetOrderRequest, opts ...http.CallOption) (rsp *Order, err error)
 	ListPositions(ctx context.Context, req *ListPositionsRequest, opts ...http.CallOption) (rsp *ListPositionsReply, err error)
 	PlaceOrder(ctx context.Context, req *PlaceOrderRequest, opts ...http.CallOption) (rsp *Order, err error)
+	// PreviewOrder W5a 执行契约：干跑校验 + 估算，不落单不记账。请求体与 PlaceOrderRequest 同形。
+	PreviewOrder(ctx context.Context, req *PlaceOrderRequest, opts ...http.CallOption) (rsp *OrderPreview, err error)
 	Reconcile(ctx context.Context, req *ReconcileRequest, opts ...http.CallOption) (rsp *ReconcileReply, err error)
 	RollDay(ctx context.Context, req *RollDayRequest, opts ...http.CallOption) (rsp *Account, err error)
 	// SeedLiveCashBaseline LIVE 资金基线种子（自身债高危：此前全仓无写入口，LIVE 买单被现金闸恒拒）。
@@ -387,6 +415,20 @@ func (c *TradeHTTPClientImpl) PlaceOrder(ctx context.Context, in *PlaceOrderRequ
 	pattern := "/v1/trade/orders"
 	path := binding.EncodeURL(pattern, in, false)
 	opts = append(opts, http.Operation(OperationTradePlaceOrder))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// PreviewOrder W5a 执行契约：干跑校验 + 估算，不落单不记账。请求体与 PlaceOrderRequest 同形。
+func (c *TradeHTTPClientImpl) PreviewOrder(ctx context.Context, in *PlaceOrderRequest, opts ...http.CallOption) (*OrderPreview, error) {
+	var out OrderPreview
+	pattern := "/v1/trade/orders/preview"
+	path := binding.EncodeURL(pattern, in, false)
+	opts = append(opts, http.Operation(OperationTradePreviewOrder))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
 	if err != nil {

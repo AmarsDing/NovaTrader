@@ -39,9 +39,15 @@ type PlaceOrderRequest struct {
 	SignalId        string `protobuf:"bytes,9,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
 	StrategyVersion string `protobuf:"bytes,10,opt,name=strategy_version,json=strategyVersion,proto3" json:"strategy_version,omitempty"`
 	// 兼容保留；公开接口收到该字段会拒绝，不能由客户端制造成交。
-	Bar           *Bar `protobuf:"bytes,11,opt,name=bar,proto3" json:"bar,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Bar *Bar `protobuf:"bytes,11,opt,name=bar,proto3" json:"bar,omitempty"`
+	// W5a 幂等键：客户端生成的调用级唯一 id（建议 UUID）。同 intent_id 重复提交返回首次
+	// 委托结果，不重复下单；服务端按 book+intent_id 持久去重（与 client_order_id 互不替代——
+	// 重试允许换新 client_order_id、必须保 intent_id）。
+	IntentId string `protobuf:"bytes,12,opt,name=intent_id,json=intentId,proto3" json:"intent_id,omitempty"`
+	// W5a 参考价：信号基准价（R 倍数提示与偏离检查的锚）。0=缺省，由服务端按规则口径取现价。
+	ReferencePrice float64 `protobuf:"fixed64,13,opt,name=reference_price,json=referencePrice,proto3" json:"reference_price,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *PlaceOrderRequest) Reset() {
@@ -151,6 +157,122 @@ func (x *PlaceOrderRequest) GetBar() *Bar {
 	return nil
 }
 
+func (x *PlaceOrderRequest) GetIntentId() string {
+	if x != nil {
+		return x.IntentId
+	}
+	return ""
+}
+
+func (x *PlaceOrderRequest) GetReferencePrice() float64 {
+	if x != nil {
+		return x.ReferencePrice
+	}
+	return 0
+}
+
+// W5a 干跑回执：校验结论 + 估算读数；accepted=false 时 reasons 逐条说明。
+type OrderPreview struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Accepted        bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Reasons         []string               `protobuf:"bytes,2,rep,name=reasons,proto3" json:"reasons,omitempty"`
+	EstimatedAmount float64                `protobuf:"fixed64,3,opt,name=estimated_amount,json=estimatedAmount,proto3" json:"estimated_amount,omitempty"`
+	Price           float64                `protobuf:"fixed64,4,opt,name=price,proto3" json:"price,omitempty"`
+	Volume          int32                  `protobuf:"varint,5,opt,name=volume,proto3" json:"volume,omitempty"`
+	Side            string                 `protobuf:"bytes,6,opt,name=side,proto3" json:"side,omitempty"`
+	Symbol          string                 `protobuf:"bytes,7,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	// 委托价相对 reference_price 的偏离百分比；reference_price 缺省时不下发（没取到≠0）。
+	PriceDistancePct *float64 `protobuf:"fixed64,8,opt,name=price_distance_pct,json=priceDistancePct,proto3,oneof" json:"price_distance_pct,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *OrderPreview) Reset() {
+	*x = OrderPreview{}
+	mi := &file_api_trade_v1_trade_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderPreview) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderPreview) ProtoMessage() {}
+
+func (x *OrderPreview) ProtoReflect() protoreflect.Message {
+	mi := &file_api_trade_v1_trade_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderPreview.ProtoReflect.Descriptor instead.
+func (*OrderPreview) Descriptor() ([]byte, []int) {
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *OrderPreview) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *OrderPreview) GetReasons() []string {
+	if x != nil {
+		return x.Reasons
+	}
+	return nil
+}
+
+func (x *OrderPreview) GetEstimatedAmount() float64 {
+	if x != nil {
+		return x.EstimatedAmount
+	}
+	return 0
+}
+
+func (x *OrderPreview) GetPrice() float64 {
+	if x != nil {
+		return x.Price
+	}
+	return 0
+}
+
+func (x *OrderPreview) GetVolume() int32 {
+	if x != nil {
+		return x.Volume
+	}
+	return 0
+}
+
+func (x *OrderPreview) GetSide() string {
+	if x != nil {
+		return x.Side
+	}
+	return ""
+}
+
+func (x *OrderPreview) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *OrderPreview) GetPriceDistancePct() float64 {
+	if x != nil && x.PriceDistancePct != nil {
+		return *x.PriceDistancePct
+	}
+	return 0
+}
+
 type Bar struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Open          float64                `protobuf:"fixed64,1,opt,name=open,proto3" json:"open,omitempty"`
@@ -166,7 +288,7 @@ type Bar struct {
 
 func (x *Bar) Reset() {
 	*x = Bar{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[1]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -178,7 +300,7 @@ func (x *Bar) String() string {
 func (*Bar) ProtoMessage() {}
 
 func (x *Bar) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[1]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -191,7 +313,7 @@ func (x *Bar) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Bar.ProtoReflect.Descriptor instead.
 func (*Bar) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{1}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Bar) GetOpen() float64 {
@@ -256,13 +378,16 @@ type Order struct {
 	Reason          string                 `protobuf:"bytes,9,opt,name=reason,proto3" json:"reason,omitempty"`
 	SignalId        string                 `protobuf:"bytes,10,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
 	StrategyVersion string                 `protobuf:"bytes,11,opt,name=strategy_version,json=strategyVersion,proto3" json:"strategy_version,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// W5a：幂等键与参考价原样回传，客户端按 intent_id 关联重试结果。
+	IntentId       string  `protobuf:"bytes,12,opt,name=intent_id,json=intentId,proto3" json:"intent_id,omitempty"`
+	ReferencePrice float64 `protobuf:"fixed64,13,opt,name=reference_price,json=referencePrice,proto3" json:"reference_price,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[2]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -274,7 +399,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[2]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -287,7 +412,7 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{2}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Order) GetClientOrderId() string {
@@ -367,6 +492,20 @@ func (x *Order) GetStrategyVersion() string {
 	return ""
 }
 
+func (x *Order) GetIntentId() string {
+	if x != nil {
+		return x.IntentId
+	}
+	return ""
+}
+
+func (x *Order) GetReferencePrice() float64 {
+	if x != nil {
+		return x.ReferencePrice
+	}
+	return 0
+}
+
 type CancelOrderRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"`
@@ -376,7 +515,7 @@ type CancelOrderRequest struct {
 
 func (x *CancelOrderRequest) Reset() {
 	*x = CancelOrderRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[3]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -388,7 +527,7 @@ func (x *CancelOrderRequest) String() string {
 func (*CancelOrderRequest) ProtoMessage() {}
 
 func (x *CancelOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[3]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -401,7 +540,7 @@ func (x *CancelOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelOrderRequest.ProtoReflect.Descriptor instead.
 func (*CancelOrderRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{3}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CancelOrderRequest) GetClientOrderId() string {
@@ -420,7 +559,7 @@ type GetOrderRequest struct {
 
 func (x *GetOrderRequest) Reset() {
 	*x = GetOrderRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[4]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -432,7 +571,7 @@ func (x *GetOrderRequest) String() string {
 func (*GetOrderRequest) ProtoMessage() {}
 
 func (x *GetOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[4]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -445,7 +584,7 @@ func (x *GetOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderRequest.ProtoReflect.Descriptor instead.
 func (*GetOrderRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{4}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetOrderRequest) GetClientOrderId() string {
@@ -464,7 +603,7 @@ type ListPositionsRequest struct {
 
 func (x *ListPositionsRequest) Reset() {
 	*x = ListPositionsRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[5]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -476,7 +615,7 @@ func (x *ListPositionsRequest) String() string {
 func (*ListPositionsRequest) ProtoMessage() {}
 
 func (x *ListPositionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[5]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -489,7 +628,7 @@ func (x *ListPositionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPositionsRequest.ProtoReflect.Descriptor instead.
 func (*ListPositionsRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{5}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListPositionsRequest) GetAccount() string {
@@ -512,7 +651,7 @@ type Position struct {
 
 func (x *Position) Reset() {
 	*x = Position{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[6]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -524,7 +663,7 @@ func (x *Position) String() string {
 func (*Position) ProtoMessage() {}
 
 func (x *Position) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[6]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -537,7 +676,7 @@ func (x *Position) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Position.ProtoReflect.Descriptor instead.
 func (*Position) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{6}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Position) GetSymbol() string {
@@ -584,7 +723,7 @@ type ListPositionsReply struct {
 
 func (x *ListPositionsReply) Reset() {
 	*x = ListPositionsReply{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[7]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -596,7 +735,7 @@ func (x *ListPositionsReply) String() string {
 func (*ListPositionsReply) ProtoMessage() {}
 
 func (x *ListPositionsReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[7]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -609,7 +748,7 @@ func (x *ListPositionsReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPositionsReply.ProtoReflect.Descriptor instead.
 func (*ListPositionsReply) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{7}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListPositionsReply) GetPositions() []*Position {
@@ -628,7 +767,7 @@ type GetAccountRequest struct {
 
 func (x *GetAccountRequest) Reset() {
 	*x = GetAccountRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[8]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -640,7 +779,7 @@ func (x *GetAccountRequest) String() string {
 func (*GetAccountRequest) ProtoMessage() {}
 
 func (x *GetAccountRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[8]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -653,7 +792,7 @@ func (x *GetAccountRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccountRequest.ProtoReflect.Descriptor instead.
 func (*GetAccountRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{8}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetAccountRequest) GetAccount() string {
@@ -680,7 +819,7 @@ type Account struct {
 
 func (x *Account) Reset() {
 	*x = Account{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[9]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -692,7 +831,7 @@ func (x *Account) String() string {
 func (*Account) ProtoMessage() {}
 
 func (x *Account) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[9]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +844,7 @@ func (x *Account) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Account.ProtoReflect.Descriptor instead.
 func (*Account) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{9}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *Account) GetAccount() string {
@@ -782,7 +921,7 @@ type ApplyBarRequest struct {
 
 func (x *ApplyBarRequest) Reset() {
 	*x = ApplyBarRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[10]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -794,7 +933,7 @@ func (x *ApplyBarRequest) String() string {
 func (*ApplyBarRequest) ProtoMessage() {}
 
 func (x *ApplyBarRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[10]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -807,7 +946,7 @@ func (x *ApplyBarRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyBarRequest.ProtoReflect.Descriptor instead.
 func (*ApplyBarRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{10}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ApplyBarRequest) GetAccount() string {
@@ -840,7 +979,7 @@ type ApplyBarReply struct {
 
 func (x *ApplyBarReply) Reset() {
 	*x = ApplyBarReply{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[11]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -852,7 +991,7 @@ func (x *ApplyBarReply) String() string {
 func (*ApplyBarReply) ProtoMessage() {}
 
 func (x *ApplyBarReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[11]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +1004,7 @@ func (x *ApplyBarReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyBarReply.ProtoReflect.Descriptor instead.
 func (*ApplyBarReply) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{11}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ApplyBarReply) GetOrders() []*Order {
@@ -884,7 +1023,7 @@ type RollDayRequest struct {
 
 func (x *RollDayRequest) Reset() {
 	*x = RollDayRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[12]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -896,7 +1035,7 @@ func (x *RollDayRequest) String() string {
 func (*RollDayRequest) ProtoMessage() {}
 
 func (x *RollDayRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[12]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -909,7 +1048,7 @@ func (x *RollDayRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollDayRequest.ProtoReflect.Descriptor instead.
 func (*RollDayRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{12}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RollDayRequest) GetAccount() string {
@@ -930,7 +1069,7 @@ type RemotePosition struct {
 
 func (x *RemotePosition) Reset() {
 	*x = RemotePosition{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[13]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -942,7 +1081,7 @@ func (x *RemotePosition) String() string {
 func (*RemotePosition) ProtoMessage() {}
 
 func (x *RemotePosition) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[13]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -955,7 +1094,7 @@ func (x *RemotePosition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemotePosition.ProtoReflect.Descriptor instead.
 func (*RemotePosition) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{13}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *RemotePosition) GetSymbol() string {
@@ -989,7 +1128,7 @@ type ReconcileRequest struct {
 
 func (x *ReconcileRequest) Reset() {
 	*x = ReconcileRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[14]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1001,7 +1140,7 @@ func (x *ReconcileRequest) String() string {
 func (*ReconcileRequest) ProtoMessage() {}
 
 func (x *ReconcileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[14]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1014,7 +1153,7 @@ func (x *ReconcileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileRequest.ProtoReflect.Descriptor instead.
 func (*ReconcileRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{14}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ReconcileRequest) GetAccount() string {
@@ -1042,7 +1181,7 @@ type ReconcileReply struct {
 
 func (x *ReconcileReply) Reset() {
 	*x = ReconcileReply{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[15]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1054,7 +1193,7 @@ func (x *ReconcileReply) String() string {
 func (*ReconcileReply) ProtoMessage() {}
 
 func (x *ReconcileReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[15]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1067,7 +1206,7 @@ func (x *ReconcileReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileReply.ProtoReflect.Descriptor instead.
 func (*ReconcileReply) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{15}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ReconcileReply) GetMatched() bool {
@@ -1105,7 +1244,7 @@ type SeedLiveCashBaselineRequest struct {
 
 func (x *SeedLiveCashBaselineRequest) Reset() {
 	*x = SeedLiveCashBaselineRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[16]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1117,7 +1256,7 @@ func (x *SeedLiveCashBaselineRequest) String() string {
 func (*SeedLiveCashBaselineRequest) ProtoMessage() {}
 
 func (x *SeedLiveCashBaselineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[16]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1130,7 +1269,7 @@ func (x *SeedLiveCashBaselineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SeedLiveCashBaselineRequest.ProtoReflect.Descriptor instead.
 func (*SeedLiveCashBaselineRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{16}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SeedLiveCashBaselineRequest) GetAvailable() float64 {
@@ -1162,7 +1301,7 @@ type GetChannelStatusRequest struct {
 
 func (x *GetChannelStatusRequest) Reset() {
 	*x = GetChannelStatusRequest{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[17]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1174,7 +1313,7 @@ func (x *GetChannelStatusRequest) String() string {
 func (*GetChannelStatusRequest) ProtoMessage() {}
 
 func (x *GetChannelStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[17]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1187,7 +1326,7 @@ func (x *GetChannelStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetChannelStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetChannelStatusRequest) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{17}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{18}
 }
 
 // ChannelStatus 是一条执行通道的当前状态（G7 brokerif.Tracker 口径）。
@@ -1205,7 +1344,7 @@ type ChannelStatus struct {
 
 func (x *ChannelStatus) Reset() {
 	*x = ChannelStatus{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[18]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1217,7 +1356,7 @@ func (x *ChannelStatus) String() string {
 func (*ChannelStatus) ProtoMessage() {}
 
 func (x *ChannelStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[18]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1230,7 +1369,7 @@ func (x *ChannelStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChannelStatus.ProtoReflect.Descriptor instead.
 func (*ChannelStatus) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{18}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ChannelStatus) GetChannel() string {
@@ -1263,7 +1402,7 @@ type ChannelStatusReply struct {
 
 func (x *ChannelStatusReply) Reset() {
 	*x = ChannelStatusReply{}
-	mi := &file_api_trade_v1_trade_proto_msgTypes[19]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1275,7 +1414,7 @@ func (x *ChannelStatusReply) String() string {
 func (*ChannelStatusReply) ProtoMessage() {}
 
 func (x *ChannelStatusReply) ProtoReflect() protoreflect.Message {
-	mi := &file_api_trade_v1_trade_proto_msgTypes[19]
+	mi := &file_api_trade_v1_trade_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1288,7 +1427,7 @@ func (x *ChannelStatusReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChannelStatusReply.ProtoReflect.Descriptor instead.
 func (*ChannelStatusReply) Descriptor() ([]byte, []int) {
-	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{19}
+	return file_api_trade_v1_trade_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ChannelStatusReply) GetChannels() []*ChannelStatus {
@@ -1302,7 +1441,7 @@ var File_api_trade_v1_trade_proto protoreflect.FileDescriptor
 
 const file_api_trade_v1_trade_proto_rawDesc = "" +
 	"\n" +
-	"\x18api/trade/v1/trade.proto\x12\fapi.trade.v1\x1a\x1cgoogle/api/annotations.proto\"\xd0\x02\n" +
+	"\x18api/trade/v1/trade.proto\x12\fapi.trade.v1\x1a\x1cgoogle/api/annotations.proto\"\x96\x03\n" +
 	"\x11PlaceOrderRequest\x12&\n" +
 	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x18\n" +
 	"\aaccount\x18\x02 \x01(\tR\aaccount\x12\x16\n" +
@@ -1315,7 +1454,19 @@ const file_api_trade_v1_trade_proto_rawDesc = "" +
 	"\tsignal_id\x18\t \x01(\tR\bsignalId\x12)\n" +
 	"\x10strategy_version\x18\n" +
 	" \x01(\tR\x0fstrategyVersion\x12#\n" +
-	"\x03bar\x18\v \x01(\v2\x11.api.trade.v1.BarR\x03bar\"\xa7\x01\n" +
+	"\x03bar\x18\v \x01(\v2\x11.api.trade.v1.BarR\x03bar\x12\x1b\n" +
+	"\tintent_id\x18\f \x01(\tR\bintentId\x12'\n" +
+	"\x0freference_price\x18\r \x01(\x01R\x0ereferencePrice\"\x93\x02\n" +
+	"\fOrderPreview\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x18\n" +
+	"\areasons\x18\x02 \x03(\tR\areasons\x12)\n" +
+	"\x10estimated_amount\x18\x03 \x01(\x01R\x0festimatedAmount\x12\x14\n" +
+	"\x05price\x18\x04 \x01(\x01R\x05price\x12\x16\n" +
+	"\x06volume\x18\x05 \x01(\x05R\x06volume\x12\x12\n" +
+	"\x04side\x18\x06 \x01(\tR\x04side\x12\x16\n" +
+	"\x06symbol\x18\a \x01(\tR\x06symbol\x121\n" +
+	"\x12price_distance_pct\x18\b \x01(\x01H\x00R\x10priceDistancePct\x88\x01\x01B\x15\n" +
+	"\x13_price_distance_pct\"\xa7\x01\n" +
 	"\x03Bar\x12\x12\n" +
 	"\x04open\x18\x01 \x01(\x01R\x04open\x12\x12\n" +
 	"\x04high\x18\x02 \x01(\x01R\x04high\x12\x10\n" +
@@ -1324,7 +1475,7 @@ const file_api_trade_v1_trade_proto_rawDesc = "" +
 	"\blimit_up\x18\x05 \x01(\x01R\alimitUp\x12\x1d\n" +
 	"\n" +
 	"limit_down\x18\x06 \x01(\x01R\tlimitDown\x12\x14\n" +
-	"\x05close\x18\a \x01(\x01R\x05close\"\xb3\x02\n" +
+	"\x05close\x18\a \x01(\x01R\x05close\"\xf9\x02\n" +
 	"\x05Order\x12&\n" +
 	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x18\n" +
 	"\aaccount\x18\x02 \x01(\tR\aaccount\x12\x16\n" +
@@ -1337,7 +1488,9 @@ const file_api_trade_v1_trade_proto_rawDesc = "" +
 	"\x06reason\x18\t \x01(\tR\x06reason\x12\x1b\n" +
 	"\tsignal_id\x18\n" +
 	" \x01(\tR\bsignalId\x12)\n" +
-	"\x10strategy_version\x18\v \x01(\tR\x0fstrategyVersion\"<\n" +
+	"\x10strategy_version\x18\v \x01(\tR\x0fstrategyVersion\x12\x1b\n" +
+	"\tintent_id\x18\f \x01(\tR\bintentId\x12'\n" +
+	"\x0freference_price\x18\r \x01(\x01R\x0ereferencePrice\"<\n" +
 	"\x12CancelOrderRequest\x12&\n" +
 	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\"9\n" +
 	"\x0fGetOrderRequest\x12&\n" +
@@ -1399,7 +1552,7 @@ const file_api_trade_v1_trade_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
 	"\x05since\x18\x03 \x01(\tR\x05since\"M\n" +
 	"\x12ChannelStatusReply\x127\n" +
-	"\bchannels\x18\x01 \x03(\v2\x1b.api.trade.v1.ChannelStatusR\bchannels2\xd1\b\n" +
+	"\bchannels\x18\x01 \x03(\v2\x1b.api.trade.v1.ChannelStatusR\bchannels2\xc3\t\n" +
 	"\x05Trade\x12_\n" +
 	"\n" +
 	"PlaceOrder\x12\x1f.api.trade.v1.PlaceOrderRequest\x1a\x13.api.trade.v1.Order\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/trade/orders\x12z\n" +
@@ -1412,7 +1565,8 @@ const file_api_trade_v1_trade_proto_rawDesc = "" +
 	"\aRollDay\x12\x1c.api.trade.v1.RollDayRequest\x1a\x15.api.trade.v1.Account\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/trade/roll\x12i\n" +
 	"\tReconcile\x12\x1e.api.trade.v1.ReconcileRequest\x1a\x1c.api.trade.v1.ReconcileReply\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/trade/reconcile\x12\x81\x01\n" +
 	"\x14SeedLiveCashBaseline\x12).api.trade.v1.SeedLiveCashBaselineRequest\x1a\x15.api.trade.v1.Account\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/trade/live/cash-baseline\x12}\n" +
-	"\x10GetChannelStatus\x12%.api.trade.v1.GetChannelStatusRequest\x1a .api.trade.v1.ChannelStatusReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/trade/channel/statusB\x18Z\x16server/api/trade/v1;v1b\x06proto3"
+	"\x10GetChannelStatus\x12%.api.trade.v1.GetChannelStatusRequest\x1a .api.trade.v1.ChannelStatusReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/trade/channel/status\x12p\n" +
+	"\fPreviewOrder\x12\x1f.api.trade.v1.PlaceOrderRequest\x1a\x1a.api.trade.v1.OrderPreview\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/trade/orders/previewB\x18Z\x16server/api/trade/v1;v1b\x06proto3"
 
 var (
 	file_api_trade_v1_trade_proto_rawDescOnce sync.Once
@@ -1426,58 +1580,61 @@ func file_api_trade_v1_trade_proto_rawDescGZIP() []byte {
 	return file_api_trade_v1_trade_proto_rawDescData
 }
 
-var file_api_trade_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_api_trade_v1_trade_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_api_trade_v1_trade_proto_goTypes = []any{
 	(*PlaceOrderRequest)(nil),           // 0: api.trade.v1.PlaceOrderRequest
-	(*Bar)(nil),                         // 1: api.trade.v1.Bar
-	(*Order)(nil),                       // 2: api.trade.v1.Order
-	(*CancelOrderRequest)(nil),          // 3: api.trade.v1.CancelOrderRequest
-	(*GetOrderRequest)(nil),             // 4: api.trade.v1.GetOrderRequest
-	(*ListPositionsRequest)(nil),        // 5: api.trade.v1.ListPositionsRequest
-	(*Position)(nil),                    // 6: api.trade.v1.Position
-	(*ListPositionsReply)(nil),          // 7: api.trade.v1.ListPositionsReply
-	(*GetAccountRequest)(nil),           // 8: api.trade.v1.GetAccountRequest
-	(*Account)(nil),                     // 9: api.trade.v1.Account
-	(*ApplyBarRequest)(nil),             // 10: api.trade.v1.ApplyBarRequest
-	(*ApplyBarReply)(nil),               // 11: api.trade.v1.ApplyBarReply
-	(*RollDayRequest)(nil),              // 12: api.trade.v1.RollDayRequest
-	(*RemotePosition)(nil),              // 13: api.trade.v1.RemotePosition
-	(*ReconcileRequest)(nil),            // 14: api.trade.v1.ReconcileRequest
-	(*ReconcileReply)(nil),              // 15: api.trade.v1.ReconcileReply
-	(*SeedLiveCashBaselineRequest)(nil), // 16: api.trade.v1.SeedLiveCashBaselineRequest
-	(*GetChannelStatusRequest)(nil),     // 17: api.trade.v1.GetChannelStatusRequest
-	(*ChannelStatus)(nil),               // 18: api.trade.v1.ChannelStatus
-	(*ChannelStatusReply)(nil),          // 19: api.trade.v1.ChannelStatusReply
+	(*OrderPreview)(nil),                // 1: api.trade.v1.OrderPreview
+	(*Bar)(nil),                         // 2: api.trade.v1.Bar
+	(*Order)(nil),                       // 3: api.trade.v1.Order
+	(*CancelOrderRequest)(nil),          // 4: api.trade.v1.CancelOrderRequest
+	(*GetOrderRequest)(nil),             // 5: api.trade.v1.GetOrderRequest
+	(*ListPositionsRequest)(nil),        // 6: api.trade.v1.ListPositionsRequest
+	(*Position)(nil),                    // 7: api.trade.v1.Position
+	(*ListPositionsReply)(nil),          // 8: api.trade.v1.ListPositionsReply
+	(*GetAccountRequest)(nil),           // 9: api.trade.v1.GetAccountRequest
+	(*Account)(nil),                     // 10: api.trade.v1.Account
+	(*ApplyBarRequest)(nil),             // 11: api.trade.v1.ApplyBarRequest
+	(*ApplyBarReply)(nil),               // 12: api.trade.v1.ApplyBarReply
+	(*RollDayRequest)(nil),              // 13: api.trade.v1.RollDayRequest
+	(*RemotePosition)(nil),              // 14: api.trade.v1.RemotePosition
+	(*ReconcileRequest)(nil),            // 15: api.trade.v1.ReconcileRequest
+	(*ReconcileReply)(nil),              // 16: api.trade.v1.ReconcileReply
+	(*SeedLiveCashBaselineRequest)(nil), // 17: api.trade.v1.SeedLiveCashBaselineRequest
+	(*GetChannelStatusRequest)(nil),     // 18: api.trade.v1.GetChannelStatusRequest
+	(*ChannelStatus)(nil),               // 19: api.trade.v1.ChannelStatus
+	(*ChannelStatusReply)(nil),          // 20: api.trade.v1.ChannelStatusReply
 }
 var file_api_trade_v1_trade_proto_depIdxs = []int32{
-	1,  // 0: api.trade.v1.PlaceOrderRequest.bar:type_name -> api.trade.v1.Bar
-	6,  // 1: api.trade.v1.ListPositionsReply.positions:type_name -> api.trade.v1.Position
-	1,  // 2: api.trade.v1.ApplyBarRequest.bar:type_name -> api.trade.v1.Bar
-	2,  // 3: api.trade.v1.ApplyBarReply.orders:type_name -> api.trade.v1.Order
-	13, // 4: api.trade.v1.ReconcileRequest.positions:type_name -> api.trade.v1.RemotePosition
-	18, // 5: api.trade.v1.ChannelStatusReply.channels:type_name -> api.trade.v1.ChannelStatus
+	2,  // 0: api.trade.v1.PlaceOrderRequest.bar:type_name -> api.trade.v1.Bar
+	7,  // 1: api.trade.v1.ListPositionsReply.positions:type_name -> api.trade.v1.Position
+	2,  // 2: api.trade.v1.ApplyBarRequest.bar:type_name -> api.trade.v1.Bar
+	3,  // 3: api.trade.v1.ApplyBarReply.orders:type_name -> api.trade.v1.Order
+	14, // 4: api.trade.v1.ReconcileRequest.positions:type_name -> api.trade.v1.RemotePosition
+	19, // 5: api.trade.v1.ChannelStatusReply.channels:type_name -> api.trade.v1.ChannelStatus
 	0,  // 6: api.trade.v1.Trade.PlaceOrder:input_type -> api.trade.v1.PlaceOrderRequest
-	3,  // 7: api.trade.v1.Trade.CancelOrder:input_type -> api.trade.v1.CancelOrderRequest
-	4,  // 8: api.trade.v1.Trade.GetOrder:input_type -> api.trade.v1.GetOrderRequest
-	5,  // 9: api.trade.v1.Trade.ListPositions:input_type -> api.trade.v1.ListPositionsRequest
-	8,  // 10: api.trade.v1.Trade.GetAccount:input_type -> api.trade.v1.GetAccountRequest
-	10, // 11: api.trade.v1.Trade.ApplyBar:input_type -> api.trade.v1.ApplyBarRequest
-	12, // 12: api.trade.v1.Trade.RollDay:input_type -> api.trade.v1.RollDayRequest
-	14, // 13: api.trade.v1.Trade.Reconcile:input_type -> api.trade.v1.ReconcileRequest
-	16, // 14: api.trade.v1.Trade.SeedLiveCashBaseline:input_type -> api.trade.v1.SeedLiveCashBaselineRequest
-	17, // 15: api.trade.v1.Trade.GetChannelStatus:input_type -> api.trade.v1.GetChannelStatusRequest
-	2,  // 16: api.trade.v1.Trade.PlaceOrder:output_type -> api.trade.v1.Order
-	2,  // 17: api.trade.v1.Trade.CancelOrder:output_type -> api.trade.v1.Order
-	2,  // 18: api.trade.v1.Trade.GetOrder:output_type -> api.trade.v1.Order
-	7,  // 19: api.trade.v1.Trade.ListPositions:output_type -> api.trade.v1.ListPositionsReply
-	9,  // 20: api.trade.v1.Trade.GetAccount:output_type -> api.trade.v1.Account
-	11, // 21: api.trade.v1.Trade.ApplyBar:output_type -> api.trade.v1.ApplyBarReply
-	9,  // 22: api.trade.v1.Trade.RollDay:output_type -> api.trade.v1.Account
-	15, // 23: api.trade.v1.Trade.Reconcile:output_type -> api.trade.v1.ReconcileReply
-	9,  // 24: api.trade.v1.Trade.SeedLiveCashBaseline:output_type -> api.trade.v1.Account
-	19, // 25: api.trade.v1.Trade.GetChannelStatus:output_type -> api.trade.v1.ChannelStatusReply
-	16, // [16:26] is the sub-list for method output_type
-	6,  // [6:16] is the sub-list for method input_type
+	4,  // 7: api.trade.v1.Trade.CancelOrder:input_type -> api.trade.v1.CancelOrderRequest
+	5,  // 8: api.trade.v1.Trade.GetOrder:input_type -> api.trade.v1.GetOrderRequest
+	6,  // 9: api.trade.v1.Trade.ListPositions:input_type -> api.trade.v1.ListPositionsRequest
+	9,  // 10: api.trade.v1.Trade.GetAccount:input_type -> api.trade.v1.GetAccountRequest
+	11, // 11: api.trade.v1.Trade.ApplyBar:input_type -> api.trade.v1.ApplyBarRequest
+	13, // 12: api.trade.v1.Trade.RollDay:input_type -> api.trade.v1.RollDayRequest
+	15, // 13: api.trade.v1.Trade.Reconcile:input_type -> api.trade.v1.ReconcileRequest
+	17, // 14: api.trade.v1.Trade.SeedLiveCashBaseline:input_type -> api.trade.v1.SeedLiveCashBaselineRequest
+	18, // 15: api.trade.v1.Trade.GetChannelStatus:input_type -> api.trade.v1.GetChannelStatusRequest
+	0,  // 16: api.trade.v1.Trade.PreviewOrder:input_type -> api.trade.v1.PlaceOrderRequest
+	3,  // 17: api.trade.v1.Trade.PlaceOrder:output_type -> api.trade.v1.Order
+	3,  // 18: api.trade.v1.Trade.CancelOrder:output_type -> api.trade.v1.Order
+	3,  // 19: api.trade.v1.Trade.GetOrder:output_type -> api.trade.v1.Order
+	8,  // 20: api.trade.v1.Trade.ListPositions:output_type -> api.trade.v1.ListPositionsReply
+	10, // 21: api.trade.v1.Trade.GetAccount:output_type -> api.trade.v1.Account
+	12, // 22: api.trade.v1.Trade.ApplyBar:output_type -> api.trade.v1.ApplyBarReply
+	10, // 23: api.trade.v1.Trade.RollDay:output_type -> api.trade.v1.Account
+	16, // 24: api.trade.v1.Trade.Reconcile:output_type -> api.trade.v1.ReconcileReply
+	10, // 25: api.trade.v1.Trade.SeedLiveCashBaseline:output_type -> api.trade.v1.Account
+	20, // 26: api.trade.v1.Trade.GetChannelStatus:output_type -> api.trade.v1.ChannelStatusReply
+	1,  // 27: api.trade.v1.Trade.PreviewOrder:output_type -> api.trade.v1.OrderPreview
+	17, // [17:28] is the sub-list for method output_type
+	6,  // [6:17] is the sub-list for method input_type
 	6,  // [6:6] is the sub-list for extension type_name
 	6,  // [6:6] is the sub-list for extension extendee
 	0,  // [0:6] is the sub-list for field type_name
@@ -1488,13 +1645,14 @@ func file_api_trade_v1_trade_proto_init() {
 	if File_api_trade_v1_trade_proto != nil {
 		return
 	}
+	file_api_trade_v1_trade_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_trade_v1_trade_proto_rawDesc), len(file_api_trade_v1_trade_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -69,6 +69,13 @@ service Trade {
       get: "/v1/trade/channel/status"
     };
   }
+  // W5a 执行契约：干跑校验 + 估算，不落单不记账。请求体与 PlaceOrderRequest 同形。
+  rpc PreviewOrder(PlaceOrderRequest) returns (OrderPreview) {
+    option (google.api.http) = {
+      post: "/v1/trade/orders/preview"
+      body: "*"
+    };
+  }
 }
 
 message PlaceOrderRequest {
@@ -86,6 +93,25 @@ message PlaceOrderRequest {
   string strategy_version = 10;
   // 兼容保留；公开接口收到该字段会拒绝，不能由客户端制造成交。
   Bar bar = 11;
+  // W5a 幂等键：客户端生成的调用级唯一 id（建议 UUID）。同 intent_id 重复提交返回首次
+  // 委托结果，不重复下单；服务端按 book+intent_id 持久去重（与 client_order_id 互不替代——
+  // 重试允许换新 client_order_id、必须保 intent_id）。
+  string intent_id = 12;
+  // W5a 参考价：信号基准价（R 倍数提示与偏离检查的锚）。0=缺省，由服务端按规则口径取现价。
+  double reference_price = 13;
+}
+
+// W5a 干跑回执：校验结论 + 估算读数；accepted=false 时 reasons 逐条说明。
+message OrderPreview {
+  bool accepted = 1;
+  repeated string reasons = 2;
+  double estimated_amount = 3;
+  double price = 4;
+  int32 volume = 5;
+  string side = 6;
+  string symbol = 7;
+  // 委托价相对 reference_price 的偏离百分比；reference_price 缺省时不下发（没取到≠0）。
+  optional double price_distance_pct = 8;
 }
 
 message Bar {
@@ -110,6 +136,9 @@ message Order {
   string reason = 9;
   string signal_id = 10;
   string strategy_version = 11;
+  // W5a：幂等键与参考价原样回传，客户端按 intent_id 关联重试结果。
+  string intent_id = 12;
+  double reference_price = 13;
 }
 
 message CancelOrderRequest {
