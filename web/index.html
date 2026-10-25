@@ -4,6 +4,27 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // 防白闪（R-UI-60）：bundle 未就绪前按本地偏好写入主题/密度/色觉/材质令牌，
+      // 与 stores/settings.ts 的 nt.settings.v1 同一份存储、同一组 data-* 属性。
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('nt.settings.v1')
+          var d = raw ? JSON.parse(raw) : {}
+          var root = document.documentElement
+          root.dataset.theme = d.theme === 'light' ? 'light' : 'dark'
+          root.dataset.density = d.density === 'compact' ? 'compact' : 'normal'
+          root.dataset.colorVision = d.colorVision === 'safe' ? 'safe' : 'default'
+          root.dataset.visualQuality = typeof d.visualQuality === 'string' ? d.visualQuality : 'full'
+        } catch (e) {
+          /* 损坏偏好回默认（暗/标准/默认色觉/完整材质） */
+        }
+      })()
+    </script>
+    <style>
+      html { background: #050d17 }
+      html[data-theme='light'] { background: #e9f2f7 }
+    </style>
     <title>NovaTrader 智脑</title>
   </head>
   <body>

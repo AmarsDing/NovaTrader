@@ -4,7 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>NovaTrader 弹窗</title>
-    <!-- dockview popout：主窗口把面板 DOM 移进本窗口并复制样式表，本页不需要脚本。 -->
+    <!-- dockview popout：主窗口把面板 DOM 移进本窗口并复制样式表，本页不引 bundle；
+         仅保留防白闪内联脚本（R-UI-60）与底色兜底，避免样式表复制间隙闪白。 -->
+    <script>
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('nt.settings.v1')
+          var d = raw ? JSON.parse(raw) : {}
+          var root = document.documentElement
+          root.dataset.theme = d.theme === 'light' ? 'light' : 'dark'
+          root.dataset.density = d.density === 'compact' ? 'compact' : 'normal'
+          root.dataset.colorVision = d.colorVision === 'safe' ? 'safe' : 'default'
+          root.dataset.visualQuality = typeof d.visualQuality === 'string' ? d.visualQuality : 'full'
+        } catch (e) {
+          /* 损坏偏好回默认 */
+        }
+      })()
+    </script>
+    <style>
+      html { background: #050d17 }
+      html[data-theme='light'] { background: #e9f2f7 }
+    </style>
   </head>
   <body></body>
 </html>
