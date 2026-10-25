@@ -137,6 +137,7 @@ backend/ent/
   - `npm run tauri dev` 联调，`npm run tauri build` 出安装包；本机 Rust 构建配方：`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc CARGO_TARGET_DIR=C:\nt-target`（F:\股票 非 ASCII 路径会损坏 in-tree 产物）；
   - 后端地址运行时可配（设置面板），拼接集中在 `web/src/utils/endpoint.ts`，HTTP 只走 `web/src/api/http.ts`；
   - popout 多屏：`core:webview:allow-create-webview-window` capability + `popout.html` 宿主页 + `POPOUT_ALLOWED` 白名单（trade/settings/ops 禁弹）。
+- UI 交付强制手册：`doc/开发文档/0.UI制作规则.md`（R-UI-xx 编号规则即验收条件，每次 UI 开发/评审/走查必遵守，提交说明引用批号）；当批波次任务见 `doc/开发文档/UI体验提升实施计划-2026-10-25.md`（W1–W8 窗口制）。
 - 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`：**红涨绿跌**、主题/密度与统一token保持；2026-10-15用户要求更强毛玻璃/半透明/霓虹，使用范围以第七节取代第五节旧限制；材质与完整/节能/减少动态模式已实现，完整视觉/硬件压力仍待验收。保留原监控画布/HUD/终端带与dockview一张票，真实性/对比度/性能共同验收；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
 - CI 五道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、graphics（viz 图形回归 golden 比对，windows，P2-12）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test 全服务，带隔离 PG+JetStream NATS 集成）、sidecars（pyworker/source-worker/broker-gw 的 pytest）。
 
