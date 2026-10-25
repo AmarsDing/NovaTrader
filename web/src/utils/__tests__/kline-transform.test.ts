@@ -3,10 +3,13 @@
  * - adjustBar：qfq 价×factor / hfq 价÷factor / none 不动；非法 factor（0/负/NaN）原样；量不变；不改入参；
  * - adjustBars：逐根生效且保序；
  * - resampleBars：OHLC 标准聚合（首 open/末 close/max/min）、volume 求和、桶起点整点对齐、
- *   空输入→[]、无数据段不补零桶、跨 60 分钟桶不串桶。
+ *   空输入→[]、无数据段不补零桶、跨 60 分钟桶不串桶；
+ * - withCostLine：未持仓不显线、同价替换占位、成本线居首实线；
+ * - aggregateMarkers（W6b）：≤maxCount 原样拷贝、密集分桶每桶每 side 各留最早一条、
+ *   首末恒保留、maxCount<=0 视为 1、缺 side 不分层、不改入参。
  */
 import { describe, expect, it } from 'vitest'
-import { adjustBar, adjustBars, resampleBars, withCostLine, type BarLike } from '../kline-transform'
+import { adjustBar, adjustBars, aggregateMarkers, resampleBars, withCostLine, type BarLike } from '../kline-transform'
 
 const bar: BarLike = { time: 1_700_000_000, open: 10, high: 11, low: 9, close: 10.5, volume: 100 }
 
@@ -138,5 +141,68 @@ describe('withCostLine 持仓成本线', () => {
     expect(out.filter((l) => l.price === 10)).toHaveLength(1)
     expect(out[0].title).toBe('成本')
     expect(levels[0].title).toBe('止盈')
+  })
+})
+
+describe('aggregateMarkers 逐笔采样', () => {
+  /** 生成 time 从 0 递增、side 交替的 marker 序列。 */
+  const dense = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ time: i, side: i % 2 === 0 ? 'buy' : 'sell' }))
+
+  it('空输入 → []', () => {
+    expect(aggregateMarkers([], 10)).toEqual([])
+  })
+
+  it('数量 ≤ maxCount 原样带走（同序、同引用）', () => {
+    const marks = dense(6)
+    const out = aggregateMarkers(marks, 6)
+    expect(out).toEqual(marks)
+    expect(out).not.toBe(marks) // 新数组，调用方改动不回写
+    expect(out[0]).toBe(marks[0])
+  })
+
+  it('密集成交按桶采样：输出严格少于输入，且时间升序', () => {
+    const out = aggregateMarkers(dense(200), 10)
+    expect(out.length).toBeLessThan(200)
+    expect(out.length).toBeGreaterThan(0)
+    const times = out.map((m) => m.time)
+    expect(times).toEqual([...times].sort((a, b) => a - b))
+  })
+
+  it('同桶一进一出不互吞：买入与卖出各自保留', () => {
+    // maxCount=2 → 2 个桶、宽 3.5；t1 sell 与 t2 buy 同落桶 0，两条都要在。
+    const out = aggregateMarkers(dense(8), 2)
+    const times = out.map((m) => m.time)
+    expect(times).toContain(1)
+    expect(times).toContain(2)
+    expect(out.filter((m) => m.time > 0 && m.time < 3.5).map((m) => m.side)).toEqual(['sell', 'buy'])
+  })
+
+  it('首末两条恒保留（边缘再密也不丢）', () => {
+    const marks = dense(50)
+    const out = aggregateMarkers(marks, 3)
+    expect(out[0]).toBe(marks[0])
+    expect(out[out.length - 1]).toBe(marks[marks.length - 1])
+  })
+
+  it('maxCount<=0 视为 1：单桶每 side 各留最早一条', () => {
+    const marks = dense(5) // t0..t4，buy/sell 交替
+    const out = aggregateMarkers(marks, 0)
+    expect(out.map((m) => m.time)).toEqual([0, 1, 2, 4]) // 首 t0 + 最早 sell t1 + 最早 buy t2 + 末 t4
+    expect(aggregateMarkers(marks, -3).map((m) => m.time)).toEqual([0, 1, 2, 4])
+  })
+
+  it('缺失 side 视为同组（不做方向分层）', () => {
+    const marks = Array.from({ length: 12 }, (_, i) => ({ time: i }))
+    const out = aggregateMarkers(marks, 2)
+    // 2 桶各留最早一条 + 首末。
+    expect(out.map((m) => m.time)).toEqual([0, 1, 6, 11])
+  })
+
+  it('不改入参（纯函数）', () => {
+    const marks = dense(30)
+    const snapshot = marks.map((m) => ({ ...m }))
+    aggregateMarkers(marks, 4)
+    expect(marks).toEqual(snapshot)
   })
 })

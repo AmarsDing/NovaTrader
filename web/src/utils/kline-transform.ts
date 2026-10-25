@@ -93,3 +93,38 @@ export function withCostLine(
   const rest = levels.filter((l) => l.price !== cost.price)
   return [{ price: cost.price, title: cost.title ?? '成本', lineStyle: 'solid', color: cost.color ?? color }, ...rest]
 }
+
+/* ---------- W6b：逐笔 marker 采样聚合（防密集成交糊屏） ---------- */
+
+export interface MarkerLike {
+  time: number
+  /** 方向语义（如 buy/sell）；缺省视为同组，不做方向分层。 */
+  side?: string
+}
+
+/**
+ * 密集成交采样：marks 数 ≤ maxCount 原样拷贝；超出则按时间等宽分桶（桶数≤maxCount），
+ * 每桶每 side 保留时间最早一条（一进一出不互吞）；首末两条恒保留。
+ * 输入按 time 升序为前提；纯函数不改入参、不读时钟。maxCount<=0 视为 1。
+ */
+export function aggregateMarkers<T extends MarkerLike>(marks: readonly T[], maxCount: number): T[] {
+  if (marks.length === 0) return []
+  const cap = Math.max(1, maxCount)
+  if (marks.length <= cap) return [...marks]
+  const first = marks[0]
+  const last = marks[marks.length - 1]
+  const span = last.time - first.time
+  const bucketCount = Math.min(cap, marks.length)
+  const width = span > 0 ? span / bucketCount : 1
+  /** `${桶序}|${side}` → 该桶该方向的最早一条。 */
+  const bucketPick = new Map<string, T>()
+  for (const m of marks) {
+    if (m === first || m === last) continue
+    const idx = Math.min(bucketCount - 1, Math.floor((m.time - first.time) / width))
+    const key = `${idx}|${m.side ?? ''}`
+    const cur = bucketPick.get(key)
+    if (!cur || m.time < cur.time) bucketPick.set(key, m)
+  }
+  const inner = [...bucketPick.values()].sort((a, b) => a.time - b.time)
+  return [first, ...inner, last]
+}
