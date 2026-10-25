@@ -108,7 +108,24 @@ func paramsHash(spec Spec) string {
 }
 
 func (uc *Usecase) GetTask(ctx context.Context, id int) (*Task, error) {
-	return uc.repo.GetTask(ctx, id)
+	t, err := uc.repo.GetTask(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// W8c：详情读口按报告现算信任条判据（落库列随 data 批次，见 biz.TrustBar 注记；
+	// 列表读口 ListTasks 不付判据，结果页取详情）。报告缺失/解析失败不阻断详情——
+	// 判据位保持零值=未验证（没取到≠0）。
+	if t.Status == StatusSucceeded {
+		if raw, rerr := uc.repo.Report(ctx, id); rerr == nil && len(raw) > 0 {
+			var rep backtest.Report
+			if uerr := json.Unmarshal(raw, &rep); uerr == nil {
+				t.TrustBar = computeTrustBar(t, &rep, uc.cfg)
+			} else {
+				uc.log.Warnf("task %d report unmarshal for trust bar: %v", id, uerr)
+			}
+		}
+	}
+	return t, nil
 }
 
 func (uc *Usecase) ListTasks(ctx context.Context, f TaskFilter) ([]*Task, int, error) {
