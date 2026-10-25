@@ -121,6 +121,8 @@ func (g *Gate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.login(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/status":
 		g.ops(w, r)
+	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/readiness":
+		g.readiness(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/gpu":
 		g.opsGPU(w, r)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/ops/broker-files":
