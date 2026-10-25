@@ -118,6 +118,61 @@ export async function getOpsBrokerFiles(): Promise<OpsBrokerFiles> {
   }
 }
 
+/* ---------- W3a：闸门就绪聚合（只读；R-UI-30/36） ---------- */
+// 契约锚 backend/app/admin/internal/gateway/readiness.go 头注释。state∈{ok,warn,down,unknown}；
+// 非 ok 带 severity(danger|warn)/why/deeplink/progress；上游不可达由服务端 fail-closed 落闸门，
+// 客户端不二次推断——只归一 protojson 骆驼/蛇形键。
+
+export interface ReadinessProgress {
+  done: number
+  total: number
+}
+
+export interface ReadinessGate {
+  gate: string
+  state: 'ok' | 'warn' | 'down' | 'unknown'
+  severity?: 'danger' | 'warn'
+  why?: string
+  deeplink?: string
+  progress?: ReadinessProgress
+}
+
+export interface OpsReadiness {
+  asOf: string
+  ready: boolean
+  gates: ReadinessGate[]
+  blockers: ReadinessGate[]
+}
+
+export async function getOpsReadiness(): Promise<OpsReadiness> {
+  const data = await request('/api/ops/readiness')
+  const raw = (data ?? {}) as RawRecord
+  const normGate = (g: RawRecord): ReadinessGate => {
+    const p = pick<RawRecord>(g, 'progress')
+    let progress: ReadinessProgress | undefined
+    if (p) {
+      const done = num(pick(p, 'done'))
+      const total = num(pick(p, 'total'))
+      // 「没取到≠0」：progress 两半缺一即整段缺省，前端显「—」而非 0/0。
+      if (done != null && total != null) progress = { done, total }
+    }
+    return {
+      gate: pick<string>(g, 'gate') || '',
+      state: (pick<string>(g, 'state') || 'unknown') as ReadinessGate['state'],
+      severity: pick<string>(g, 'severity') as ReadinessGate['severity'],
+      why: pick<string>(g, 'why'),
+      deeplink: pick<string>(g, 'deeplink'),
+      progress,
+    }
+  }
+  return {
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+    ready: !!raw.ready,
+    gates: asList<RawRecord>(raw, 'gates').map(normGate),
+    blockers: asList<RawRecord>(raw, 'blockers').map(normGate),
+  }
+}
+
 /* ---------- P2：PostgreSQL 与 NATS 运行口径（只读） ---------- */
 
 export interface OpsDbPool {
