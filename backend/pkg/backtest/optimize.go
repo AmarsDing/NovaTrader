@@ -88,7 +88,13 @@ type Point struct {
 	MaxDrawdown float64            `json:"max_drawdown"`
 	Sharpe      float64            `json:"sharpe"`
 	Rounds      int                `json:"rounds"`
-	index       []int
+	// Segments 是评估窗内的分段日收益 Sharpe（W8c 接线：CSCV 矩阵原料；段数由
+	// CSCVSegments 定档，风险口径与 Compute 对齐扣 riskFree/252）。采集侧已过
+	// finiteOrNil 消毒——含 NaN/Inf 的候选整条置 nil（语义等价 CSCV 行剔除，
+	// 防 encoding/json 落库被 NaN 毒化）；定档为 0 或运行出错时亦为 nil。
+	// 存量旧报告无此键，判据位保未验证，不回填不伪造。
+	Segments []float64 `json:"segments,omitempty"`
+	index    []int
 }
 
 // OptimizeResult 是样本内搜索、样本外验证的结果。
@@ -250,7 +256,9 @@ func points(dims []dim, base map[string]float64, sc SearchConfig, seed int64) ([
 }
 
 // evaluate 在 [start, end] 上跑全部参数点。结果按输入顺序返回，与并发数无关。
-func evaluate(ctx context.Context, cfg Config, src Source, pts []Point, start, end time.Time, sc SearchConfig, progress func()) error {
+// seg 是 CSCV 分段数（CSCVSegments 定档）：>=4 时逐点采集段绩效，0 时跳过采集。
+// 段采集是纯算术（净值曲线本就现成），不加回测趟数。
+func evaluate(ctx context.Context, cfg Config, src Source, pts []Point, start, end time.Time, sc SearchConfig, seg int, progress func()) error {
 	var wg sync.WaitGroup
 	jobs := make(chan int)
 	errs := make([]error, len(pts))
@@ -270,6 +278,9 @@ func evaluate(ctx context.Context, cfg Config, src Source, pts []Point, start, e
 					pts[i].Objective = objective(sc.Objective, m)
 					pts[i].Valid = m.Rounds >= sc.MinTrades
 					pts[i].TotalReturn, pts[i].MaxDrawdown, pts[i].Sharpe, pts[i].Rounds = m.TotalReturn, m.MaxDrawdown, m.Sharpe, m.Rounds
+					// 段链含非有限值（空仓平段/爆仓段记 NaN）→ 整条置 nil：
+					// CSCV 本就整行剔除，语义等价，但 encoding/json 不会被毒化。
+					pts[i].Segments = finiteOrNil(segmentSharpe(res.Equity, c.InitialCash, seg, c.RiskFree))
 				}
 				if progress != nil {
 					progress()
@@ -443,7 +454,7 @@ func Optimize(ctx context.Context, cfg Config, sc SearchConfig, src Source, prog
 		}
 		mu.Unlock()
 	}
-	if err := evaluate(ctx, cfg, cache, pts, days[0], days[split-1], sc, tick); err != nil {
+	if err := evaluate(ctx, cfg, cache, pts, days[0], days[split-1], sc, CSCVSegments(split), tick); err != nil {
 		return nil, nil, err
 	}
 	out := &OptimizeResult{
@@ -515,11 +526,12 @@ func WalkForward(ctx context.Context, cfg Config, sc SearchConfig, src Source, p
 	for w := 0; w < windows; w++ {
 		tr0, tr1 := w*sc.TestDays, w*sc.TestDays+sc.TrainDays-1
 		te0, te1 := tr1+1, tr1+sc.TestDays
+		// seg=0：前推的 pbo 判据走窗失效率不走 CSCV，窗内候选的段指标不落报告，不采。
 		pts, err := points(dims, cfg.Params, sc, cfg.Seed+int64(w))
 		if err != nil {
 			return nil, nil, err
 		}
-		if err := evaluate(ctx, cfg, cache, pts, days[tr0], days[tr1], sc, nil); err != nil {
+		if err := evaluate(ctx, cfg, cache, pts, days[tr0], days[tr1], sc, 0, nil); err != nil {
 			return nil, nil, err
 		}
 		win := Window{TrainStart: dayKey(days[tr0]), TrainEnd: dayKey(days[tr1]), TestStart: dayKey(days[te0]), TestEnd: dayKey(days[te1])}
@@ -593,7 +605,7 @@ func Evolve(ctx context.Context, cfg Config, sc SearchConfig, candidates []map[s
 	for i, c := range candidates {
 		pts[i] = Point{Params: c}
 	}
-	if err := evaluate(ctx, cfg, cache, pts, days[0], days[isDays-1], sc, nil); err != nil {
+	if err := evaluate(ctx, cfg, cache, pts, days[0], days[isDays-1], sc, CSCVSegments(isDays), nil); err != nil {
 		return nil, err
 	}
 	out.Points = pts

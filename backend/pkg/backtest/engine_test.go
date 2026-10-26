@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"math/rand"
 	"testing"
@@ -472,6 +473,36 @@ func TestOptimizeAndWalkForward(t *testing.T) {
 		t.Fatalf("样本内外重叠: %s %s", a.ISEnd, a.OOSStart)
 	}
 
+	// W8c 接线钉死（审查批 wf_9932525c 销号）：optimize 候选必须在评估侧带上
+	// CSCV 段指标——定档一断 pbo 判据静默恒「未验证」且无任何测试会红。
+	// split = 120 × 0.7 = 84 → S=8；含平段/爆仓段的候选应已被 finiteOrNil 整条
+	// 置 nil（不落键），落地的段链必须全有限、长度恰为定档值，且整份结果必须
+	// 能过 encoding/json（NaN 毒化面回归闸）。
+	wantSeg := CSCVSegments(84)
+	if wantSeg != 8 {
+		t.Fatalf("定档漂移: %d", wantSeg)
+	}
+	segFilled := 0
+	for i, p := range a.Points {
+		if l := len(p.Segments); l != 0 {
+			if l != wantSeg {
+				t.Fatalf("候选 %d 段数 %d，应为 0（消毒置 nil）或 %d", i, l, wantSeg)
+			}
+			segFilled++
+			for _, v := range p.Segments {
+				if math.IsNaN(v) || math.IsInf(v, 0) {
+					t.Fatalf("候选 %d 段链带着非有限值过了消毒", i)
+				}
+			}
+		}
+	}
+	if segFilled == 0 {
+		t.Fatal("全候选段指标都没落地——evaluate 段采集接线已断")
+	}
+	if _, err := json.Marshal(a); err != nil {
+		t.Fatalf("搜索结果必须可序列化落库: %v", err)
+	}
+
 	sc.TrainDays, sc.TestDays = 40, 20
 	wf, comb, err := WalkForward(context.Background(), cfg, sc, m, nil)
 	if err != nil {
@@ -487,6 +518,10 @@ func TestOptimizeAndWalkForward(t *testing.T) {
 	}
 	if len(comb.Equity) != 4*20 {
 		t.Fatalf("拼接权益 %d 天", len(comb.Equity))
+	}
+	// 前推走 seg=0 不采段：报告形状不含段数据，同样必须可序列化。
+	if _, err := json.Marshal(wf); err != nil {
+		t.Fatalf("前推报告必须可序列化: %v", err)
 	}
 
 	_, err = func() (*OptimizeResult, error) {
@@ -522,6 +557,27 @@ func TestEvolveBounded(t *testing.T) {
 	}
 	if r.Reason == "" || r.ISEnd >= r.OOSStart {
 		t.Fatalf("%+v", r)
+	}
+	// Evolve 与 Optimize 同源接线：候选×段矩阵现采（isDays=60 → S=8），
+	// 消毒与序列化闸同口径。
+	if es := CSCVSegments(60); es != 8 {
+		t.Fatalf("定档漂移: %d", es)
+	} else {
+		filled := 0
+		for _, p := range r.Points {
+			if l := len(p.Segments); l != 0 {
+				if l != es {
+					t.Fatalf("evolve 候选段数 %d，应为 0（消毒置 nil）或 %d", l, es)
+				}
+				filled++
+			}
+		}
+		if filled == 0 {
+			t.Fatal("evolve 候选段指标都没落地——evaluate 段采集接线已断")
+		}
+	}
+	if _, err := json.Marshal(r); err != nil {
+		t.Fatalf("进化报告必须可序列化落库: %v", err)
 	}
 }
 

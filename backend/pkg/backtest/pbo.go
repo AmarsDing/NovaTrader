@@ -29,10 +29,31 @@ type PboResult struct {
 	Candidates int `json:"candidates"`
 }
 
-// PboSplitsMax 是组合数硬上限（默认 S=20 → C(20,10)=184756 已远超该值；
+// PboSplitsMax 是 CSCV 直接调用的组合数硬上限（S=20 → C(20,10)=184756 已远超该值；
 // 组合枚举是 O(splits×N log N)，上限只防失控输入）。超出视为参数错误，
-// 调用方自行降 S 而不是截断统计（截断的 PBO 是假读数）。
+// 调用方自行降 S 而不是截断统计（截断的 PBO 是假读数）。生产链路经 CSCVSegments
+// 定档（阶梯上限 8 → C(8,4)=70），永不触顶；该闸守的是任意矩阵直调 CSCV 的旁路。
 const PboSplitsMax = 300000
+
+// CSCVSegments 为一次参数搜索挑选 CSCV 的段数 S（W8c 接线：evaluate 采集段指标前定档）。
+//
+// 口径：S 越大统计功效越高，唯一硬约束是每段装得下 ≥2 个交易日（单日产不出
+// 离散度，段 Sharpe 必退化为 NaN）。CSCV 的组合枚举量只取决于段数——C(S,S/2)
+// 在 S=8 时也仅 70 个划分，候选数只线性放大每趟开销（O(splits×N log N)），
+// 故段数定档与候选数无关（审查批 wf_9932525c 勘正：早版用 binom(候选数,S/2)
+// 当闸看错了量，把默认 200 点网格无谓压到 S=4）。
+// 阶梯 {8, 6, 4} 取满足 isDays >= 2*S 的最大值；全不满足返回 0（不强行采段）。
+// 段数在评估前选定，不随候选有效性剔除漂移，保证同一份任务输入永远得到同一份
+// 矩阵形状（computeTrustBar 纯函数语义延续到采集侧）。
+func CSCVSegments(isDays int) int {
+	for _, s := range []int{8, 6, 4} {
+		if isDays < 2*s {
+			continue
+		}
+		return s
+	}
+	return 0
+}
 
 // errPBO 族供 errors.Is 判定，调用方据此把「不可计算」显成「未验证」而非 0。
 var (
