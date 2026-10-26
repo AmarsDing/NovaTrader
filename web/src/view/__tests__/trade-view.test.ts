@@ -1,6 +1,7 @@
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TradeView from '../TradeView.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable from '@/ui/NtTable.vue'
@@ -110,12 +111,13 @@ describe('trade view contracts', () => {
     await wrapper!.find('form').trigger('submit')
     await flushPromises()
     expect(mock.place).not.toHaveBeenCalled()
-    expect(wrapper!.text()).toContain('不再处于可确认状态')
+    // B3：错误文案改挂在 NtErrorGuide（shallowMount 下桩化），断言接线（props）而非子件渲染。
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('不再处于可确认状态')
     vi.setSystemTime(new Date('2026-10-14T10:01:00+08:00'))
     await wrapper!.find('form').trigger('submit')
     await flushPromises()
     expect(mock.place).not.toHaveBeenCalled()
-    expect(wrapper!.text()).toContain('信号已过期')
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('信号已过期')
   })
 
   it('切换证券清空旧价格与数量并解除信号关联', async () => {
@@ -152,7 +154,7 @@ describe('trade view contracts', () => {
     await wrapper!.find('form').trigger('submit')
     await flushPromises()
     expect(mock.place).not.toHaveBeenCalled()
-    expect(wrapper!.text()).toContain('风控试算未返回，暂不能提交')
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('风控试算未返回，暂不能提交')
   })
 
   it('缩量放行在摘要中可见，委托按原口径风控缩量提交', async () => {

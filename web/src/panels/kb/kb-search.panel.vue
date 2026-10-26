@@ -19,6 +19,7 @@ import {
 } from '@/api/kb'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtModal from '@/ui/NtModal.vue'
 import NtSelect from '@/ui/NtSelect.vue'
@@ -324,7 +325,7 @@ onMounted(() => {
       ]"
     />
 
-    <p v-if="err" class="nt-err">{{ err }}</p>
+    <NtErrorGuide :error="err" />
 
     <section v-show="tab === 'search'" class="nt-panel">
       <div class="kb-bar">
@@ -573,7 +574,7 @@ onMounted(() => {
           </label>
         </div>
 
-        <p v-if="upErr" class="nt-err">{{ upErr }}</p>
+        <NtErrorGuide :error="upErr" />
         <p v-if="upMsg" class="kb-ok">{{ upMsg }}</p>
 
         <div class="kb-actions kb-actions--end">

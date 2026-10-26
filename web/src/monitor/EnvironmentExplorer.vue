@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { getEnvironment, type EnvironmentSnapshot } from '@/api/environment'
 import { useOverlay } from '@/ui/useOverlay'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import { clock, messageOf } from '@/utils/format'
 import { environmentLabel as label } from './environment-labels'
 const overlay = useOverlay(() => close())
@@ -86,7 +87,7 @@ onBeforeUnmount(stop)
           计数按本实例最近窗口采样。收到通知、进入队列、处理返回分别展示；模型规则降级计入跳过，输出丢弃计入拒绝。完成范围以每项声明为准。
         </p>
         <button type="button" :disabled="busy" @click="load">{{ busy ? '采样中' : '重新采样' }}</button>
-        <p v-if="error" class="nt-err">{{ error }}</p>
+        <NtErrorGuide :error="error" />
         <p v-if="!data" class="note">进程与消费者指标尚未核验，数量未知。</p>
         <template v-else
           ><p class="note">

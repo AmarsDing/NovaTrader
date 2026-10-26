@@ -26,8 +26,11 @@ const props = withDefaults(
     preClose?: number | null
     /** 最小报价，默认 0.01 元。 */
     tick?: number
+    /** B3：卖5..卖1/买1..买5 档位侧标（真实盘面阅读锚）。默认 off——走查页 fixture 不携带，
+     *  定格帧 DOM 零变化（golden 纪律）；业务接入点（行情侧栏）显式开启。 */
+    sideLabels?: boolean
   }>(),
-  { asks: () => [], bids: () => [], lastPrice: null, symbol: '', preClose: null, tick: 0.01 },
+  { asks: () => [], bids: () => [], lastPrice: null, symbol: '', preClose: null, tick: 0.01, sideLabels: false },
 )
 
 /** 任何一侧已有真实档位就不合成——不混真/合，免得半真半假误读。 */
@@ -64,6 +67,7 @@ function widthOf(levels: DepthLevel[], index: number): number {
         class="nt-depth__row"
         :class="{ 'nt-depth__row--syn': synthetic }"
       >
+        <span v-if="sideLabels" class="nt-depth__side-tag">卖{{ viewAsks.length - index }}</span>
         <span
           v-if="!synthetic"
           class="nt-depth__bar"
@@ -87,6 +91,7 @@ function widthOf(levels: DepthLevel[], index: number): number {
         class="nt-depth__row"
         :class="{ 'nt-depth__row--syn': synthetic }"
       >
+        <span v-if="sideLabels" class="nt-depth__side-tag">买{{ index + 1 }}</span>
         <span
           v-if="!synthetic"
           class="nt-depth__bar nt-depth__bar--bid"
@@ -138,6 +143,16 @@ function widthOf(levels: DepthLevel[], index: number): number {
 
 .nt-depth__vol {
   color: var(--nt-text-2);
+}
+
+/* B3 档位侧标：固定宽 3em 对齐（同手绘 ladder .level .side 口径）。 */
+.nt-depth__row .nt-depth__side-tag {
+  width: 3em;
+  flex: none;
+  position: relative;
+  font-family: var(--nt-font-sans);
+  font-size: 11px;
+  color: var(--nt-text-3);
 }
 
 .nt-depth__mid {

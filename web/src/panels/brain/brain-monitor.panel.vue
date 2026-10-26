@@ -8,6 +8,7 @@ import { analyzeBrain, type Analysis } from '@/api/brain'
 import { useBrainStore } from '@/stores/brain'
 import NtBadge, { type BadgeTone } from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtStatCard, { type StatTone } from '@/display/NtStatCard.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
@@ -196,7 +197,7 @@ onBeforeUnmount(() => {
           得分 <b :class="scoreTone">{{ lastScore }}</b> · {{ result.verdict || '—' }}
         </span>
       </div>
-      <p v-if="error" class="nt-err">{{ error }}</p>
+      <NtErrorGuide :error="error" />
       <div v-if="progPct != null" class="prog">
         <div class="prog__track"><i class="prog__bar" :style="{ width: `${progPct}%` }" /></div>
         <span class="prog__text">{{ progDone }}/{{ progTotal }}</span>

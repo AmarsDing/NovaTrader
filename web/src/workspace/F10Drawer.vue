@@ -184,9 +184,13 @@ function openAnnouncement(item: IntelItem) {
           </p>
 
           <section v-else-if="tab === 'announce'" class="f10-sec">
-            <p v-if="newsPhase === 'loading' || newsPhase === 'idle'" class="f10-empty">加载中…</p>
-            <p v-else-if="newsPhase === 'failed'" class="f10-empty">未返回</p>
-            <p v-else-if="!news.length" class="f10-empty">暂无公告消息。</p>
+            <!-- 三分态（R-UI 空态纪律）：idle 不冒充「加载中」，failed 给明确重试出口。 -->
+            <p v-if="newsPhase === 'loading'" class="f10-empty">读取中…</p>
+            <p v-else-if="newsPhase === 'idle'" class="f10-empty">还未读取——切到本页即自动拉取该标的公告。</p>
+            <p v-else-if="newsPhase === 'failed'" class="f10-empty">
+              公告未返回——<NtButton variant="quiet" size="sm" @click="loadAnnouncements">重试</NtButton>
+            </p>
+            <p v-else-if="!news.length" class="f10-empty">暂无公告消息——有公告落地后会在这里按时间铺开。</p>
             <ul v-else class="f10-news">
               <li v-for="item in news" :key="item.id || item.time + item.title">
                 <button type="button" class="f10-news__row" @click="openAnnouncement(item)">

@@ -12,6 +12,7 @@ import {
   type StrategyMeta,
 } from '@/api/backtest'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
@@ -189,7 +190,7 @@ onBeforeUnmount(() => {
       <label><span>初始资金</span><NtInput v-model="form.cash" type="number" placeholder="默认" mono /></label>
       <NtButton variant="primary" @click="create">建立任务</NtButton>
     </form>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="hint" class="nt-note">{{ hint }}</p>
     <ResearchJobs />
 

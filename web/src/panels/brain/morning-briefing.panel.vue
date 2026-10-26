@@ -8,6 +8,7 @@ import { computed, onMounted, ref } from 'vue'
 import { getBriefing, runBriefing, type Briefing, type EvidenceItem } from '@/api/brain'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
 import SymbolName from '@/display/SymbolName.vue'
@@ -41,7 +42,7 @@ const briefingAt = computed<number | null>(() => {
 
 const VERDICTS: { v: string; t: string; tone: StatusTone }[] = [
   { v: 'sourced', t: '有出处', tone: 'success' },
-  { v: 'recomputed', t: '重算通过', tone: 'info' },
+  { v: 'recomputed', t: '重算通过', tone: 'success' },
   { v: 'omitted', t: '已略※', tone: 'danger' },
   { v: 'magnitude', t: scrubMagnitude.text, tone: scrubMagnitude.tone },
 ]
@@ -117,7 +118,7 @@ onMounted(load)
       </div>
     </header>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="briefing?.degraded && briefing.reason" class="nt-note">降级原因：{{ briefing.reason }}</p>
 
     <template v-if="briefing">

@@ -21,7 +21,9 @@ import {
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
+import NtFunnel, { type FunnelStage } from '@/display/NtFunnel.vue'
 import NtProgressRing from '@/ui/NtProgressRing.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtRadar from '@/viz/NtRadar.vue'
@@ -144,6 +146,25 @@ async function readPage(key: string): Promise<boolean> {
   const ready = [signalRes, accountRes, riskRes, marketRes].every((result) => result.status === 'fulfilled' && result.value === true)
   if (!ready) error.value = failed?.status === 'rejected' ? messageOf(failed.reason) : '核心状态未恢复，不能执行信号'
   decisionContext.value = {
+
+/** B3 死件接入（信号审核漏斗）：「今日→有效→高分→已执行」全部从同一 rows 枚举计数（监控 S3 光带是全市场
+ *  扫描口径，这条是信号→成交口径，两只漏斗互补不复用）；未恢复时值显「—」，不拿 0 冒充（数据纪律）。 */
+const funnelStages = computed<FunnelStage[]>(() => {
+  if (!signalStore.ready) {
+    return [
+      { label: '今日信号', value: null, hint: '信号状态未恢复，等待快照重连。' },
+      { label: '有效中', value: null },
+      { label: '高分（≥85）', value: null },
+      { label: '已执行', value: null },
+    ]
+  }
+  return [
+    { label: '今日信号', value: rows.value.length },
+    { label: '有效中', value: activeCount.value },
+    { label: '高分（≥85）', value: rows.value.filter((r) => r.highValue && isPendingStatus(r.status) && !isExpired(r)).length },
+    { label: '已执行', value: rows.value.filter(isHandled).length },
+  ]
+})
     checkedAt: nowTick.value,
     accountBook: checkedBook,
     accountReady: accountRes.status === 'fulfilled' && accountRes.value && account.accountOk,
@@ -232,6 +253,15 @@ async function onPushMessage(msg: WsPushMessage) {
   const ready = await refreshes.fromPush()
   if (!disposed && key === refreshKey() && !ready) throw new Error('信号面板核心状态尚未恢复')
 }
+/** 盈亏比（G8/QD 借鉴 R 倍数列位）：reward/risk，锚定入场区间中值；任一腿缺失或风险非正显「—」（数据纪律，不拿 0 冒充）。 */
+function riskReward(item: SignalItem): string {
+  if (item.entryLow == null || item.entryHigh == null || item.stop == null || item.take == null) return '—'
+  const mid = (item.entryLow + item.entryHigh) / 2
+  const risk = mid - item.stop
+  if (!(risk > 0)) return '—'
+  return `${((item.take - mid) / risk).toFixed(1)}R`
+}
+
 
 function onVisible() {
   if (!document.hidden) { nowTick.value = serverNow(); void load() }
@@ -298,7 +328,7 @@ watch(
     <ConditionalPlans :signal-id="planSignalId" />
 
     <p v-if="loading" class="nt-empty">读取中…</p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="!loading && !rows.length" class="nt-empty">{{ signalStore.ready ? '今日没有信号。' : '信号状态尚未恢复，不能判断是否有机会。' }}</p>
     <p v-else-if="!loading && !filtered.length" class="nt-empty">当前过滤条件下没有信号。</p>
     <div v-if="filtered.length" class="grid">
@@ -324,6 +354,12 @@ watch(
           <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
           <NtFreshness label="信号" :at="timeOf(item.time)" />
         </header>
+    <!-- B3 死件接入：信号审核漏斗（今日→有效→高分→已执行，同 rows 一枚枚举计数；未恢复显「—」不拿 0 冒充）。 -->
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">今日漏斗</h2>
+      <NtFunnel :stages="funnelStages" />
+    </section>
+
         <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
           <h3>当前动作：{{ actionOf(item).title }}</h3>
           <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
@@ -388,6 +424,10 @@ watch(
           <template v-if="item.holdDaysMax != null"> · 最长持有 {{ item.holdDaysMax }} 日</template>
           <template v-if="item.traceId"> · {{ item.traceId }}</template>
         </p>
+          <div>
+            <dt>盈亏比</dt>
+            <dd class="mono">{{ riskReward(item) }}</dd>
+          </div>
         <p v-if="item.reason" class="reason">{{ item.reason }}</p>
         <ul v-if="item.evidence.length" class="evidence">
           <li v-for="(line, index) in item.evidence" :key="index">{{ line }}</li>

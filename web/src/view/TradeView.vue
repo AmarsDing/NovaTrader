@@ -26,6 +26,7 @@ import {
   type OrderDraft,
 } from '@/api/trade'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
@@ -674,7 +675,8 @@ onBeforeUnmount(() => {
         <span>股数</span>
         <NtInput v-model="form.volume" type="number" mono :invalid="touched && !volumeOk" />
       </label>
-      <NtButton type="submit" variant="success" :disabled="!canSubmit" :loading="submitting">提交委托</NtButton>
+      <!-- B2 速修（P0-7）：提交钮 success 绿=卖出向色，买方提交语义颠倒；主行动钮用 primary 冰青，买卖方向由上方方向开关表达——整块买卖重构走 B3 闪电面板攻心版。 -->
+      <NtButton type="submit" variant="primary" :disabled="!canSubmit" :loading="submitting">提交委托</NtButton>
     </form>
     <p v-if="signalContext" class="nt-note">信号 {{ signalContext.signalId || '编号未返回' }} · 策略版本 {{ signalContext.strategyVersionId || '未返回' }} · {{ signalContext.book || '账户未返回' }} · 有效至 {{ signalContext.validUntil || '未返回' }}。提交前重新核验，仍须正式风控。</p>
     <p v-if="submissionBlock" class="nt-note">{{ submissionBlock }}</p>
@@ -700,7 +702,7 @@ onBeforeUnmount(() => {
       </p>
     </section>
     <p v-else-if="previewIssue" class="nt-note">{{ previewIssue }}</p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="hint" class="nt-note">{{ hint }}</p>
     <PaperAdmission />
 

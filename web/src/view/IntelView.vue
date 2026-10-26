@@ -4,6 +4,7 @@ import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
 import { listSectors, type SectorRow } from '@/api/market'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
@@ -128,7 +129,7 @@ onBeforeUnmount(() => offPanelParams())
       <NtButton variant="primary" :loading="loading" @click="loadNews()">时间线</NtButton>
     </form>
     <p v-if="sentiment != null" class="nt-note">近端综合情感 {{ sentimentText(sentiment) }}</p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <div class="nt-split">
       <section class="nt-panel">
         <h2 class="nt-panel__title">消息流</h2>
@@ -136,7 +137,7 @@ onBeforeUnmount(() => offPanelParams())
         <ul v-else class="list">
           <li v-for="item in items" :key="item.id || item.title" :class="{ hit: highlight && item.id === highlight }">
             <div class="item-head">
-              <b :class="pnlClass(item.sentiment)">{{ clock(item.time) }} {{ item.source }}</b>
+              <b :class="pnlClass(item.sentiment)">{{ clock(item.time) || '—' }} {{ item.source }}</b>
               <NtBadge v-if="(item.importance ?? 0) >= 4" tone="warn">重要</NtBadge>
               <span v-if="item.kind" class="kind">{{ item.kind }}</span>
             </div>

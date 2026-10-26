@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { exportNav, type NavExport } from '@/api/nav'
 import { amount, clock, messageOf } from '@/utils/format'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 const props = defineProps<{ manifestId?: string }>()
 const emit = defineEmits<{ 'use-input': [{ inputJson: string; manifestId: string; asOf: string }] }>()
 const today = new Intl.DateTimeFormat('en-CA', {
@@ -119,7 +120,7 @@ onBeforeUnmount(() => {
       </details>
       <NtButton type="submit" size="sm" :loading="busy">核验账本净值</NtButton>
     </form>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <template v-if="result"
       ><p class="status">
         {{ result.inputReady ? '研究输入证据完整，可填入待审草稿' : '账本记录已读取，研究输入证据尚未完整' }}

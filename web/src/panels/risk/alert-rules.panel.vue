@@ -20,6 +20,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
@@ -280,7 +281,7 @@ onBeforeUnmount(() => {
         </NtButton>
         <NtButton v-if="editingId" size="sm" :disabled="saving" @click="resetForm">取消编辑</NtButton>
       </div>
-      <p v-if="formError" class="nt-err">{{ formError }}</p>
+      <NtErrorGuide :error="formError" />
     </section>
 
     <section class="nt-panel">
@@ -310,7 +311,7 @@ onBeforeUnmount(() => {
           </div>
         </template>
       </NtTable>
-      <p v-if="error" class="nt-err">{{ error }}</p>
+      <NtErrorGuide :error="error" />
     </section>
 
     <section class="nt-panel">

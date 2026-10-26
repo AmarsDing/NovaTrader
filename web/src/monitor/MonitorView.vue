@@ -12,6 +12,7 @@ import ConfigRevisionPanel from '@/view/ConfigRevisionPanel.vue'
 import { ApiError } from '@/api/http'
 import { useOverlay } from '@/ui/useOverlay'
 import { useToast } from '@/ui/useToast'
+import { linkStatus, statusOf } from '@/ui/status-map'
 import { configCategories, type ConfigField } from '@/view/config-catalog'
 import { isLive, onResync } from '@/ws/hub'
 import { useAccountStore } from '@/stores/account'
@@ -276,7 +277,15 @@ const sampled = computed(() => {
   return `${pad(Math.floor(wall.minuteOfDay / 60))}:${pad(wall.minuteOfDay % 60)}:${pad(wall.second)}`
 })
 
-const STATUS_WORD: Record<string, string> = { live: '在线', idle: '空闲', gap: '未返回', down: '中断', attention: '要注意' }
+/** 巡检状态词收编 status-map（§7.1 册是唯一出处）：live/down 复用链路五态，idle/gap/attention 用册内 monitor.* 键。 */
+function statusWordOf(status: string): string {
+  if (status === 'live') return linkStatus('live').text
+  if (status === 'down') return linkStatus('down').text
+  if (status === 'idle') return statusOf('monitor.idle').text
+  if (status === 'gap') return statusOf('monitor.gap').text
+  if (status === 'attention') return statusOf('monitor.attention').text
+  return ''
+}
 
 /* ---- 详情弹层 ---- */
 
@@ -748,7 +757,7 @@ function closeDetail() {
           </div>
           <button type="button" @click="closeDetail">关闭</button>
         </header>
-        <p class="nt-pop__face" :class="picked.tone">{{ picked.face || STATUS_WORD[picked.status] || '未返回' }}</p>
+        <p class="nt-pop__face" :class="picked.tone">{{ picked.face || statusWordOf(picked.status) || statusOf('monitor.gap').text }}</p>
         <DetailSheet v-if="detailPanel" :panel="detailPanel" @exit="onDetailExit" />
         <div v-else class="nt-pop__grid">
           <article v-for="card in cards" :key="card.id">
@@ -784,7 +793,7 @@ function closeDetail() {
         </form>
         <section v-if="detailWhere === 'runtime'" class="nt-pop__log">
           <h3>运行记录</h3>
-          <p>当前 {{ STATUS_WORD[picked.status] || picked.status }} · {{ cards[0]?.sub || '没有更多状态' }}</p>
+          <p>当前 {{ statusWordOf(picked.status) || picked.status }} · {{ cards[0]?.sub || '没有更多状态' }}</p>
           <p v-if="serviceLogs.length === 0">审计里没有这条服务的操作记录。这里只能重新检查它是否在线，没有启停开关。</p>
           <ul v-else>
             <li v-for="item in serviceLogs" :key="item.id">{{ item.time }} {{ item.action }} {{ item.target }}</li>

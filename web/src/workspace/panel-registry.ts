@@ -207,7 +207,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'DB',
       argKind: 'none',
-      description: '涨停梯队：连板高度、梯队结构与开板率，打板情绪一屏看全。',
+      description: '连板高度、梯队结构与开板率，打板情绪一屏看全。',
     },
   },
   {
@@ -220,7 +220,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'YD',
       argKind: 'none',
-      description: '盘中异动流：急拉（3min ≥1.5%）/ 封板 / 开板实时流，支持幅度筛选与候选池聚焦。',
+      description: '急拉（3min ≥1.5%）/ 封板 / 开板实时流，支持幅度筛选与候选池聚焦。',
     },
   },
   {
@@ -248,7 +248,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'CB',
       argKind: 'none',
-      description: '晨报：隔夜外围、要闻摘要与今日观察清单。',
+      description: '隔夜外围、要闻摘要与今日观察清单。',
     },
   },
   {
@@ -261,7 +261,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'ER',
       argKind: 'none',
-      description: '情绪复盘：收盘定稿读数 / 明日验证对账 / 程序版八格复盘。',
+      description: '收盘定稿读数 / 明日验证对账 / 程序版八格复盘。',
     },
   },
   {
@@ -274,7 +274,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'BR',
       argKind: 'none',
-      description: '模型链路：各 agent 调用链、延迟与失败观测。',
+      description: '各 agent 调用链、延迟与失败观测。',
     },
   },
   {
@@ -287,7 +287,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'MT',
       argKind: 'none',
-      description: '模型统计：调用量、token 消耗与评分分布。',
+      description: '调用量、token 消耗与评分分布。',
     },
   },
   {
@@ -300,7 +300,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'HY',
       argKind: 'none',
-      description: '自选扫描：自选池内的信号与异动筛选。',
+      description: '自选池内的信号与异动筛选。',
     },
   },
   {
@@ -313,7 +313,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'GC',
       argKind: 'none',
-      description: '股池与黑名单管理：白名单休整、黑名单禁买。',
+      description: '股池白名单休整、黑名单禁买。',
     },
   },
   {
@@ -326,7 +326,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'FK',
       argKind: 'none',
-      description: '风控链：R 系列规则逐条状态与闸门明细。',
+      description: 'R 系列规则逐条状态与闸门明细。',
     },
   },
   {
@@ -339,7 +339,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'FR',
       argKind: 'none',
-      description: '风控日报：日度风控事件与处置回顾。',
+      description: '日度风控事件与处置回顾。',
     },
   },
   {
@@ -352,7 +352,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'GJ',
       argKind: 'none',
-      description: '告警规则：价格三态/涨速规则的列表、新建编辑与布防重置。',
+      description: '价格三态（上破/下破/穿越）的列表、新建编辑与布防重置，附分级静默窗口。',
     },
   },
   {
@@ -365,7 +365,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'YJ',
       argKind: 'none',
-      description: '影子进化：策略影子运行的对照与晋级检查。',
+      description: '策略影子运行的对照与晋级检查。',
     },
   },
   {
@@ -378,7 +378,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'TZ',
       argKind: 'none',
-      description: '通知中心：告警与系统消息的历史列表。',
+      description: '告警与系统消息的历史列表。',
     },
   },
   {
@@ -391,7 +391,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'KB',
       argKind: 'none',
-      description: '知识库：文档检索与相似案例回放。',
+      description: '文档检索与相似案例回放。',
     },
   },
   {
@@ -404,7 +404,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'DY',
       argKind: 'none',
-      description: '数据源健康：通达信 / Tushare / AkShare 等接入状态。',
+      description: '通达信 / Tushare / AkShare 等数据源接入状态。',
     },
   },
   {
@@ -418,7 +418,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'ZY',
       argKind: 'none',
-      description: '数据源中心：源墙（域徽章/费用档/凭证）、域降级链排序与健康总览。',
+      description: '源墙（域徽章/费用档/凭证）、域降级链排序与健康总览。',
     },
   },
   {
@@ -431,7 +431,7 @@ const defs: PanelDef[] = [
     shortcut: {
       prefix: 'SJ',
       argKind: 'none',
-      description: '审计日志：操作与系统事件留痕。',
+      description: '操作与系统事件留痕。',
     },
   },
 ]

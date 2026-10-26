@@ -13,6 +13,7 @@ import {
 } from '@/api/traces'
 import { useAuthStore } from '@/stores/auth'
 import { clock, messageOf } from '@/utils/format'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import { useOverlay } from '@/ui/useOverlay'
 const overlay = useOverlay(() => close())
 const auth = useAuthStore()
@@ -143,7 +144,7 @@ function shortEvent(id: string): string {
             maxlength="128"
           /><button type="submit" :disabled="busy">{{ busy ? '查询中' : '查询' }}</button>
         </form>
-        <p v-if="error" class="nt-err">{{ error }}</p>
+        <NtErrorGuide :error="error" />
         <p v-if="!snapshot?.available">持久事件仓储尚未核验，数量未知。</p>
         <template v-else
           ><dl>
@@ -167,9 +168,7 @@ function shortEvent(id: string): string {
           <p class="note">{{ snapshot.note }} 截至 {{ clock(snapshot.asOf) }}。</p>
           <section v-if="coverage || coverageError" class="coverage" aria-label="因果覆盖口径">
             <h3>因果覆盖（窗口口径）</h3>
-            <p v-if="coverageError" class="nt-err">
-              因果覆盖读取失败：{{ coverageError }}（GET /api/ops/trace-coverage）
-            </p>
+            <NtErrorGuide v-if="coverageError" :error="coverageError" context="因果覆盖读取失败（GET /api/ops/trace-coverage）" />
             <template v-else-if="coverage">
               <p v-if="!coverage.available" class="note">因果覆盖仓储未核验。</p>
               <template v-else>
@@ -226,7 +225,7 @@ function shortEvent(id: string): string {
           <section v-if="query && snapshot.events.length" class="receipts" aria-label="处置留痕">
             <h3>处置留痕</h3>
             <p class="note">留痕只标注，不改投递状态、不回放事件；死信重放与处置审批另需实现。</p>
-            <p v-if="dispositionError" class="nt-err">留痕读取失败：{{ dispositionError }}</p>
+            <NtErrorGuide :error="dispositionError" context="留痕读取失败" />
             <p v-if="!dispositions.length && !dispositionError" class="note">本链路暂无处置留痕。</p>
             <ul>
               <li v-for="d in dispositions" :key="d.id">
@@ -250,7 +249,7 @@ function shortEvent(id: string): string {
               <button type="submit" :disabled="draftBusy">{{ draftBusy ? '提交中' : '留痕' }}</button>
             </form>
             <p v-else class="note">新增留痕需要 Owner 角色。</p>
-            <p v-if="draftError" class="nt-err">{{ draftError }}</p>
+            <NtErrorGuide :error="draftError" />
           </section>
           <ol>
             <li v-for="e in snapshot.events" :key="e.eventId" :class="{ failed: e.state === 'dead_letter' }">

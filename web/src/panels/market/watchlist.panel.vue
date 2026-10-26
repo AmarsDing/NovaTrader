@@ -8,6 +8,7 @@ import { scan, type ScanReply } from '@/api/strategy'
 import { listSignals } from '@/api/signals'
 import { getQuote, getWatchlist, setWatchlist, type WatchLeaseView } from '@/api/market'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import SymbolName from '@/display/SymbolName.vue'
@@ -336,7 +337,7 @@ onBeforeUnmount(() => {
       </ul>
       <p v-else-if="leasesFailed" class="nt-note">租约读口失败，当前池状态未知——稍后重开面板复查，勿凭缺表提示把池整池改小。</p>
       <p v-else class="nt-note">当前没有活租约——登记后池中标的才有分钟行情推送。</p>
-      <p v-if="error" class="nt-err">{{ error }}</p>
+      <NtErrorGuide :error="error" />
     </section>
 
     <section v-if="lastScan" class="nt-panel">

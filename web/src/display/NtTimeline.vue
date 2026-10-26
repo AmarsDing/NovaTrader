@@ -28,10 +28,10 @@ export interface TimelineEntry {
   note?: string
 }
 
-/** 分级章文案与色调（§8.1 一字锁定）：L1 neutral 提示 / L2 info 关注 / L3 warn 预警 / L4 danger 风险。 */
+/** 分级章文案与色调（§8.1 一字锁定）：L1 neutral 提示 / L2 accent 关注 / L3 warn 预警 / L4 danger 风险。 */
 const LEVEL_BADGE: Record<AlertLevel, { tone: BadgeTone; text: string }> = {
   L1: { tone: 'neutral', text: '提示' },
-  L2: { tone: 'info', text: '关注' },
+  L2: { tone: 'accent', text: '关注' },
   L3: { tone: 'warn', text: '预警' },
   L4: { tone: 'danger', text: '风险' },
 }

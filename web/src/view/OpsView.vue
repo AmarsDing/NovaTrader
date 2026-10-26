@@ -3,10 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { BACKUP_CONFIRM, opsStatus, runBackup, type BackupResult, type OpsNode } from '@/api/ops'
 import { router } from '@/router'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
-import NtStatusDot from '@/ui/NtStatusDot.vue'
+import NtStatusDot, { type DotStatus } from '@/ui/NtStatusDot.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
-import { linkStatus } from '@/ui/status-map'
+import { linkStatus, statusOf as statusMapOf } from '@/ui/status-map'
 import { messageOf } from '@/utils/format'
 
 interface OpsModelRow extends OpsNode {
@@ -34,15 +35,25 @@ const modelColumns: NtTableColumn<NodeRow>[] = [
   { key: 'detail', title: '说明' },
 ]
 
-function dotStatus(status: string): 'live' | 'off' | 'down' {
+/**
+ * 网关四态（W2-c 拆态）→ 链路五点色：ok 族=live 绿；warn=stale 点取 warn 色（半开/覆盖率未证实等降级类）；
+ * unknown=off 点取中性灰（未观测/未配置/不采集等结构性缺省）；down 与其余异常=红。
+ * 此前 warn/unknown 落 default 画红，把「降级」「没测过」谎报成「中断」。
+ */
+function dotStatus(status: string): DotStatus {
   const text = String(status || '').toLowerCase()
   if (['ok', 'up', 'running', 'healthy', 'online'].includes(text)) return 'live'
-  if (!text) return 'off'
+  if (text === 'warn') return 'stale'
+  if (text === 'unknown' || !text) return 'off'
   return 'down'
 }
 
-/** 节点状态词只从链路五态册取（§7.1/§10-8，一字锁定）；裸色点禁单显（§7.2-1）。 */
+/** 节点状态词只从册取（§7.1/§10-8，一字锁定）：warn=册键 degraded.partial「部分降级」，
+ *  unknown=册键 ops.unknown「未知」；裸色点禁单显（§7.2-1）。精确归因见「说明」列 detail。 */
 function nodeStatusText(status: string): string {
+  const text = String(status || '').toLowerCase()
+  if (text === 'warn') return statusMapOf('degraded.partial').text
+  if (text === 'unknown') return statusMapOf('ops.unknown').text
   return linkStatus(dotStatus(status)).text
 }
 
@@ -133,7 +144,7 @@ async function doBackup() {
         <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
       </div>
     </header>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <section
       v-for="block in [
         { title: '服务', rows: services, extra: false },
@@ -188,7 +199,7 @@ async function doBackup() {
           <NtButton size="sm" :disabled="busy" @click="cancelBackup">取消</NtButton>
         </div>
       </div>
-      <p v-if="backupError" class="nt-err">{{ backupError }}</p>
+      <NtErrorGuide :error="backupError" />
       <p v-if="backupResult" class="result">
         已写出 <b>{{ backupResult.path }}</b>（{{ sizeText }}，{{ durationText }}，库
         {{ backupResult.database }}）

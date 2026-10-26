@@ -20,7 +20,7 @@ import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
-import NtSegmented from '@/ui/NtSegmented.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import { statusOf } from '@/ui/status-map'
@@ -172,6 +172,42 @@ async function submit() {
     clientOrderId: `manual-${crypto.randomUUID()}`,
     account: book.value,
     symbol: form.symbol.trim(),
+/* ---------- QD 攻心版 v1：双色买卖整块 + 仓位四键 + 持仓报价锚 ---------- */
+
+/** 持仓行（仓位卖出档与报价锚的唯一取数口）；非持仓票锚/卖档给明确原因，不凭空造。 */
+const positionOf = computed(() => accountStore.positions.find((p) => p.symbol === form.symbol.trim().toUpperCase()) ?? null)
+/** 报价锚：仅持仓票有最现价证据时给锚（五档盘口锚随 viz 死件批，缺证据不虚构）。点按显式写入限价，不静默改价。 */
+const anchorPrice = computed(() => (positionOf.value?.lastPrice != null ? positionOf.value.lastPrice : null))
+function applyAnchor() {
+  if (anchorPrice.value == null) return
+  form.price = anchorPrice.value.toFixed(2)
+}
+
+const FRACTIONS = [0.25, 0.5, 0.75, 1] as const
+/** 仓位档折算手数：买=可用现金与限价折算（整百取整）；卖=该票今日可卖（满仓档给精确可卖，含尾零）。
+ *  缺腿或不足一手返回 0 + 中文原因，禁用档键——不拿 0 股伪装可点（数据纪律）。 */
+function fractionShares(pct: number): { shares: number; reason: string } {
+  if (form.side === 'buy') {
+    if (accountStore.cash == null) return { shares: 0, reason: '可用现金未读到——点「刷新」重试' }
+    if (!priceOk.value) return { shares: 0, reason: '先填正限价，才能按现金折算' }
+    const shares = Math.floor((accountStore.cash * pct) / priceNum.value / 100) * 100
+    return shares > 0 ? { shares, reason: '' } : { shares: 0, reason: '按此档折算不足一手（100 股）' }
+  }
+  const available = positionOf.value?.available
+  if (available == null) return { shares: 0, reason: '该票不在持仓或无可卖股数' }
+  const shares = pct === 1 ? available : Math.floor((available * pct) / 100) * 100
+  return shares > 0 ? { shares, reason: '' } : { shares: 0, reason: '按此档折算不足一手（100 股）' }
+}
+function fractionTitle(pct: number): string {
+  const r = fractionShares(pct)
+  if (r.reason) return r.reason
+  return form.side === 'buy' ? `按可用现金 ${pct * 100}% 折算 → ${r.shares} 股` : `按该票可卖 ${pct * 100}% 折算 → ${r.shares} 股`
+}
+function applyFraction(pct: number) {
+  const { shares } = fractionShares(pct)
+  if (shares > 0) form.volume = String(shares)
+}
+
     side: form.side,
     price: priceNum.value,
     volume: volumeNum.value,
@@ -339,12 +375,27 @@ onBeforeUnmount(() => {
 
     <section v-if="tab === 'order'" class="order">
       <form class="ticket" @submit.prevent="submit">
-        <NtSegmented
-          :model-value="form.side"
-          size="sm"
-          :options="[{ value: 'buy', label: '买入' }, { value: 'sell', label: '卖出' }]"
-          @update:model-value="form.side = $event as 'buy' | 'sell'"
-        />
+        <!-- QD 攻心版（P0-7）：买整块红/卖整块绿双目锚（§0.3 红涨绿跌），快捷键徽注只标真实绑定（B/S=shortcuts.ts 全局裸键）。 -->
+        <div class="ticket__side" role="group" aria-label="买卖方向">
+          <button
+            type="button"
+            class="tb-side tb-side--buy"
+            :class="{ active: form.side === 'buy' }"
+            :aria-pressed="form.side === 'buy'"
+            @click="form.side = 'buy'"
+          >
+            <b>买入</b><i class="kbd">B</i>
+          </button>
+          <button
+            type="button"
+            class="tb-side tb-side--sell"
+            :class="{ active: form.side === 'sell' }"
+            :aria-pressed="form.side === 'sell'"
+            @click="form.side = 'sell'"
+          >
+            <b>卖出</b><i class="kbd">S</i>
+          </button>
+        </div>
         <label class="ticket__field">
           <span>代码</span>
           <NtInput v-model="form.symbol" placeholder="600519.SH" mono :invalid="touched && !symbolOk" />
@@ -357,7 +408,20 @@ onBeforeUnmount(() => {
           <span>数量</span>
           <NtInput v-model="form.volume" type="number" mono :invalid="touched && !volumeOk" placeholder="100 的整数倍" />
         </label>
-        <NtButton type="submit" variant="primary" :loading="submitting" :disabled="!canSubmit" :title="submitBlock || '提交前会先跑一次风控试算'">
+        <div class="ticket__frac" role="group" aria-label="仓位档位">
+          <button
+            v-for="p in FRACTIONS"
+            :key="p"
+            type="button"
+            class="frac"
+            :disabled="!fractionShares(p).shares"
+            :title="fractionTitle(p)"
+            @click="applyFraction(p)"
+          >
+            {{ p === 1 ? 'Max' : `${p * 100}%` }}
+          </button>
+        </div>
+        <NtButton type="submit" variant="primary" size="lg" :loading="submitting" :disabled="!canSubmit" :disabled-reason="submitBlock">
           提交委托
         </NtButton>
       </form>
@@ -375,7 +439,7 @@ onBeforeUnmount(() => {
         </template>
         <template v-else>填好代码/限价/数量后自动试算（不落单）。</template>
       </div>
-      <p v-if="submitError" class="nt-err">{{ submitError }}</p>
+      <NtErrorGuide v-if="submitError" :error="submitError" />
       <p v-else-if="submitHint" class="nt-note">{{ submitHint }}</p>
       <p v-else-if="submitBlock && touched" class="nt-note">{{ submitBlock }}</p>
     </section>
@@ -389,6 +453,10 @@ onBeforeUnmount(() => {
         <thead><tr><th>编号</th><th>证券</th><th>方向</th><th>限价</th><th>数量</th><th>已成</th><th>状态</th><th></th></tr></thead>
         <tbody>
           <tr v-for="o in openOrders" :key="o.id">
+        <!-- 报价锚：仅持仓票显锚，缺报价证据的票不凭空给 -->
+        <NtButton v-if="anchorPrice != null" type="button" size="sm" variant="quiet" class="ticket__anchor" @click="applyAnchor">
+          锚现价 {{ price(anchorPrice) }}
+        </NtButton>
             <td class="mono">{{ o.id.slice(0, 13) }}…</td>
             <td><SymbolName :code="o.symbol" mode="inline" /></td>
             <td :class="pnlClass(o.side === 'buy' ? 1 : o.side === 'sell' ? -1 : 0)">{{ sideLabel(o.side) }}</td>
@@ -462,7 +530,7 @@ onBeforeUnmount(() => {
             <thead><tr><th>时间</th><th>证券</th><th>方向</th><th>量</th><th>价</th><th>额</th></tr></thead>
             <tbody>
               <tr v-for="(f, i) in trade.fills.slice(0, 8)" :key="f.id + i">
-                <td class="mono dim">{{ clock(f.time) }}</td>
+                <td class="mono dim">{{ clock(f.time) || '—' }}</td>
                 <td><SymbolName :code="f.symbol" mode="inline" /></td>
                 <td :class="pnlClass(f.side === 'buy' ? 1 : -1)">{{ sideLabel(f.side) }}</td>
                 <td class="mono">{{ f.qty ?? '—' }}</td>
@@ -576,6 +644,105 @@ onBeforeUnmount(() => {
 }
 
 .sheet th {
+/* QD 攻心版：买卖双色整块（§0.3 红涨绿跌——买=--nt-up 红、卖=--nt-down 绿；
+   选中性底字色复用同族 on-danger/on-success 保证 colorvision=safe 下仍成立）。 */
+.ticket__side {
+  display: flex;
+  gap: 6px;
+  align-self: flex-end;
+}
+
+.tb-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 18px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--nt-radius-s);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background var(--nt-transition),
+    border-color var(--nt-transition);
+}
+
+.tb-side .kbd {
+  font-style: normal;
+  font-family: var(--nt-font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 2px 5px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+.tb-side--buy {
+  color: color-mix(in srgb, var(--nt-up) 80%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-up) 45%, transparent);
+}
+
+.tb-side--buy:not(.active):hover {
+  background: color-mix(in srgb, var(--nt-up) 10%, transparent);
+}
+
+.tb-side--buy.active {
+  background: var(--nt-up);
+  color: var(--nt-on-danger);
+}
+
+.tb-side--sell {
+  color: color-mix(in srgb, var(--nt-down) 80%, var(--nt-text-1));
+  border-color: color-mix(in srgb, var(--nt-down) 45%, transparent);
+}
+
+.tb-side--sell:not(.active):hover {
+  background: color-mix(in srgb, var(--nt-down) 10%, transparent);
+}
+
+.tb-side--sell.active {
+  background: var(--nt-down);
+  color: var(--nt-on-success);
+}
+
+/* 报价锚（持仓现价）与仓位四键：与表单基线对齐的辅助行，视觉降一档（quiet/mono text-2）。 */
+.ticket__anchor {
+  align-self: flex-end;
+}
+
+.ticket__frac {
+  display: inline-flex;
+  gap: 4px;
+  align-self: flex-end;
+}
+
+.ticket__frac .frac {
+  min-width: 38px;
+  height: 26px;
+  padding: 0 6px;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--nt-text-2);
+  background: transparent;
+  border: 1px solid var(--nt-border-2);
+  border-radius: var(--nt-radius-s);
+  cursor: pointer;
+}
+
+.ticket__frac .frac:hover:not(:disabled) {
+  color: var(--nt-text-1);
+  border-color: var(--nt-accent-2);
+}
+
+.ticket__frac .frac:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
   text-align: left;
   font-weight: 500;
   color: var(--nt-text-3);

@@ -12,12 +12,17 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtConfirm from '@/ui/NtConfirm.vue'
+import NtEmpty from '@/ui/NtEmpty.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtIcon from '@/ui/NtIcon.vue'
 import NtInput from '@/ui/NtInput.vue'
+import NtMissing from '@/ui/NtMissing.vue'
 import NtModal from '@/ui/NtModal.vue'
 import NtProgressRing from '@/ui/NtProgressRing.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
 import NtSelect from '@/ui/NtSelect.vue'
+import NtSkeleton from '@/ui/NtSkeleton.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
@@ -92,6 +97,10 @@ const toggle = ref(true)
 const segment = ref('1d')
 const tab = ref('positions')
 const modalOpen = ref(false)
+/* B3 走查态：确认识窗 ×2 + 错误导引样例（见 feedback-b3 section） */
+const confirmOpen = ref(false)
+const confirmDangerOpen = ref(false)
+const demoErr = new Error('连接超时：10s 未响应')
 
 /* ---------- 表格 ---------- */
 // NtTable 泛型约束 Record<string, unknown>，与 audit-trail 面板同款交叉类型写法
@@ -835,6 +844,7 @@ const demoTapeRows = demoTapeSession.absorb(
     <section v-if="show('feedback', 'modal')" class="g-sec">
       <h2>徽标 / 状态 / 反馈</h2>
       <div class="g-row">
+        <!-- B1.5 留账：'feedback' 为 golden 定格用例，本行 info→ai（并补 up/down）须随 graphics-update 重刷同 PR；NtBadge 'info' 词届时除名。 -->
         <NtBadge>neutral</NtBadge>
         <NtBadge tone="accent">accent</NtBadge>
         <NtBadge tone="success" dot>success</NtBadge>
@@ -885,6 +895,7 @@ const demoTapeRows = demoTapeSession.absorb(
           <span :class="pnlClass(row.pct)">{{ pnlSign(row.pct) }}{{ Math.abs(row.pct).toFixed(2) }}%</span>
         </template>
         <template #cell-status="{ row }">
+          <!-- B1.5 留账：fallback 'info'→'neutral' 换轨随 graphics-update 重刷同 PR（'table' 定格用例钉住部成/已报两行）。 -->
           <NtBadge :tone="row.status === '已成交' ? 'success' : row.status === '已撤' ? 'neutral' : 'info'">
             {{ row.status }}
           </NtBadge>
@@ -1176,6 +1187,60 @@ const demoTapeRows = demoTapeSession.absorb(
       </div>
     </section>
 
+    <!-- B3 新件走查区：id 'feedback-b3' 未登记 graphics-cases → 只进全走查页，零 golden 影响。 -->
+    <section v-if="show('feedback-b3')" class="g-sec">
+      <h2>B3 反馈五连件（NtEmpty 三分态 / NtErrorGuide / NtMissing / NtSkeleton / NtConfirm）</h2>
+      <p class="g-activity__note">
+        纪律：loading 不冒充真空、未返回必带重试引导（warn 档不染 danger）、真空给「为什么空、下一步去哪」；
+        字段级缺席画「没取到·原因」不画 0；骨架微光在减少动态/节能档停用；确认识窗 danger 档主钮转红 + loading 锁双钮；
+        NtButton 禁用带原因时经外包裹 span 托 title（禁用按钮不发指针事件），未禁用不加包裹 DOM 零变化。
+      </p>
+      <div class="g-row">
+        <NtButton size="sm" variant="danger" @click="confirmDangerOpen = true">危险确认（danger）</NtButton>
+        <NtButton size="sm" @click="confirmOpen = true">普通确认（primary）</NtButton>
+        <NtButton size="sm" disabled disabled-reason="先选自选股里的标的">禁用带原因（悬停看 title）</NtButton>
+        <NtButton size="lg" variant="primary">lg 主行动档</NtButton>
+      </div>
+      <h3>NtEmpty 三分态</h3>
+      <div class="g-row">
+        <NtEmpty state="loading" title="读取中…" />
+        <NtEmpty state="missing" title="候选股未返回——点重试重拉" action="重试" />
+        <NtEmpty state="empty" title="还没有候选股" hint="今日还没有候选股——股池标的经策略扫描出入池后在这里展开" />
+      </div>
+      <h3>NtErrorGuide（error 为空零 DOM）</h3>
+      <NtErrorGuide :error="demoErr" context="数据源中心读面" retry="刷新重试" />
+      <h3>NtDepthBoard · 档位侧标（B3 业务接入态：卖5..买5；走查默认态无侧标，定格帧不变）</h3>
+      <div style="max-width: 320px"><NtDepthBoard :asks="asks" :bids="bids" side-labels /></div>
+      <h3>NtMissing（没取到≠0）</h3>
+      <div class="g-row">
+        <NtMissing />
+        <NtMissing reason="源未连接" />
+        <NtMissing label="未返回" reason="接口超时" />
+      </div>
+      <h3>NtSkeleton（rows / table / card，节能档停微光）</h3>
+      <div class="g-row">
+        <NtSkeleton :rows="3" style="min-width: 200px; flex: 1" />
+        <NtSkeleton kind="table" :rows="3" style="min-width: 200px; flex: 1" />
+        <NtSkeleton kind="card" style="min-width: 200px; flex: 1" />
+      </div>
+    </section>
+
+    <NtConfirm
+      v-model:open="confirmOpen"
+      title="刷新行情数据？"
+      body="将重新拉取自选股最新快照，期间列表短暂空白。"
+      confirm-label="刷新"
+      @confirm="confirmOpen = false"
+    />
+    <NtConfirm
+      v-model:open="confirmDangerOpen"
+      tone="danger"
+      title="删除这条规则？"
+      body="删除后不可恢复，命中流水仍保留在审计里。"
+      confirm-label="删除"
+      @confirm="confirmDangerOpen = false"
+    />
+
     <NtModal v-model:open="modalOpen" title="示例 Modal" width="420px">
       <p class="g-modal-body">
         Modal 走 useOverlay 的 z 栈 + Esc 链，Teleport 到 body。玻璃拟态允许出现的位置之一。
@@ -1295,6 +1360,13 @@ const demoTapeRows = demoTapeSession.absorb(
   margin: 0 0 10px;
   font-size: 13.5px;
   color: var(--nt-text-2);
+  font-weight: 600;
+}
+
+.g-sec h3 {
+  margin: 14px 0 8px;
+  font-size: 12.5px;
+  color: var(--nt-text-3);
   font-weight: 600;
 }
 

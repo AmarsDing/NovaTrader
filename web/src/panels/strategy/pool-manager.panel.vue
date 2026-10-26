@@ -6,6 +6,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { addBlacklist, listCandidates, removeBlacklist, type Candidate } from '@/api/strategy'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
@@ -116,7 +117,7 @@ onMounted(load)
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">候选股</h2>
-      <NtTable :columns="columns" :rows="rows" row-key="id" dense empty="今日还没有候选股">
+      <NtTable :columns="columns" :rows="rows" row-key="id" dense :empty="loading ? '读取中…' : error ? '候选股未返回——点上方刷新重试' : '今日还没有候选股——股池标的经策略扫描出入池后在这里展开'">
         <template #cell-retT1="{ row }">
           <span :class="pnlClass(row.retT1)">{{ ratioPct(row.retT1) }}</span>
         </template>
@@ -131,6 +132,8 @@ onMounted(load)
     </section>
 
     <section v-if="!auth.isViewer()" class="nt-panel">
+    <NtErrorGuide :error="error" />
+
       <h2 class="nt-panel__title">黑名单维护</h2>
       <div class="bl">
         <NtInput v-model="blSymbol" placeholder="000001.SZ" class="bl__symbol" />
@@ -140,8 +143,6 @@ onMounted(load)
       </div>
       <p class="nt-note">加入黑名单的标的会被策略扫描剔除；移出后立即恢复。</p>
     </section>
-
-    <p v-if="error" class="nt-err">{{ error }}</p>
   </div>
 </template>
 

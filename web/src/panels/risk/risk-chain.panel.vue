@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import { statusOf } from '@/ui/status-map'
@@ -129,7 +130,7 @@ onMounted(() => {
         <NtInput v-model="qty" placeholder="数量" type="number" class="form__num" />
         <NtButton size="sm" variant="primary" :loading="checking" :disabled="!canCheck" @click="runCheck">预检</NtButton>
       </div>
-      <p v-if="error" class="nt-err">{{ error }}</p>
+      <NtErrorGuide :error="error" />
     </section>
 
     <section v-if="result" class="nt-panel">

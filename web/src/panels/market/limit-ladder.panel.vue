@@ -6,6 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getSentimentDetail, listLimits, type LimitBoard, type Sentiment } from '@/api/market'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtLadderTiers, { type LadderTier } from '@/display/NtLadderTiers.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
@@ -191,7 +192,7 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">涨停梯队 · 按连板高度</h2>

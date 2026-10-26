@@ -1,13 +1,14 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第五批 brain 晨报域 1 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流；批次行随并入提交滚动改写）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
 import { LINK_STATUS, STATUS_MAP, linkStatus, statusOf, type StatusKey, type StatusTone } from '../status-map'
 
-const LEGAL_TONES = new Set<StatusTone>(['neutral', 'accent', 'success', 'warn', 'danger', 'info'])
+/* B2 词汇表治理：'ai' 为 AI 紫词（B2 入册）；info 词产物面已零调用，B1.5 随 golden 重刷删词时从本集合除名。 */
+const LEGAL_TONES = new Set<StatusTone>(['neutral', 'accent', 'success', 'warn', 'danger', 'info', 'ai', 'up', 'down'])
 
 describe('链路五态（§7.1 文案锁定）', () => {
   it.each([
@@ -166,9 +167,89 @@ describe('业务状态册（第三批 board 板块标识域 3 键，一字不差
   })
 })
 
+describe('业务状态册（第四批 ops 运维域 1 键，一字不差）', () => {
+  it('ops.unknown 入册且锁定：unknown=未观测/未配置/不采集类结构性缺省，中性不冒充「关闭」', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('ops.')).length).toBe(1)
+    expect(statusOf('ops.unknown')).toEqual({ text: '未知', tone: 'neutral' })
+  })
+
+  it('回归抽样：第三批旧键未被扩册改动（抽 2 键）', () => {
+    expect(statusOf('board.cyb')).toEqual({ text: '创业板', tone: 'accent' })
+    expect(statusOf('board.bj')).toEqual({ text: '北交所', tone: 'warn' })
+  })
+})
+
 describe('业务状态册（第五批 brain 晨报域 1 键，一字不差）', () => {
   it('brain.scrub.magnitude 入册且锁定：量级畸变按 omitted 计数，danger 档与同级词一致', () => {
     expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('brain.')).length).toBe(1)
     expect(statusOf('brain.scrub.magnitude')).toEqual({ text: '量级畸变', tone: 'danger' })
+  })
+
+  it('回归抽样：第四批旧键未被扩册改动（ops.unknown）', () => {
+    expect(statusOf('ops.unknown')).toEqual({ text: '未知', tone: 'neutral' })
+  })
+})
+
+describe('业务状态册（第六批 B2 词汇表治理：ai 域 2 键 + monitor 巡检域 3 键）', () => {
+  const EXPECTED_BATCH6: Record<string, { text: string; tone: StatusTone }> = {
+    'ai.segments': { text: 'AI 分段复盘', tone: 'ai' },
+    'ai.weekly': { text: 'AI 周报', tone: 'ai' },
+    'monitor.idle': { text: '空闲', tone: 'neutral' },
+    'monitor.gap': { text: '未返回', tone: 'warn' },
+    'monitor.attention': { text: '要注意', tone: 'warn' },
+  }
+
+  it('第六批 5 键全在册内（不多不少）', () => {
+    expect(Object.keys(EXPECTED_BATCH6).length).toBe(5)
+    for (const key of Object.keys(EXPECTED_BATCH6)) expect(STATUS_MAP).toHaveProperty(key)
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH6))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('AI 紫词成族：ai 域全键 tone=ai（--nt-ai，直觉2 第五个词）', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('ai.')).length).toBe(2)
+    expect(statusOf('ai.segments').tone).toBe('ai')
+    expect(statusOf('ai.weekly').tone).toBe('ai')
+  })
+
+  it('monitor 巡检域不重复立词：live/down 复用链路五态 linkStatus', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('monitor.')).length).toBe(3)
+    expect(STATUS_MAP).not.toHaveProperty('monitor.live')
+    expect(STATUS_MAP).not.toHaveProperty('monitor.down')
+    expect(linkStatus('live').text).toBe('在线')
+    expect(linkStatus('down').text).toBe('中断')
+  })
+
+  it('回归抽样：第五批旧键未被扩册改动（brain.scrub.magnitude）', () => {
+    expect(statusOf('brain.scrub.magnitude')).toEqual({ text: '量级畸变', tone: 'danger' })
+  })
+})
+
+describe('业务状态册（第七批 move 盘中异动域 3 键，一字不差）', () => {
+  const EXPECTED_BATCH7: Record<string, { text: string; tone: StatusTone }> = {
+    'move.surge': { text: '急拉', tone: 'warn' },
+    'move.limit_up': { text: '封板', tone: 'up' },
+    'move.break': { text: '开板', tone: 'neutral' },
+  }
+
+  it('第七批 3 键全在册内（不多不少）', () => {
+    expect(Object.keys(EXPECTED_BATCH7).length).toBe(3)
+    for (const key of Object.keys(EXPECTED_BATCH7)) expect(STATUS_MAP).toHaveProperty(key)
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH7))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('封板换轨涨跌词：limit_up=up 红（涨停方向语义），不再借 danger 危险词', () => {
+    expect(statusOf('move.limit_up').tone).toBe('up')
+    expect(statusOf('move.limit_up').tone).not.toBe('danger')
+  })
+
+  it('回归抽样：第六批旧键未被扩册改动（ai.weekly / monitor.gap）', () => {
+    expect(statusOf('ai.weekly')).toEqual({ text: 'AI 周报', tone: 'ai' })
+    expect(statusOf('monitor.gap')).toEqual({ text: '未返回', tone: 'warn' })
   })
 })

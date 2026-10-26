@@ -8,6 +8,7 @@ import { listAudit, type AuditRow } from '@/api/audit'
 import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { statusOf } from '@/ui/status-map'
@@ -95,10 +96,10 @@ onMounted(load)
       <NtSelect v-model="limit" :options="limitOptions" @update:model-value="load" />
     </div>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
 
     <section class="nt-panel">
-      <NtTable :columns="columns" :rows="tableRows" row-key="id" dense :empty="loading ? '加载中…' : '还没有审计记录'">
+      <NtTable :columns="columns" :rows="tableRows" row-key="id" dense :empty="loading ? '读取中…' : error ? '审计记录未返回——点上方刷新重试' : '还没有审计记录——登录与敏感操作都会在这里留痕'">
         <template #cell-createdAt="{ row }">{{ clock(row.createdAt) }}</template>
         <template #cell-role="{ row }">
           <NtBadge :tone="row.role === 'owner' ? 'accent' : 'neutral'">{{ row.role || '—' }}</NtBadge>

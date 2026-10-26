@@ -7,6 +7,7 @@ import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import TradeBar from '../trade/trade-bar.panel.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import { useSymbolStore } from '@/stores/symbol'
@@ -132,8 +133,9 @@ describe('trade bar（视频落地 P0）', () => {
     expect(buttonWith('提交委托')!.props('disabled')).toBe(true)
     await submitForm()
     expect(mock.place).not.toHaveBeenCalled()
-    expect(wrapper!.text()).toContain('风控试算未放行（R12）')
-    expect(wrapper!.text()).toContain('单票仓位超限')
+    // B3：提交错误改挂 NtErrorGuide（shallowMount 下桩化），断言接线（props）而非子件渲染。
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('风控试算未放行（R12）')
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('单票仓位超限')
   })
 
   it('试算接口不可用 → 预览区明示，落单前重试也算未返回，都不落单', async () => {
@@ -143,7 +145,7 @@ describe('trade bar（视频落地 P0）', () => {
     expect(wrapper!.text()).toContain('试算不可用')
     await submitForm()
     expect(mock.place).not.toHaveBeenCalled()
-    expect(wrapper!.text()).toContain('风控试算未返回，暂不能提交')
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('风控试算未返回，暂不能提交')
   })
 
   it('落单网络层异常 → 错误显「待核」指去交易面板，桌面通知带原编号', async () => {
@@ -152,8 +154,8 @@ describe('trade bar（视频落地 P0）', () => {
     await fillForm()
     await submitForm()
     expect(mock.place).toHaveBeenCalledTimes(1)
-    expect(wrapper!.text()).toContain('委托结果未知（网络异常）')
-    expect(wrapper!.text()).toContain('交易（JY）面板核对')
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('委托结果未知（网络异常）')
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('交易（JY）面板核对')
     expect(mock.notify).toHaveBeenCalledWith('委托结果待核', expect.stringContaining('manual-'), 'warn')
   })
 

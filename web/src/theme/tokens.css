@@ -26,6 +26,9 @@
   --nt-danger: #ff5c7c;
   --nt-success: #35dfb1;
   --nt-info: #66b5ff;
+  /* AI 紫（直觉2 第五个词·B2 入册）：AI 产物/研判专属语义色，不再借 accent 顶替。
+     未入 CVD 涨跌/警示硬门禁谱系，colorvision=safe 档继承本值；glow 切换留 B1.5 重刷批。 */
+  --nt-ai: #c792ea;
   --nt-on-accent: #04131e;
   --nt-on-danger: #230710;
   --nt-on-success: #041c17;
@@ -127,6 +130,8 @@
   --nt-danger: #b92249;
   --nt-success: #066c4c;
   --nt-info: #1964b1;
+  /* AI 紫（亮主题档，与 --nt-accent #00677f 拉开红轴距离；safe 档继承本值）。 */
+  --nt-ai: #7c3aed;
   --nt-on-accent: #ffffff;
   --nt-on-danger: #ffffff;
   --nt-on-success: #ffffff;

@@ -29,6 +29,7 @@ import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
@@ -458,7 +459,7 @@ onMounted(load)
 
     <NtTabs v-model="tab" :items="tabItems" />
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="hint" class="nt-note">{{ hint }}</p>
     <p v-if="auth.isViewer()" class="nt-note">viewer 只读：开关、凭证与降级链编辑需要 owner。</p>
 
@@ -473,7 +474,7 @@ onMounted(load)
           <header class="wall__card-head">
             <NtStatusDot :status="card.manifest.registered ? statusOf({ enabled: card.effEnabled, status: card.health.status, lastAt: card.health.lastAt }) : 'off'" />
             <span class="wall__name">{{ card.manifest.id }}</span>
-            <NtBadge v-if="card.manifest.official" tone="info">官方</NtBadge>
+            <NtBadge v-if="card.manifest.official" tone="accent">官方</NtBadge>
             <NtBadge :tone="feeTone(card.manifest.feeTier)" :title="card.manifest.feeNote || ''">{{ feeLabel(card.manifest) }}</NtBadge>
             <NtBadge v-if="!card.manifest.registered" tone="neutral">未启用</NtBadge>
           </header>
@@ -580,7 +581,7 @@ onMounted(load)
           <template #cell-fails="{ row }">
             {{ row.successCount != null ? row.successCount : '—' }} / {{ row.failureCount != null ? row.failureCount : '—' }}
           </template>
-          <template #cell-lastAt="{ row }">{{ clock(row.lastAt) }}</template>
+          <template #cell-lastAt="{ row }">{{ clock(row.lastAt) || '—' }}</template>
           <template #cell-enabled="{ row }">{{ row.enabled ? '开' : '关' }}</template>
         </NtTable>
       </section>
@@ -591,7 +592,7 @@ onMounted(load)
             <span :class="{ warn: row.severity === 'high', mid: row.severity === 'medium' }">{{ row.severity || '—' }}</span>
           </template>
           <template #cell-hits="{ row }">{{ row.hits != null ? row.hits : '—' }}</template>
-          <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) }}</template>
+          <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) || '—' }}</template>
         </NtTable>
       </section>
     </section>

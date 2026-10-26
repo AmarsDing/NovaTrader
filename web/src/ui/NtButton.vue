@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useAttrs } from 'vue'
+import { computed, useAttrs } from 'vue'
 import NtIcon from './NtIcon.vue'
 import type { IconName } from './icons'
 
@@ -11,27 +11,38 @@ const props = withDefaults(
   defineProps<{
     variant?: ButtonVariant
     icon?: IconName | null
-    size?: 'sm' | 'md'
+    /** lg=主行动档（B3）：单屏唯一主行动（买卖/提交类）才用，非默认放大器。 */
+    size?: 'sm' | 'md' | 'lg'
     loading?: boolean
     block?: boolean
     disabled?: boolean
+    /** 禁用原因（B3）：禁用时作悬浮说明。禁用钮本身不发指针事件，经外层包裹 span 承载 title——
+     *  仅在「禁用且给了原因」时加包裹，既有调用 DOM 结构零变化（golden 定格帧安全）。 */
+    disabledReason?: string
     /** 默认 button；表单内主操作传 submit */
     type?: 'button' | 'submit' | 'reset'
   }>(),
-  { variant: 'ghost', icon: null, size: 'md', loading: false, block: false, disabled: false, type: 'button' },
+  { variant: 'ghost', icon: null, size: 'md', loading: false, block: false, disabled: false, disabledReason: '', type: 'button' },
 )
 
 const attrs = useAttrs()
+const classes = computed(() => [
+  `nt-btn--${props.variant}`,
+  { 'nt-btn--sm': props.size === 'sm', 'nt-btn--lg': props.size === 'lg', 'nt-btn--block': props.block },
+])
+/** 禁用且给了原因才包一层：浏览器对被禁用 button 不派发鼠标事件，title 必须挂在包裹物上。 */
+const why = computed(() => (props.disabled && props.disabledReason ? props.disabledReason : ''))
 </script>
 
 <template>
-  <button
-    v-bind="attrs"
-    :type="props.type"
-    class="nt-btn"
-    :class="[`nt-btn--${props.variant}`, { 'nt-btn--sm': props.size === 'sm', 'nt-btn--block': props.block }]"
-    :disabled="props.loading || props.disabled"
-  >
+  <span v-if="why" class="nt-btn-why" :title="why">
+    <button v-bind="attrs" :type="props.type" class="nt-btn" :class="classes" disabled>
+      <span v-if="props.loading" class="nt-btn__spin" aria-hidden="true" />
+      <NtIcon v-else-if="props.icon" :name="props.icon" />
+      <span class="nt-btn__label"><slot /></span>
+    </button>
+  </span>
+  <button v-else v-bind="attrs" :type="props.type" class="nt-btn" :class="classes" :disabled="props.loading || props.disabled">
     <span v-if="props.loading" class="nt-btn__spin" aria-hidden="true" />
     <NtIcon v-else-if="props.icon" :name="props.icon" />
     <span class="nt-btn__label"><slot /></span>
@@ -60,6 +71,12 @@ const attrs = useAttrs()
     filter var(--nt-transition);
 }
 
+/* 禁用原因包裹（B3）：自身不可点，悬停把原因托给 title；不影响内层按钮布局。 */
+.nt-btn-why {
+  display: inline-flex;
+  cursor: not-allowed;
+}
+
 .nt-btn:hover:not(:disabled) {
   background: var(--nt-accent-hover);
   border-color: var(--nt-accent);
@@ -83,6 +100,12 @@ const attrs = useAttrs()
   min-height: 26px;
   padding: 0 9px;
   font-size: 12px;
+}
+
+.nt-btn--lg {
+  min-height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
 }
 
 .nt-btn--block {

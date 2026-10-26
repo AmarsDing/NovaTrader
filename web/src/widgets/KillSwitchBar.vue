@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { messageOf } from '@/utils/format'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtModal from '@/ui/NtModal.vue'
 
@@ -74,7 +75,7 @@ async function submit() {
     <NtInput v-model="reason" label="原因" />
     <NtInput v-if="risk.killActive" v-model="confirmWord" label="确认字样" placeholder="CONFIRM" mono />
     <p v-if="auth.isViewer()" class="nt-err">当前是查看角色，不能操作 Kill Switch。</p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <template #footer>
       <NtButton @click="open = false">关闭</NtButton>
       <NtButton

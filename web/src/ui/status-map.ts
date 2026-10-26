@@ -35,8 +35,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键；全册只读，入册才可引用）。 */
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -109,10 +108,29 @@ export const STATUS_MAP = Object.freeze({
   'board.cyb': { text: '创业板', tone: 'accent' },
   'board.kcb': { text: '科创板', tone: 'accent' },
   'board.bj': { text: '北交所', tone: 'warn' },
+  // —— 第四批（ops 运维域，1 键；W2-c 拆态落地配套）——
+  // 网关 unknown = 未观测/未配置/不采集类结构性缺省：中性暗点，不冒充 off「关闭」（关停语义），
+  // 精确归因（未配置/不采集/未上报）由行内 detail 列承载。
+  'ops.unknown': { text: '未知', tone: 'neutral' },
   // —— 第五批（brain 晨报域，1 键；S3 magnitude 判定徽注配套）——
   // magnitude：有效数字与出处一致但量级差 ≥3 个数量级（如 1.2 万写成 1.2 亿），按 omitted 计数——
   // 故 tone 与 omitted 同级取 danger；正文已按出处更正表达，不冒充无出处缺失。
   'brain.scrub.magnitude': { text: '量级畸变', tone: 'danger' },
+  // —— 第六批（B2 词汇表治理：ai 域 2 键 + monitor 巡检域 3 键；直觉2 色彩是词汇表）——
+  // ai 域：AI 产物章统一走紫词（--nt-ai / NtBadge tone 'ai'），不再借 info 蓝或 accent 顶替。
+  'ai.segments': { text: 'AI 分段复盘', tone: 'ai' },
+  'ai.weekly': { text: 'AI 周报', tone: 'ai' },
+  // monitor 巡检域（MonitorView STATUS_WORD 收编）：live/down 复用链路五态 linkStatus 不再键立，
+  // 本批只补巡检专属三词。gap=「未返回」是数据纪律显式缺失语，warn 档不冒充 0。
+  'monitor.idle': { text: '空闲', tone: 'neutral' },
+  'monitor.gap': { text: '未返回', tone: 'warn' },
+  'monitor.attention': { text: '要注意', tone: 'warn' },
+  // —— 第七批（move 盘中异动域 3 键；G7 评审入册，收编 intraday-alerts R6 散值）——
+  // 封板换轨涨跌词：limit_up=up 红（涨停方向语义，§0.3 红涨），不再借 danger 危险词冒充急迫；
+  // surge 急拉保持 warn 预警语族；break 开板无明确方向，中性不冒充跌。
+  'move.surge': { text: '急拉', tone: 'warn' },
+  'move.limit_up': { text: '封板', tone: 'up' },
+  'move.break': { text: '开板', tone: 'neutral' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP

@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { previewPortfolio, type AllocationPreview } from '@/api/allocation'
 import { amount, clock, messageOf, price, ratioPct } from '@/utils/format'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import SymbolName from '@/display/SymbolName.vue'
 const props = defineProps<{ runId: string }>()
 const preview = ref<AllocationPreview | null>(null),
@@ -50,7 +51,7 @@ onBeforeUnmount(() => {
     <p class="nt-note">
       读取原研究任务与当前行情，核算整手、T+1、费用、冻结和集中度。这里只生成待审建议，实际执行须有独立信号、计划授权与最终风控。
     </p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <template v-if="preview"
       ><!-- 结论按结局着色：可调整=行动主色，有阻断/未知=琥珀警告——「暂不能动」不是好消息不该 accent -->
       <p class="conclusion" :class="{ blocked: !preview.allocation_ready }">

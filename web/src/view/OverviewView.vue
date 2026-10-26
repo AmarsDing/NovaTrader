@@ -16,6 +16,7 @@ import NtSectorBar from '@/viz/NtSectorBar.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
 import { useAccountStore } from '@/stores/account'
 import { useMarketStore } from '@/stores/market'
@@ -171,6 +172,12 @@ function pnlAmount(position: { quantity: number | null; avgCost: number | null; 
   if (!position.quantity || !position.avgCost || !position.lastPrice) return null
   return (position.lastPrice - position.avgCost) * position.quantity
 }
+
+/** B3 攻心版：持仓区两条告警统一走 NtErrorGuide——「开仓已停」是风控态、「接口没应答」是取数失败，都不冒充空仓（数据纪律）。 */
+const haltError = computed(() =>
+  account.accountOk && account.openHalted ? `开仓已停${account.haltReason ? `：${account.haltReason}` : ''}` : '',
+)
+const positionsError = computed(() => (!account.positionsOk ? '持仓接口没有应答，账面不当作空仓' : ''))
 
 /** R3 今日可卖：后端 available 即 T+1 可卖口径（接口无独立 sellableToday 字段，注明）；0 显「T+1 不可卖」。 */
 function sellable(position: { available: number | null }): { text: string; hold: boolean } {
@@ -392,23 +399,11 @@ watch(
     <p v-if="pulse" class="nt-note">
       刚到：<button type="button" class="link" @click="openPulse">{{ pulse }}</button>
     </p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
-
-    <section class="nt-panel">
-      <h2 class="nt-panel__title">现在缺什么</h2>
-      <p v-if="!gaps.length" class="nt-empty">
-        链路齐：快照、晨报、模型和行情通道都有数。仍只做两个模板，不是全市场机会。
-      </p>
-      <ul v-else class="gaps">
-        <li v-for="gap in gaps" :key="gap.id">
-          <button type="button" :class="gap.level" @click="openPanel(gap.panel)">{{ gap.text }}</button>
-        </li>
-      </ul>
-    </section>
+    <NtErrorGuide :error="error" />
 
     <section class="nt-cards">
-      <!-- 双 hero 例外（改造单决策台条 P0-8 登记在案）：当日盈亏=第一答案、权益=第二答案，两格同档；
-           攻心版结构重排收单焦点属 B3，本批不破布局。 -->
+      <!-- B3 攻心版收单焦点（决策台条 P0-8 终收编）：当日盈亏=首屏唯一 hero（第一答案）；
+           权益降正常档、保留可用资金子句——B1 曾登记双英雄例外，本批按直觉3「只留一个最大数字」收口。 -->
       <NtStatCard
         label="当日盈亏"
         :value="signed(dayPnlValue)"
@@ -420,7 +415,6 @@ watch(
         label="权益"
         :value="amount(account.accountOk ? account.equity : null)"
         :sub="account.accountOk ? `可用 ${amount(account.cash)}${usedPct != null ? ` · 已用 ${(usedPct * 100).toFixed(0)}%` : ''}` : '账户读取未核对'"
-        hero
       />
       <NtStatCard
         label="情绪"
@@ -436,6 +430,19 @@ watch(
         :value="isLive() ? '实时' : '不是实时'"
         :sub="`模式 ${risk.ready ? risk.mode : '—'} · 炸板率 ${ratioPct(market.ready ? market.brokenRate : null)}`"
       />
+    </section>
+
+    <!-- B3 攻心版换位（直觉4 任务即视图）：答案卡先扫，阻断清单紧随——缺什么总在票区前读，不会到下单才发现链路断。 -->
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">现在缺什么</h2>
+      <p v-if="!gaps.length" class="nt-empty">
+        链路齐：快照、晨报、模型和行情通道都有数。仍只做两个模板，不是全市场机会。
+      </p>
+      <ul v-else class="gaps">
+        <li v-for="gap in gaps" :key="gap.id">
+          <button type="button" :class="gap.level" @click="openPanel(gap.panel)">{{ gap.text }}</button>
+        </li>
+      </ul>
     </section>
 
     <!-- P3 一张票：左栏三列，右栏正文 -->
@@ -643,11 +650,9 @@ watch(
 
       <section class="nt-panel">
         <h2 class="nt-panel__title">持仓</h2>
-        <p v-if="account.accountOk && account.openHalted" class="nt-err">
-          开仓已停{{ account.haltReason ? `：${account.haltReason}` : '' }}
-        </p>
-        <!-- 持仓接口失败和真的空仓分开写：没读到时账面不显示成空仓 -->
-        <p v-if="!account.positionsOk" class="nt-err">持仓接口没有应答，账面不当作空仓。</p>
+        <NtErrorGuide :error="haltError" />
+        <!-- 持仓接口失败和真的空仓分开写：没读到时账面不显示成空仓（B3 收编进 NtErrorGuide，v-if 保住后面 else 链） -->
+        <NtErrorGuide v-if="positionsError" :error="positionsError" />
         <p v-else-if="!account.positions.length" class="nt-empty">暂无持仓。</p>
         <div v-else class="pos-table">
           <!-- §6.3 R3 持仓行列序：证券|数量|可用|成本|现价|浮盈额|浮盈%|今日可卖|权重 -->

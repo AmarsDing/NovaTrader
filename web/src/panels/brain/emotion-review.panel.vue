@@ -19,6 +19,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { useAuthStore } from '@/stores/auth'
+import { statusOf } from '@/ui/status-map'
 import { amount, messageOf, pctText } from '@/utils/format'
 
 const auth = useAuthStore()
@@ -231,8 +232,8 @@ onMounted(load)
       </div>
       <div class="nt-actions">
         <NtInput v-model="date" placeholder="YYYY-MM-DD" style="width: 9em" @keyup.enter="load" />
-        <NtButton :busy="loading" @click="load">查询</NtButton>
-        <NtButton v-if="!auth.isViewer()" tone="primary" :busy="running" @click="runCheck">补跑对账</NtButton>
+        <NtButton :loading="loading" @click="load">查询</NtButton>
+        <NtButton v-if="!auth.isViewer()" :loading="running" @click="runCheck">补跑对账</NtButton>
         <div class="nt-tabs">
           <button type="button" :class="{ on: tab === 'frozen' }" @click="tab = 'frozen'">定稿</button>
           <button type="button" :class="{ on: tab === 'check' }" @click="tab = 'check'">明日验证</button>
@@ -407,7 +408,7 @@ onMounted(load)
         </div>
         <NtButton
           v-if="reviewKind !== 'program' && !auth.isViewer()"
-          tone="primary" :busy="generating" @click="genAIReview">{{ reviewKind === 'ai_week' ? '生成/重跑 AI 周报' : '生成/重跑 AI 复盘' }}</NtButton>
+          :loading="generating" @click="genAIReview">{{ reviewKind === 'ai_week' ? '生成/重跑 AI 周报' : '生成/重跑 AI 复盘' }}</NtButton>
       </div>
 
       <!-- 程序版八格 -->
@@ -433,7 +434,7 @@ onMounted(load)
                 dot
                 >{{ omittedCount == null ? '数字核对信息缺失' : `略 ${omittedCount} 个无出处数字` }}</NtBadge
               >
-              <NtBadge tone="info" dot>AI 分段复盘（6 段）</NtBadge>
+              <NtBadge :tone="statusOf('ai.segments').tone" dot>{{ statusOf('ai.segments').text }}（{{ SEG_META.length }} 段）</NtBadge>
             </div>
             <span class="nt-meta">封盘 {{ aiSealedAt || '—' }} · 模型 {{ aiModel || '—' }}</span>
           </div>
@@ -472,7 +473,7 @@ onMounted(load)
                   <td class="r mono">{{ e.span }}</td>
                   <td>
                     <NtBadge v-if="e.verdict === 'sourced'" tone="success">有出处</NtBadge>
-                    <NtBadge v-else-if="e.verdict === 'recomputed'" tone="info">重算通过</NtBadge>
+                    <NtBadge v-else-if="e.verdict === 'recomputed'" tone="success">重算通过</NtBadge>
                     <NtBadge v-else tone="danger">已略※</NtBadge>
                   </td>
                   <td class="muted">{{ e.match || '无出处，正文已替换为（略※）' }}</td>
@@ -499,7 +500,7 @@ onMounted(load)
                 dot
                 >{{ wkOmitted == null ? '数字核对信息缺失' : `略 ${wkOmitted} 个无出处数字` }}</NtBadge
               >
-              <NtBadge tone="info" dot>AI 周报</NtBadge>
+              <NtBadge :tone="statusOf('ai.weekly').tone" dot>{{ statusOf('ai.weekly').text }}</NtBadge>
             </div>
             <span class="nt-meta">窗口 {{ parsedWKStats?.window_start || '—' }} ~ {{ parsedWKStats?.window_end || '—' }} · 覆盖 {{ parsedWKStats?.usable_days ?? '—' }}/{{ parsedWKStats?.expected_days ?? '—' }} 个交易日 · 封盘 {{ wkSealedAt || '—' }} · 模型 {{ wkModel || '—' }}</span>
           </div>
@@ -528,7 +529,7 @@ onMounted(load)
                   <td class="r mono">{{ e.span }}</td>
                   <td>
                     <NtBadge v-if="e.verdict === 'sourced'" tone="success">有出处</NtBadge>
-                    <NtBadge v-else-if="e.verdict === 'recomputed'" tone="info">重算通过</NtBadge>
+                    <NtBadge v-else-if="e.verdict === 'recomputed'" tone="success">重算通过</NtBadge>
                     <NtBadge v-else tone="danger">已略※</NtBadge>
                   </td>
                   <td class="muted">{{ e.match || '无出处，正文已替换为（略※）' }}</td>

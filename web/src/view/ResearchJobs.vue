@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { cancelResearchJob, createResearchJob, listResearchJobs, type ResearchJob } from '@/api/research'
 import { clock, messageOf, num, ratioPct } from '@/utils/format'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import { createPageRefresh } from './page-refresh'
 import { onPush, onResync, subscribe } from '@/ws/hub'
@@ -171,7 +172,7 @@ onBeforeUnmount(() => {
       <NtButton size="sm" :loading="loading" @click="refresh.refresh()">核对任务</NtButton>
     </header>
     <p class="nt-note">冻结数据 → 有界研究 → 结果核验。研究产物可供审阅，策略晋级和交易授权另行核验。</p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="!ready" class="nt-note">研究任务尚未核验。</p>
     <p v-else-if="!jobs.length" class="nt-note">当前没有研究任务。</p>
     <div class="research-grid">

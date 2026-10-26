@@ -6,6 +6,8 @@ import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import QuoteSidebar from '../market/quote-sidebar.panel.vue'
+import NtDepthBoard from '@/viz/NtDepthBoard.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import { useSymbolStore } from '@/stores/symbol'
@@ -74,11 +76,13 @@ describe('quote sidebar（视频落地 P0）', () => {
     expect(text).toContain('未知')
     expect(text).toContain('1,881.00')
     expect(text).toContain('1,539.00')
-    // 五档：卖1/卖2、买1/买2 与价格都在。
-    expect(text).toContain('卖1')
-    expect(text).toContain('买2')
-    expect(text).toContain('1,705.01')
-    expect(text).toContain('1,704.99')
+    // B3：五档移交 NtDepthBoard（shallowMount 下桩化），断言接线——档位/侧标真传，卖1/买2 与价格渲染由组件自测担保。
+    const board = wrapper!.findComponent(NtDepthBoard)
+    expect(board.exists()).toBe(true)
+    expect(board.props('sideLabels')).toBe(true)
+    expect(board.props('asks')).toEqual(QUOTE.ask)
+    expect(board.props('bids')).toEqual(QUOTE.bid)
+    expect(text).not.toContain('合成·待数据')
     // WS 在线 → cut=false（非实时语义由 NtFreshness cut 唯一承载；shallowMount 下子件桩化，断言接线而非子件渲染）。
     expect(wrapper!.findComponent(NtFreshness).props('cut')).toBe(false)
     // 快讯占位页签：逐笔/异动流显式标「P1 待接入」，不造假数据。
@@ -109,7 +113,8 @@ describe('quote sidebar（视频落地 P0）', () => {
     await mountPanel()
     useSymbolStore().setSymbol('000001', 'QL')
     await flushPromises()
-    expect(wrapper!.text()).toContain('还没有这只证券的行情')
+    // B3：错误文案改挂在 NtErrorGuide（shallowMount 下桩化），断言接线（props）而非子件渲染。
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('还没有这只证券的行情')
     // found=false → 所有字段行都是「未知」，不假渲染价格。
     expect(wrapper!.text()).not.toContain('0.00')
   })

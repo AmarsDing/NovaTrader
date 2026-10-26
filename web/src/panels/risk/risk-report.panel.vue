@@ -7,6 +7,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getRiskReport, type RiskReport } from '@/api/risk'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { statusOf } from '@/ui/status-map'
@@ -91,7 +92,7 @@ const kpiRows = computed<Row[]>(() => rows.value.slice(0, 4))
       <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
     </header>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
 
     <section v-if="report?.summary" class="nt-panel">
       <h2 class="nt-panel__title">摘要</h2>

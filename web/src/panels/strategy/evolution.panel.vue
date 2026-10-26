@@ -22,6 +22,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTabs from '@/ui/NtTabs.vue'
@@ -202,7 +203,7 @@ onMounted(loadAll)
       ]"
     />
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
 
     <section v-show="tab === 'shadow'" class="nt-panel">
       <h2 class="nt-panel__title">影子统计</h2>

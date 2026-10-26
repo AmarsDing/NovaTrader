@@ -16,6 +16,7 @@ import { createPageRefresh } from './page-refresh'
 import { amount, clock, messageOf, price } from '@/utils/format'
 import { serverNow } from '@/utils/server-clock'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import SymbolName from '@/display/SymbolName.vue'
 
 const props = defineProps<{ signalId?: string }>()
@@ -152,7 +153,7 @@ onBeforeUnmount(() => {
       >
     </header>
     <p class="note">先核对何时行动与何时失效，再选择 SIM 授权。实际股数由规则预算和最新风控决定。</p>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="!ready" class="note">计划与原订单状态尚未核验。</p>
     <p v-else-if="!focused.length" class="note">当前没有持久计划；可从有效信号冻结事实。</p>
     <aside v-if="unknown.length" class="unresolved">

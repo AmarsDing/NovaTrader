@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 import { price } from '@/utils/format'
 import SymbolName from '@/display/SymbolName.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtModal from '@/ui/NtModal.vue'
 
 const auth = useAuthStore()
@@ -63,7 +64,7 @@ function sideClass(side: unknown): string {
       </div>
     </dl>
     <p v-if="locked" class="nt-err">当前是查看角色，不能确认实盘委托。</p>
-    <p v-if="confirmState.error" class="nt-err">{{ confirmState.error }}</p>
+    <NtErrorGuide :error="confirmState.error" />
     <template #footer>
       <NtButton :disabled="confirmState.busy" @click="dismissConfirm">放弃</NtButton>
       <NtButton variant="success" :disabled="locked || confirmState.busy" @click="acceptConfirm">

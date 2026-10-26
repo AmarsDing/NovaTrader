@@ -13,6 +13,7 @@ import NtTimeline, { type TimelineAction, type TimelineEntry } from '@/display/N
 import { useNotifyStore, type FeedEntry } from '@/stores/notify'
 import { causeKey, levelOf, renderAlertCopy, type AlertLevel } from '@/ui/alert-levels'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import { clock, messageOf } from '@/utils/format'
 import { capNotifReadIds, loadNotifReadIds, saveNotifReadIds } from '@/utils/notify-read'
@@ -264,12 +265,12 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
 
     <section class="nt-panel">
       <NtTimeline
         :items="entries"
-        :empty="loading ? '加载中…' : '还没有消息'"
+        :empty="loading ? '读取中…' : error ? '消息未返回——点上方刷新重试' : '还没有消息——系统动作、风控与人工复核建议都会推送在这里'"
         selectable
         @select="markOneRead"
         @action="onRowAction"

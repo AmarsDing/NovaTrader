@@ -8,7 +8,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getIntradayAlerts, type IntradayAlert, type IntradayAlertKind } from '@/api/market'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import SymbolName from '@/display/SymbolName.vue'
+import { statusOf, type StatusTone } from '@/ui/status-map'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import { clock, messageOf } from '@/utils/format'
 import { dataFrame } from '@/ws/data-frame'
@@ -20,11 +22,11 @@ const PCT_CHOICES = [
   { v: 3, t: '≥3%' },
   { v: 5, t: '≥5%' },
 ]
-// R6 类别徽标：急拉/封板/开板为异动类别散值，status-map §7.1 册无 move.* 键——维持现有 tone/文案待评审入册，禁自封。
-const KINDS: { k: IntradayAlertKind; t: string; tone: 'warn' | 'danger' | 'neutral' }[] = [
-  { k: 'surge', t: '急拉', tone: 'warn' },
-  { k: 'limit_up', t: '封板', tone: 'danger' },
-  { k: 'break', t: '开板', tone: 'neutral' },
+/** R6 类别徽标已入册（status-map 第七批 move.* 键）：文案/tone 由册锁定，封板换轨 up 红不再借 danger。 */
+const KINDS: { k: IntradayAlertKind; t: string; tone: StatusTone }[] = [
+  { k: 'surge', t: statusOf('move.surge').text, tone: statusOf('move.surge').tone },
+  { k: 'limit_up', t: statusOf('move.limit_up').text, tone: statusOf('move.limit_up').tone },
+  { k: 'break', t: statusOf('move.break').text, tone: statusOf('move.break').tone },
 ]
 const PUSH_RELOAD_MIN_INTERVAL_MS = 15000
 const MAX_ROWS = 300
@@ -171,12 +173,12 @@ watch([minPct, watchOnly], () => {
           </button>
         </div>
         <button type="button" class="watch" :class="{ on: watchOnly }" @click="watchOnly = !watchOnly">只看候选</button>
-        <NtButton size="sm" :busy="loading" @click="load">刷新</NtButton>
+        <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
         <NtFreshness label="异动" :at="latestAt" />
       </div>
     </header>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
 
     <div v-if="shown.length" class="nt-table-wrap"><table>
       <thead>

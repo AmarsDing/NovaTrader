@@ -4,6 +4,7 @@ import { getAdmission, type AdmissionReport } from '@/api/admission'
 import { clock, messageOf } from '@/utils/format'
 import { createPageRefresh } from './page-refresh'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 const report = ref<AdmissionReport | null>(null),
   error = ref(''),
   busy = ref(false)
@@ -75,7 +76,7 @@ onBeforeUnmount(() => {
       </div>
       <NtButton size="sm" :loading="busy" @click="refresh.refresh()">核验</NtButton>
     </header>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="!report" class="note">真实交易日证据尚未核验；连续合格天数未知。</p>
     <template v-else>
       <div class="headline">

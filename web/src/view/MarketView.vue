@@ -5,6 +5,7 @@ import { getBars, getIndicators, type Bar, type MarketIndicator } from '@/api/ma
 import { listFills, type Fill } from '@/api/trade'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtKline, { type KlineLevel, type KlineMarker } from '@/viz/NtKline.vue'
@@ -501,7 +502,7 @@ onBeforeUnmount(() => {
         框选测量
       </NtButton>
     </form>
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide v-if="error" :error="error" />
     <p v-else-if="snapshotLine" class="nt-note snap-line">行情推送：{{ snapshotLine }}</p>
     <p v-else-if="loaded && !loading && !bars.length" class="nt-empty">
       没有这只股票的 K 线。先到数据源采集证券列表和日线。
@@ -511,6 +512,8 @@ onBeforeUnmount(() => {
     <div v-if="quote" class="quote-strip">
       <SymbolName :code="symbol.trim()" mode="stacked" />
       <span class="q-item">最近一根{{ freq === '1d' ? '日 K' : '1 分钟 K' }} · 收</span>
+      <!-- QD 借鉴（G8）：行情页留下单直达入口，代码随行预填 trade-bar（panel-bus 同款机制）。 -->
+      <NtButton :disabled="!symbol.trim()" @click="getWorkbench()?.openPanel('trade-bar', { symbol: symbol.trim() })">去下单</NtButton>
       <span class="q-last" :class="[pnlClass(quote.change), qFlashClass]">{{ price(quote.last) }}</span>
       <span class="q-chg" :class="pnlClass(quote.change)">
         较前根

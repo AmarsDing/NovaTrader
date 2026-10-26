@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
@@ -161,7 +162,7 @@ onMounted(load)
       </div>
     </header>
 
-    <p v-if="error" class="nt-err">{{ error }}</p>
+    <NtErrorGuide :error="error" />
     <p v-if="hint" class="nt-note">{{ hint }}</p>
 
     <section class="nt-panel">
@@ -182,7 +183,7 @@ onMounted(load)
             {{ row.successCount != null ? row.successCount : '—' }} / {{ row.failureCount != null ? row.failureCount : '—' }}
           </span>
         </template>
-        <template #cell-lastAt="{ row }">{{ clock(row.lastAt) }}</template>
+        <template #cell-lastAt="{ row }">{{ clock(row.lastAt) || '—' }}</template>
         <template #cell-enabled="{ row }">
           <NtSwitch v-if="!auth.isViewer()" :model-value="row.enabled" @update:model-value="toggle(row, $event)" />
           <span v-else>{{ row.enabled ? '开' : '关' }}</span>
@@ -209,7 +210,7 @@ onMounted(load)
           </NtBadge>
         </template>
         <template #cell-hits="{ row }">{{ row.hits != null ? row.hits : '—' }}</template>
-        <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) }}</template>
+        <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) || '—' }}</template>
       </NtTable>
     </section>
   </div>

@@ -8,6 +8,7 @@ import { useRiskStore } from '@/stores/risk'
 import { useSettingsStore, type ColorVisionName, type DensityName, type ThemeName } from '@/stores/settings'
 import type { VisualQuality } from '@/theme/visual-quality'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
 import NtSelect from '@/ui/NtSelect.vue'
@@ -561,7 +562,7 @@ onBeforeUnmount(() => {
           </ul>
         </section>
 
-        <p v-if="error" class="nt-err">{{ error }}</p>
+        <NtErrorGuide :error="error" />
         <p v-if="hint" class="nt-note">{{ hint }}</p>
       </div>
     </div>
