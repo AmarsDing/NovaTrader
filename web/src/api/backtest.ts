@@ -1,14 +1,16 @@
 import { request } from '@/api/http'
 import { asList, num, pick, type RawRecord } from '@/utils/format'
-import type { BacktestReport, BacktestTask, BacktestTrade, StrategyMeta } from './types/backtest'
+import type { BacktestReport, BacktestTask, BacktestTaskDetail, BacktestTrade, StrategyMeta, TrustBar } from './types/backtest'
 
 export type {
   BacktestReport,
   BacktestTask,
+  BacktestTaskDetail,
   BacktestTrade,
   EquityPoint,
   ReportMetrics,
   StrategyMeta,
+  TrustBar,
 } from './types/backtest'
 
 export async function listStrategies(): Promise<StrategyMeta[]> {
@@ -51,7 +53,47 @@ export async function getReport(id: string): Promise<BacktestReport> {
       drawdown: num(pick(raw, 'drawdown')),
     })),
     warnings: Array.isArray(report.warnings) ? report.warnings.map(String) : [],
+    assumptions: Array.isArray(report.assumptions) ? report.assumptions.map(String) : [],
   }
+}
+
+/** 契约零值折缺：0=未统计/未声明 → null（线上永不伪造统计量；0 成交笔数除外——那是有信息的「样本不足」）。 */
+function zeroAsMissing(v: number | null): number | null {
+  return v !== null && v !== 0 ? v : null
+}
+
+/**
+ * W8a 契约归一：trust_bar 零值=未验证/未声明（判据位 false、样本量 0、声明串空），
+ * 数值 0 在适配层折成 null（缺位≠ 0）；整条 trust_bar 缺包时亦合成全缺位对象，
+ * 前端只按 null/''/false 显缺位徽注，不得整段另设分支渲染「已验证」（R-UI-20/23）。
+ * 注：tradeCount 保留 0——proto 契约明确「0 笔=样本不足结论位」，属有信息的真事实。
+ */
+export function normalizeTrustBar(raw?: RawRecord | null): TrustBar {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
+  return {
+    barsTotal: zeroAsMissing(num(pick(r, 'barsTotal', 'bars_total'))),
+    tradingDays: zeroAsMissing(num(pick(r, 'tradingDays', 'trading_days'))),
+    tradeCount: num(pick(r, 'tradeCount', 'trade_count')),
+    windowStart: pick<string>(r, 'windowStart', 'window_start') || '',
+    windowEnd: pick<string>(r, 'windowEnd', 'window_end') || '',
+    costModel: pick<string>(r, 'costModel', 'cost_model') || '',
+    feeBps: zeroAsMissing(num(pick(r, 'feeBps', 'fee_bps'))),
+    slippageBps: zeroAsMissing(num(pick(r, 'slippageBps', 'slippage_bps'))),
+    blindVerified: !!(r.blindVerified ?? r.blind_verified),
+    pboVerified: !!(r.pboVerified ?? r.pbo_verified),
+    datasetManifestId: pick<string>(r, 'datasetManifestId', 'dataset_manifest_id') || '',
+    datasetHash: pick<string>(r, 'datasetHash', 'dataset_hash') || '',
+  }
+}
+
+/** 详情读口：信任条判据+原始参数随 GetTask 下发（列表读口不付判据，见 W8c 注记）。 */
+export async function getTask(id: string): Promise<BacktestTaskDetail> {
+  const data = await request(`/api/backtest/tasks/${encodeURIComponent(id)}`)
+  const raw = (data && typeof data === 'object' ? data : {}) as RawRecord
+  const base = normalizeTask(raw)
+  const trustBar = normalizeTrustBar(pick<RawRecord>(raw, 'trustBar', 'trust_bar'))
+  const config = pick<RawRecord>(raw, 'config')
+  return { ...base, trustBar, config: config && typeof config === 'object' ? (config as RawRecord) : null }
 }
 
 export async function listTrades(id: string): Promise<BacktestTrade[]> {

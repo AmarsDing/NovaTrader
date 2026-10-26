@@ -3,20 +3,25 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   createTask,
   getReport,
+  getTask,
   listStrategies,
   listTasks,
   listTrades,
   type BacktestReport,
   type BacktestTask,
+  type BacktestTaskDetail,
   type BacktestTrade,
   type StrategyMeta,
 } from '@/api/backtest'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
+import NtMissing from '@/ui/NtMissing.vue'
 import NtSelect from '@/ui/NtSelect.vue'
+import { statusOf } from '@/ui/status-map'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
+import NtTrustBar from '@/display/NtTrustBar.vue'
 import NtEquityCurve from '@/viz/NtEquityCurve.vue'
 import ResearchJobs from './ResearchJobs.vue'
 import { messageOf, price, ratioPct, signed } from '@/utils/format'
@@ -26,6 +31,8 @@ const tasks = ref<BacktestTask[]>([])
 const report = ref<BacktestReport | null>(null)
 const trades = ref<BacktestTrade[]>([])
 const selected = ref<BacktestTask | null>(null)
+/** 详情读口（W8b）：信任条判据+原始参数；自取失败 → null 全缺位灰显，不阻断报告本体。 */
+const detail = ref<BacktestTaskDetail | null>(null)
 const error = ref('')
 const hint = ref('')
 const loading = ref(false)
@@ -94,6 +101,20 @@ const rangeText = computed(() => {
 })
 const sampleText = computed(() => (trades.value.length ? `${trades.value.length} 笔成交样本` : '暂无成交样本'))
 
+/** 册词（R-UI-04 唯一出处）：假设格/参数段缺位徽注从这里取词，不自封。 */
+const words = { undeclared: statusOf('missing.undeclared').text }
+
+/** 第③步假设 8 格：后端声明一条填一格（固定 8 槽），未声明槽灰显保位。 */
+function assumptionAt(i: number): string {
+  return report.value?.assumptions?.[i - 1] ?? ''
+}
+
+/** 第⑥步原始参数：task.config 原样展开；无参数体走缺位。 */
+const configText = computed(() => {
+  const cfg = detail.value?.config
+  return cfg && Object.keys(cfg).length > 0 ? JSON.stringify(cfg, null, 2) : ''
+})
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -140,11 +161,18 @@ async function openTask(task: TaskRow) {
   selected.value = task
   report.value = null
   trades.value = []
+  detail.value = null
   error.value = ''
   try {
-    const [rep, rows] = await Promise.all([getReport(task.id), listTrades(task.id)])
+    // 详情读口独立降级：信任条/原始参数取不到不拖死报告本体——对应步整步灰显（R-UI-23）。
+    const [rep, rows, det] = await Promise.all([
+      getReport(task.id),
+      listTrades(task.id),
+      getTask(task.id).catch(() => null),
+    ])
     report.value = rep
     trades.value = rows
+    detail.value = det
   } catch (err) {
     error.value = messageOf(err)
   }
@@ -213,28 +241,113 @@ onBeforeUnmount(() => {
 
     <section v-if="selected" class="nt-panel">
       <h2 class="nt-panel__title">报告 · {{ selected.name || selected.id }}</h2>
-      <div v-if="report" class="nt-cards report">
-        <!-- KPI 注脚给口径：收益/年化挂算式区间，胜率/回合挂样本量——裸数字不让人猜分母 -->
-        <NtStatCard label="总收益" :value="ratioPct(report.metrics.totalReturn)" :sub="rangeText" />
-        <NtStatCard label="年化" :value="ratioPct(report.metrics.annualReturn)" :sub="rangeText" />
-        <NtStatCard label="最大回撤" :value="ratioPct(report.metrics.maxDrawdown)" />
-        <NtStatCard label="胜率" :value="ratioPct(report.metrics.winRate)" :sub="sampleText" />
-        <NtStatCard label="夏普" :value="report.metrics.sharpe != null ? String(report.metrics.sharpe) : '—'" sub="按区间成交与净值" />
-        <NtStatCard label="回合" :value="report.metrics.rounds != null ? String(report.metrics.rounds) : '—'" :sub="sampleText" />
-      </div>
-      <NtEquityCurve v-if="report" :points="report.equity" height="280px" />
-      <p v-for="(line, index) in report?.warnings || []" :key="index" class="nt-note">{{ line }}</p>
-      <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="该区间无成交——策略未触发任何交易">
-        <template #cell-price="{ value }">{{ price(value) }}</template>
-        <template #cell-pnl="{ value }">{{ signed(value) }}</template>
-      </NtTable>
+
+      <!-- W8b 结果页六步重排：步骤序固定（结论→信任条→假设→曲线→交易明细→原始参数），缺步灰显不蒸发（R-UI-23） -->
+      <section class="bt-step" data-step="conclusion">
+        <h3 class="bt-step__title">① 结论</h3>
+        <div v-if="report" class="nt-cards report">
+          <!-- KPI 注脚给口径：收益/年化挂算式区间，胜率/回合挂样本量——裸数字不让人猜分母 -->
+          <NtStatCard label="总收益" :value="ratioPct(report.metrics.totalReturn)" :sub="rangeText" />
+          <NtStatCard label="年化" :value="ratioPct(report.metrics.annualReturn)" :sub="rangeText" />
+          <NtStatCard label="最大回撤" :value="ratioPct(report.metrics.maxDrawdown)" />
+          <NtStatCard label="胜率" :value="ratioPct(report.metrics.winRate)" :sub="sampleText" />
+          <NtStatCard label="夏普" :value="report.metrics.sharpe != null ? String(report.metrics.sharpe) : '—'" sub="按区间成交与净值" />
+          <NtStatCard label="回合" :value="report.metrics.rounds != null ? String(report.metrics.rounds) : '—'" :sub="sampleText" />
+        </div>
+        <NtMissing v-else label="报告未返回" />
+        <p v-for="(line, index) in report?.warnings || []" :key="index" class="nt-note">{{ line }}</p>
+      </section>
+
+      <section class="bt-step" data-step="trust">
+        <NtTrustBar :bar="detail?.trustBar ?? null" title="② 信任条" />
+      </section>
+
+      <section class="bt-step" data-step="assumptions">
+        <h3 class="bt-step__title">③ 假设</h3>
+        <div class="bt-assume__grid">
+          <div v-for="i in 8" :key="i" class="bt-assume__cell" :data-slot="`assume-${i}`">
+            <span v-if="assumptionAt(i)" class="bt-assume__text">{{ assumptionAt(i) }}</span>
+            <NtMissing v-else :label="words.undeclared" />
+          </div>
+        </div>
+      </section>
+
+      <section class="bt-step" data-step="curve">
+        <h3 class="bt-step__title">④ 净值曲线</h3>
+        <NtEquityCurve v-if="report" :points="report.equity" height="280px" />
+        <NtMissing v-else label="曲线未返回" />
+      </section>
+
+      <section class="bt-step" data-step="trades">
+        <h3 class="bt-step__title">⑤ 交易明细</h3>
+        <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="该区间无成交——策略未触发任何交易">
+          <template #cell-price="{ value }">{{ price(value) }}</template>
+          <template #cell-pnl="{ value }">{{ signed(value) }}</template>
+        </NtTable>
+      </section>
+
+      <section class="bt-step" data-step="params">
+        <h3 class="bt-step__title">⑥ 原始参数</h3>
+        <pre v-if="configText" class="bt-params">{{ configText }}</pre>
+        <NtMissing v-else :label="words.undeclared" />
+      </section>
     </section>
   </div>
 </template>
 
 <style scoped>
 .report {
-  margin-bottom: 12px;
+  margin-bottom: 0;
+}
+
+.bt-step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.bt-step__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nt-text-2);
+}
+
+.bt-assume__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bt-assume__cell {
+  min-width: 0;
+  padding: 7px 9px;
+  background: var(--nt-bg-2, var(--nt-bg-1));
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s, 4px);
+}
+
+.bt-assume__text {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--nt-text-2);
+}
+
+.bt-params {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  font-family: var(--nt-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--nt-text-2);
+  background: var(--nt-bg-2, var(--nt-bg-1));
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s, 4px);
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .active-hint {

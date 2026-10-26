@@ -10,6 +10,8 @@
  * - tone 与 NtBadge 的 BadgeTone 同枚举，别再造 tone 词表；
  * - lint 候选方向（§7.1）：禁面板 scoped 内散写含「色」的状态 class（.warn/.danger 文字级
  *   只允许经本册导出），由后续 G4 棘轮收编。
+ *
+ * 批次索引：首批 20 键 →…→ 第八批 missing 域 5 键 → 第九批 verify 判据域 1 键（W8b）。
  */
 import type { BadgeTone } from './NtBadge.vue'
 import type { DotStatus } from './NtStatusDot.vue'
@@ -35,7 +37,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -144,6 +146,11 @@ export const STATUS_MAP = Object.freeze({
   'missing.unverified': { text: '未验证', tone: 'neutral' },
   'missing.undeclared': { text: '未声明', tone: 'neutral' },
   'missing.insufficient': { text: '样本不足', tone: 'warn' },
+  // —— 第九批（verify 判据通过域 1 键；W8b 信任条判据位入册，R-UI-04/20/23）——
+  // 判据位正反两面的分工：正面（通过）用本键 success 绿——必须真判据真通过才可显；
+  // 反面（未通过/未验证）不另立词，一律走 missing.unverified 灰显（零值语义=未验证，
+  // 判据未过不是故障，是「还不能信」——不冒充 danger，也绝不伪造绿）。
+  'verify.pass': { text: '已验证', tone: 'success' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP

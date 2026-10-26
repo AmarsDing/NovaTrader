@@ -1,7 +1,7 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
@@ -290,5 +290,22 @@ describe('业务状态册（第八批 missing 缺位徽注域 5 键；W1b，R-UI
   it('回归抽样：第七批旧键未被扩册改动（move.limit_up / move.break）', () => {
     expect(statusOf('move.limit_up')).toEqual({ text: '封板', tone: 'up' })
     expect(statusOf('move.break')).toEqual({ text: '开板', tone: 'neutral' })
+  })
+})
+
+describe('业务状态册（第九批 verify 判据域 1 键；W8b，R-UI-04/20/23）', () => {
+  it('verify.pass 入册且锁定：判据真通过才配绿（success 不与灰显词同族）', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('verify.')).length).toBe(1)
+    expect(statusOf('verify.pass')).toEqual({ text: '已验证', tone: 'success' })
+  })
+
+  it('判据反面不另立词：无 verify.fail——走 missing.unverified 灰显，绝不伪造绿也不冒充 danger', () => {
+    expect(STATUS_MAP).not.toHaveProperty('verify.fail')
+    expect(statusOf('missing.unverified')).toEqual({ text: '未验证', tone: 'neutral' })
+  })
+
+  it('回归抽样：第八批旧键未被扩册改动（missing.data / missing.insufficient）', () => {
+    expect(statusOf('missing.data')).toEqual({ text: '没取到', tone: 'neutral' })
+    expect(statusOf('missing.insufficient')).toEqual({ text: '样本不足', tone: 'warn' })
   })
 })
