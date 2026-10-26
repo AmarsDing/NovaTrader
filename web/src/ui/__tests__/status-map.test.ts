@@ -1,7 +1,7 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
@@ -251,5 +251,44 @@ describe('业务状态册（第七批 move 盘中异动域 3 键，一字不差�
   it('回归抽样：第六批旧键未被扩册改动（ai.weekly / monitor.gap）', () => {
     expect(statusOf('ai.weekly')).toEqual({ text: 'AI 周报', tone: 'ai' })
     expect(statusOf('monitor.gap')).toEqual({ text: '未返回', tone: 'warn' })
+  })
+})
+
+describe('业务状态册（第八批 missing 缺位徽注域 5 键；W1b，R-UI-04/20/23）', () => {
+  const EXPECTED_BATCH8: Record<string, { text: string; tone: StatusTone }> = {
+    'missing.data': { text: '没取到', tone: 'neutral' },
+    'missing.source': { text: '源未连接', tone: 'warn' },
+    'missing.unverified': { text: '未验证', tone: 'neutral' },
+    'missing.undeclared': { text: '未声明', tone: 'neutral' },
+    'missing.insufficient': { text: '样本不足', tone: 'warn' },
+  }
+
+  it('第八批 5 键全在册内（不多不少）', () => {
+    expect(Object.keys(EXPECTED_BATCH8).length).toBe(5)
+    for (const key of Object.keys(EXPECTED_BATCH8)) expect(STATUS_MAP).toHaveProperty(key)
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH8))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('missing 全族只此 5 键，且与 monitor.gap 分工不替（巡检域词不进本族）', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('missing.')).length).toBe(5)
+    expect(STATUS_MAP).not.toHaveProperty('missing.gap')
+    expect(statusOf('monitor.gap').text).toBe('未返回')
+  })
+
+  it('tone 语义：缺位/零值是事实（neutral 不冒充负面；未验证绝不伪造绿），可操作缺陷才 warn', () => {
+    expect(statusOf('missing.data').tone).toBe('neutral')
+    expect(statusOf('missing.unverified').tone).toBe('neutral')
+    expect(statusOf('missing.undeclared').tone).toBe('neutral')
+    expect(statusOf('missing.source').tone).toBe('warn')
+    expect(statusOf('missing.insufficient').tone).toBe('warn')
+    for (const key of Object.keys(EXPECTED_BATCH8)) expect(statusOf(key as StatusKey).tone).not.toBe('success')
+  })
+
+  it('回归抽样：第七批旧键未被扩册改动（move.limit_up / move.break）', () => {
+    expect(statusOf('move.limit_up')).toEqual({ text: '封板', tone: 'up' })
+    expect(statusOf('move.break')).toEqual({ text: '开板', tone: 'neutral' })
   })
 })

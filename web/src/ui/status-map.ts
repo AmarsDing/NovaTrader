@@ -35,7 +35,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -131,6 +131,19 @@ export const STATUS_MAP = Object.freeze({
   'move.surge': { text: '急拉', tone: 'warn' },
   'move.limit_up': { text: '封板', tone: 'up' },
   'move.break': { text: '开板', tone: 'neutral' },
+  // —— 第八批（missing 缺位徽注域 5 键；W1b 数据纪律「没取到≠0」入册，R-UI-04/20/23）——
+  // 字段级缺位的通用词族：报告缺口/信任条/8 格等缺位徽注一律从此取词，面板禁自封「暂无数据」。
+  // 实体件 = ui/NtMissing.vue（label 默认「没取到」与本册 missing.data 对齐）。
+  // 与 monitor.gap 的分工：monitor.gap=巡检周期缺数（运维面），本批=业务读面字段级缺位；
+  // 具体归因不给键——why 六值（not_run/source_down/empty/stale/filtered/unknown）的细节
+  // 由 NtMissing reason 逐条承载（R-UI-20 徽注原因），册只立状态级词。
+  // tone 语义：缺位是事实不是警报（neutral 不冒充负面）；源未连接=可操作配置缺陷（warn）；
+  // 样本不足=结论力受限（warn 但不属故障）；未验证/未声明=零值/缺省语义（R-UI-23 灰显徽注，绝不伪造绿）。
+  'missing.data': { text: '没取到', tone: 'neutral' },
+  'missing.source': { text: '源未连接', tone: 'warn' },
+  'missing.unverified': { text: '未验证', tone: 'neutral' },
+  'missing.undeclared': { text: '未声明', tone: 'neutral' },
+  'missing.insufficient': { text: '样本不足', tone: 'warn' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP
