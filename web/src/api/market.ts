@@ -578,6 +578,9 @@ export interface QuoteView {
   limitUp: number
   limitDown: number
   noLimit: boolean
+  /** 附录 B-2（optional）：52 周高/低前复权口径窗口值；服务端窗口不足不返回 → null 显「—」（数据纪律，禁虚构）。 */
+  high52w: number | null
+  low52w: number | null
   /** snap=盘中快照；1d=最近日线回退；空=无数据。 */
   source: string
   asOf: string
@@ -658,6 +661,9 @@ export async function getQuote(symbol: string): Promise<QuoteView> {
     limitUp: num(pick(raw, 'limitUpPrice', 'limit_up_price')) ?? 0,
     limitDown: num(pick(raw, 'limitDownPrice', 'limit_down_price')) ?? 0,
     noLimit: !!(raw.noLimit ?? raw.no_limit),
+    // B-2 optional 缺窗不序列化：num() 返 null 直落「—」，不走 ?? 0（0=「未知」口径会把 structural 缺窗冒充成行情零值）。
+    high52w: num(pick(raw, 'high52w', 'high_52w')),
+    low52w: num(pick(raw, 'low52w', 'low_52w')),
     source: pick<string>(raw, 'source') || '',
     asOf: pick<string>(raw, 'asOf', 'as_of') || '',
     stale: !!raw.stale,

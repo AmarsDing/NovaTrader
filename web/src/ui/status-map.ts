@@ -151,6 +151,11 @@ export const STATUS_MAP = Object.freeze({
   // 反面（未通过/未验证）不另立词，一律走 missing.unverified 灰显（零值语义=未验证，
   // 判据未过不是故障，是「还不能信」——不冒充 danger，也绝不伪造绿）。
   'verify.pass': { text: '已验证', tone: 'success' },
+  // —— 第十批（depth 盘口域 1 键；B3 走查 quote-depth 透镜收编）——
+  // 「合成·待数据」徽注：行情源未供五档时的占位口径标注，warn 档一眼可辨非真实盘口，不冒充真实亦不归 danger 故障；
+  // 消费实体=viz/NtDepthBoard（viz 层零 @/ui 依赖先例不引 statusOf，组件条款注释与本键一字对齐、双测试锁防漂移）；
+  // 归因细节（无源/合成规则）由组件 title 承载（R-UI-20 徽注原因），册只立状态级词。
+  'depth.synth': { text: '合成·待数据', tone: 'warn' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP

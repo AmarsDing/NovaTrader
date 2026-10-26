@@ -3,7 +3,7 @@
  * 单券行情侧栏（视频设计指引 §8 右栏恒随 + 方案 §6.4 个股浓缩卡四区块）：
  * 身份（SymbolName stacked + 市场/行业/ST·停牌徽注，全走 security 字典）
  * + 价格（hero 现价/涨跌 + 昨收/今开/最高/最低/振幅/涨跌停）
- * + 量额（总量/总额/换手；量比、52 周高/低无数据源占位「—」）
+ * + 量额（总量/总额/换手；量比 GetQuote 未携带显「—」，52 周高/低走 B-2 optional——缺窗显「—」）
  * + 估值（流通市值/PE(TTM)/PB 走字典；总市值字典未携带显「—」）+ 五档 + 相关情报。
  * 纪律：
  * - 恒随全局 symbol store——切代码只换数据，布局不动；
@@ -42,6 +42,8 @@ const draft = ref(symbolStore.code)
 const quote = ref<QuoteView | null>(null)
 const news = ref<IntelItem[]>([])
 const newsReady = ref(false)
+/** 情报三态缺的「未返回」位（B3 走查销号）：catch 吞错时 newsReady 不置位会永久冒「读取中」。 */
+const newsFailed = ref(false)
 const error = ref('')
 const loading = ref(false)
 const tab = ref<'intel' | 'flash'>('intel')
@@ -91,9 +93,11 @@ async function load(withNews = false) {
     }
     quote.value = q
     if (q.found && q.name) symbolStore.fillName(sym, q.name)
-    if (intelRes) {
-      news.value = intelRes.items.slice(0, 8)
+    // 情报三态（B3 走查销号）：失败也算读过了——「未返回≠没有消息」，显式区分，不永冒「读取中」。
+    if (withNews) {
+      news.value = intelRes ? intelRes.items.slice(0, 8) : []
       newsReady.value = true
+      newsFailed.value = !intelRes
     }
     if (!q.found) error.value = '还没有这只证券的行情，先确认代码与数据采集。'
   } catch (err) {
@@ -134,6 +138,7 @@ function applyStoreCode(next: string) {
   quote.value = null
   news.value = []
   newsReady.value = false
+  newsFailed.value = false
   resub()
   void load(true)
 }
@@ -199,8 +204,8 @@ const priceFields = computed<FieldItem[]>(() => {
 })
 
 /** 量额区块（§6.4）：总量/总额/换手出自 GetQuote。
- * 「—」两项：量比 GetQuote proto 未携带盘中口径（仅竞价截面有 auction_vol_ratio，口径不同不挪用）；
- * 52 周高/低需附录 B-2 端点补字段（未上）——显式缺失，禁虚构。 */
+ * 「—」口径两则：量比 GetQuote proto 未携带盘中口径（仅竞价截面有 auction_vol_ratio，口径不同不挪用）；
+ * 52 周高/低走附录 B-2（Quote.high_52w/low_52w optional，前端已接线）——服务端窗口不足不返回→「—」。 */
 const volumeFields = computed<FieldItem[]>(() => {
   const q = quote.value
   if (!q || !q.found) {
@@ -217,7 +222,7 @@ const volumeFields = computed<FieldItem[]>(() => {
     { label: '总额', value: q.amount ? compactAmount(q.amount) : MISS_QUOTE },
     { label: '换手', value: q.turnoverRate > 0 ? pctText(q.turnoverRate) : MISS_QUOTE },
     { label: '量比', value: MISS_FIELD },
-    { label: '52周高/低', value: MISS_FIELD },
+    { label: '52周高/低', value: q.high52w && q.low52w ? `${price(q.low52w)} / ${price(q.high52w)}` : MISS_FIELD },
   ]
 })
 
@@ -277,7 +282,7 @@ onBeforeUnmount(() => {
     <header class="nt-head">
       <div>
         <h1 class="nt-title">行情侧栏</h1>
-        <p class="nt-note">恒随当前证券，身份块走 SymbolName · 图纸见 M12 附议。</p>
+        <p class="nt-note">恒随当前证券的行情、五档盘口与相关情报。</p>
       </div>
     </header>
 
@@ -334,7 +339,8 @@ onBeforeUnmount(() => {
           side-labels
         />
         <!-- 合成输入也不可得（last=0=「没取到」）：组件不画假盘，落纯文字空态。 -->
-        <p v-else class="nt-empty">当前数据源没有盘口（{{ quote.source === 'snap' ? '盘口缺失' : '快照不可用，按日线回退' }}）。</p>
+        <!-- found=false 时 source 空=无回退来源，先说「行情未取到」——冒充「按日线回退」是虚构（B3 走查销号）。 -->
+        <p v-else class="nt-empty">当前数据源没有盘口（{{ !quote.found ? '行情未取到' : quote.source === 'snap' ? '盘口缺失' : '快照不可用，按日线回退' }}）。</p>
       </section>
 
       <section class="grid nt-panel">
@@ -376,9 +382,19 @@ onBeforeUnmount(() => {
           ]"
         />
         <div v-if="tab === 'intel'">
-          <p v-if="!news.length" class="nt-empty">{{ newsReady ? '没有相关消息。' : '读取中……' }}</p>
+          <p v-if="!news.length" class="nt-empty">{{ newsFailed ? '消息未返回，不能判断有无相关消息。' : newsReady ? '没有相关消息。' : '读取中……' }}</p>
           <ul v-else class="news">
-            <li v-for="item in news" :key="item.id || item.time + item.title" @click="openIntel(item)">
+            <!-- 可达性（B3 走查销号，双透镜互证）：可点 li 补 role/tabindex/键盘事件，与全站 button 焦点环同咒语。 -->
+            <li
+              v-for="item in news"
+              :key="item.id || item.time + item.title"
+              role="button"
+              tabindex="0"
+              title="打开情报面板查看"
+              @click="openIntel(item)"
+              @keydown.enter.prevent="openIntel(item)"
+              @keydown.space.prevent="openIntel(item)"
+            >
               <b>{{ clock(item.time) || '—' }}</b><!-- 时点缺失显占位，不留空白让人猜 -->
               <span>{{ item.title }}</span>
             </li>
@@ -393,7 +409,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .qs {
-  font-size: 12.5px;
+  /* 收编自 12.5px 裸值（B3 走查批六枪归阶梯，等值档映射，compact 密度随动） */
+  font-size: var(--nt-fs-body);
 }
 
 .head {
@@ -424,7 +441,7 @@ onBeforeUnmount(() => {
 }
 
 .head__ind {
-  font-size: 11px;
+  font-size: var(--nt-fs-caption);
   color: var(--nt-text-2);
 }
 
@@ -471,7 +488,7 @@ onBeforeUnmount(() => {
 }
 
 .chg {
-  font-size: 12.5px;
+  font-size: var(--nt-fs-body);
   font-weight: 600;
 }
 
@@ -486,7 +503,8 @@ onBeforeUnmount(() => {
 .asof {
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  /* 时标归 micro 档（阶梯税则：micro=时间戳/单位/脚注），收编自 11px 裸值 */
+  font-size: var(--nt-fs-micro);
   color: var(--nt-text-3);
 }
 
@@ -500,7 +518,7 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 18px;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--nt-fs-body);
 }
 
 .pairs dt {
@@ -536,11 +554,22 @@ onBeforeUnmount(() => {
 .news li {
   display: flex;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--nt-fs-body);
   cursor: pointer;
 }
 
 .news li:hover span {
+  color: var(--nt-text-1);
+}
+
+/* 键盘焦点与 hover 同款提字 + 全站代表焦点环（controls.css 咒语原样抄写）。 */
+.news li:focus-visible {
+  outline: 2px solid var(--nt-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--nt-focus-ring);
+}
+
+.news li:focus-visible span {
   color: var(--nt-text-1);
 }
 

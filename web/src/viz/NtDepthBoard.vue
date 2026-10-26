@@ -80,7 +80,8 @@ function widthOf(levels: DepthLevel[], index: number): number {
     <div class="nt-depth__mid">
       <template v-if="synthetic">
         <b class="nt-depth__last">{{ price(lastPrice) }}</b>
-        <span class="nt-depth__tag">合成·待数据</span>
+        <!-- 文案/tone 唯一出处=状态册 depth.synth（B3 走查收编；viz 层零 @/ui 依赖不引 statusOf，一字对齐双测试锁防漂移）。 -->
+        <span class="nt-depth__tag" title="行情源未供五档：按最近价±最小报价占位，不代实档">合成·待数据</span>
       </template>
       <template v-else>—</template>
     </div>
@@ -111,6 +112,8 @@ function widthOf(levels: DepthLevel[], index: number): number {
   gap: 2px;
   font-size: 12px;
   font-family: var(--nt-font-mono);
+  /* R-UI-41 成对纪律（B3 走查销号）：等宽字体声明必配等宽数字，价量列纵向对齐不因字体回退漂移。 */
+  font-variant-numeric: tabular-nums;
 }
 
 .nt-depth__row {
@@ -168,7 +171,7 @@ function widthOf(levels: DepthLevel[], index: number): number {
   margin-right: 6px;
 }
 
-/* 占位口径用警示色标注，一眼可辨非真实五档。 */
+/* 占位口径用警示色标注，一眼可辨非真实五档；与册 depth.synth tone=warn 对齐。 */
 .nt-depth__tag {
   color: var(--nt-warn);
 }

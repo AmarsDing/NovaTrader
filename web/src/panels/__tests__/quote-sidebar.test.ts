@@ -85,6 +85,8 @@ describe('quote sidebar（视频落地 P0）', () => {
     expect(text).not.toContain('合成·待数据')
     // WS 在线 → cut=false（非实时语义由 NtFreshness cut 唯一承载；shallowMount 下子件桩化，断言接线而非子件渲染）。
     expect(wrapper!.findComponent(NtFreshness).props('cut')).toBe(false)
+    // 情报拉取成功但为空=真的「没有相关消息」（与「未返回」造假「读取中」区分开，数据纪律三态）。
+    expect(text).toContain('没有相关消息。')
     // 快讯占位页签：逐笔/异动流显式标「P1 待接入」，不造假数据。
     wrapper!.findComponent(NtTabs).vm.$emit('update:modelValue', 'flash')
     await wrapper!.vm.$nextTick()
@@ -115,7 +117,46 @@ describe('quote sidebar（视频落地 P0）', () => {
     await flushPromises()
     // B3：错误文案改挂在 NtErrorGuide（shallowMount 下桩化），断言接线（props）而非子件渲染。
     expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('还没有这只证券的行情')
+    // found=false → source 空=无回退来源：盘口空态先说「行情未取到」，不冒充「快照不可用，按日线回退」（禁虚构）。
+    expect(wrapper!.text()).toContain('行情未取到')
+    expect(wrapper!.text()).not.toContain('按日线回退')
     // found=false → 所有字段行都是「未知」，不假渲染价格。
     expect(wrapper!.text()).not.toContain('0.00')
+  })
+
+  it('附录 B-2：52 周高/低携带则渲染区间，缺窗显「—」不虚构', async () => {
+    mock.live.push(true)
+    mock.quote.mockResolvedValue({ ...QUOTE, high52w: 1900, low52w: 900 })
+    await mountPanel()
+    useSymbolStore().setSymbol('600519', 'QL')
+    await flushPromises()
+    expect(wrapper!.text()).toContain('900.00 / 1,900.00')
+  })
+
+  it('情报三态：拉取失败显「消息未返回」，不永冒「读取中」也不冒充「没有相关消息」', async () => {
+    mock.live.push(true)
+    mock.timeline.mockRejectedValue(new Error('boom'))
+    await mountPanel()
+    useSymbolStore().setSymbol('600519', 'QL')
+    await flushPromises()
+    const text = wrapper!.text()
+    expect(text).toContain('消息未返回，不能判断有无相关消息。')
+    expect(text).not.toContain('没有相关消息。')
+    expect(text).not.toContain('读取中……')
+  })
+
+  it('情报条目键盘可达：role=button + tabindex=0（B3 走查销号）', async () => {
+    mock.live.push(true)
+    mock.timeline.mockResolvedValue({
+      items: [{ id: 'n1', time: '2026-10-27T09:30:00+08:00', title: '快讯一条' }],
+      sentiment: null,
+    })
+    await mountPanel()
+    useSymbolStore().setSymbol('600519', 'QL')
+    await flushPromises()
+    const li = wrapper!.find('.news li')
+    expect(li.exists()).toBe(true)
+    expect(li.attributes('role')).toBe('button')
+    expect(li.attributes('tabindex')).toBe('0')
   })
 })
