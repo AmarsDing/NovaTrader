@@ -99,7 +99,7 @@ onMounted(load)
     <NtErrorGuide :error="error" />
 
     <section class="nt-panel">
-      <NtTable :columns="columns" :rows="tableRows" row-key="id" dense :empty="loading ? '读取中…' : error ? '审计记录未返回——点上方刷新重试' : '还没有审计记录——登录与敏感操作都会在这里留痕'">
+      <NtTable :columns="columns" :rows="tableRows" row-key="id" dense :empty="loading ? '读取中…' : error ? '审计记录未返回——点上方刷新重试' : action ? '当前筛选条件下没有审计记录——可放宽动作筛选或清空后再看' : '还没有审计记录——登录与敏感操作都会在这里留痕'">
         <template #cell-createdAt="{ row }">{{ clock(row.createdAt) }}</template>
         <template #cell-role="{ row }">
           <NtBadge :tone="row.role === 'owner' ? 'accent' : 'neutral'">{{ row.role || '—' }}</NtBadge>

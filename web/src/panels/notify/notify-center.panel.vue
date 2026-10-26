@@ -129,6 +129,9 @@ const kindOptions = computed(() => [
   ...kinds.value.map((k) => ({ value: k, label: k })),
 ])
 
+// 筛选态空文案（B3 走查留账销号）：三筛选任一在选时列表为空不再说「还没有消息」——筛选本身可能就是原因。
+const hasFilter = computed(() => Boolean(level.value || grade.value || kind.value))
+
 const filtered = computed(() =>
   merged.value.filter(
     (r) =>
@@ -270,7 +273,7 @@ onBeforeUnmount(() => {
     <section class="nt-panel">
       <NtTimeline
         :items="entries"
-        :empty="loading ? '读取中…' : error ? '消息未返回——点上方刷新重试' : '还没有消息——系统动作、风控与人工复核建议都会推送在这里'"
+        :empty="loading ? '读取中…' : error ? '消息未返回——点上方刷新重试' : hasFilter ? '当前筛选条件下没有消息——可放宽级别/类别筛选再看看' : '还没有消息——系统动作、风控与人工复核建议都会推送在这里'"
         selectable
         @select="markOneRead"
         @action="onRowAction"
