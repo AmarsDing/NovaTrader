@@ -140,38 +140,6 @@ watch(
 
 const previewBlocked = computed(() => (preview.value && !preview.value.approved ? preview.value : null))
 
-/* ---------- 提交 ---------- */
-
-const submitting = ref(false)
-const submitError = ref('')
-const submitHint = ref('')
-
-const submitBlock = computed(() => {
-  if (auth.isViewer()) return '当前是查看角色，不能下单'
-  if (!formOk.value) return '请填写 600519.SH 形态代码、正限价、100 股整数倍'
-  if (form.side === 'buy' && (risk.ready && risk.killActive)) return '急停已触发，不能新买入'
-  if (form.side === 'buy' && accountStore.openHalted) return accountStore.haltReason || '账户已停止新开仓'
-  if (book.value === 'LIVE' && !liveAllowed.value) return '实盘执行权限尚未开放，仅支持 SIM 委托'
-  if (previewError.value) return `试算不可用，暂不放开提交：${previewError.value}`
-  if (previewBlocked.value) {
-    return `风控试算未放行${previewBlocked.value.blockRule ? `（${previewBlocked.value.blockRule}）` : ''}：${previewBlocked.value.reason || '请调整委托后重试'}`
-  }
-  return ''
-})
-const canSubmit = computed(() => !submitBlock.value && !submitting.value && !previewing.value)
-
-async function submit() {
-  if (submitting.value) return
-  hintClear()
-  touched.value = true
-  if (!formOk.value) {
-    submitError.value = '请填写 600519.SH 形态代码、正限价，以及 100 股整数倍'
-    return
-  }
-  const draft: OrderDraft = {
-    clientOrderId: `manual-${crypto.randomUUID()}`,
-    account: book.value,
-    symbol: form.symbol.trim(),
 /* ---------- QD 攻心版 v1：双色买卖整块 + 仓位四键 + 持仓报价锚 ---------- */
 
 /** 持仓行（仓位卖出档与报价锚的唯一取数口）；非持仓票锚/卖档给明确原因，不凭空造。 */
@@ -208,6 +176,38 @@ function applyFraction(pct: number) {
   if (shares > 0) form.volume = String(shares)
 }
 
+/* ---------- 提交 ---------- */
+
+const submitting = ref(false)
+const submitError = ref('')
+const submitHint = ref('')
+
+const submitBlock = computed(() => {
+  if (auth.isViewer()) return '当前是查看角色，不能下单'
+  if (!formOk.value) return '请填写 600519.SH 形态代码、正限价、100 股整数倍'
+  if (form.side === 'buy' && (risk.ready && risk.killActive)) return '急停已触发，不能新买入'
+  if (form.side === 'buy' && accountStore.openHalted) return accountStore.haltReason || '账户已停止新开仓'
+  if (book.value === 'LIVE' && !liveAllowed.value) return '实盘执行权限尚未开放，仅支持 SIM 委托'
+  if (previewError.value) return `试算不可用，暂不放开提交：${previewError.value}`
+  if (previewBlocked.value) {
+    return `风控试算未放行${previewBlocked.value.blockRule ? `（${previewBlocked.value.blockRule}）` : ''}：${previewBlocked.value.reason || '请调整委托后重试'}`
+  }
+  return ''
+})
+const canSubmit = computed(() => !submitBlock.value && !submitting.value && !previewing.value)
+
+async function submit() {
+  if (submitting.value) return
+  hintClear()
+  touched.value = true
+  if (!formOk.value) {
+    submitError.value = '请填写 600519.SH 形态代码、正限价，以及 100 股整数倍'
+    return
+  }
+  const draft: OrderDraft = {
+    clientOrderId: `manual-${crypto.randomUUID()}`,
+    account: book.value,
+    symbol: form.symbol.trim(),
     side: form.side,
     price: priceNum.value,
     volume: volumeNum.value,

@@ -119,6 +119,25 @@ const filtered = computed(() => {
 })
 
 const activeCount = computed(() => rows.value.filter((item) => isPendingStatus(item.status) && !isExpired(item)).length)
+
+/** B3 死件接入（信号审核漏斗）：「今日→有效→高分→已执行」全部从同一 rows 枚举计数（监控 S3 光带是全市场
+ *  扫描口径，这条是信号→成交口径，两只漏斗互补不复用）；未恢复时值显「—」，不拿 0 冒充（数据纪律）。 */
+const funnelStages = computed<FunnelStage[]>(() => {
+  if (!signalStore.ready) {
+    return [
+      { label: '今日信号', value: null, hint: '信号状态未恢复，等待快照重连。' },
+      { label: '有效中', value: null },
+      { label: '高分（≥85）', value: null },
+      { label: '已执行', value: null },
+    ]
+  }
+  return [
+    { label: '今日信号', value: rows.value.length },
+    { label: '有效中', value: activeCount.value },
+    { label: '高分（≥85）', value: rows.value.filter((r) => r.highValue && isPendingStatus(r.status) && !isExpired(r)).length },
+    { label: '已执行', value: rows.value.filter(isHandled).length },
+  ]
+})
 let loadSequence = 0
 let contextVersion = 0
 let disposed = false
@@ -146,25 +165,6 @@ async function readPage(key: string): Promise<boolean> {
   const ready = [signalRes, accountRes, riskRes, marketRes].every((result) => result.status === 'fulfilled' && result.value === true)
   if (!ready) error.value = failed?.status === 'rejected' ? messageOf(failed.reason) : '核心状态未恢复，不能执行信号'
   decisionContext.value = {
-
-/** B3 死件接入（信号审核漏斗）：「今日→有效→高分→已执行」全部从同一 rows 枚举计数（监控 S3 光带是全市场
- *  扫描口径，这条是信号→成交口径，两只漏斗互补不复用）；未恢复时值显「—」，不拿 0 冒充（数据纪律）。 */
-const funnelStages = computed<FunnelStage[]>(() => {
-  if (!signalStore.ready) {
-    return [
-      { label: '今日信号', value: null, hint: '信号状态未恢复，等待快照重连。' },
-      { label: '有效中', value: null },
-      { label: '高分（≥85）', value: null },
-      { label: '已执行', value: null },
-    ]
-  }
-  return [
-    { label: '今日信号', value: rows.value.length },
-    { label: '有效中', value: activeCount.value },
-    { label: '高分（≥85）', value: rows.value.filter((r) => r.highValue && isPendingStatus(r.status) && !isExpired(r)).length },
-    { label: '已执行', value: rows.value.filter(isHandled).length },
-  ]
-})
     checkedAt: nowTick.value,
     accountBook: checkedBook,
     accountReady: accountRes.status === 'fulfilled' && accountRes.value && account.accountOk,
