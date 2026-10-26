@@ -375,7 +375,7 @@ onBeforeUnmount(() => {
 
     <section v-if="tab === 'order'" class="order">
       <form class="ticket" @submit.prevent="submit">
-        <!-- QD 攻心版（P0-7）：买整块红/卖整块绿双目锚（§0.3 红涨绿跌），快捷键徽注只标真实绑定（B/S=shortcuts.ts 全局裸键）。 -->
+        <!-- QD 攻心版（P0-7）：买整块红/卖整块绿双目锚（§0.3 红涨绿跌）。快捷键徽注只标真实绑定：B/S=shortcuts.ts orderTicket 全局热键，唤起本票并预填买卖方向（B3 走查勘正）。 -->
         <div class="ticket__side" role="group" aria-label="买卖方向">
           <button
             type="button"
@@ -404,22 +404,34 @@ onBeforeUnmount(() => {
           <span>限价</span>
           <NtInput v-model="form.price" type="number" mono :invalid="touched && !priceOk" placeholder="0.00" />
         </label>
+        <!-- 报价锚：仅持仓票显锚，缺报价证据的票不凭空给 -->
+        <NtButton v-if="anchorPrice != null" type="button" size="sm" variant="quiet" class="ticket__anchor" @click="applyAnchor">
+          锚现价 {{ price(anchorPrice) }}
+        </NtButton>
         <label class="ticket__field">
           <span>数量</span>
           <NtInput v-model="form.volume" type="number" mono :invalid="touched && !volumeOk" placeholder="100 的整数倍" />
         </label>
         <div class="ticket__frac" role="group" aria-label="仓位档位">
-          <button
+          <!-- 禁键原因可达性（B3 走查 P2 销号，直觉5）：disabled 按钮不派发指针事件也不可聚焦，
+               title 挂外层 span——禁态经 tabindex=0 可聚焦，悬浮/读屏都能拿到缺腿原因。 -->
+          <span
             v-for="p in FRACTIONS"
             :key="p"
-            type="button"
-            class="frac"
-            :disabled="!fractionShares(p).shares"
+            class="frac-cell"
             :title="fractionTitle(p)"
-            @click="applyFraction(p)"
+            :aria-label="fractionTitle(p)"
+            :tabindex="!fractionShares(p).shares ? 0 : undefined"
           >
-            {{ p === 1 ? 'Max' : `${p * 100}%` }}
-          </button>
+            <button
+              type="button"
+              class="frac"
+              :disabled="!fractionShares(p).shares"
+              @click="applyFraction(p)"
+            >
+              {{ p === 1 ? 'Max' : `${p * 100}%` }}
+            </button>
+          </span>
         </div>
         <NtButton type="submit" variant="primary" size="lg" :loading="submitting" :disabled="!canSubmit" :disabled-reason="submitBlock">
           提交委托
@@ -453,10 +465,6 @@ onBeforeUnmount(() => {
         <thead><tr><th>编号</th><th>证券</th><th>方向</th><th>限价</th><th>数量</th><th>已成</th><th>状态</th><th></th></tr></thead>
         <tbody>
           <tr v-for="o in openOrders" :key="o.id">
-        <!-- 报价锚：仅持仓票显锚，缺报价证据的票不凭空给 -->
-        <NtButton v-if="anchorPrice != null" type="button" size="sm" variant="quiet" class="ticket__anchor" @click="applyAnchor">
-          锚现价 {{ price(anchorPrice) }}
-        </NtButton>
             <td class="mono">{{ o.id.slice(0, 13) }}…</td>
             <td><SymbolName :code="o.symbol" mode="inline" /></td>
             <td :class="pnlClass(o.side === 'buy' ? 1 : o.side === 'sell' ? -1 : 0)">{{ sideLabel(o.side) }}</td>
@@ -608,42 +616,6 @@ onBeforeUnmount(() => {
   padding-left: 2px;
 }
 
-.preview {
-  padding: 6px 10px;
-  border: 1px dashed var(--nt-border-1);
-  border-radius: var(--nt-radius-s);
-  font-family: var(--nt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 11.5px;
-  color: var(--nt-text-3);
-}
-
-.preview.blocked {
-  border-color: var(--nt-warn);
-  background: color-mix(in srgb, var(--nt-warn) 8%, transparent);
-}
-
-.pv {
-  margin-left: 10px;
-  color: var(--nt-text-2);
-}
-
-/* 试算结论走语义色：放行=成功，拦截=风险（§7.1 风险色不按涨跌判断）。 */
-.verdict-ok {
-  color: var(--nt-success);
-}
-
-.verdict-bad {
-  color: var(--nt-danger);
-}
-
-.sheet {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.sheet th {
 /* QD 攻心版：买卖双色整块（§0.3 红涨绿跌——买=--nt-up 红、卖=--nt-down 绿；
    选中性底字色复用同族 on-danger/on-success 保证 colorvision=safe 下仍成立）。 */
 .ticket__side {
@@ -661,7 +633,7 @@ onBeforeUnmount(() => {
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--nt-radius-s);
-  font-size: 14px;
+  font-size: var(--nt-fs-title); /* B3 走查销号：裸 14px 绕 compact 缩放，归阶梯随密度联动 */
   font-weight: 700;
   cursor: pointer;
   transition:
@@ -672,7 +644,7 @@ onBeforeUnmount(() => {
 .tb-side .kbd {
   font-style: normal;
   font-family: var(--nt-font-mono);
-  font-size: 10.5px;
+  font-size: var(--nt-fs-micro); /* B3 走查销号：归阶梯随密度联动 */
   line-height: 1;
   padding: 2px 5px;
   border: 1px solid currentColor;
@@ -721,11 +693,11 @@ onBeforeUnmount(() => {
 
 .ticket__frac .frac {
   min-width: 38px;
-  height: 26px;
+  height: var(--nt-row-h);
   padding: 0 6px;
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 11.5px;
+  font-size: var(--nt-fs-caption); /* B3 走查销号：归阶梯随密度联动 */
   color: var(--nt-text-2);
   background: transparent;
   border: 1px solid var(--nt-border-2);
@@ -743,6 +715,42 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
+.preview {
+  padding: 6px 10px;
+  border: 1px dashed var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--nt-text-3);
+}
+
+.preview.blocked {
+  border-color: var(--nt-warn);
+  background: color-mix(in srgb, var(--nt-warn) 8%, transparent);
+}
+
+.pv {
+  margin-left: 10px;
+  color: var(--nt-text-2);
+}
+
+/* 试算结论走语义色：放行=成功，拦截=风险（§7.1 风险色不按涨跌判断）。 */
+.verdict-ok {
+  color: var(--nt-success);
+}
+
+.verdict-bad {
+  color: var(--nt-danger);
+}
+
+.sheet {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sheet th {
   text-align: left;
   font-weight: 500;
   color: var(--nt-text-3);

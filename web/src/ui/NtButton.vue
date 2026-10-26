@@ -35,7 +35,7 @@ const why = computed(() => (props.disabled && props.disabledReason ? props.disab
 </script>
 
 <template>
-  <span v-if="why" class="nt-btn-why" :title="why">
+  <span v-if="why" class="nt-btn-why" :title="why" tabindex="0" :aria-label="why">
     <button v-bind="attrs" :type="props.type" class="nt-btn" :class="classes" disabled>
       <span v-if="props.loading" class="nt-btn__spin" aria-hidden="true" />
       <NtIcon v-else-if="props.icon" :name="props.icon" />
@@ -71,10 +71,17 @@ const why = computed(() => (props.disabled && props.disabledReason ? props.disab
     filter var(--nt-transition);
 }
 
-/* 禁用原因包裹（B3）：自身不可点，悬停把原因托给 title；不影响内层按钮布局。 */
+/* 禁用原因包裹（B3）：自身不可点，悬停把原因托给 title；不影响内层按钮布局。
+   tabindex=0+aria-label：disabled 钮不可聚焦，禁态原因须键盘/读屏可达（B3 走查 P2 销号，直觉5）。 */
 .nt-btn-why {
   display: inline-flex;
   cursor: not-allowed;
+}
+
+/* block+disabled+disabledReason 组合：包裹 shrink-to-fit 会吞掉 width:100%，显式补回整宽（B3 走查 P2 销号）。 */
+.nt-btn-why:has(> .nt-btn--block) {
+  display: flex;
+  width: 100%;
 }
 
 .nt-btn:hover:not(:disabled) {
@@ -105,7 +112,7 @@ const why = computed(() => (props.disabled && props.disabledReason ? props.disab
 .nt-btn--lg {
   min-height: 40px;
   padding: 0 20px;
-  font-size: 14px;
+  font-size: var(--nt-fs-title); /* 阶梯走查（B3 走查 P1 销号）：裸 14px 钉死会绕过 compact 密度等比缩放，归 title 档随密度联动。 */
 }
 
 .nt-btn--block {

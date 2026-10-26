@@ -226,6 +226,15 @@ function timeOf(value: string): number | null {
   return Number.isFinite(ts) ? ts : null
 }
 
+/** 盈亏比（G8/QD 借鉴 R 倍数列位）：reward/risk，锚定入场区间中值；任一腿缺失或风险非正显「—」（数据纪律，不拿 0 冒充）。 */
+function riskReward(item: SignalItem): string {
+  if (item.entryLow == null || item.entryHigh == null || item.stop == null || item.take == null) return '—'
+  const mid = (item.entryLow + item.entryHigh) / 2
+  const risk = mid - item.stop
+  if (!(risk > 0)) return '—'
+  return `${((item.take - mid) / risk).toFixed(1)}R`
+}
+
 /** 状态章文案/tone 出自 signal 册（§7.1，一字锁定）：终态优先于过期判定，未终态且 validUntil 已过按「已过期」论；
  *  remain 仅未终态未过期信号给出（章侧附剩余时效，format 工具函数非自封文案）；册外状态返回 null 文案，模板原样回显。 */
 function stateBadge(item: SignalItem) {
@@ -253,15 +262,6 @@ async function onPushMessage(msg: WsPushMessage) {
   const ready = await refreshes.fromPush()
   if (!disposed && key === refreshKey() && !ready) throw new Error('信号面板核心状态尚未恢复')
 }
-/** 盈亏比（G8/QD 借鉴 R 倍数列位）：reward/risk，锚定入场区间中值；任一腿缺失或风险非正显「—」（数据纪律，不拿 0 冒充）。 */
-function riskReward(item: SignalItem): string {
-  if (item.entryLow == null || item.entryHigh == null || item.stop == null || item.take == null) return '—'
-  const mid = (item.entryLow + item.entryHigh) / 2
-  const risk = mid - item.stop
-  if (!(risk > 0)) return '—'
-  return `${((item.take - mid) / risk).toFixed(1)}R`
-}
-
 
 function onVisible() {
   if (!document.hidden) { nowTick.value = serverNow(); void load() }
@@ -327,6 +327,12 @@ watch(
     </div>
     <ConditionalPlans :signal-id="planSignalId" />
 
+    <!-- B3 死件接入：信号审核漏斗（今日→有效→高分→已执行，同 rows 一枚枚举计数；未恢复显「—」不拿 0 冒充）。 -->
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">今日漏斗</h2>
+      <NtFunnel :stages="funnelStages" />
+    </section>
+
     <p v-if="loading" class="nt-empty">读取中…</p>
     <NtErrorGuide :error="error" />
     <p v-if="!loading && !rows.length" class="nt-empty">{{ signalStore.ready ? '今日没有信号。' : '信号状态尚未恢复，不能判断是否有机会。' }}</p>
@@ -354,12 +360,6 @@ watch(
           <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
           <NtFreshness label="信号" :at="timeOf(item.time)" />
         </header>
-    <!-- B3 死件接入：信号审核漏斗（今日→有效→高分→已执行，同 rows 一枚枚举计数；未恢复显「—」不拿 0 冒充）。 -->
-    <section class="nt-panel">
-      <h2 class="nt-panel__title">今日漏斗</h2>
-      <NtFunnel :stages="funnelStages" />
-    </section>
-
         <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
           <h3>当前动作：{{ actionOf(item).title }}</h3>
           <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
@@ -398,6 +398,10 @@ watch(
             <dd class="up">{{ price(item.take) }}</dd>
           </div>
           <div>
+            <dt>盈亏比</dt>
+            <dd class="mono">{{ riskReward(item) }}</dd>
+          </div>
+          <div>
             <dt>建议仓位</dt>
             <dd>{{ item.positionPct != null ? ratioPct(item.positionPct, 0) : '—' }}</dd>
           </div>
@@ -424,10 +428,6 @@ watch(
           <template v-if="item.holdDaysMax != null"> · 最长持有 {{ item.holdDaysMax }} 日</template>
           <template v-if="item.traceId"> · {{ item.traceId }}</template>
         </p>
-          <div>
-            <dt>盈亏比</dt>
-            <dd class="mono">{{ riskReward(item) }}</dd>
-          </div>
         <p v-if="item.reason" class="reason">{{ item.reason }}</p>
         <ul v-if="item.evidence.length" class="evidence">
           <li v-for="(line, index) in item.evidence" :key="index">{{ line }}</li>
@@ -555,6 +555,12 @@ dd {
 /* R2 有效期位降一档（text-2），不打断 mono 价格列的节奏。 */
 dd.t2 {
   color: var(--nt-text-2);
+}
+
+/* B3 走查销号：盈亏比 R 倍数等宽数字——本文件此前裸用 .mono 类无定义（其余 7 件各自带），补齐随 tabular-nums。 */
+.mono {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .meta,
