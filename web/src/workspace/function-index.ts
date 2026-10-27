@@ -112,6 +112,7 @@ export const HOTKEY_ROWS: readonly HotkeyRow[] = [
   { keys: 'Ctrl+Shift+P / Ctrl+Shift+K', action: '命令面板（命令态）' },
   { keys: 'Ctrl+Z / Ctrl+Shift+Z', action: '布局撤销 / 重做' },
   { keys: 'F1', action: '本帮助浮层' },
+  { keys: 'F9 / F10', action: '下单条：按表单方向直接提交买 / 卖（仅下单页，与提交钮同闸）' },
 ]
 
 /* ---------- 「设置 <关键词>」直达（§9.3，S2 批） ----------

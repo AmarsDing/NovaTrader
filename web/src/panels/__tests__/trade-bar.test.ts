@@ -1,6 +1,8 @@
 /**
  * 下单条（P0，视频设计指引 §8 底条恒随）契约：
  * 停笔预览 + 落单前全新试算两段门闩；LIVE 账本恒禁；回报必带原因；网络异常显「待核」指去交易面板。
+ * W5c：F9/F10 面板热键（window keydown 派发 KeyboardEvent）/ R 倍数联动 / 反手两步显式 /
+ * 止盈止损告警联动（createAlertRule mock 到门面，联动失败不阻塞主单）。
  * 速记：Vitest 假定时器推进 250ms 停笔防抖；NtInput/NtTabs 走 stub 的 update:modelValue 派发。
  */
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
@@ -21,8 +23,10 @@ const mock = vi.hoisted(() => ({
   notify: vi.fn(),
   readiness: vi.fn(),
   workbench: vi.fn(),
+  createRule: vi.fn(),
   toast: { success: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() },
   live: true,
+  viewer: false,
   accountStore: {
     book: 'SIM', cash: 100_000, equity: 100_000, openHalted: false, haltReason: '',
     positionsOk: true, positions: [] as unknown[], refresh: vi.fn(),
@@ -37,13 +41,14 @@ const mock = vi.hoisted(() => ({
 }))
 vi.mock('@/api/risk', () => ({ previewOrder: mock.preview }))
 vi.mock('@/api/ops', () => ({ getOpsReadiness: mock.readiness }))
+vi.mock('@/api/alert-rules', () => ({ createAlertRule: mock.createRule }))
 vi.mock('@/stores/confirm', () => ({ askConfirm: mock.confirm }))
 vi.mock('@/utils/notify', () => ({ deskNotify: mock.notify }))
 vi.mock('@/ui/useToast', () => ({ useToast: () => mock.toast }))
 vi.mock('@/ws/hub', () => ({ isLive: () => mock.live }))
 vi.mock('@/workspace/inject', () => ({ getWorkbench: mock.workbench }))
 vi.mock('@/stores/account', () => ({ useAccountStore: () => mock.accountStore }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => false, operatorName: 'tester' }) }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => mock.viewer, operatorName: 'tester' }) }))
 vi.mock('@/stores/risk', () => ({ useRiskStore: () => mock.riskStore }))
 vi.mock('@/stores/trade', () => ({ useTradeStore: () => ({ ...mock.tradeStore, place: mock.place }) }))
 
@@ -93,13 +98,16 @@ beforeEach(() => {
     vi.stubGlobal('crypto', { randomUUID: () => `uuid-test-${++uuidSeq}` })
   }
   mock.live = true
+  mock.viewer = false
   mock.accountStore.book = 'SIM'
   mock.accountStore.openHalted = false
+  mock.accountStore.positions = []
   mock.tradeStore.orders = []
   mock.tradeStore.fills = []
   mock.tradeStore.ready = true
   mock.preview.mockResolvedValue({ ...PREVIEW_OK })
   mock.place.mockResolvedValue({ id: 'manual-1', status: 'submitted' })
+  mock.createRule.mockResolvedValue([])
   // W3b.b 拦截位：默认全就绪不现身卡；单测各自覆写未就绪场景。
   mock.readiness.mockResolvedValue({ asOf: '', ready: true, gates: [], blockers: [] })
   mock.workbench.mockReturnValue(null)
@@ -269,5 +277,230 @@ describe('trade bar（视频落地 P0）', () => {
     expect(wrapper!.findComponent(NtBlockerCard).exists()).toBe(false)
     await fillForm()
     expect(mock.preview).toHaveBeenCalled()
+  })
+})
+
+/** 派发一个 F9/F10（target=window，非可编辑控件——登记表 isEditableTarget 守卫不拦）。
+ *  注意 KeyboardEventInit 没有 target 字段，dispatchEvent 的 target 恒为派发对象（此处 window）。 */
+function pressHotkey(key: string) {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+}
+
+describe('trade bar W5c（F9/F10 热键 · R 倍数联动 · 反手 · 止盈止损联动）', () => {
+  it('F9 热键：表单合法即提交买单（side 切买 + 走完整试算门闩），LIVE 恒禁热键不落单', async () => {
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    pressHotkey('F9')
+    await flushPromises()
+    // 走完整提交链：place 落单 + 受理后跳「当前委托」。
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    const draft = mock.place.mock.calls[0]![0] as { side: string; symbol: string; price: number; volume: number }
+    expect(draft).toMatchObject({ side: 'buy', symbol: '600519.SH', price: 110, volume: 100 })
+    expect(wrapper!.findComponent(NtTabs).props('modelValue')).toBe('open')
+  })
+
+  it('F9 热键在 LIVE 账本恒禁（热键与提交钮同 submitBlock 闸，不落单）', async () => {
+    mock.accountStore.book = 'LIVE'
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    pressHotkey('F9')
+    await flushPromises()
+    expect(mock.place).not.toHaveBeenCalled()
+  })
+
+  it('F9/F10 仅下单页生效：受理跳「当前委托」后再按热键不落单（表单不可见不后台提交）', async () => {
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    pressHotkey('F9')
+    await flushPromises()
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    expect(wrapper!.findComponent(NtTabs).props('modelValue')).toBe('open')
+    // 表单状态仍在但页签已切走——热键不得用不可见表单后台落单。
+    pressHotkey('F9')
+    pressHotkey('F10')
+    await flushPromises()
+    expect(mock.place).toHaveBeenCalledTimes(1)
+  })
+
+  it('F10 热键：方向切卖 + 提交卖单；viewer 角色按 F9/F10 不触发', async () => {
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    pressHotkey('F10')
+    await flushPromises()
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    const draft = mock.place.mock.calls[0]![0] as { side: string }
+    expect(draft.side).toBe('sell')
+  })
+
+  it('viewer 角色按 F9/F10 不触发落单（热键与提交钮同闸）', async () => {
+    mock.viewer = true
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    pressHotkey('F9')
+    pressHotkey('F10')
+    await flushPromises()
+    expect(mock.place).not.toHaveBeenCalled()
+  })
+
+  it('R 倍数：勾选止盈/止损后按百分比联动，R<1 落警告类（赔率倒挂）', async () => {
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    // R 区仅买单显（模板 v-if side==='buy'，默认 buy）。
+    const rrGroup = () => wrapper!.find('.ticket__rr')
+    expect(rrGroup().exists()).toBe(true)
+    // 勾止盈+止损（组件 v-if 出 NtInput stub，update:modelValue 走 v-model）。
+    const tpCheck = wrapper!.findAll('.rr-cell input[type="checkbox"]')[0]!
+    const slCheck = wrapper!.findAll('.rr-cell input[type="checkbox"]')[1]!
+    await tpCheck.setValue(true)
+    await slCheck.setValue(true)
+    await wrapper!.vm.$nextTick()
+    // 止盈 10%、止损 20% → R=|10/20|=0.5 <1 → warn。
+    const tpInput = wrapper!.findAllComponents(NtInput).filter((c) => c.classes().includes('rr-input'))[0]!
+    const slInput = wrapper!.findAllComponents(NtInput).filter((c) => c.classes().includes('rr-input'))[1]!
+    tpInput.vm.$emit('update:modelValue', '10')
+    slInput.vm.$emit('update:modelValue', '20')
+    await wrapper!.vm.$nextTick()
+    const rrVal = wrapper!.find('.rr-value')
+    expect(rrVal.exists()).toBe(true)
+    expect(rrVal.text()).toContain('R 0.5')
+    expect(rrVal.classes()).toContain('rr-value--warn')
+    // 反向：止盈 20%、止损 10% → R=2.0 不警告。
+    tpInput.vm.$emit('update:modelValue', '20')
+    slInput.vm.$emit('update:modelValue', '10')
+    await wrapper!.vm.$nextTick()
+    const rrVal2 = wrapper!.find('.rr-value')
+    expect(rrVal2.text()).toContain('R 2.0')
+    expect(rrVal2.classes()).not.toContain('rr-value--warn')
+    // 卖单侧 R 区整组消失（shallowMount 下原生 button 可直接触发）。
+    await wrapper!.findAll('.tb-side')[1]!.trigger('click')
+    await wrapper!.vm.$nextTick()
+    expect(rrGroup().exists()).toBe(false)
+  })
+
+  it('反手：持仓票点「反手」先卖全可卖（现价锚优先），受理后表单预填买同价同量', async () => {
+    // 持仓：600519.SH 可卖 200 股，现价 118.5。
+    mock.accountStore.positions = [{ symbol: '600519.SH', quantity: 200, available: 200, avgCost: 100, lastPrice: 118.5 }]
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    // 反手钮仅在有可卖持仓时显。
+    const reverseBtn = buttonWith('反手')
+    expect(reverseBtn).toBeDefined()
+    expect(reverseBtn!.props('disabled')).toBe(false)
+    reverseBtn!.vm.$emit('click')
+    await flushPromises()
+    // 第一步：卖单立即提交（reverse-sell- 前缀，现价锚 118.5 优先于表单 110）。
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    const sellDraft = mock.place.mock.calls[0]![0] as { clientOrderId: string; side: string; price: number; volume: number; symbol: string }
+    expect(sellDraft.clientOrderId.startsWith('reverse-sell-')).toBe(true)
+    expect(sellDraft).toMatchObject({ side: 'sell', price: 118.5, volume: 200, symbol: '600519.SH' })
+    expect(mock.toast.success).toHaveBeenCalledWith('反手卖单已受理', expect.stringContaining('200'))
+    // 第二步：表单预填买同价同量，submitHint 引导核对。
+    const inputs = wrapper!.findAllComponents(NtInput)
+    expect(inputs[0]!.props('modelValue')).toBe('600519.SH')
+    expect(inputs[1]!.props('modelValue')).toBe('118.50')
+    expect(inputs[2]!.props('modelValue')).toBe('200')
+    expect(wrapper!.text()).toContain('反手卖单已受理；买单已预填（同价同量），请核对后提交')
+    // 卖单失败 → 不落预填，错误进 submitError。
+    mock.place.mockRejectedValueOnce(new Error('柜台拒单'))
+    const reverseBtn2 = buttonWith('反手')!
+    reverseBtn2.vm.$emit('click')
+    await flushPromises()
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('反手卖单未受理')
+  })
+
+  it('反手先过风控试算门闩（与 submit 同口径）：试算拦截不落单并显规则原因', async () => {
+    mock.accountStore.positions = [{ symbol: '600519.SH', quantity: 200, available: 200, avgCost: 100, lastPrice: 118.5 }]
+    mock.preview.mockResolvedValue({ ...PREVIEW_OK, approved: false, blockRule: 'R12', reason: '单票仓位超限' })
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    const btn = buttonWith('反手')!
+    btn.vm.$emit('click')
+    await flushPromises()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('反手风控试算未放行（R12）')
+  })
+
+  it('反手缺价格证据（无现价锚且未填限价）：不落单并给中文原因，不静默空操作', async () => {
+    mock.accountStore.positions = [{ symbol: '600519.SH', quantity: 200, available: 200, avgCost: 100, lastPrice: null }]
+    await mountPanel()
+    await setInput(0, '600519.SH')
+    const btn = buttonWith('反手')
+    expect(btn).toBeDefined()
+    btn!.vm.$emit('click')
+    await flushPromises()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('反手缺价格证据')
+  })
+
+  it('止盈止损联动：买单受理后按勾选建 above/below 告警规则（几何 price×(1±p%)）', async () => {
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    // 勾止盈 10% + 止损 5%。
+    const tpCheck = wrapper!.findAll('.rr-cell input[type="checkbox"]')[0]!
+    const slCheck = wrapper!.findAll('.rr-cell input[type="checkbox"]')[1]!
+    await tpCheck.setValue(true)
+    await slCheck.setValue(true)
+    await wrapper!.vm.$nextTick()
+    const tpInput = wrapper!.findAllComponents(NtInput).filter((c) => c.classes().includes('rr-input'))[0]!
+    const slInput = wrapper!.findAllComponents(NtInput).filter((c) => c.classes().includes('rr-input'))[1]!
+    tpInput.vm.$emit('update:modelValue', '10')
+    slInput.vm.$emit('update:modelValue', '5')
+    await wrapper!.vm.$nextTick()
+    await submitForm()
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    // 联动两条：止盈 above 110*1.1=121.000，止损 below 110*0.95=104.500。
+    expect(mock.createRule).toHaveBeenCalledTimes(2)
+    const tpCall = mock.createRule.mock.calls.find((c) => (c[0] as { condition: string }).condition === 'above')!
+    const slCall = mock.createRule.mock.calls.find((c) => (c[0] as { condition: string }).condition === 'below')!
+    expect(tpCall[0]).toMatchObject({ symbol: '600519.SH', condition: 'above', targetPrice: '121.000' })
+    expect(slCall[0]).toMatchObject({ symbol: '600519.SH', condition: 'below', targetPrice: '104.500' })
+    expect(tpCall[1]).toBe('tester')
+  })
+
+  it('止盈止损联动：卖单不建规则（止盈止损语义不适用于卖单，反手键接管）', async () => {
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    // 买单先勾（R 区可见）再切卖——卖单提交不应建规则。
+    const tpCheck = wrapper!.findAll('.rr-cell input[type="checkbox"]')[0]!
+    await tpCheck.setValue(true)
+    await wrapper!.vm.$nextTick()
+    const tpInput = wrapper!.findAllComponents(NtInput).filter((c) => c.classes().includes('rr-input'))[0]!
+    tpInput.vm.$emit('update:modelValue', '10')
+    await wrapper!.vm.$nextTick()
+    await wrapper!.findAll('.tb-side')[1]!.trigger('click')
+    await wrapper!.vm.$nextTick()
+    await submitForm()
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    expect(mock.createRule).not.toHaveBeenCalled()
+  })
+
+  it('止盈止损联动失败不阻塞主单：createAlertRule 拒一次，主单仍受理 + toast 明示未布防', async () => {
+    mock.createRule.mockRejectedValue(new Error('规则库不可达'))
+    await mountPanel()
+    await fillForm()
+    await flushPromises()
+    const tpCheck = wrapper!.findAll('.rr-cell input[type="checkbox"]')[0]!
+    await tpCheck.setValue(true)
+    await wrapper!.vm.$nextTick()
+    const tpInput = wrapper!.findAllComponents(NtInput).filter((c) => c.classes().includes('rr-input'))[0]!
+    tpInput.vm.$emit('update:modelValue', '10')
+    await wrapper!.vm.$nextTick()
+    await submitForm()
+    // 主单仍受理 + 跳当前委托页；联动失败不静默——toast 告知「你以为有保护其实没有」。
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    expect(mock.createRule).toHaveBeenCalledTimes(1)
+    expect(wrapper!.findComponent(NtTabs).props('modelValue')).toBe('open')
+    expect(wrapper!.findComponent(NtErrorGuide).exists()).toBe(false)
+    expect(mock.toast.warn).toHaveBeenCalledWith('止盈告警未建成', expect.stringContaining('600519.SH'))
   })
 })

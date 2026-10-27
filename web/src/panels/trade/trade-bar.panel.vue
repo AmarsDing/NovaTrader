@@ -11,6 +11,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { askConfirm } from '@/stores/confirm'
 import { previewOrder, type PreviewBody, type PreviewReply } from '@/api/risk'
+import { createAlertRule, type AlertRuleDraft } from '@/api/alert-rules'
 import { getOpsReadiness, type OpsReadiness } from '@/api/ops'
 import type { OrderDraft } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'
@@ -18,6 +19,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { useSymbolStore } from '@/stores/symbol'
 import { useTradeStore } from '@/stores/trade'
+import { createShortcutRegistry } from '@/workspace/shortcut-registry'
 import NtBlockerCard from '@/display/NtBlockerCard.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
@@ -226,6 +228,138 @@ function applyFraction(pct: number) {
   if (shares > 0) form.volume = String(shares)
 }
 
+/* ---------- W5c：QD 攻心版补齐——F9/F10 热键、R 倍数联动、反手 ---------- */
+
+/** R 倍数（QD 图3 设计原图 §5.13B）：止盈/止损勾选后按百分比与限价几何联动；
+ *  仅买单给 R（卖单止盈止损语义不适用，反手键接管）；R<1 警告（赔率倒挂）。 */
+const tpEnabled = ref(false)
+const slEnabled = ref(false)
+const tpPct = ref('')
+const slPct = ref('')
+
+const riskReward = computed(() => {
+  if (!tpEnabled.value || !slEnabled.value || !priceOk.value) return null
+  const tp = Number(tpPct.value)
+  const sl = Number(slPct.value)
+  /* 负值/空白不出 R：Number('')=0 会显出「R 0.0」误导，负数经 abs 掩盖符号更是假赔率。 */
+  if (!Number.isFinite(tp) || !Number.isFinite(sl) || tp <= 0 || sl <= 0) return null
+  return tp / sl
+})
+
+/** 提交后联动：止盈/止损勾选即建告警规则（M08 引擎评估，通知经 M10 出站）。
+ *  买单：止盈=上破 price*(1+tp%)，止损=下破 price*(1-sl%)；卖单不建（反手接管）。
+ *  入参为提交时的快照（勾选态受理即复位，异步段不得回读 ref）；
+ *  止损 ≥100% 目标价非正，服务端校验必拒——前置跳过不造废单并明示未布防；
+ *  联动失败不阻塞主单（告警是提示位不是下单闸），但必须 toast 告知「你以为有保护其实没有」。 */
+async function linkAlertRules(snap: { symbol: string; price: number; tp: number; sl: number }) {
+  const { symbol, price, tp, sl } = snap
+  const operator = auth.operatorName
+  if (Number.isFinite(tp) && tp > 0) {
+    const draft: AlertRuleDraft = { symbol, condition: 'above', targetPrice: (price * (1 + tp / 100)).toFixed(3), note: `止盈 ${tp}%（W5c 联动）` }
+    await createAlertRule(draft, operator).catch(() => {
+      void toast.warn('止盈告警未建成', `${symbol} 上破 ${tp}% 规则未受理——请到风控链面板核对`)
+    })
+  }
+  if (Number.isFinite(sl) && sl > 0 && sl < 100) {
+    const draft: AlertRuleDraft = { symbol, condition: 'below', targetPrice: (price * (1 - sl / 100)).toFixed(3), note: `止损 ${sl}%（W5c 联动）` }
+    await createAlertRule(draft, operator).catch(() => {
+      void toast.warn('止损告警未建成', `${symbol} 下破 ${sl}% 规则未受理——请到风控链面板核对`)
+    })
+  } else if (Number.isFinite(sl) && sl >= 100) {
+    /* 止损 ≥100% 目标价非正，服务端校验必拒——不造废单，明示未布防（勾选留空= visibly 未填，不扰） */
+    void toast.warn('止损告警未建成', '止损幅度须小于 100%，本次未布防')
+  }
+}
+
+/** F9/F10 热键（W5b 登记表 scope=trade-bar）：买/卖方向直填 + 表单合法即提交。
+ *  不劫持打字（shortcut-registry.isEditableTarget 门闸）；LIVE 账本恒禁。 */
+const shortcutRegistry = createShortcutRegistry()
+shortcutRegistry.register({ id: 'trade-bar.buy', combo: 'F9', desc: '买入（表单合法即提交）', scope: 'trade-bar' })
+shortcutRegistry.register({ id: 'trade-bar.sell', combo: 'F10', desc: '卖出（表单合法即提交）', scope: 'trade-bar' })
+let offHotkeys: (() => void) | undefined
+
+function hotkeySubmit(side: 'buy' | 'sell') {
+  /* 热键与提交钮同闸（submitBlock 含 viewer/LIVE/急停/停止开仓/试算拦截），
+     且只在下单页生效——委托/持仓页表单不可见，后台静默落单违背「所见即所提」。 */
+  if (tab.value !== 'order') return
+  if (submitBlock.value || submitting.value) return
+  form.side = side
+  void submit()
+}
+
+function onHotkey(e: KeyboardEvent) {
+  /* 命中才 preventDefault（F10 在宿主内核有菜单栏默认语义）；未命中不吞键。 */
+  if (shortcutRegistry.run(e, 'trade-bar')) e.preventDefault()
+}
+
+onMounted(() => {
+  shortcutRegistry.bind('trade-bar.buy', () => hotkeySubmit('buy'))
+  shortcutRegistry.bind('trade-bar.sell', () => hotkeySubmit('sell'))
+  window.addEventListener('keydown', onHotkey)
+  offHotkeys = () => window.removeEventListener('keydown', onHotkey)
+})
+
+onBeforeUnmount(() => {
+  offHotkeys?.()
+  /* unregisterScope 一并释放登记与 handler（单口清理，不做双写范式）。 */
+  shortcutRegistry.unregisterScope('trade-bar')
+})
+
+/** 反手（QD 图3 设计原图 §5.13B）：持仓票一键卖全可卖 → 买回原量。
+ *  显式两步（先卖后买），卖单同样先过风控试算门闩（与 submit() 同口径——拦截/不可用都不落单），
+ *  买单在卖单受理后预填表单，由用户核对后走正常提交流程再发。 */
+const reversing = ref(false)
+
+async function reverse() {
+  if (auth.isViewer() || reversing.value) return
+  const pos = positionOf.value
+  if (!pos || pos.available == null || pos.available <= 0) return
+  if (book.value === 'LIVE' && !liveAllowed.value) return
+  hintClear()
+  reversing.value = true
+  try {
+    /* 第一步：卖全可卖（现价锚优先，缺锚用表单限价；两头都没有给原因，不静默空操作）。 */
+    const sellPrice = anchorPrice.value ?? (priceOk.value ? priceNum.value : null)
+    if (sellPrice == null) {
+      submitError.value = '反手缺价格证据：该票暂无现价锚，请先填正限价再点反手'
+      return
+    }
+    const sellDraft: OrderDraft = {
+      clientOrderId: `reverse-sell-${crypto.randomUUID()}`,
+      account: book.value,
+      symbol: form.symbol.trim(),
+      side: 'sell',
+      price: sellPrice,
+      volume: pos.available,
+      source: 'manual',
+      operator: auth.operatorName,
+    }
+    /* 试算门闩（与 submit() 同口径）：拦截/不可用都不落单。 */
+    let pv: PreviewReply
+    try {
+      pv = await previewOrder(previewBodyFor(sellDraft.clientOrderId))
+    } catch (err) {
+      submitError.value = `反手风控试算未返回，未落单：${messageOf(err)}`
+      return
+    }
+    if (!pv.approved) {
+      submitError.value = `反手风控试算未放行${pv.blockRule ? `（${pv.blockRule}）` : ''}：${pv.reason || '未给出原因'}`
+      return
+    }
+    await trade.place(sellDraft)
+    void toast.success('反手卖单已受理', `卖出 ${pos.symbol} ${pos.available} 股`)
+    /* 第二步：买回原量（价格同卖单锚，用户确认后走正常提交流程）。 */
+    form.side = 'buy'
+    form.price = sellPrice.toFixed(2)
+    form.volume = String(pos.available)
+    submitHint.value = '反手卖单已受理；买单已预填（同价同量），请核对后提交'
+  } catch (err) {
+    submitError.value = `反手卖单未受理：${messageOf(err)}`
+  } finally {
+    reversing.value = false
+  }
+}
+
 /* ---------- 提交 ---------- */
 
 const submitting = ref(false)
@@ -311,6 +445,21 @@ async function submit() {
     submitHint.value = `已受理 ${label}；编号 ${draft.clientOrderId}`
     void toast.success('委托已受理', label)
     void deskNotify('模拟委托已受理', label, 'success')
+    /* W5c：止盈/止损勾选联动——买单受理后建告警规则（M08 引擎评估，M10 通知出站），
+       失败不阻塞主单（告警是提示位不是下单闸）；快照取值（勾选态随即复位，异步段不回读 ref）。 */
+    if (form.side === 'buy') {
+      void linkAlertRules({
+        symbol: form.symbol.trim().toUpperCase(),
+        price: priceNum.value,
+        tp: tpEnabled.value ? Number(tpPct.value) : 0,
+        sl: slEnabled.value ? Number(slPct.value) : 0,
+      })
+      /* 联动勾选单次生效：受理即复位，防改价重提时同码规则无声堆积。 */
+      tpEnabled.value = false
+      slEnabled.value = false
+      tpPct.value = ''
+      slPct.value = ''
+    }
     formEditedSinceSymbol = false
     void accountStore.refresh()
     tab.value = 'open'
@@ -447,25 +596,29 @@ onBeforeUnmount(() => {
         @navigate="openDeeplink"
       />
       <form class="ticket" @submit.prevent="submit">
-        <!-- QD 攻心版（P0-7）：买整块红/卖整块绿双目锚（§0.3 红涨绿跌）。快捷键徽注只标真实绑定：B/S=shortcuts.ts orderTicket 全局热键，唤起本票并预填买卖方向（B3 走查勘正）。 -->
+        <!-- QD 攻心版（P0-7）：买整块红/卖整块绿双目锚（§0.3 红涨绿跌）。快捷键徽注只标真实绑定：
+             B/S=shortcuts.ts orderTicket 全局热键唤起本票并预填买卖方向（B3 走查勘正）；
+             F9/F10=W5c 本面板登记表热键（仅下单页，与提交钮同 submitBlock 闸，LIVE 恒禁）。 -->
         <div class="ticket__side" role="group" aria-label="买卖方向">
           <button
             type="button"
             class="tb-side tb-side--buy"
             :class="{ active: form.side === 'buy' }"
             :aria-pressed="form.side === 'buy'"
+            title="B 唤起本票预填买；F9 在下单页表单合法即提交买单（与提交钮同闸）"
             @click="form.side = 'buy'"
           >
-            <b>买入</b><i class="kbd">B</i>
+            <b>买入</b><i class="kbd">B · F9</i>
           </button>
           <button
             type="button"
             class="tb-side tb-side--sell"
             :class="{ active: form.side === 'sell' }"
             :aria-pressed="form.side === 'sell'"
+            title="S 唤起本票预填卖；F10 在下单页表单合法即提交卖单（与提交钮同闸）"
             @click="form.side = 'sell'"
           >
-            <b>卖出</b><i class="kbd">S</i>
+            <b>卖出</b><i class="kbd">S · F10</i>
           </button>
         </div>
         <label class="ticket__field">
@@ -505,8 +658,38 @@ onBeforeUnmount(() => {
             </button>
           </span>
         </div>
+        <!-- W5c R 倍数联动（QD 图3 设计原图 §5.13B）：止盈/止损勾选后按百分比与限价几何联动；
+             R<1 警告（赔率倒挂）；仅买单给 R（卖单止盈止损语义不适用，反手键接管）。 -->
+        <div v-if="form.side === 'buy'" class="ticket__rr" role="group" aria-label="止盈止损与 R 倍数">
+          <label class="rr-cell">
+            <input v-model="tpEnabled" type="checkbox" />
+            <span>止盈</span>
+            <NtInput v-if="tpEnabled" v-model="tpPct" type="number" mono placeholder="%" class="rr-input" />
+          </label>
+          <label class="rr-cell">
+            <input v-model="slEnabled" type="checkbox" />
+            <span>止损</span>
+            <NtInput v-if="slEnabled" v-model="slPct" type="number" mono placeholder="%" class="rr-input" />
+          </label>
+          <span v-if="riskReward != null" class="rr-value" :class="{ 'rr-value--warn': riskReward < 1 }">
+            R {{ riskReward.toFixed(1) }}
+          </span>
+        </div>
         <NtButton type="submit" variant="primary" size="lg" :loading="submitting" :disabled="!canSubmit" :disabled-reason="submitBlock">
           提交委托
+        </NtButton>
+        <!-- W5c 反手（QD 图3 设计原图 §5.13B）：持仓票一键卖全可卖 → 买回原量（两步显式，卖单受理后买单预填待确认）。 -->
+        <NtButton
+          v-if="positionOf && positionOf.available != null && positionOf.available > 0"
+          type="button"
+          variant="quiet"
+          size="sm"
+          :loading="reversing"
+          :disabled="reversing || auth.isViewer() || (book === 'LIVE' && !liveAllowed)"
+          title="反手：卖全可卖 → 买回原量（两步显式，卖单受理后买单预填待确认）"
+          @click="reverse"
+        >
+          反手
         </NtButton>
       </form>
       <div class="preview" :class="{ blocked: previewBlocked }">
@@ -785,6 +968,38 @@ onBeforeUnmount(() => {
 .ticket__frac .frac:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* W5c R 倍数联动区：与仓位四键同档（quiet/mono text-2），R<1 走 warn 语义色。 */
+.ticket__rr {
+  display: inline-flex;
+  gap: 8px;
+  align-self: flex-end;
+  align-items: center;
+}
+
+.rr-cell {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-2);
+  cursor: pointer;
+}
+
+.rr-input {
+  width: 48px;
+}
+
+.rr-value {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-2);
+}
+
+.rr-value--warn {
+  color: var(--nt-warn);
 }
 
 .preview {
