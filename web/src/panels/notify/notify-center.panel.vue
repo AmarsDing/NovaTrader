@@ -13,10 +13,11 @@ import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
 import NtTimeline, { type TimelineAction, type TimelineEntry } from '@/display/NtTimeline.vue'
 import { useNotifyStore, type FeedEntry } from '@/stores/notify'
 import { causeKey, levelOf, renderAlertCopy, type AlertLevel } from '@/ui/alert-levels'
+import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtSelect from '@/ui/NtSelect.vue'
-import { statusOf } from '@/ui/status-map'
+import { notifyKindEntry, statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
 import { capNotifReadIds, loadNotifReadIds, saveNotifReadIds } from '@/utils/notify-read'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
@@ -173,6 +174,9 @@ const entries = computed<TimelineEntry[]>(() =>
     title: r.title,
     body: r.body,
     tag: r.kind,
+    /* W4c 二维分级：类别徽注预取入行模型（模板零函数调用，W4b review F7 纪律）；
+       册内 kind 打章（NtBadge），册外 kind 留 undefined 由 tag 裸值兜底回显（不自封文案）。 */
+    kindBadge: notifyKindEntry(r.kind) ?? undefined,
     tone: toneOfRow(r),
     read: r.read,
     level: r.level,
@@ -260,6 +264,8 @@ function markOneRead(item: TimelineEntry) {
 const drawerOpen = ref(false)
 const selectedId = ref('')
 const selectedRow = computed(() => merged.value.find((r) => r.id === selectedId.value) ?? null)
+/* W4c：抽屉类别章同册——selectedRow 派生重算，模板零函数调用。 */
+const selectedKindBadge = computed(() => notifyKindEntry(selectedRow.value?.kind))
 function onSelect(item: TimelineEntry) {
   markOneRead(item)
   selectedId.value = String(item.id)
@@ -319,7 +325,15 @@ onBeforeUnmount(() => {
           <div><dt>时间</dt><dd>{{ selectedRow.time }}</dd></div>
           <div><dt>分级</dt><dd>{{ selectedRow.level }}</dd></div>
           <div><dt>级别</dt><dd>{{ selectedRow.rawLevel || '—' }}</dd></div>
-          <div><dt>类别</dt><dd>{{ selectedRow.kind || '—' }}</dd></div>
+          <div>
+            <dt>类别</dt>
+            <dd>
+              <!-- 详情面 = 精度面：章 + 裸码并显，用户才能把章对应回「类别」筛选下拉的原值。 -->
+              <NtBadge v-if="selectedKindBadge" :tone="selectedKindBadge.tone">{{ selectedKindBadge.text }}</NtBadge>
+              <span v-if="selectedKindBadge && selectedRow.kind" class="kind-raw">（{{ selectedRow.kind }}）</span>
+              <template v-if="!selectedKindBadge">{{ selectedRow.kind || '—' }}</template>
+            </dd>
+          </div>
           <div v-if="selectedRow.symbol"><dt>证券</dt><dd>{{ selectedRow.symbol }}</dd></div>
           <div><dt>已读</dt><dd>{{ selectedRow.read ? '已读' : '未读' }}</dd></div>
           <div v-if="selectedRow.silenced"><dt>注记</dt><dd>{{ statusOf('notify.silenced').text }}</dd></div>
@@ -405,6 +419,11 @@ onBeforeUnmount(() => {
   font-family: var(--nt-font-mono);
   font-size: var(--nt-fs-micro);
   color: var(--nt-text-3);
+}
+
+.kind-raw {
+  color: var(--nt-text-3);
+  font-size: var(--nt-fs-micro);
 }
 
 .nc-drawer-empty {

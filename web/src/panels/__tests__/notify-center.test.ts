@@ -2,6 +2,7 @@
  * 通知中心面板（W4b 三段式销号）：NtAdminScaffold 承接 + 三 Select 迁入 filter 槽
  * + NtTimeline 主体 + 320 消息详情抽屉（select 分流=标已读+开抽屉双发，G3 语义保真）
  * + 静默注记走册（第十三批 notify.silenced）。
+ * W4c 二维分级：notify.kind.* 册章预取入行模型（kindBadge），抽屉类别行同册徽注。
  * PREFS_KEY（nt.prefs.notify-center.v1）与 NOTIF_READ_KEY（nt.notify-read.v1）不动。
  * mock 只到 http 层 + ws/hub + workspace/inject。
  */
@@ -11,6 +12,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import NotifyCenter from '../notify/notify-center.panel.vue'
 import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
 import NtTimeline from '@/display/NtTimeline.vue'
+import NtBadge from '@/ui/NtBadge.vue'
 
 const mock = vi.hoisted(() => ({ req: vi.fn() }))
 vi.mock('@/api/http', () => ({ request: mock.req }))
@@ -109,5 +111,26 @@ describe('通知中心面板（W4b 三段式）', () => {
     expect(text).toContain('晨报已生成')
     expect(text).toContain('消息详情')
     expect(text).toContain('2026-10-27 晨报已生成：情绪修复延续，关注高位分歧。')
+    /* W4c：抽屉类别行走册徽注——briefing → 晨报 ai 章 + 裸码并显（断言收窄在抽屉域内，不被列表行章代过）。 */
+    const drawer = wrapper!.find('.nc-drawer')
+    /* W4c review F2：断言收窄在抽屉域内；findAllComponents 泛型 props 整取后显式窄化（W4b F7 同款模式）。 */
+    const badges = drawer.findAllComponents(NtBadge) as Array<{
+      text: () => string
+      props: () => { tone?: string }
+    }>
+    expect(badges.some((b) => b.text() === '晨报' && b.props().tone === 'ai')).toBe(true)
+    expect(drawer.text()).toContain('（briefing）')
+  })
+
+  it('W4c 类别徽注：册内 kind 预取 kindBadge 入行模型（risk→风控 warn / briefing→晨报 ai）', async () => {
+    await mountPanel()
+    const items = wrapper!.findComponent(NtTimeline).props('items') as {
+      id: string
+      kindBadge?: { text: string; tone: string }
+      tag?: string
+    }[]
+    /* 册内 kind 打章；裸 kind 仍留 tag 位兜底（册外值才回显） */
+    expect(items.find((i) => i.id === 'm1')!.kindBadge).toEqual({ text: '风控', tone: 'warn' })
+    expect(items.find((i) => i.id === 'm2')!.kindBadge).toEqual({ text: '晨报', tone: 'ai' })
   })
 })

@@ -188,7 +188,8 @@ const bars: Bar[] = days.map((day, i) => {
 const timeline: TimelineEntry[] = [
   { id: 1, time: '09:15', title: '竞价异动', body: '半导体板块竞价量比 3.2', tone: 'accent', tag: 'M02' },
   { id: 2, time: '09:31', title: '信号触发', body: '600519 综合分 88，入场 1680–1685', tone: 'up', tag: '信号' },
-  { id: 3, time: '10:02', title: '风控拦截', body: '单票集中度超限，降级为半仓', tone: 'warn', tag: 'R07' },
+  /* W4c 走查位：kindBadge 与 tag 同行——徽注优先、裸 tag 被抑制（v-else-if 分支实演，非空口）。 */
+  { id: 3, time: '10:02', title: '风控拦截', body: '单票集中度超限，降级为半仓', tone: 'warn', tag: 'R07', kindBadge: { text: '风控', tone: 'warn' } },
   { id: 4, time: '14:56', title: '尾盘跳水预警', body: '炸板率升至 38%', tone: 'down', tag: '情绪' },
 ]
 

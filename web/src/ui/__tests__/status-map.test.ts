@@ -1,11 +1,11 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键 + 第十一批 role 域 4 键 + 第十二批 ds 域 12 键 + 第十三批 notify 域 1 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键 + 第十一批 role 域 4 键 + 第十二批 ds 域 12 键 + 第十三批 notify 域 1 键 + 第十四批 notify.kind 域 18 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
-import { LINK_STATUS, STATUS_MAP, linkStatus, statusOf, type StatusKey, type StatusTone } from '../status-map'
+import { LINK_STATUS, STATUS_MAP, linkStatus, notifyKindEntry, statusOf, type StatusKey, type StatusTone } from '../status-map'
 
 /* B2 词汇表治理：'ai' 为 AI 紫词（B2 入册）；info 词产物面已零调用，B1.5 随 golden 重刷删词时从本集合除名。 */
 const LEGAL_TONES = new Set<StatusTone>(['neutral', 'accent', 'success', 'warn', 'danger', 'info', 'ai', 'up', 'down'])
@@ -401,12 +401,80 @@ describe('业务状态册（第十二批 datasource 源目录域 12 键；W4b �
 
 describe('业务状态册（第十三批 notify 通知域 1 键；W4b 静默注记入册）', () => {
   it('notify.silenced 入册且锁定：静默=漏斗判定不扰民只落账，neutral 事实不是警报', () => {
-    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('notify.')).length).toBe(1)
+    /* W4c 起 notify.kind.* 同域共存——本批计数须排除第十四批类别键。 */
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('notify.') && !k.startsWith('notify.kind.')).length).toBe(1)
     expect(statusOf('notify.silenced')).toEqual({ text: '静默', tone: 'neutral' })
   })
 
   it('回归抽样：第十二批旧键未被扩册改动（ds.src.official / ds.cred.set）', () => {
     expect(statusOf('ds.src.official')).toEqual({ text: '官方', tone: 'accent' })
     expect(statusOf('ds.cred.set')).toEqual({ text: '已设置', tone: 'success' })
+  })
+})
+
+describe('业务状态册（第十四批 notify.kind 通知类别域 18 键；W4c 通知二维分级）', () => {
+  const EXPECTED_BATCH14: Record<string, { text: string; tone: StatusTone }> = {
+    // REST 7 键（api/notify normalizeMessage 由 kind||type||category 推导）
+    'notify.kind.signal': { text: '信号', tone: 'accent' },
+    'notify.kind.risk': { text: '风控', tone: 'warn' },
+    'notify.kind.fill': { text: '成交', tone: 'success' },
+    'notify.kind.briefing': { text: '晨报', tone: 'ai' },
+    'notify.kind.review': { text: '复盘', tone: 'ai' },
+    'notify.kind.intel': { text: '情报', tone: 'neutral' },
+    'notify.kind.market': { text: '行情', tone: 'neutral' },
+    // WS 告警 11 键（alert-levels L4/L3 kind 白名单 + scan_zero_hit + onPushMessage 缺省 alert）
+    'notify.kind.killswitch': { text: '急停', tone: 'danger' },
+    'notify.kind.breaker': { text: '熔断', tone: 'warn' },
+    'notify.kind.reject_rate': { text: '拒单飙升', tone: 'warn' },
+    'notify.kind.order_unknown': { text: '订单未知', tone: 'warn' },
+    'notify.kind.alert-rule': { text: '规则命中', tone: 'warn' },
+    'notify.kind.surge': { text: '急拉', tone: 'warn' },
+    'notify.kind.limit_up': { text: '封板', tone: 'up' },
+    'notify.kind.break': { text: '开板', tone: 'neutral' },
+    'notify.kind.drawdown': { text: '回撤', tone: 'warn' },
+    'notify.kind.scan_zero_hit': { text: '零命中', tone: 'warn' },
+    'notify.kind.alert': { text: '告警', tone: 'neutral' },
+  }
+
+  it('第十四批 18 键全在册内（notify.kind 前缀恰 18，不多不少）', () => {
+    expect(Object.keys(EXPECTED_BATCH14).length).toBe(18)
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('notify.kind.')).length).toBe(18)
+    for (const key of Object.keys(EXPECTED_BATCH14)) expect(STATUS_MAP).toHaveProperty(key)
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH14))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('二维分工：类型章除 killswitch 外不碰 danger——等级由 NtTimeline LEVEL_BADGE 独担，不双重编码', () => {
+    for (const [key, entry] of Object.entries(EXPECTED_BATCH14)) {
+      if (key !== 'notify.kind.killswitch') expect(entry.tone).not.toBe('danger')
+    }
+  })
+
+  it('族对齐：move 三态同文同调、fill=成交回执、briefing/review 走 AI 紫词', () => {
+    expect(statusOf('notify.kind.surge')).toEqual(statusOf('move.surge'))
+    expect(statusOf('notify.kind.limit_up')).toEqual(statusOf('move.limit_up'))
+    expect(statusOf('notify.kind.break')).toEqual(statusOf('move.break'))
+    expect(statusOf('notify.kind.fill').tone).toBe('success')
+    expect(statusOf('notify.kind.briefing').tone).toBe('ai')
+    expect(statusOf('notify.kind.review').tone).toBe('ai')
+  })
+
+  it('notifyKindEntry 出口：册内命中返回条目，册外/空值返回 null（调用处原样回显不自封）', () => {
+    expect(notifyKindEntry('risk')).toEqual({ text: '风控', tone: 'warn' })
+    expect(notifyKindEntry('alert-rule')).toEqual({ text: '规则命中', tone: 'warn' })
+    expect(notifyKindEntry('scan_zero_hit')).toEqual({ text: '零命中', tone: 'warn' })
+    expect(notifyKindEntry('not-a-kind')).toBeNull()
+    expect(notifyKindEntry('')).toBeNull()
+    expect(notifyKindEntry(null)).toBeNull()
+    expect(notifyKindEntry(undefined)).toBeNull()
+    /* 原型链词不得冒名命中（hasOwnProperty 守门，索引重构后仍安全） */
+    expect(notifyKindEntry('toString')).toBeNull()
+    expect(notifyKindEntry('constructor')).toBeNull()
+  })
+
+  it('回归抽样：第十三批旧键未被扩册改动（notify.silenced）', () => {
+    expect(statusOf('notify.silenced')).toEqual({ text: '静默', tone: 'neutral' })
   })
 })

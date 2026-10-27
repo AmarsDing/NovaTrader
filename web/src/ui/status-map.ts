@@ -13,7 +13,8 @@
  *
  * 批次索引：首批 20 键 →…→ 第八批 missing 域 5 键 → 第九批 verify 判据域 1 键（W8b）
  * → 第十批 depth 域 1 键（B3）→ 第十一批 audit 角色域 4 键（W4b）
- * → 第十二批 datasource 源目录域 12 键（W4b）→ 第十三批 notify 域 1 键（W4b）。
+ * → 第十二批 datasource 源目录域 12 键（W4b）→ 第十三批 notify 域 1 键（W4b）
+ * → 第十四批 notify.kind 通知类别域 18 键（W4c 通知二维分级）。
  */
 import type { BadgeTone } from './NtBadge.vue'
 import type { DotStatus } from './NtStatusDot.vue'
@@ -39,7 +40,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键 + 第十一批 role 域 4 键 + 第十二批 ds 域 12 键 + 第十三批 notify 域 1 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键 + 第十一批 role 域 4 键 + 第十二批 ds 域 12 键 + 第十三批 notify 域 1 键 + 第十四批 notify.kind 域 18 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -189,6 +190,32 @@ export const STATUS_MAP = Object.freeze({
   // —— 第十三批（notify 通知域 1 键；W4b 通知中心静默注记入册）——
   // 静默=告警漏斗判定不扰民只落账（neutral 事实不是警报）；细节由条目 body/原因字段承载。
   'notify.silenced': { text: '静默', tone: 'neutral' },
+  // —— 第十四批（notify.kind 通知类别域 18 键；W4c 通知二维分级——biz 维度类型章，R-UI-04/46）——
+  // 二维 = 类型章（本批）× 等级章（NtTimeline LEVEL_BADGE L1–L4 既有）：类型章表达业务域固有语义色，
+  // 等级由 level 章独担（除 killswitch 外类型章不碰 danger，不与等级章双重编码）。
+  // 词表两源：REST 7 键（api/notify normalizeMessage 由 kind||type||category 推导）+
+  // WS 告警 11 键（alert-levels L4/L3 kind 白名单 + scan_zero_hit + onPushMessage 缺省 'alert'）。
+  // 族对齐：fill 与 order.filled 同 success 回执；briefing/review 系 AI 产物走 ai 紫词（ai.* 族）；
+  // surge/limit_up/break 与 move.* 同文同调；killswitch 与 risk.killswitch 同族 danger。
+  // 册外 kind 不打章、原样回显（数据纪律：不自封文案），由 notifyKindEntry 返回 null 表达。
+  'notify.kind.signal': { text: '信号', tone: 'accent' },
+  'notify.kind.risk': { text: '风控', tone: 'warn' },
+  'notify.kind.fill': { text: '成交', tone: 'success' },
+  'notify.kind.briefing': { text: '晨报', tone: 'ai' },
+  'notify.kind.review': { text: '复盘', tone: 'ai' },
+  'notify.kind.intel': { text: '情报', tone: 'neutral' },
+  'notify.kind.market': { text: '行情', tone: 'neutral' },
+  'notify.kind.killswitch': { text: '急停', tone: 'danger' },
+  'notify.kind.breaker': { text: '熔断', tone: 'warn' },
+  'notify.kind.reject_rate': { text: '拒单飙升', tone: 'warn' },
+  'notify.kind.order_unknown': { text: '订单未知', tone: 'warn' },
+  'notify.kind.alert-rule': { text: '规则命中', tone: 'warn' },
+  'notify.kind.surge': { text: '急拉', tone: 'warn' },
+  'notify.kind.limit_up': { text: '封板', tone: 'up' },
+  'notify.kind.break': { text: '开板', tone: 'neutral' },
+  'notify.kind.drawdown': { text: '回撤', tone: 'warn' },
+  'notify.kind.scan_zero_hit': { text: '零命中', tone: 'warn' },
+  'notify.kind.alert': { text: '告警', tone: 'neutral' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP
@@ -209,4 +236,14 @@ export function severityEntry(v: string | null | undefined): StatusEntry | null 
   if (v === 'medium') return statusOf('quality.medium')
   if (v === 'low') return statusOf('quality.low')
   return null
+}
+
+/**
+ * 通知类别章（notify.kind.* 十八键，W4c 通知二维分级唯一出处）：
+ * 册外/空值返回 null，调用处原样回显裸 kind（不自封文案，与 severityEntry 同纪律）。
+ */
+export function notifyKindEntry(kind: string | null | undefined): StatusEntry | null {
+  if (!kind) return null
+  const key = `notify.kind.${kind}`
+  return Object.prototype.hasOwnProperty.call(STATUS_MAP, key) ? STATUS_MAP[key as StatusKey] : null
 }

@@ -18,6 +18,9 @@ export interface TimelineEntry {
   body?: string
   tone?: 'neutral' | 'up' | 'down' | 'accent' | 'warn'
   tag?: string
+  /** W4c 类别徽注（通知二维分级）：宿面板查册后传入；渲染优先于裸 tag（册外值才走 tag 原样回显）。
+   *  形状刻意不复用 status-map StatusEntry：display 层不反向依赖 ui 册（与 viz 层零 @/ui 依赖先例同向），内联结构自足。 */
+  kindBadge?: { text: string; tone: BadgeTone }
   /** G3 逐条已读态：仅显式传 false 时按未读渲染（加粗+全长明度），缺省视为已读。 */
   read?: boolean
   /** P2 告警分级章（方案 §8）：L1 提示/L2 关注/L3 预警/L4 风险；缺省不渲染。 */
@@ -60,7 +63,8 @@ const emit = defineEmits<{
         <div class="nt-tl__meta">
           <time class="nt-tl__time">{{ item.time }}</time>
           <NtBadge v-if="item.level" :tone="LEVEL_BADGE[item.level].tone">{{ LEVEL_BADGE[item.level].text }}</NtBadge>
-          <span v-if="item.tag" class="nt-tl__tag">{{ item.tag }}</span>
+          <NtBadge v-if="item.kindBadge" :tone="item.kindBadge.tone">{{ item.kindBadge.text }}</NtBadge>
+          <span v-else-if="item.tag" class="nt-tl__tag">{{ item.tag }}</span>
           <span v-if="item.read === false" class="nt-tl__unread">未读</span>
         </div>
         <p class="nt-tl__title">{{ item.title }}</p>
