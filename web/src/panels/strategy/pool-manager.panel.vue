@@ -3,7 +3,7 @@
  * 股池/黑名单面板（M06）：候选股分池查看 + 黑名单维护（owner 写）。
  * 候选列表带 stage/pool 分组和回测收益（retT1/T3/T5）。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { addBlacklist, listCandidates, removeBlacklist, type Candidate } from '@/api/strategy'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
@@ -12,14 +12,20 @@ import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { useAuthStore } from '@/stores/auth'
 import { messageOf, missLabel, pnlClass, ratioPct } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const auth = useAuthStore()
+
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.pool-manager.v1'
+const PREFS_ALLOW = { pool: '*', stage: '*' } as const
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
 
 const items = ref<Candidate[]>([])
 const loading = ref(false)
 const error = ref('')
-const pool = ref('')
-const stage = ref('')
+const pool = ref(prefs.pool ?? '')
+const stage = ref(prefs.stage ?? '')
 const blSymbol = ref('')
 const blReason = ref('')
 const blBusy = ref(false)
@@ -30,6 +36,17 @@ const stages = computed(() => [...new Set(items.value.map((r) => r.stage).filter
 const filtered = computed(() =>
   items.value.filter((r) => (!pool.value || r.pool === pool.value) && (!stage.value || r.stage === stage.value)),
 )
+
+// 每次写整档（含未变字段），单字段变化不丢兄弟字段。
+watch([pool, stage], () => savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { pool: pool.value, stage: stage.value }))
+
+// 动态字段兜底：选项就绪后校验存档值，不在集合内即回默认，防陈旧档把 select 卡死在不存在选项上。
+watch(pools, (list) => {
+  if (list.length && pool.value && !list.includes(pool.value)) pool.value = ''
+})
+watch(stages, (list) => {
+  if (list.length && stage.value && !list.includes(stage.value)) stage.value = ''
+})
 
 type Row = Candidate & Record<string, unknown>
 const columns: NtTableColumn<Row>[] = [
@@ -115,6 +132,8 @@ onMounted(load)
       />
     </div>
 
+    <NtErrorGuide :error="error" />
+
     <section class="nt-panel">
       <h2 class="nt-panel__title">候选股</h2>
       <NtTable :columns="columns" :rows="rows" row-key="id" dense :empty="loading ? '读取中…' : error ? '候选股未返回——点上方刷新重试' : '今日还没有候选股——股池标的经策略扫描出入池后在这里展开'">
@@ -132,8 +151,6 @@ onMounted(load)
     </section>
 
     <section v-if="!auth.isViewer()" class="nt-panel">
-    <NtErrorGuide :error="error" />
-
       <h2 class="nt-panel__title">黑名单维护</h2>
       <div class="bl">
         <NtInput v-model="blSymbol" placeholder="000001.SZ" class="bl__symbol" />

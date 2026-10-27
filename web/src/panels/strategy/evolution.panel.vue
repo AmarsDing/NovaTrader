@@ -30,10 +30,16 @@ import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTimeline, { type TimelineEntry } from '@/display/NtTimeline.vue'
 import { statusOf } from '@/ui/status-map'
 import { clock, intText, messageOf, pnlClass, ratioPct } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const auth = useAuthStore()
 
-const tab = ref('shadow')
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.evolution.v1'
+const PREFS_ALLOW = { tab: ['shadow', 'intro', 'proposal', 'admission'], strategy: '*' } as const
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+
+const tab = ref(prefs.tab ?? 'shadow')
 const loading = ref(false)
 const error = ref('')
 
@@ -42,7 +48,7 @@ const introspections = ref<Introspection[]>([])
 const proposals = ref<Proposal[]>([])
 const admission = ref<Admission | null>(null)
 const strategies = ref<StrategyMeta[]>([])
-const strategy = ref('')
+const strategy = ref(prefs.strategy ?? '')
 
 const running = ref(false)
 const actingId = ref('')
@@ -173,6 +179,24 @@ async function decide(id: string, action: 'approve' | 'reject') {
 watch(strategy, (value, previous) => {
   if (value && value !== previous) void loadAll()
 })
+
+// 每次写整档（含未变字段），单字段变化不丢兄弟字段。
+watch([tab, strategy], () =>
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { tab: tab.value, strategy: strategy.value }),
+)
+
+// 动态字段兜底：存档策略不在当前名单即回首项（默认语义同 loadAll 初次回填），陈旧档不卡死 select。
+// flush:'sync' 锁序：loadAll 内名单回填后同步纠偏，同轮 getAdmission 读到的就是纠偏值——
+// 默认 'pre' 节奏下首轮 loadAll 会拿陈旧 strategy 先发 getAdmission（残留报错）并与纠偏触发的二次 loadAll 竞速。
+watch(
+  strategies,
+  (list) => {
+    if (list.length && strategy.value && !list.some((item) => item.name === strategy.value)) {
+      strategy.value = list[0].name
+    }
+  },
+  { flush: 'sync' },
+)
 
 onMounted(loadAll)
 </script>

@@ -344,8 +344,8 @@ function logout() {
 }
 
 .metric .value {
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--nt-fs-num-lg); /* 收编自 16px 裸值 */
+  font-weight: 600; /* 650→600：字重台阶 400/500/600/700 */
 }
 
 .metric.up .value {

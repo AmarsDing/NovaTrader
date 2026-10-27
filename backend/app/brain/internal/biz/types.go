@@ -175,12 +175,17 @@ type AskReply struct {
 }
 
 // ProgressEvent 发到 brain.progress，只给在线客户端看（FR-05-10）。
+// done/total 是进度条口径（P0-3 补齐）：total 恒为 2+维度数（facts + 每维 + synthesis 合成），
+// 维度并行完成顺序不定、done 只增不减；降级/丢弃路径中间步被跳过，收尾事件把 done 补满 total，
+// 前端进度条可靠合上，不留悬空。
 type ProgressEvent struct {
 	TraceID string `json:"trace_id"`
 	Symbol  string `json:"symbol"`
 	Stage   string `json:"stage"`
 	Dim     Dim    `json:"dim,omitempty"`
 	OK      bool   `json:"ok"`
+	Done    int    `json:"done"`
+	Total   int    `json:"total"`
 }
 
 // LLM 是 pkg/llm.Gateway 在 biz 层看到的样子。

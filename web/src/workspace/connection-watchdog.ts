@@ -22,12 +22,20 @@ export interface WatchdogOptions {
   isHidden?: () => boolean
 }
 
-/** 账户 / 行情 / 风控三路刷新（失败静默，由界面上的陈旧标记表达）。 */
+/** 账户 / 行情 / 风控 / 模型四路刷新（失败静默，由界面上的陈旧标记表达）。
+ *  W3-1：brain 此前只在脑主题 WS 推送时刷新，离线/推流空窗期模型档页签会定格旧数；
+ *  并入 10s/60s 轮询后 model-stats 面板头注「随连接看门狗周期刷新」成立。 */
 export function refreshAll(): Promise<unknown> {
   const account = useAccountStore()
   const market = useMarketStore()
   const risk = useRiskStore()
-  return Promise.all([quiet(account.refresh), quiet(market.refresh), quiet(risk.refresh)])
+  const brain = useBrainStore()
+  return Promise.all([
+    quiet(account.refresh),
+    quiet(market.refresh),
+    quiet(risk.refresh),
+    quiet(brain.refresh),
+  ])
 }
 
 async function runJobs(jobs: Map<string, () => Promise<boolean>>, signal?: AbortSignal): Promise<void> {

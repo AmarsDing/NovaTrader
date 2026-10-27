@@ -78,18 +78,20 @@ type SourceStatus struct {
 	Enabled  bool                   `protobuf:"varint,4,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	Official bool                   `protobuf:"varint,5,opt,name=official,proto3" json:"official,omitempty"`
 	// closed / open / half_open / disabled / unavailable
-	State               string  `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`
-	ConsecutiveFailures int32   `protobuf:"varint,7,opt,name=consecutive_failures,json=consecutiveFailures,proto3" json:"consecutive_failures,omitempty"`
-	SuccessCount        int64   `protobuf:"varint,8,opt,name=success_count,json=successCount,proto3" json:"success_count,omitempty"`
-	FailureCount        int64   `protobuf:"varint,9,opt,name=failure_count,json=failureCount,proto3" json:"failure_count,omitempty"`
-	SuccessRate         float64 `protobuf:"fixed64,10,opt,name=success_rate,json=successRate,proto3" json:"success_rate,omitempty"`
-	LastLatencyMs       int64   `protobuf:"varint,11,opt,name=last_latency_ms,json=lastLatencyMs,proto3" json:"last_latency_ms,omitempty"`
-	AvgLatencyMs        int64   `protobuf:"varint,12,opt,name=avg_latency_ms,json=avgLatencyMs,proto3" json:"avg_latency_ms,omitempty"`
-	LastSuccessAt       string  `protobuf:"bytes,13,opt,name=last_success_at,json=lastSuccessAt,proto3" json:"last_success_at,omitempty"`
-	LastFailureAt       string  `protobuf:"bytes,14,opt,name=last_failure_at,json=lastFailureAt,proto3" json:"last_failure_at,omitempty"`
-	LastError           string  `protobuf:"bytes,15,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
-	QuotaUsed           int64   `protobuf:"varint,16,opt,name=quota_used,json=quotaUsed,proto3" json:"quota_used,omitempty"`
-	QuotaLimit          int64   `protobuf:"varint,17,opt,name=quota_limit,json=quotaLimit,proto3" json:"quota_limit,omitempty"`
+	State               string `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`
+	ConsecutiveFailures int32  `protobuf:"varint,7,opt,name=consecutive_failures,json=consecutiveFailures,proto3" json:"consecutive_failures,omitempty"`
+	SuccessCount        int64  `protobuf:"varint,8,opt,name=success_count,json=successCount,proto3" json:"success_count,omitempty"`
+	FailureCount        int64  `protobuf:"varint,9,opt,name=failure_count,json=failureCount,proto3" json:"failure_count,omitempty"`
+	// 「没取到≠0」：无调用历史时 success_rate / last_latency_ms / avg_latency_ms 缺省（not present），
+	// 0% 成功率与 0ms 延迟都是真实读数，不拿来冒充「还没测过」。
+	SuccessRate   *float64 `protobuf:"fixed64,10,opt,name=success_rate,json=successRate,proto3,oneof" json:"success_rate,omitempty"`
+	LastLatencyMs *int64   `protobuf:"varint,11,opt,name=last_latency_ms,json=lastLatencyMs,proto3,oneof" json:"last_latency_ms,omitempty"`
+	AvgLatencyMs  *int64   `protobuf:"varint,12,opt,name=avg_latency_ms,json=avgLatencyMs,proto3,oneof" json:"avg_latency_ms,omitempty"`
+	LastSuccessAt string   `protobuf:"bytes,13,opt,name=last_success_at,json=lastSuccessAt,proto3" json:"last_success_at,omitempty"`
+	LastFailureAt string   `protobuf:"bytes,14,opt,name=last_failure_at,json=lastFailureAt,proto3" json:"last_failure_at,omitempty"`
+	LastError     string   `protobuf:"bytes,15,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	QuotaUsed     int64    `protobuf:"varint,16,opt,name=quota_used,json=quotaUsed,proto3" json:"quota_used,omitempty"`
+	QuotaLimit    int64    `protobuf:"varint,17,opt,name=quota_limit,json=quotaLimit,proto3" json:"quota_limit,omitempty"`
 	// 当前该域实际在用的源
 	Active        bool `protobuf:"varint,18,opt,name=active,proto3" json:"active,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -190,22 +192,22 @@ func (x *SourceStatus) GetFailureCount() int64 {
 }
 
 func (x *SourceStatus) GetSuccessRate() float64 {
-	if x != nil {
-		return x.SuccessRate
+	if x != nil && x.SuccessRate != nil {
+		return *x.SuccessRate
 	}
 	return 0
 }
 
 func (x *SourceStatus) GetLastLatencyMs() int64 {
-	if x != nil {
-		return x.LastLatencyMs
+	if x != nil && x.LastLatencyMs != nil {
+		return *x.LastLatencyMs
 	}
 	return 0
 }
 
 func (x *SourceStatus) GetAvgLatencyMs() int64 {
-	if x != nil {
-		return x.AvgLatencyMs
+	if x != nil && x.AvgLatencyMs != nil {
+		return *x.AvgLatencyMs
 	}
 	return 0
 }
@@ -1046,7 +1048,7 @@ const file_api_datahub_v1_datahub_proto_rawDesc = "" +
 	"\n" +
 	"\x1capi/datahub/v1/datahub.proto\x12\x0eapi.datahub.v1\x1a\x1cgoogle/api/annotations.proto\",\n" +
 	"\x12ListSourcesRequest\x12\x16\n" +
-	"\x06domain\x18\x01 \x01(\tR\x06domain\"\xdb\x04\n" +
+	"\x06domain\x18\x01 \x01(\tR\x06domain\"\xa2\x05\n" +
 	"\fSourceStatus\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x1a\n" +
@@ -1056,11 +1058,11 @@ const file_api_datahub_v1_datahub_proto_rawDesc = "" +
 	"\x05state\x18\x06 \x01(\tR\x05state\x121\n" +
 	"\x14consecutive_failures\x18\a \x01(\x05R\x13consecutiveFailures\x12#\n" +
 	"\rsuccess_count\x18\b \x01(\x03R\fsuccessCount\x12#\n" +
-	"\rfailure_count\x18\t \x01(\x03R\ffailureCount\x12!\n" +
+	"\rfailure_count\x18\t \x01(\x03R\ffailureCount\x12&\n" +
 	"\fsuccess_rate\x18\n" +
-	" \x01(\x01R\vsuccessRate\x12&\n" +
-	"\x0flast_latency_ms\x18\v \x01(\x03R\rlastLatencyMs\x12$\n" +
-	"\x0eavg_latency_ms\x18\f \x01(\x03R\favgLatencyMs\x12&\n" +
+	" \x01(\x01H\x00R\vsuccessRate\x88\x01\x01\x12+\n" +
+	"\x0flast_latency_ms\x18\v \x01(\x03H\x01R\rlastLatencyMs\x88\x01\x01\x12)\n" +
+	"\x0eavg_latency_ms\x18\f \x01(\x03H\x02R\favgLatencyMs\x88\x01\x01\x12&\n" +
 	"\x0flast_success_at\x18\r \x01(\tR\rlastSuccessAt\x12&\n" +
 	"\x0flast_failure_at\x18\x0e \x01(\tR\rlastFailureAt\x12\x1d\n" +
 	"\n" +
@@ -1069,7 +1071,10 @@ const file_api_datahub_v1_datahub_proto_rawDesc = "" +
 	"quota_used\x18\x10 \x01(\x03R\tquotaUsed\x12\x1f\n" +
 	"\vquota_limit\x18\x11 \x01(\x03R\n" +
 	"quotaLimit\x12\x16\n" +
-	"\x06active\x18\x12 \x01(\bR\x06active\"\xd3\x01\n" +
+	"\x06active\x18\x12 \x01(\bR\x06activeB\x0f\n" +
+	"\r_success_rateB\x12\n" +
+	"\x10_last_latency_msB\x11\n" +
+	"\x0f_avg_latency_ms\"\xd3\x01\n" +
 	"\x10ListSourcesReply\x126\n" +
 	"\asources\x18\x01 \x03(\v2\x1c.api.datahub.v1.SourceStatusR\asources\x12J\n" +
 	"\bsnapshot\x18\x02 \x03(\v2..api.datahub.v1.ListSourcesReply.SnapshotEntryR\bsnapshot\x1a;\n" +
@@ -1206,6 +1211,7 @@ func file_api_datahub_v1_datahub_proto_init() {
 	if File_api_datahub_v1_datahub_proto != nil {
 		return
 	}
+	file_api_datahub_v1_datahub_proto_msgTypes[1].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

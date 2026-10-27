@@ -43,12 +43,24 @@ import {
   validRemainText,
 } from '@/utils/format'
 import { serverNow } from '@/utils/server-clock'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
 
 type SideFilter = '' | 'buy' | 'sell'
 type StateFilter = '' | 'active' | 'executed' | 'expired' | 'closed'
 type SortKey = 'score' | 'time'
+
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.view.signal.v1'
+const PREFS_ALLOW = {
+  side: ['', 'buy', 'sell'],
+  state: ['', 'active', 'executed', 'expired', 'closed'],
+  sort: ['score', 'time'],
+  strategy: '*',
+} as const
+// 浏览筛选回显（非查询输入）；读档须在挂载拉数前完成。
+const savedPrefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
 
 const signalStore = useSignalsStore()
 const rows = computed(() => signalStore.ready ? signalStore.items : [])
@@ -58,10 +70,10 @@ const risk = useRiskStore()
 const decisionContext = ref<DecisionContext | null>(null)
 const error = ref('')
 const loading = ref(false)
-const sideFilter = ref<SideFilter>('')
-const stateFilter = ref<StateFilter>('')
-const strategyFilter = ref('')
-const sortKey = ref<SortKey>('score')
+const sideFilter = ref<SideFilter>((savedPrefs.side as SideFilter | undefined) ?? '')
+const stateFilter = ref<StateFilter>((savedPrefs.state as StateFilter | undefined) ?? '')
+const strategyFilter = ref(savedPrefs.strategy ?? '')
+const sortKey = ref<SortKey>((savedPrefs.sort as SortKey | undefined) ?? 'score')
 const planSignalId = ref('')
 /** 有效期与按钮状态同一时钟（P2-10 服务端钟，未校准回退本地），避免过期后仍保留可执行入口。 */
 const nowTick = ref(serverNow())
@@ -89,6 +101,21 @@ const strategyOptions = computed(() => [
   { value: '', label: '全部模板' },
   ...strategies.value.map((code) => ({ value: code, label: strategyLabel(code) })),
 ])
+
+// 偏好整档持久化（每次写全字段，动态字段 strategy 原样入档由消费侧兜底）。
+watch([sideFilter, stateFilter, strategyFilter, sortKey], () => {
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, {
+    side: sideFilter.value,
+    state: stateFilter.value,
+    sort: sortKey.value,
+    strategy: strategyFilter.value,
+  })
+})
+
+// 动态字段兜底：模板选项就绪后，陈旧存档值回默认，防 select 卡在已不存在的模板上。
+watch(strategies, (list) => {
+  if (list.length && strategyFilter.value && !list.includes(strategyFilter.value)) strategyFilter.value = ''
+})
 
 function isClosed(item: SignalItem): boolean {
   return item.status.toLowerCase() === 'closed'

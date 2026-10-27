@@ -50,3 +50,27 @@ func TestFromAShareCode(t *testing.T) {
 		}
 	}
 }
+
+func TestParseAShare(t *testing.T) {
+	// 用户请求边界放宽：裸 6 位 A 股代码段可推断市场（GP/QB 助记符直达）。
+	// Parse 本身保持严格继续拒裸码（TestParseRejects 锁定），放宽只发生在 ParseAShare。
+	for in, want := range map[string]string{
+		"600519": "600519.SH", "688001": "688001.SH", "000001": "000001.SZ", "300750": "300750.SZ",
+		"830799": "830799.BJ", "430047": "430047.BJ", "920001": "920001.BJ",
+	} {
+		s, err := ParseAShare(in)
+		if err != nil || s.Tongdaxin() != want {
+			t.Fatalf("ParseAShare(%q) = %v, %v; want %s", in, s, err, want)
+		}
+	}
+	// 三种标准写法照旧走 Parse。
+	if s, err := ParseAShare("sh600519"); err != nil || s.Tongdaxin() != "600519.SH" {
+		t.Fatalf("ParseAShare(sh600519) = %v, %v; want 600519.SH", s, err)
+	}
+	// 指数/基金代码段（1/2/9 开头）与错形态仍报错。
+	for _, in := range []string{"", "12345", "200001", "900901", "600519.HK", "ABCDEF"} {
+		if _, err := ParseAShare(in); err == nil {
+			t.Fatalf("ParseAShare(%q) should fail", in)
+		}
+	}
+}

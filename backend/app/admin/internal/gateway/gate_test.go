@@ -119,7 +119,7 @@ func TestOpsStatus(t *testing.T) {
 			_, _ = w.Write([]byte(`{"status":"ok"}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"sources":[{"source":"tdx","state":"closed"},{"source":"ak","state":"unavailable"}]}`))
+		_, _ = w.Write([]byte(`{"sources":[{"source":"tdx","state":"closed"},{"source":"ak","state":"unavailable"},{"source":"bk","state":"half_open","last_error":"恢复探测中"},{"source":"cz","state":"coverage_unknown","last_error":"补源返回记录不等于历史全市场覆盖率"}]}`))
 	}))
 	defer datahub.Close()
 	brain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,10 +156,16 @@ func TestOpsStatus(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Sources) != 2 || body.Sources[1]["status"] != "down" {
+	if len(body.Sources) != 4 || body.Sources[1]["status"] != "down" {
 		t.Fatalf("sources %+v", body.Sources)
 	}
-	if len(body.Models) != 1 || body.Models[0]["status"] != "down" || body.Models[0]["latency"] != "12" {
+	// W2-c 拆态：半开/覆盖率未证实=warn 橙并带上业务解释，不再是「非故障即绿」。
+	if body.Sources[2]["status"] != "warn" || body.Sources[2]["detail"] != "恢复探测中" ||
+		body.Sources[3]["status"] != "warn" || body.Sources[3]["detail"] != "补源返回记录不等于历史全市场覆盖率" {
+		t.Fatalf("sources warn 拆态 %+v", body.Sources)
+	}
+	// W2-c 拆态：模型「未配置」是结构性缺省（暗点 unknown），不是 down 红；熔断才红。
+	if len(body.Models) != 1 || body.Models[0]["status"] != "unknown" || body.Models[0]["detail"] != "未配置" || body.Models[0]["latency"] != "12" {
 		t.Fatalf("models %+v", body.Models)
 	}
 	if !hasNode(body.Services, "admin", "ok") || !hasNode(body.Services, "nats", "ok") || !hasNode(body.Services, "market", "down") {

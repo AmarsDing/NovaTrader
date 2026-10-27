@@ -6,6 +6,7 @@
  * - usageOf：彭博式「prefix 参数」用法行；
  * - HOTKEY_ROWS：全局热键清单的呈现副本（与 shortcuts.ts / WorkbenchView Ctrl 表同源同步）。
  */
+import { configCategories, type ConfigCategory } from '@/view/config-catalog'
 import { functionIndex, type FunctionCard } from './command-grammar'
 
 /** 按面板 id 取功能卡；面板未挂助记符（或未注册）返回 null，浮层按「无卡面板」呈现。 */
@@ -112,3 +113,61 @@ export const HOTKEY_ROWS: readonly HotkeyRow[] = [
   { keys: 'Ctrl+Z / Ctrl+Shift+Z', action: '布局撤销 / 重做' },
   { keys: 'F1', action: '本帮助浮层' },
 ]
+
+/* ---------- 「设置 <关键词>」直达（§9.3，S2 批） ----------
+ * 复用 G2 帮助态三件套（parse → candidates/specs 纯构造 → palette 结果池整段接管）：
+ * ConfigCenter 分组为词库单源（config-catalog 叶子模块，无环）；
+ * 行动作约定：派发 window 事件 nt:open-config 并带 detail.category=分组 id，
+ * ConfigCenter（overlay 挂载前暂存 / 存活面板即时）双侧接收定位，见 view/ConfigCenter.vue。 */
+
+export interface SettingRowSpec {
+  id: string
+  label: string
+  hint: string
+  /** 显式带组时的 ConfigCenter 分组 id（nav 成员，含 config-catalog 业务分组）。 */
+  categoryId?: string
+  /** open = 行可执行（开配置并定位分组）；none = 提示行（Enter 忽略）。 */
+  action: 'open' | 'none'
+}
+
+/** 「设置 <词>」分流判据（同 parseHelpQuery 纪律）：首词「设置」命中即接管，词尾空串=出全部分组。 */
+export function parseSettingsQuery(keyword: string): string | null {
+  const m = /^设置\s*(.*)$/.exec(keyword)
+  return m ? m[1].trim() : null
+}
+
+/** 「设置 <词>」候选：标题/说明/字段名与提示的宽松子串命中；空词出全部；保持 catalog 原顺序。 */
+export function settingsCandidates(
+  term: string,
+  categories: ConfigCategory[] = configCategories,
+): ConfigCategory[] {
+  const t = term.trim().toLowerCase()
+  if (!t) return categories
+  return categories.filter((cat) =>
+    [cat.title, cat.note, ...cat.fields.map((f) => `${f.key} ${f.label} ${f.hint}`)]
+      .join(' ')
+      .toLowerCase()
+      .includes(t),
+  )
+}
+
+/** 设置行动项纯构造：空词=全分组索引；有词=命中组可执行；零命中出提示行（不杜撰分组）。 */
+export function buildSettingsSpecs(
+  term: string,
+  categories: ConfigCategory[] = configCategories,
+): SettingRowSpec[] {
+  const hits = settingsCandidates(term, categories)
+  if (hits.length) {
+    return hits.map((cat) => ({
+      id: `setting:${cat.id}`,
+      label: `设置 ${cat.title}`,
+      hint: `${cat.note} · Enter 打开并定位`,
+      categoryId: cat.id,
+      action: 'open' as const,
+    }))
+  }
+  return [
+    { id: 'setting:none', label: `设置 ${term}`, hint: '没有匹配的配置分组（示例：设置 数据源 / 设置 模型 / 设置 风控）', action: 'none' },
+  ]
+}
+

@@ -74,8 +74,11 @@ func parseDay(s string) (time.Time, error) {
 	return market.DateOf(t), nil
 }
 
+// parseSymbol 是用户请求边界的归一（P0-1 裸码修复）：助记符直达（GP/QB 600519）
+// 与手输都可能带裸 6 位代码，这里按 ParseAShare 放宽 A 股代码段；指数/基金段
+// 不归此函数管，认不出仍 400，ParseAShare 是唯一判错闸门。
 func parseSymbol(raw string) (string, error) {
-	s, err := symbol.Parse(raw)
+	s, err := symbol.ParseAShare(raw)
 	if err != nil {
 		return "", badRequest(err.Error())
 	}
@@ -290,20 +293,25 @@ func (s *MarketService) GetSentiment(ctx context.Context, req *v1.GetSentimentRe
 	if err != nil {
 		return nil, err
 	}
-	st, ok, err := s.uc.Sentiment(ctx, day, asOf)
+	st, riskLevel, ok, err := s.uc.Sentiment(ctx, day, asOf)
 	if err != nil {
 		return nil, internal(err)
 	}
 	if !ok {
 		return nil, kerrors.NotFound("MARKET_NOT_FOUND", "no sentiment for "+fmtDay(day))
 	}
-	return &v1.Sentiment{
+	reply := &v1.Sentiment{
 		TradeDate: fmtDay(st.TradeDate), AsOf: fmtTime(st.AsOf),
 		UpCount: int32(st.UpCount), DownCount: int32(st.DownCount), BrokenCount: int32(st.BrokenCount),
 		BrokenRate: st.BrokenRate, MaxHeight: int32(st.MaxHeight), ProfitEffect: st.ProfitEffect,
 		Advance: int32(st.Advance), Decline: int32(st.Decline), Flat: int32(st.Flat), Amount: st.Amount,
 		Phase: string(st.Phase), ScoreCoef: st.ScoreCoef, PositionScale: st.PositionScale, Stale: st.Stale,
-	}, nil
+	}
+	if riskLevel != nil {
+		v := int32(*riskLevel)
+		reply.RiskLevel = &v
+	}
+	return reply, nil
 }
 
 func (s *MarketService) GetLimitBoards(ctx context.Context, req *v1.GetLimitBoardsRequest) (*v1.GetLimitBoardsReply, error) {

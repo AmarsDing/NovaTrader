@@ -60,6 +60,21 @@ func FromAShareCode(code string) (Symbol, error) {
 	return Symbol{}, fmt.Errorf("symbol: %q is not an A-share code", code)
 }
 
+// ParseAShare 是用户请求边界的归一：先按 Parse 的三种标准写法解析，
+// 失败再放宽接受裸 6 位 A 股代码段（600519 → 600519.SH，规则同 FromAShareCode）。
+// 只许放在「用户敲进来的」入口（HTTP 查询参数、面板直达参数、研判请求）；
+// 内部管道（文件单、风控等跨域转换）必须用 Parse，禁止裸码漏进下游。
+func ParseAShare(raw string) (Symbol, error) {
+	s, err := Parse(raw)
+	if err == nil {
+		return s, nil
+	}
+	if s, ferr := FromAShareCode(raw); ferr == nil {
+		return s, nil
+	}
+	return Symbol{}, err
+}
+
 // Tongdaxin 返回 600519.SH。
 func (s Symbol) Tongdaxin() string {
 	return s.Code + "." + s.Market

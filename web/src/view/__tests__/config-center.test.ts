@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import ConfigCenter from '../ConfigCenter.vue'
 import ConfigRevisionPanel from '../ConfigRevisionPanel.vue'
-import NtInput from '@/ui/NtInput.vue'
+import NtConfigField from '@/ui/NtConfigField.vue'
 import NtButton from '@/ui/NtButton.vue'
 const m = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), preview: vi.fn(), rollback: vi.fn() }))
 vi.mock('@/api/config', () => ({ getConfigSnapshot: m.get, saveConfig: m.save, previewConfig: m.preview, rollbackConfig: m.rollback }))
@@ -21,7 +21,7 @@ async function open() {
   w = shallowMount(ConfigCenter, { global: { renderStubDefaultSlot: true } }); await flushPromises()
   await w.findAll('nav button').find(b => b.text() === '评分与信号')!.trigger('click')
 }
-async function edit(value: string) { w!.findAllComponents(NtInput).find(c => c.props('label') === '入选分')!.vm.$emit('update:modelValue', value); await flushPromises() }
+async function edit(value: string) { w!.findAllComponents(NtConfigField).find(c => (c.props('field') as { label?: string })?.label === '入选分')!.vm.$emit('update:modelValue', value); await flushPromises() }
 async function action() { w!.findAllComponents(NtButton).find(c => /预览本类|确认保存/.test(c.text()))!.vm.$emit('click'); await flushPromises() }
 describe('configuration save workflow', () => {
   it('previews frozen edits then saves with the exact read revision; never labels save as loaded', async () => {

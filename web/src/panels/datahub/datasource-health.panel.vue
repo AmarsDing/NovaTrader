@@ -3,7 +3,7 @@
  * 数据源治理面板（M01）：数据源启停（owner）+ 手动触发采集（owner）+ 质量报告。
  * 状态灯：enabled + lastAt 新鲜度 → live/ok/stale/down。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   collectDomain,
   getQuality,
@@ -114,6 +114,17 @@ async function load() {
   }
 }
 
+/**
+ * 静默追帧（W3-1 值守面）：30s 重拉，不翻 loading 章、失败保留旧数据。
+ * 该面板状态灯由「当前时刻 − lastAt」判定（STALE_MS=30min），即使数据无变化也需周期重估，
+ * 否则新鲜度灯停在挂载时刻、永不转陈旧。
+ */
+async function refreshQuiet() {
+  const [s, q] = await Promise.allSettled([listSources(), getQuality({ limit: 50 })])
+  if (s.status === 'fulfilled') sources.value = s.value
+  if (q.status === 'fulfilled') quality.value = q.value
+}
+
 async function toggle(source: DataSource, enabled: boolean) {
   if (auth.isViewer()) return
   toggling.value = source.id
@@ -146,7 +157,20 @@ async function collect(source: DataSource) {
   }
 }
 
-onMounted(load)
+const QUIET_POLL_MS = 30_000
+let pollTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => {
+  void load()
+  pollTimer = setInterval(() => {
+    if (document.hidden) return
+    void refreshQuiet()
+  }, QUIET_POLL_MS)
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 </script>
 
 <template>

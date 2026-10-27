@@ -300,6 +300,14 @@ func TestMergeAndFailover(t *testing.T) {
 	if keys["title"] == "" || keys["body"] == "" {
 		t.Fatalf("desktop %+v", keys)
 	}
+	// M10 错配修复：桌面载荷回捎行内 dedup_key 与 Fields.symbol，前端漏斗/去重同口径。
+	if keys["dedup_key"] != "fill:o9:600000.SH:sell:200:8" || keys["symbol"] != "600000.SH" {
+		t.Fatalf("desktop must carry dedup_key/symbol: %+v", keys)
+	}
+	// fill 事件 Fields 无 level 键 → 保持缺省，不编造级别。
+	if _, ok := keys["level"]; ok {
+		t.Fatalf("fill has no level field, must omit: %+v", keys)
+	}
 }
 
 func TestRecoverRespectsQuiet(t *testing.T) {

@@ -324,7 +324,9 @@ func (u *Usecase) publish(ctx context.Context, eng *market.Engine, up market.Upd
 			}
 		}
 		if len(wb) > 0 {
-			send(events.SubjectMarketBar, map[string]any{"bars": wb})
+			// 载荷带帧级 freq（W3 bar 双端比对）：引擎固定产 1m 收盘 bar（持久化同口径见 repo SaveBars SetFreq("1m")），
+			// 网关 coalesce/订阅收窄与前端行级过滤都吃这口，空 freq 会把分钟帧漏进日线视图。
+			send(events.SubjectMarketBar, map[string]any{"bars": wb, "freq": "1m"})
 		}
 		var changed []string
 		for _, s := range up.Changed {

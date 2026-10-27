@@ -10,9 +10,10 @@ import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import SymbolName from '@/display/SymbolName.vue'
-import { statusOf, type StatusTone } from '@/ui/status-map'
 import NtFreshness from '@/ui/NtFreshness.vue'
+import { statusOf, type StatusTone } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { dataFrame } from '@/ws/data-frame'
 import { onPush, subscribe, type WsPushMessage } from '@/ws/hub'
 
@@ -30,15 +31,30 @@ const KINDS: { k: IntradayAlertKind; t: string; tone: StatusTone }[] = [
 ]
 const PUSH_RELOAD_MIN_INTERVAL_MS = 15000
 const MAX_ROWS = 300
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.intraday-alerts.v1'
+const PREFS_ALLOW = {
+  minPct: ['0', '1.5', '3', '5'],
+  scope: ['all', 'watch'],
+  kind_surge: ['on', 'off'],
+  kind_limit_up: ['on', 'off'],
+  kind_break: ['on', 'off'],
+} as const
+// 读档回填须在首次 load 前（minPct/watchOnly 直接进 getIntradayAlerts 查询）。
+const savedPrefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
 
 const rows = ref<IntradayAlert[]>([])
 const seen = new Set<string>()
 const loading = ref(false)
 const liveCount = ref(0)
 const error = ref('')
-const minPct = ref(0)
-const watchOnly = ref(false)
-const kindOn = ref<Record<IntradayAlertKind, boolean>>({ surge: true, limit_up: true, break: true })
+const minPct = ref(savedPrefs.minPct !== undefined ? Number(savedPrefs.minPct) : 0)
+const watchOnly = ref(savedPrefs.scope === 'watch')
+const kindOn = ref<Record<IntradayAlertKind, boolean>>({
+  surge: savedPrefs.kind_surge !== 'off',
+  limit_up: savedPrefs.kind_limit_up !== 'off',
+  break: savedPrefs.kind_break !== 'off',
+})
 
 const shown = computed(() => rows.value.filter((r) => kindOn.value[r.kind]))
 
@@ -137,6 +153,20 @@ onBeforeUnmount(() => {
 watch([minPct, watchOnly], () => {
   void load()
 })
+
+// 偏好整档持久化（每次写全字段）；kindOn 模板内原位改布尔，需深层监听。
+watch(
+  [minPct, watchOnly, kindOn],
+  () =>
+    savePanelPrefs(PREFS_KEY, PREFS_ALLOW, {
+      minPct: String(minPct.value),
+      scope: watchOnly.value ? 'watch' : 'all',
+      kind_surge: kindOn.value.surge ? 'on' : 'off',
+      kind_limit_up: kindOn.value.limit_up ? 'on' : 'off',
+      kind_break: kindOn.value.break ? 'on' : 'off',
+    }),
+  { deep: true },
+)
 </script>
 
 <template>

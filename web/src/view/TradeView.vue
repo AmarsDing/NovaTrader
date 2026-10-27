@@ -43,6 +43,7 @@ import {
 } from '@/utils/format'
 import { formatDateTime } from '@/utils/time'
 import { serverNow } from '@/utils/server-clock'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { router } from '@/router'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { PAPER_DAYS_REQUIRED } from './decision-desk'
@@ -103,7 +104,12 @@ function rememberSignalOrder(draft: OrderDraft, order: Order) {
     acknowledgedSignals.add(`${normalizeBook(draft.account)}:${draft.signalId}`)
   }
 }
-const orderFilter = ref<'open' | 'all'>('open')
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+// 只入「可撤/全部」浏览筛选；account 账本、journal、方向表单属执行语义不入档（安全闸）。
+const PREFS_KEY = 'nt.prefs.view.trade.v1'
+const PREFS_ALLOW = { orderFilter: ['open', 'all'] } as const
+const orderFilter = ref<'open' | 'all'>((loadPanelPrefs(PREFS_KEY, PREFS_ALLOW).orderFilter as 'open' | 'all' | undefined) ?? 'open')
+watch([orderFilter], () => savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { orderFilter: orderFilter.value }))
 const touched = ref(false)
 const cancelAllBusy = ref(false)
 /** 一键全撤第一步：再点一次才执行（8 秒内有效）。 */

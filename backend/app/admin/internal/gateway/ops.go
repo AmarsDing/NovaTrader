@@ -108,16 +108,33 @@ func (g *Gate) sources(ctx context.Context, client *http.Client) []map[string]st
 	for _, src := range parsed.Sources {
 		name := firstString(src, "source", "domain")
 		state := firstString(src, "state", "status")
-		if state == "" {
-			state = "unknown"
+		status := sourceNodeStatus(state)
+		detail := state
+		if status == "warn" {
+			// 半开/覆盖率未证实：把业务解释（LastError 中文文案）带上来，不让黄灯只有一句状态码。
+			if le := firstString(src, "last_error", "lastError"); le != "" {
+				detail = le
+			}
 		}
-		status := "ok"
-		if state == "unavailable" || state == "disabled" || state == "open" {
-			status = "down"
-		}
-		out = append(out, nodeStatus(name, status, state))
+		out = append(out, nodeStatus(name, status, detail))
 	}
 	return out
+}
+
+// sourceNodeStatus 源状态归级（W2-c 拆态）：closed=ok 绿；熔断/禁用/不可用=down 红；
+// half_open 恢复中、coverage_unknown 覆盖率未证实 = warn 橙（既不是绿也不是故障）；
+// 空串/unknown = unknown 暗点（没测过不等于健康）。前端 statusDot 同口径。
+func sourceNodeStatus(state string) string {
+	switch state {
+	case "open", "unavailable", "disabled":
+		return "down"
+	case "half_open", "coverage_unknown":
+		return "warn"
+	case "", "unknown":
+		return "unknown"
+	default:
+		return "ok"
+	}
 }
 
 func (g *Gate) models(ctx context.Context, client *http.Client) []map[string]string {
@@ -141,7 +158,8 @@ func (g *Gate) models(ctx context.Context, client *http.Client) []map[string]str
 		status := "ok"
 		detail := "已配置"
 		if configured, ok := tier["configured"].(bool); ok && !configured {
-			status = "down"
+			// 拆态（W2-c）：「未配置」是这档模型没配的结构性事实（small 档可缺省），不是故障——暗点静默，不占红。
+			status = "unknown"
 			detail = "未配置"
 		}
 		if open, ok := tier["circuitOpen"].(bool); ok && open {

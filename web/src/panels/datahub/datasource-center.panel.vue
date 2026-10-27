@@ -9,7 +9,7 @@
  * 服务端判「未登记的参数键」时原文透出并禁用写控件；凭证永不回显明文（secret_set 布尔）。
  * 拖拽排序留 P1（HTML5 draggable 标记位），P0 用「上移/下移」零依赖。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   getQuality,
   getSourceCatalog,
@@ -37,13 +37,19 @@ import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import { clock, messageOf, ratioPct } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { serverNow } from '@/utils/server-clock'
 
 type Tab = 'wall' | 'domains' | 'health'
 
 const auth = useAuthStore()
 
-const tab = ref<Tab>('wall')
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.datasource-center.v1'
+const PREFS_ALLOW = { tab: ['wall', 'domains', 'health'] } as const
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+const tab = ref<Tab>((prefs.tab as Tab | undefined) ?? 'wall')
+watch(tab, () => savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { tab: tab.value }))
 const tabItems = [
   { value: 'wall', label: '源墙' },
   { value: 'domains', label: '域视图' },

@@ -161,15 +161,19 @@ func (u *Usecase) FactorsCross(ctx context.Context, day, asOf time.Time, kind st
 	return rows, nil
 }
 
-// Sentiment 返回情绪截面。
-func (u *Usecase) Sentiment(ctx context.Context, day, asOf time.Time) (market.Sentiment, bool, error) {
+// Sentiment 返回情绪截面；risk 只在实时截面给出（引擎按指数实时推算，与 WS market.state 同一处），
+// 历史快照不落库该值，risk 为 nil 表示未记录——0 是真的「正常」，缺省不能冒充。
+func (u *Usecase) Sentiment(ctx context.Context, day, asOf time.Time) (market.Sentiment, *int, bool, error) {
 	if eng, ok := u.live(day, asOf); ok {
-		return eng.Sentiment(time.Now()), true, nil
+		now := time.Now()
+		rl := eng.State(now).RiskLevel
+		return eng.Sentiment(now), &rl, true, nil
 	}
 	if asOf.IsZero() {
 		asOf = time.Now()
 	}
-	return u.repo.SentimentAt(ctx, day, asOf)
+	st, ok, err := u.repo.SentimentAt(ctx, day, asOf)
+	return st, nil, ok, err
 }
 
 // LimitBoards 返回涨跌停列表。

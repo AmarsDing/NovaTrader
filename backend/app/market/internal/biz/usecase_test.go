@@ -326,6 +326,10 @@ func TestUsecaseDayLifecycle(t *testing.T) {
 	if !ok {
 		t.Fatal("watched minute bar event missing")
 	}
+	// W3 bar 双端比对：帧级 freq 恒标 1m，前端按它过滤非同周期帧。
+	if watched["freq"] != "1m" {
+		t.Fatalf("watched bar event must carry freq=1m: %+v", watched)
+	}
 	liveBars, ok := watched["bars"].([]market.Bar)
 	if !ok || len(liveBars) == 0 {
 		t.Fatalf("invalid watched bar event: %+v", watched)

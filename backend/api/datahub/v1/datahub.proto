@@ -65,9 +65,11 @@ message SourceStatus {
   int32 consecutive_failures = 7;
   int64 success_count = 8;
   int64 failure_count = 9;
-  double success_rate = 10;
-  int64 last_latency_ms = 11;
-  int64 avg_latency_ms = 12;
+  // 「没取到≠0」：无调用历史时 success_rate / last_latency_ms / avg_latency_ms 缺省（not present），
+  // 0% 成功率与 0ms 延迟都是真实读数，不拿来冒充「还没测过」。
+  optional double success_rate = 10;
+  optional int64 last_latency_ms = 11;
+  optional int64 avg_latency_ms = 12;
   string last_success_at = 13;
   string last_failure_at = 14;
   string last_error = 15;

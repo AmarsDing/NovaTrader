@@ -10,6 +10,7 @@ import NtInput from '@/ui/NtInput.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { clock, messageOf, pctText, pnlClass } from '@/utils/format'
+import { normalizeCode } from '@/utils/symbol'
 import { useSymbolStore } from '@/stores/symbol'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 import { getWorkbench } from '@/workspace/inject'
@@ -75,12 +76,33 @@ async function loadNews(codeOverride?: string) {
   }
 }
 
+function applySideResults(wordRes: PromiseSettledResult<HotWord[]>, sectorRes: PromiseSettledResult<SectorRow[]>) {
+  words.value = wordRes.status === 'fulfilled' ? wordRes.value : words.value
+  sectors.value = sectorRes.status === 'fulfilled' ? sectorRes.value : sectors.value
+}
+
 async function loadSide() {
   const [wordRes, sectorRes] = await Promise.allSettled([hotWords(), listSectors(12)])
-  words.value = wordRes.status === 'fulfilled' ? wordRes.value : []
-  sectors.value = sectorRes.status === 'fulfilled' ? sectorRes.value : []
+  applySideResults(wordRes, sectorRes)
   if (!error.value && wordRes.status === 'rejected' && sectorRes.status === 'rejected') {
     error.value = messageOf(wordRes.reason)
+  }
+}
+
+/**
+ * 静默追帧（W3-1 值守面）：30s 重拉侧栏热词/板块；已加载代码的时间线一并静默补帧——
+ * 不翻 loading 章、不清高亮、失败保留旧数据（消息断更由行内时间戳与面板头新鲜度章表达）。
+ */
+async function refreshQuiet() {
+  applySideResults(...(await Promise.allSettled([hotWords(), listSectors(12)])))
+  const code = symbol.value.trim()
+  if (!code) return
+  try {
+    const data = await timeline(code)
+    items.value = data.items
+    sentiment.value = data.sentiment
+  } catch {
+    /* 静默：保留旧时间线 */
   }
 }
 
@@ -94,7 +116,8 @@ function openMarket(code: string) {
 
 /** 面板参数（symbol/highlight）统一入口：冷启动 consume + 已挂载时 openPanel 实时推送。 */
 function applyPanelParams(params: Record<string, unknown>) {
-  const code = typeof params.symbol === 'string' ? params.symbol : ''
+  // 归一兜底：总线进站已归一，这里再兜保证时间线 REST 请求用通达信形态。
+  const code = typeof params.symbol === 'string' ? normalizeCode(params.symbol) : ''
   if (!code) return
   highlight.value = typeof params.highlight === 'string' ? params.highlight : ''
   symbolStore.setSymbol(code, 'QB')
@@ -103,13 +126,24 @@ function applyPanelParams(params: Record<string, unknown>) {
 
 const offPanelParams = onPanelParams('intel', applyPanelParams)
 
+/** W3-1 值守面静默追帧节奏：与 Ops/数据源健康同款 30s、隐藏页暂停。 */
+const QUIET_POLL_MS = 30_000
+let pollTimer: ReturnType<typeof setInterval> | undefined
+
 onMounted(() => {
   void loadSide()
   const params = consumePanelParams('intel')
   if (params) applyPanelParams(params)
+  pollTimer = setInterval(() => {
+    if (document.hidden) return
+    void refreshQuiet()
+  }, QUIET_POLL_MS)
 })
 
-onBeforeUnmount(() => offPanelParams())
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  offPanelParams()
+})
 </script>
 
 <template>

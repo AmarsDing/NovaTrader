@@ -382,6 +382,28 @@ describe('contiguous delivery and windows', () => {
     expect(JSON.parse(sessionStorage.getItem(CURSOR_KEY)!).seq.alert).toBe(2)
     expect(h.isLive()).toBe(true)
   })
+  it('notify.desktop 帧（W2-a）：priority 回落进 severity/level，dedup_key/category 直通漏斗', async () => {
+    const notify = vi.fn<HubDeps['deskNotify']>(async () => false)
+    const h = makeHub({ deskNotify: notify })
+    register(h)
+    h.startLink()
+    const ws = FakeWebSocket.last()
+    ws.serverOpen()
+    await ready(h, ws)
+    data(ws, 1, 'alert', {
+      event: 'notify', title: '熔断', body: '触发', priority: 'critical', category: 'risk',
+      dedup_key: 'risk:breaker:LIVE',
+    })
+    await flush()
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [title, body, severity, opts] = notify.mock.calls[0]!
+    expect(title).toBe('熔断')
+    expect(body).toBe('触发')
+    expect(severity).toBe('critical')
+    expect(opts).toMatchObject({
+      topic: 'alert', event: 'notify', level: 'critical', category: 'risk', dedupKey: 'risk:breaker:LIVE',
+    })
+  })
   it('rejected notification and confirmation prompts are handled without resyncing applied events', async () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {

@@ -4,7 +4,11 @@
  * 所以打开面板时先登记参数，面板组件挂载后按 id 一次性取走。
  * 面板已挂载（已有订阅者）时参数立即推给订阅者，避免「只切页签、
  * 参数滞留到下次挂载」的旧缺陷。
+ * 进站归一（P0-1）：裸码入口（GP/QB 600519、面板互跳）在 stage 时统一成
+ * 通达信形态（600519.SH），pending/推送/快照三路消费到的都是归一码。
  */
+import { normalizeCode } from '@/utils/symbol'
+
 type ParamsHandler = (params: Record<string, unknown>) => void
 
 const pending = new Map<string, Record<string, unknown>>()
@@ -14,13 +18,14 @@ const lastApplied = new Map<string, Record<string, unknown>>()
 
 export function stagePanelParams(id: string, params: Record<string, unknown>): void {
   if (!params || !Object.keys(params).length) return
-  lastApplied.set(id, { ...params })
+  const staged = typeof params.symbol === 'string' ? { ...params, symbol: normalizeCode(params.symbol) } : { ...params }
+  lastApplied.set(id, staged)
   const subs = subscribers.get(id)
   if (subs && subs.size > 0) {
-    for (const handler of subs) handler({ ...params })
+    for (const handler of subs) handler({ ...staged })
     return
   }
-  pending.set(id, { ...params })
+  pending.set(id, staged)
 }
 
 export function consumePanelParams(id: string): Record<string, unknown> | undefined {

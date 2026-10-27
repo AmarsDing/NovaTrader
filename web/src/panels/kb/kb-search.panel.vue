@@ -4,7 +4,7 @@
  * 口径见 api/kb.ts：Search 与 SimilarCases 走 POST；案例列表 = 情形留空的 SimilarCases。
  * 嵌入服务未接入时检索降级关键词，界面照实挂 degraded 徽标，不装作向量命中。
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import {
   deleteDocument,
   getDocument,
@@ -28,6 +28,7 @@ import NtTabs from '@/ui/NtTabs.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { statusOf } from '@/ui/status-map'
 import { clock, messageOf, pctText, phaseName, pnlClass, price } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import {
   attributionLabel,
   BOOK_OPTIONS,
@@ -50,13 +51,28 @@ import {
 
 const PAGE = 20
 
-const tab = ref('search')
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.kb-search.v1'
+/* 页签与筛选白名单（值域对齐 CATEGORY/STATUS/EMOTION/BOOK 册）；查询词、代码属业务输入不入档。 */
+const PREFS_ALLOW = {
+  tab: ['search', 'docs', 'cases', 'upload'],
+  s_category: ['', 'case', 'rule', 'compliance', 'review'],
+  d_category: ['', 'case', 'rule', 'compliance', 'review'],
+  d_status: ['', 'active', 'superseded', 'expired', 'deleted'],
+  cs_emotion: ['', 'ICE', 'RECOVER', 'WARM', 'HOT', 'FADE'],
+  cs_book: ['', 'paper', 'live'],
+} as const
+
+/* 读档回填在首次数据加载之前；无档回落现有默认（tab=search，其余 '' 全部）。 */
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+
+const tab = ref(prefs.tab ?? 'search')
 const err = ref('')
 
 /* ---------- 检索 ---------- */
 
 const sq = ref('')
-const sCategory = ref('')
+const sCategory = ref(prefs.s_category ?? '')
 const sStock = ref('')
 const searching = ref(false)
 const searchRes = ref<KbSearchResult | null>(null)
@@ -95,8 +111,8 @@ function embedEntry(status: string | null | undefined) {
 
 /* ---------- 文档 ---------- */
 
-const dCategory = ref('')
-const dStatus = ref('')
+const dCategory = ref(prefs.d_category ?? '')
+const dStatus = ref(prefs.d_status ?? '')
 const docs = ref<DocRow[]>([])
 const dTotal = ref(0)
 const dOffset = ref(0)
@@ -183,7 +199,7 @@ async function openDetail(row: DocRow) {
 
 /* ---------- 案例 ---------- */
 
-const csForm = reactive({ situation: '', pattern: '', emotion: '', stock: '', book: '' })
+const csForm = reactive({ situation: '', pattern: '', emotion: prefs.cs_emotion ?? '', stock: '', book: prefs.cs_book ?? '' })
 const csBusy = ref(false)
 const csRes = ref<{ hits: KbCaseHit[]; degraded: boolean } | null>(null)
 const csHits = computed(() => csRes.value?.hits ?? [])
@@ -300,6 +316,20 @@ async function submitIngest() {
     upBusy.value = false
   }
 }
+
+/* ---------- 偏好持久化（W3-2） ---------- */
+
+/* 任一偏好字段变化写整档（含未变字段），单字段变化不丢兄弟字段；csForm 是 reactive，按字段取。 */
+watch([tab, sCategory, dCategory, dStatus, () => csForm.emotion, () => csForm.book], () =>
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, {
+    tab: tab.value,
+    s_category: sCategory.value,
+    d_category: dCategory.value,
+    d_status: dStatus.value,
+    cs_emotion: csForm.emotion,
+    cs_book: csForm.book,
+  }),
+)
 
 onMounted(() => {
   void loadDocs(0)

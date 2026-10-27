@@ -57,14 +57,19 @@ type Message struct {
 }
 
 // DesktopNote 是发给 admin 的桌面载荷。没有确认动作。
+// M10 错配修复（W2-a）：level/symbol 回捎来源事件 Fields（没有该键的来源事件留空）；
+// dedup_key 与行内一致——前端告警漏斗归级、同因聚合与通知中心 feed/api 合并去重都吃这三个字段。
 type DesktopNote struct {
 	ID       int       `json:"id"`
 	EventID  string    `json:"event_id"`
 	Priority string    `json:"priority"`
 	Category string    `json:"category"`
+	Level    string    `json:"level,omitempty"`
+	Symbol   string    `json:"symbol,omitempty"`
 	Title    string    `json:"title"`
 	Body     string    `json:"body"`
 	At       time.Time `json:"at"`
+	DedupKey string    `json:"dedup_key,omitempty"`
 	TraceID  string    `json:"-"`
 }
 

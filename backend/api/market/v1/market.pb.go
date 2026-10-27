@@ -781,6 +781,9 @@ type Sentiment struct {
 	ScoreCoef     float64 `protobuf:"fixed64,14,opt,name=score_coef,json=scoreCoef,proto3" json:"score_coef,omitempty"`
 	PositionScale float64 `protobuf:"fixed64,15,opt,name=position_scale,json=positionScale,proto3" json:"position_scale,omitempty"`
 	Stale         bool    `protobuf:"varint,16,opt,name=stale,proto3" json:"stale,omitempty"`
+	// 风险度 0 正常 … 3 极高（与 WS market.state 同一处 Rules 计算）。
+	// 只在实时截面给出；历史快照不落库该值，缺省（not present）表示未记录，0 才是真的「正常」。
+	RiskLevel     *int32 `protobuf:"varint,17,opt,name=risk_level,json=riskLevel,proto3,oneof" json:"risk_level,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -925,6 +928,13 @@ func (x *Sentiment) GetStale() bool {
 		return x.Stale
 	}
 	return false
+}
+
+func (x *Sentiment) GetRiskLevel() int32 {
+	if x != nil && x.RiskLevel != nil {
+		return *x.RiskLevel
+	}
+	return 0
 }
 
 type GetLimitBoardsRequest struct {
@@ -5880,7 +5890,7 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\x13GetSentimentRequest\x12\x1d\n" +
 	"\n" +
 	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x13\n" +
-	"\x05as_of\x18\x02 \x01(\tR\x04asOf\"\xd3\x03\n" +
+	"\x05as_of\x18\x02 \x01(\tR\x04asOf\"\x86\x04\n" +
 	"\tSentiment\x12\x1d\n" +
 	"\n" +
 	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x13\n" +
@@ -5903,7 +5913,10 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"\n" +
 	"score_coef\x18\x0e \x01(\x01R\tscoreCoef\x12%\n" +
 	"\x0eposition_scale\x18\x0f \x01(\x01R\rpositionScale\x12\x14\n" +
-	"\x05stale\x18\x10 \x01(\bR\x05stale\"l\n" +
+	"\x05stale\x18\x10 \x01(\bR\x05stale\x12\"\n" +
+	"\n" +
+	"risk_level\x18\x11 \x01(\x05H\x00R\triskLevel\x88\x01\x01B\r\n" +
+	"\v_risk_level\"l\n" +
 	"\x15GetLimitBoardsRequest\x12\x1d\n" +
 	"\n" +
 	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x1c\n" +
@@ -6635,6 +6648,7 @@ func file_api_market_v1_market_proto_init() {
 	if File_api_market_v1_market_proto != nil {
 		return
 	}
+	file_api_market_v1_market_proto_msgTypes[10].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[23].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[31].OneofWrappers = []any{}
 	file_api_market_v1_market_proto_msgTypes[41].OneofWrappers = []any{}

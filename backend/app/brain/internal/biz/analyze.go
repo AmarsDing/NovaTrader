@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"server/pkg/llm"
@@ -27,12 +28,34 @@ const (
 	batchWorkers = 8
 )
 
+// normalizeSymbol 是研判请求边界（分析按钮/追问可能带裸码）：放宽 A 股裸 6 位代码段。
 func normalizeSymbol(raw string) (string, error) {
-	s, err := symbol.Parse(strings.TrimSpace(raw))
+	s, err := symbol.ParseAShare(strings.TrimSpace(raw))
 	if err != nil {
 		return "", badRequest("证券代码 %q 无法识别", raw)
 	}
 	return s.Tongdaxin(), nil
+}
+
+// progressMeter 统计研判进度（P0-3 进度条）：total = facts + 每维 + synthesis 合成（2+len(Dims)）。
+// 维度并行完成顺序不定，done 靠 atomic 单调递增；close 把 done 补齐到 total——
+// 降级/丢弃路径中间步被跳过，收尾事件仍让前端看到满格，进度条不留悬空。
+type progressMeter struct {
+	total int32
+	done  atomic.Int32
+}
+
+func newProgressMeter() *progressMeter { return &progressMeter{total: int32(2 + len(Dims))} }
+
+func (m *progressMeter) next() int { return int(m.done.Add(1)) }
+
+func (m *progressMeter) close() int {
+	for {
+		cur := m.done.Load()
+		if cur >= m.total || m.done.CompareAndSwap(cur, m.total) {
+			return int(m.total)
+		}
+	}
 }
 
 // loadPack 从库里取数据并与调用方的因子合并。库出错时返回空包和错误，调用方降级。
@@ -110,7 +133,8 @@ func (uc *Usecase) Analyze(ctx context.Context, in AnalyzeInput) (result *Analys
 		res.Phase = pack.Phase
 	}
 	res.PhaseCoef = uc.settings().coef(res.Phase)
-	uc.emit(ctx, ProgressEvent{TraceID: trace, Symbol: sym, Stage: stageFacts, OK: perr == nil && len(pack.Facts) > 0})
+	pm := newProgressMeter()
+	uc.emit(ctx, ProgressEvent{TraceID: trace, Symbol: sym, Stage: stageFacts, OK: perr == nil && len(pack.Facts) > 0, Done: pm.next(), Total: int(pm.total)})
 	var prompts []string
 	var models []string
 	switch {
@@ -120,10 +144,10 @@ func (uc *Usecase) Analyze(ctx context.Context, in AnalyzeInput) (result *Analys
 	case len(pack.Facts) == 0:
 		uc.degrade(res, "事实包里没有因子，未调用模型")
 	default:
-		prompts, models = uc.scoreDims(ctx, &pack, res, in.Priority)
+		prompts, models = uc.scoreDims(ctx, &pack, res, in.Priority, pm)
 	}
 	if !res.Degraded && !res.Discarded {
-		p, m := uc.synthesize(ctx, &pack, res, in.Priority)
+		p, m := uc.synthesize(ctx, &pack, res, in.Priority, pm)
 		prompts, models = append(prompts, p), appendModel(models, m)
 	}
 
@@ -135,7 +159,7 @@ func (uc *Usecase) Analyze(ctx context.Context, in AnalyzeInput) (result *Analys
 		stage = stageDegraded
 	}
 	res.LatencyMS = uc.now().Sub(start).Milliseconds()
-	uc.emit(ctx, ProgressEvent{TraceID: trace, Symbol: sym, Stage: stage, OK: stage == stageDone})
+	uc.emit(ctx, ProgressEvent{TraceID: trace, Symbol: sym, Stage: stage, OK: stage == stageDone, Done: pm.close(), Total: int(pm.total)})
 
 	pctx, pcancel := persistCtx(ctx)
 	defer pcancel()
@@ -162,7 +186,7 @@ func (uc *Usecase) degrade(res *Analysis, reason string) {
 
 // scoreDims 并行跑四个维度。任一维度两次不合格则丢弃候选；否则任一维度不可用则降级。
 // 两种情况同时出现时按丢弃处理：输出不合格说明这只票的研判本身有问题，宁可不出信号。
-func (uc *Usecase) scoreDims(ctx context.Context, pack *FactPack, res *Analysis, prio llm.Priority) (prompts, models []string) {
+func (uc *Usecase) scoreDims(ctx context.Context, pack *FactPack, res *Analysis, prio llm.Priority, pm *progressMeter) (prompts, models []string) {
 	user := renderPack(pack)
 	ids := pack.ids()
 	scores := make([]DimScore, len(Dims))
@@ -172,7 +196,7 @@ func (uc *Usecase) scoreDims(ctx context.Context, pack *FactPack, res *Analysis,
 		if !hasDimData(pack, d) {
 			scores[i] = DimScore{Dim: d, Score: neutralScore, Source: "rule",
 				Reasons: []Reason{{Text: "缺少" + dimNames[d] + "数据，按中性处理"}}}
-			uc.emit(ctx, ProgressEvent{TraceID: res.TraceID, Symbol: res.Symbol, Stage: stageDimension, Dim: d, OK: true})
+			uc.emit(ctx, ProgressEvent{TraceID: res.TraceID, Symbol: res.Symbol, Stage: stageDimension, Dim: d, OK: true, Done: pm.next(), Total: int(pm.total)})
 			continue
 		}
 		scores[i] = DimScore{Dim: d, Source: "failed"}
@@ -188,7 +212,7 @@ func (uc *Usecase) scoreDims(ctx context.Context, pack *FactPack, res *Analysis,
 			if err == nil {
 				scores[i] = DimScore{Dim: d, Score: out.score(), Reasons: out.Reasons, Risks: out.Risks, Source: "model", Model: resp.Model}
 			}
-			uc.emit(ctx, ProgressEvent{TraceID: res.TraceID, Symbol: res.Symbol, Stage: stageDimension, Dim: d, OK: err == nil})
+			uc.emit(ctx, ProgressEvent{TraceID: res.TraceID, Symbol: res.Symbol, Stage: stageDimension, Dim: d, OK: err == nil, Done: pm.next(), Total: int(pm.total)})
 		}(i, d)
 	}
 	wg.Wait()
@@ -237,7 +261,7 @@ func composite(scores map[Dim]int, weights map[Dim]float64, coef float64) (weigh
 }
 
 // synthesize 让大模型写综合结论。两次不合格或不可用时用各维第一条理由拼接，不影响分数。
-func (uc *Usecase) synthesize(ctx context.Context, pack *FactPack, res *Analysis, prio llm.Priority) (prompt, model string) {
+func (uc *Usecase) synthesize(ctx context.Context, pack *FactPack, res *Analysis, prio llm.Priority, pm *progressMeter) (prompt, model string) {
 	var b strings.Builder
 	b.WriteString(renderPack(pack))
 	b.WriteString("[四维结论]\n")
@@ -259,7 +283,7 @@ func (uc *Usecase) synthesize(ctx context.Context, pack *FactPack, res *Analysis
 	out, resp, err := callJSON(ctx, uc, callSpec{
 		task: "synthesis", prompt: synthesisPrompt, prio: prio, trace: res.TraceID, decision: res.DecisionID, user: user,
 	}, func(o *summaryOut) error { return o.check(ids, nums) })
-	uc.emit(ctx, ProgressEvent{TraceID: res.TraceID, Symbol: res.Symbol, Stage: stageSynthesis, OK: err == nil})
+	uc.emit(ctx, ProgressEvent{TraceID: res.TraceID, Symbol: res.Symbol, Stage: stageSynthesis, OK: err == nil, Done: pm.next(), Total: int(pm.total)})
 	if err == nil {
 		res.Summary, res.SummaryEvidence = out.Summary, out.Evidence
 		return synthesisPrompt.Tag(), resp.Model

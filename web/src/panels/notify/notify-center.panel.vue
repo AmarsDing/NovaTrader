@@ -7,7 +7,7 @@
  * feed 实时条目在前；每条归一分级章（feed 用其 level，api 用 levelOf 推导）、
  * L1–L4「级别」过滤与既有级别/类别可叠加、单条动作白名单 openPanel、静默条目角落注记。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listMessages, type NotifyMessage } from '@/api/notify'
 import NtTimeline, { type TimelineAction, type TimelineEntry } from '@/display/NtTimeline.vue'
 import { useNotifyStore, type FeedEntry } from '@/stores/notify'
@@ -17,18 +17,31 @@ import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import { clock, messageOf } from '@/utils/format'
 import { capNotifReadIds, loadNotifReadIds, saveNotifReadIds } from '@/utils/notify-read'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { getWorkbench } from '@/workspace/inject'
 import { onPush, type WsPushMessage } from '@/ws/hub'
+
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.notify-center.v1'
+/* grade 归一分级白名单；level/kind 选项来自消息数据的动态字段（'*'），就绪后由消费面校验。 */
+const PREFS_ALLOW = { grade: ['', 'L1', 'L2', 'L3', 'L4'], level: '*', kind: '*' } as const
 
 const notify = useNotifyStore()
 
 const items = ref<NotifyMessage[]>([])
 const loading = ref(false)
 const error = ref('')
-const level = ref('')
-const grade = ref('')
-const kind = ref('')
+/* 读档回填在首次数据加载之前；无档回落现有默认 ''（全部）。 */
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+const level = ref(prefs.level ?? '')
+const grade = ref(prefs.grade ?? '')
+const kind = ref(prefs.kind ?? '')
 const readIds = ref<string[]>(loadNotifReadIds())
+
+/* 任一筛选变化写整档（含未变字段），单字段变化不丢兄弟字段。 */
+watch([level, grade, kind], () =>
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { grade: grade.value, level: level.value, kind: kind.value }),
+)
 
 const readSet = computed(() => new Set(readIds.value))
 
@@ -129,6 +142,14 @@ const kindOptions = computed(() => [
   ...kinds.value.map((k) => ({ value: k, label: k })),
 ])
 
+/* 动态字段（'*'）存档校验：选项就绪后现值不在合法集即回默认 ''，防陈旧存档把 select 卡死在不存在选项。 */
+watch(levelOptions, (opts) => {
+  if (opts.length > 1 && level.value && !opts.some((o) => o.value === level.value)) level.value = ''
+})
+watch(kindOptions, (opts) => {
+  if (opts.length > 1 && kind.value && !opts.some((o) => o.value === kind.value)) kind.value = ''
+})
+
 // 筛选态空文案（B3 走查留账销号）：三筛选任一在选时列表为空不再说「还没有消息」——筛选本身可能就是原因。
 const hasFilter = computed(() => Boolean(level.value || grade.value || kind.value))
 
@@ -204,7 +225,8 @@ function onPushMessage(msg: WsPushMessage) {
   const entry: NotifyMessage = {
     id: `ws-${msg.seq ?? Date.now()}`,
     kind: kindText,
-    level: String(d.level || d.severity || ''),
+    // rawLevel 三级回退：level → severity → priority（priority 是部分推送端旧档字段，W3-2 收拢时补齐的兜底）。
+    level: String(d.level || d.severity || d.priority || ''),
     title,
     body: String(d.body || d.message || ''),
     time: new Date().toISOString(),

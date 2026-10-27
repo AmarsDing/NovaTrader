@@ -21,6 +21,7 @@ import { statusOf } from '@/ui/status-map'
 import { useOverlay } from '@/ui/useOverlay'
 import { useF10Store, type F10Tab } from '@/stores/f10'
 import { useSecurityStore } from '@/stores/security'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { compactAmount } from '@/utils/format'
 import { formatDateTime } from '@/utils/time'
 import { getWorkbench } from '@/workspace/inject'
@@ -49,6 +50,20 @@ const tab = computed({
     store.tab = value as F10Tab
   },
 })
+
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.f10.v1'
+const PREFS_ALLOW = { tab: ['overview', 'finance', 'announce', 'ai'] } as const
+// drawer 挂载在宿主任何 openFor 之前：此刻 store.tab 仍是初始默认即说明宿主未显式指定页签，
+// 用存档值刷入；之后经 openFor(code, nextTab) 的显式指定与用户点签，由下方 watch 统一收档不被覆盖。
+const savedTab = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW).tab
+if (savedTab && store.tab === 'overview') store.tab = savedTab as F10Tab
+watch(
+  () => store.tab,
+  (value) => {
+    savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { tab: value })
+  },
+)
 
 watch(
   () => store.open,

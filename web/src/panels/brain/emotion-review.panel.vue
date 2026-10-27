@@ -3,7 +3,7 @@
  * 情绪复盘面板（M05 P0 + P1-7 + P1-7b）：收盘定稿读数 / 明日验证对账 / 程序版复盘 / 分段式 AI 复盘（P2-8 六段）/ AI 周报。
  * 「没取到 ≠ 0」：undefined/null 一律显示「没取到」，不拼 0。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   generateAIReview,
   getFrozenEmotion,
@@ -21,13 +21,24 @@ import SymbolName from '@/display/SymbolName.vue'
 import { useAuthStore } from '@/stores/auth'
 import { statusOf } from '@/ui/status-map'
 import { amount, messageOf, pctText } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const auth = useAuthStore()
 
 type Tab = 'frozen' | 'check' | 'review'
 type ReviewKindUI = 'program' | 'ai' | 'ai_week'
-const tab = ref<Tab>('frozen')
-const reviewKind = ref<ReviewKindUI>('program')
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.emotion-review.v1'
+const PREFS_ALLOW = {
+  tab: ['frozen', 'check', 'review'],
+  review_kind: ['program', 'ai', 'ai_week'],
+} as const
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+const tab = ref<Tab>((prefs.tab as Tab | undefined) ?? 'frozen')
+const reviewKind = ref<ReviewKindUI>((prefs.review_kind as ReviewKindUI | undefined) ?? 'program')
+watch([tab, reviewKind], () =>
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { tab: tab.value, review_kind: reviewKind.value }),
+)
 const date = ref(today())
 
 const frozen = ref<FrozenEmotion | null>(null)

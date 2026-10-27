@@ -53,13 +53,26 @@ func (s *DatahubService) ListSources(ctx context.Context, req *v1.ListSourcesReq
 		if req.GetDomain() != "" && h.Domain != req.GetDomain() {
 			continue
 		}
-		out.Sources = append(out.Sources, &v1.SourceStatus{
+		st := &v1.SourceStatus{
 			Domain: h.Domain, Source: h.Source, Priority: int32(h.Priority), Enabled: h.Enabled, Official: h.Official,
 			State: h.State, ConsecutiveFailures: int32(h.Failures), SuccessCount: h.Success, FailureCount: h.Failure,
-			SuccessRate: h.SuccessRate(), LastLatencyMs: h.LastLatency.Milliseconds(), AvgLatencyMs: h.AvgLatency.Milliseconds(),
 			LastSuccessAt: rfc(h.LastSuccessAt), LastFailureAt: rfc(h.LastFailureAt), LastError: h.LastError,
 			QuotaUsed: h.QuotaUsed, QuotaLimit: h.QuotaLimit, Active: h.Active,
-		})
+		}
+		// 「没取到≠0」：无调用历史 / 无延迟样本时字段缺省（not present），前端显「—」，0% 与 0ms 不冒充。
+		if h.Success+h.Failure > 0 {
+			v := h.SuccessRate()
+			st.SuccessRate = &v
+		}
+		if h.LastLatency > 0 {
+			v := h.LastLatency.Milliseconds()
+			st.LastLatencyMs = &v
+		}
+		if h.AvgLatency > 0 {
+			v := h.AvgLatency.Milliseconds()
+			st.AvgLatencyMs = &v
+		}
+		out.Sources = append(out.Sources, st)
 	}
 	if meta, err := s.c.SnapshotMeta(ctx); err == nil && !meta.AsOf.IsZero() {
 		out.Snapshot = map[string]string{

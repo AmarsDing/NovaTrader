@@ -527,13 +527,15 @@ export function createWsHub(deps: HubDeps): WsHub {
     const title = record.title || record.subject
     const body = record.body || record.message || record.reason
     if (title && (topic === 'alert' || kind === 'notify')) {
-      const severity = String(record.level || record.severity || kind || '')
+      // M10 错配修复（W2-a）：notify.desktop 载荷只有 priority，level/severity 缺省回落它——
+      // critical 命中 funnel L4，dedup_key/symbol 由后端 DesktopNote 补捎（W2-a 后端同批）。
+      const severity = String(record.level || record.severity || record.priority || kind || '')
       runPrompt('桌面通知', () =>
         deps.deskNotify(String(title), body ? String(body) : '', severity, {
           topic,
           event: typeof record.event === 'string' ? record.event : undefined,
           kind: kind || undefined,
-          level: record.level || record.severity ? String(record.level || record.severity) : undefined,
+          level: record.level || record.severity || record.priority ? String(record.level || record.severity || record.priority) : undefined,
           category: typeof record.category === 'string' ? record.category : undefined,
           symbol: typeof record.symbol === 'string' ? record.symbol : undefined,
           title: String(title),

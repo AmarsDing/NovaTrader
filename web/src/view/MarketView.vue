@@ -13,6 +13,7 @@ import SymbolName from '@/display/SymbolName.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import { PALETTE } from '@/theme/tokens'
 import { clock, compactAmount, messageOf, num, pick, pnlClass, price } from '@/utils/format'
+import { normalizeCode } from '@/utils/symbol'
 import { chartTime } from '@/utils/time'
 import { router } from '@/router'
 import { useSymbolStore } from '@/stores/symbol'
@@ -21,17 +22,24 @@ import { getWorkbench } from '@/workspace/inject'
 import { isLive, onPush, onResync, subscribe, type MarketSnapshotMeta, type WsPushMessage } from '@/ws/hub'
 import { dataFrame } from '@/ws/data-frame'
 import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { createPageRefresh } from './page-refresh'
 import { mergeGapRows } from './market-backfill'
 import { fillSideTone } from './market-markers'
 
-/** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转），路由 query 作兼容兜底。 */
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.view.market.v1'
+const PREFS_ALLOW = { freq: ['1d', '1m'], account: ['SIM', 'LIVE'] } as const
+// 读档须在首次订阅/拉数前完成（freq 直接进 resubMarket 与 getBars）。
+const savedPrefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+
+/** 面板内打开时参数由 panel-bus 传入（深链/信号页跳转，进站已归一），路由 query 作兼容兜底（需归一）。 */
 const panelParams = consumePanelParams('market')
-const symbol = ref(String(panelParams?.symbol ?? router.currentRoute.value.query.symbol ?? ''))
+const symbol = ref(normalizeCode(String(panelParams?.symbol ?? router.currentRoute.value.query.symbol ?? '')))
 /** 全局当前证券（§8 恒随）：本图写入时记 source=market；外部切换时换图，布局不动。 */
 const symbolStore = useSymbolStore()
-const freq = ref('1d')
-const account = ref('SIM')
+const freq = ref(savedPrefs.freq ?? '1d')
+const account = ref(savedPrefs.account ?? 'SIM')
 const bars = ref<Bar[]>([])
 const indicators = ref<MarketIndicator[]>([])
 const news = ref<IntelItem[]>([])
@@ -316,11 +324,14 @@ function openIntel(item: IntelItem) {
 watch(
   () => router.currentRoute.value.query.symbol,
   (value) => {
-    if (typeof value === 'string' && value && value !== symbol.value) {
-      symbolStore.setSymbol(value, 'market')
-      symbol.value = value
-      void reloadWithRefit()
-    }
+    if (typeof value !== 'string' || !value) return
+    // 与 setup 初始化/onPanelParams/手工提交同归一：裸码或小写后缀不得裸赋——
+    // WS 订阅与 onPushMessage 精确匹配都按归一码，此路裸赋会让实时 bar 帧静默漏流（REST 因后端归一无感）。
+    const code = normalizeCode(value)
+    if (!code || code === symbol.value) return
+    symbolStore.setSymbol(code, 'market')
+    symbol.value = code
+    void reloadWithRefit()
   },
 )
 
@@ -341,6 +352,11 @@ watch([symbol, freq, account], (next, before) => {
   if (next[0] === before[0] && symbol.value.trim()) void reloadWithRefit()
 }, { flush: 'sync' })
 
+// 偏好整档持久化：周期与成交标记读取范围为浏览偏好（非执行账本，安全闸不涉及）。
+watch([freq, account], () => {
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { freq: freq.value, account: account.value })
+})
+
 let offPush: (() => void) | undefined
 let unsubscribe: (() => void) | undefined
 let offResync: (() => void) | undefined
@@ -352,16 +368,19 @@ function resubMarket() {
 }
 /** 已挂载时 openPanel('market', {symbol}) 直接推过来。 */
 const offPanelParams = onPanelParams('market', (params) => {
-  const code = typeof params.symbol === 'string' ? params.symbol.trim() : ''
+  // 归一兜底：总线已归一，直连赋值保证 REST/WS 订阅都用通达信形态（裸码 WS 精确匹配会漏流）。
+  const code = typeof params.symbol === 'string' ? normalizeCode(params.symbol) : ''
   if (!code) return
   symbolStore.setSymbol(code, 'market')
   symbol.value = code
   void reloadWithRefit()
 })
 
-/** 手工表单提交（含「读取」钮）：换图的同时把当前证券写进全局 store。 */
+/** 手工表单提交（含「读取」钮）：换图的同时把当前证券写进全局 store；手输裸码也归一后上链。 */
 function applyManualSymbol() {
-  symbolStore.setSymbol(symbol.value, 'market')
+  const next = normalizeCode(symbol.value)
+  if (next && next !== symbol.value.trim()) symbol.value = next
+  symbolStore.setSymbol(next, 'market')
   void reloadWithRefit()
 }
 
@@ -493,6 +512,8 @@ onBeforeUnmount(() => {
       <NtSelect v-model="freq" label="周期" :options="freqOptions" />
       <NtSelect v-model="account" label="成交账户" :options="accountOptions" />
       <NtButton variant="primary" :loading="loading" @click="applyManualSymbol">读取</NtButton>
+      <!-- QD 借鉴（G8）：行情页留下单直达入口，代码随行预填 trade-bar（panel-bus 同款机制）。 -->
+      <NtButton :disabled="!symbol.trim()" @click="getWorkbench()?.openPanel('trade-bar', { symbol: symbol.trim() })">去下单</NtButton>
       <NtButton
         :variant="measuring ? 'primary' : 'ghost'"
         :disabled="!bars.length"
@@ -512,8 +533,6 @@ onBeforeUnmount(() => {
     <div v-if="quote" class="quote-strip">
       <SymbolName :code="symbol.trim()" mode="stacked" />
       <span class="q-item">最近一根{{ freq === '1d' ? '日 K' : '1 分钟 K' }} · 收</span>
-      <!-- QD 借鉴（G8）：行情页留下单直达入口，代码随行预填 trade-bar（panel-bus 同款机制）。 -->
-      <NtButton :disabled="!symbol.trim()" @click="getWorkbench()?.openPanel('trade-bar', { symbol: symbol.trim() })">去下单</NtButton>
       <span class="q-last" :class="[pnlClass(quote.change), qFlashClass]">{{ price(quote.last) }}</span>
       <span class="q-chg" :class="pnlClass(quote.change)">
         较前根

@@ -3,6 +3,7 @@
  * 下单条（视频设计指引 §8 底条恒随）：下单 / 当前委托 / 委托记录 / 持仓成交。
  * 纪律（与 TradeView 同源、轻量版，全量订单中心仍是「交易 JY」面板）：
  * - 表单 symbol 默认随全局 symbol store，布局不动；
+ * - XD buy/sell 助记符直达：经 panel-bus 预填方向与代码（P0-2 修复，与 TradeView.applyOrderParams 同款）；
  * - 提交前强制两段试算：停笔预览（防抖）+ 落单前一次全新试算；试算拦截/不可用都不落单；
  * - LIVE 账本永不放开（执行权限未验收，与 TradeView liveAllowed 同口径）；
  * - 授权徽标常显；下单回报 toast 必带原因，网络层异常显「待核」并指引去交易面板核对。
@@ -19,17 +20,20 @@ import { useTradeStore } from '@/stores/trade'
 import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
-import NtInput from '@/ui/NtInput.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
+import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import { statusOf } from '@/ui/status-map'
 import { amount, clock, compactAmount, messageOf, pnlClass, price, sideLabel, canCancelOrder } from '@/utils/format'
+import { normalizeCode } from '@/utils/symbol'
 import { deskNotify } from '@/utils/notify'
 import { serverNow } from '@/utils/server-clock'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { useToast } from '@/ui/useToast'
 import { isLive } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
+import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 
 const auth = useAuthStore()
 const accountStore = useAccountStore()
@@ -39,7 +43,13 @@ const symbolStore = useSymbolStore()
 const toast = useToast()
 
 type TabId = 'order' | 'open' | 'all' | 'hold'
-const tab = ref<TabId>('order')
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.trade-bar.v1'
+const PREFS_ALLOW = { tab: ['order', 'open', 'all', 'hold'] } as const
+// 读档回填页签初值（默认仍是下单页）；提交成功程序化跳到「当前委托」同样会被收档，
+// 属预期行为——用户最后看到的就是 open 页。
+const tab = ref<TabId>((loadPanelPrefs(PREFS_KEY, PREFS_ALLOW).tab as TabId | undefined) ?? 'order')
+watch([tab], () => savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { tab: tab.value }))
 
 /** 实盘执行权限：与 TradeView 同源——连续运行证据只供核验，不授予权限；通道验收前恒 false。 */
 const liveAllowed = computed(() => false)
@@ -75,6 +85,28 @@ watch(book, () => {
   void accountStore.refresh()
   void trade.refresh(book.value)
 })
+
+/**
+ * XD buy/sell 助记符直达（P0-2）：消费 panel-bus 预填方向与代码，与 TradeView.applyOrderParams 同款。
+ * 代码经 normalizeCode 落定（总线进站已归一，再兜一道），写入时同步 lastSyncedCode 锚——
+ * 程序化预填不算用户编辑，之后 store 切票仍可跟随；方向之外不动价格/数量，交给用户核对。
+ */
+function applyOrderParams(params: Record<string, unknown>) {
+  const pSymbol = params.symbol
+  if (typeof pSymbol === 'string' && pSymbol.trim()) {
+    const next = normalizeCode(pSymbol)
+    if (next && SYMBOL_RE.test(next)) {
+      lastSyncedCode = next
+      formEditedSinceSymbol = false
+      form.symbol = next
+      symbolStore.setSymbol(next, 'trade-bar')
+    }
+  }
+  const pSide = params.side
+  if (pSide === 'buy' || pSide === 'sell') form.side = pSide
+}
+/** 已挂载时 XD 直达立即推送；卸载时退订。 */
+const offPanelParams = onPanelParams('trade-bar', applyOrderParams)
 
 const SYMBOL_RE = /^\d{6}\.(SZ|SH|BJ)$/i
 const symbolOk = computed(() => SYMBOL_RE.test(form.symbol.trim()))
@@ -334,6 +366,9 @@ function openTradePanel() {
 }
 
 onMounted(() => {
+  // 冷启动（未挂载时按过 XD）：pending 参数一次性消费。
+  const staged = consumePanelParams('trade-bar')
+  if (staged) applyOrderParams(staged)
   refreshBook()
   refreshTimer = setInterval(() => {
     if (disposed || document.hidden || !isLive()) return
@@ -343,6 +378,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   disposed = true
+  offPanelParams()
   if (previewTimer) clearTimeout(previewTimer)
   if (refreshTimer) clearInterval(refreshTimer)
 })

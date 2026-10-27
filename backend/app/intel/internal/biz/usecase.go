@@ -425,7 +425,7 @@ func (u *Usecase) GetItem(ctx context.Context, id int) (*ItemView, error) {
 
 // Timeline 返回个股时间线和近 72 小时综合情感。
 func (u *Usecase) Timeline(ctx context.Context, code string, since, until time.Time, limit int) (string, float64, []*ItemView, error) {
-	sym, err := symbol.Parse(code)
+	sym, err := symbol.ParseAShare(code) // 请求边界放宽裸 A 股码（QB 600519 直达）
 	if err != nil {
 		return "", 0, nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}

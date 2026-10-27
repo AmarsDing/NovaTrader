@@ -1,3 +1,22 @@
+<script lang="ts">
+/**
+ * palette「设置 <关键词>」直达挂点（§9.3，S2 批）：
+ * nt:open-config 先于实例挂载派发（overlay 路线），模块作用域暂存 detail.category，
+ * 实例 onMounted 消费；实例存活期（SettingsView 面板）由实例监听即时定位。
+ * 事件合同与 workspace/function-index.ts 的 buildSettingsSpecs 同源。
+ */
+let pendingConfigCategory: string | null = null
+
+function captureConfigCategory(event: Event): string | null {
+  const category = (event as CustomEvent<{ category?: unknown }>).detail?.category
+  return typeof category === 'string' && category ? category : null
+}
+
+window.addEventListener('nt:open-config', (event) => {
+  pendingConfigCategory = captureConfigCategory(event)
+})
+</script>
+
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getConfigSnapshot, saveConfig, previewConfig, rollbackConfig, type ConfigSnapshot, type ConfigPreview } from '@/api/config'
@@ -8,10 +27,10 @@ import { useRiskStore } from '@/stores/risk'
 import { useSettingsStore, type ColorVisionName, type DensityName, type ThemeName } from '@/stores/settings'
 import type { VisualQuality } from '@/theme/visual-quality'
 import NtButton from '@/ui/NtButton.vue'
+import NtConfigField, { type ConfigFieldLite } from '@/ui/NtConfigField.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
-import NtSelect from '@/ui/NtSelect.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import { getHost, setHost } from '@/utils/endpoint'
 import { messageOf } from '@/utils/format'
@@ -27,6 +46,7 @@ import {
   type ConfigCategory,
   type ConfigField,
 } from './config-catalog'
+import { effectiveScopeOf } from './config-field-meta'
 
 const props = defineProps<{ overlay?: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -112,16 +132,28 @@ function sectionBlocks(category: ConfigCategory): { title: string; fields: Confi
   return blocks
 }
 
-function headerSwitch(fields: ConfigField[]): ConfigField | undefined {
-  const bools = fields.filter((field) => field.kind === 'bool')
-  if (bools.length !== 1 || fields.length === 1) return undefined
-  return bools[0]
+/** 五件套映射（§9.1 第一件）：catalog 字段 → 字段卡 props；clearable 留空提示进 placeholder。 */
+function liteOf(field: ConfigField): ConfigFieldLite {
+  return {
+    key: field.key,
+    label: field.label,
+    kind: field.kind,
+    hint: field.hint || undefined,
+    options: field.options,
+    placeholder: field.clearable ? '留空跟随配置文件' : undefined,
+  }
 }
 
-function bodyFields(fields: ConfigField[]): ConfigField[] {
-  const head = headerSwitch(fields)
-  if (!head) return fields
-  return fields.filter((field) => field !== head)
+/** 密文三态（§9.1 章口径）：清除待保存=clearing；否则按服务端 secretSet。 */
+function secretStateOf(field: ConfigField): 'unset' | 'set' | 'clearing' {
+  if (clearSecrets.value.includes(field.key)) return 'clearing'
+  return configSnapshot.value?.secretSet[field.key] ? 'set' : 'unset'
+}
+
+/** 字段卡回写草稿：bool 归一 'true'/'false' 字串（strategy_config 存字串），其余显式转串。 */
+function onFieldValue(field: ConfigField, id: string, value: unknown) {
+  if (field.kind === 'bool') setDraft(id, value === true ? 'true' : 'false')
+  else setDraft(id, value == null ? '' : String(value))
 }
 
 function pickField(category: ConfigCategory, field: ConfigField): string {
@@ -191,8 +223,16 @@ function setDraft(id: string, value: string) {
   draft.value = { ...draft.value, [id]: value }
 }
 
-function checked(id: string): boolean {
-  return draft.value[id] === 'true'
+function jumpToCategory(id: unknown) {
+  if (typeof id !== 'string' || !id || !nav.some((item) => item.id === id)) return
+  select(id)
+}
+
+/** 存活期直达：实例已挂载时（SettingsView 面板）消费事件并清模块暂存，防下次挂载误跳。 */
+function onConfigJump(event: Event) {
+  const category = captureConfigCategory(event)
+  pendingConfigCategory = null
+  if (category) jumpToCategory(category)
 }
 
 async function saveHost() {
@@ -312,6 +352,13 @@ function onSaved(event: Event) {
 
 onMounted(async () => {
   window.addEventListener('nt:config-saved', onSaved)
+  window.addEventListener('nt:open-config', onConfigJump)
+  // overlay 路线：事件先于挂载派发，模块暂存在这里消费（无暂存时落在默认分组）。
+  if (pendingConfigCategory) {
+    const category = pendingConfigCategory
+    pendingConfigCategory = null
+    jumpToCategory(category)
+  }
   desktop.value = inTauri()
   void load()
   try {
@@ -331,6 +378,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('nt:config-saved', onSaved)
+  window.removeEventListener('nt:open-config', onConfigJump)
 })
 </script>
 
@@ -451,49 +499,33 @@ onBeforeUnmount(() => {
               <header class="src-card__head">
                 <div>
                   <h3>{{ block.title }}</h3>
-                  <p v-if="headerSwitch(block.fields)?.hint" class="field__hint">{{ headerSwitch(block.fields)?.hint }}</p>
                 </div>
-                <NtSwitch
-                  v-if="headerSwitch(block.fields)"
-                  :model-value="checked(fieldId(current.blobKey, headerSwitch(block.fields)!))"
-                  :disabled="auth.isViewer()"
-                  @update:model-value="setDraft(fieldId(current.blobKey, headerSwitch(block.fields)!), $event ? 'true' : 'false')"
-                />
               </header>
               <div class="src-card__body">
                 <div
-                  v-for="field in bodyFields(block.fields)"
+                  v-for="field in block.fields"
                   :key="fieldId(current.blobKey, field)"
                   class="field"
-                  :class="{ wide: field.kind !== 'bool', toggle: field.kind === 'bool' }"
+                  :class="{ wide: field.kind !== 'bool' }"
                 >
-                  <NtSwitch
-                    v-if="field.kind === 'bool'"
-                    :model-value="checked(fieldId(current.blobKey, field))"
-                    :label="field.label"
+                  <NtConfigField
+                    :field="liteOf(field)"
+                    :model-value="field.kind === 'secret' ? '' : (draft[fieldId(current.blobKey, field)] ?? '')"
+                    :default-value="field.kind === 'secret' ? undefined : field.fallback"
                     :disabled="auth.isViewer()"
-                    @update:model-value="setDraft(fieldId(current.blobKey, field), $event ? 'true' : 'false')"
+                    :secret-state="field.kind === 'secret' ? secretStateOf(field) : undefined"
+                    :effective="effectiveScopeOf(field.key)"
+                    @update:model-value="onFieldValue(field, fieldId(current.blobKey, field), $event)"
+                    @clear="clearSecret(field.key)"
                   />
-                  <label v-else-if="field.kind === 'text' && field.wide" class="area">
-                    <span>{{ field.label }}</span>
-                    <textarea
-                      :value="draft[fieldId(current.blobKey, field)]"
-                      spellcheck="false"
-                      :disabled="auth.isViewer()"
-                      @input="setDraft(fieldId(current.blobKey, field), ($event.target as HTMLTextAreaElement).value)"
-                    />
-                  </label>
                   <NtInput
-                    v-else
-                    :label="field.label"
+                    v-if="field.kind === 'secret'"
+                    type="password"
                     :model-value="draft[fieldId(current.blobKey, field)] || ''"
-                    :type="field.kind === 'secret' ? 'password' : field.kind === 'text' ? 'text' : 'number'"
-                    :mono="field.kind === 'text'"
+                    :placeholder="configSnapshot?.secretSet[field.key] ? '留空保留，输入替换' : '填写后保存生效'"
                     :disabled="auth.isViewer()"
                     @update:model-value="setDraft(fieldId(current.blobKey, field), $event)"
                   />
-                  <p v-if="field.hint" class="field__hint">{{ field.hint }}</p>
-                  <p v-if="field.kind === 'secret'" class="field__hint">{{ clearSecrets.includes(field.key) ? '将清除覆盖值' : configSnapshot?.secretSet[field.key] ? '已设置；留空保留，输入替换' : '未设置' }} <button v-if="configSnapshot?.secretSet[field.key]" type="button" :disabled="auth.isViewer()" @click="clearSecret(field.key)">清除覆盖值</button></p>
                 </div>
               </div>
             </article>
@@ -502,46 +534,29 @@ onBeforeUnmount(() => {
             <template v-for="(field, index) in current.fields" :key="fieldId(current.blobKey, field)">
               <h3 v-if="showSection(current, index)" class="sec">{{ field.section }}</h3>
               <div class="field" :class="{ wide: field.kind === 'json' }">
-                <NtSwitch
-                  v-if="field.kind === 'bool'"
-                  :model-value="checked(fieldId(current.blobKey, field))"
-                  :label="field.label"
+                <NtConfigField
+                  :field="liteOf(field)"
+                  :model-value="field.kind === 'secret' ? '' : (draft[fieldId(current.blobKey, field)] ?? '')"
+                  :default-value="field.kind === 'secret' ? undefined : field.fallback"
                   :disabled="auth.isViewer()"
-                  @update:model-value="setDraft(fieldId(current.blobKey, field), $event ? 'true' : 'false')"
-                />
-                <label v-else-if="field.kind === 'json'" class="area">
-                  <span>{{ field.label }}</span>
-                  <textarea
-                    :value="draft[fieldId(current.blobKey, field)]"
-                    spellcheck="false"
-                    :disabled="auth.isViewer()"
-                    @input="setDraft(fieldId(current.blobKey, field), ($event.target as HTMLTextAreaElement).value)"
-                  />
-                </label>
-                <NtSelect
-                  v-else-if="field.kind === 'select'"
-                  :label="field.label"
-                  :model-value="draft[fieldId(current.blobKey, field)] || ''"
-                  :options="field.options || []"
-                  :disabled="auth.isViewer()"
-                  @update:model-value="setDraft(fieldId(current.blobKey, field), String($event))"
+                  :secret-state="field.kind === 'secret' ? secretStateOf(field) : undefined"
+                  :effective="effectiveScopeOf(field.key)"
+                  @update:model-value="onFieldValue(field, fieldId(current.blobKey, field), $event)"
+                  @clear="clearSecret(field.key)"
                 />
                 <NtInput
-                  v-else
-                  :label="field.label"
+                  v-if="field.kind === 'secret'"
+                  type="password"
                   :model-value="draft[fieldId(current.blobKey, field)] || ''"
-                  :type="field.kind === 'secret' ? 'password' : field.kind === 'text' ? 'text' : 'number'"
-                  :mono="field.kind !== 'text' && field.kind !== 'secret'"
+                  :placeholder="configSnapshot?.secretSet[field.key] ? '留空保留，输入替换' : '填写后保存生效'"
                   :disabled="auth.isViewer()"
                   @update:model-value="setDraft(fieldId(current.blobKey, field), $event)"
                 />
-                <p v-if="field.hint" class="field__hint">{{ field.hint }}</p>
-                  <p v-if="field.kind === 'secret'" class="field__hint">{{ clearSecrets.includes(field.key) ? '将清除覆盖值' : configSnapshot?.secretSet[field.key] ? '已设置；留空保留，输入替换' : '未设置' }} <button v-if="configSnapshot?.secretSet[field.key]" type="button" :disabled="auth.isViewer()" @click="clearSecret(field.key)">清除覆盖值</button></p>
               </div>
             </template>
           </div>
           <p v-else class="nt-empty">正在读取当前值。</p>
-          <ConfigRevisionPanel :snapshot="configSnapshot" :preview="impact" @refresh="refreshReceipts" @rollback="previewRollback" />
+          <ConfigRevisionPanel :snapshot="configSnapshot" :preview="impact" :dirty="dirty" @refresh="refreshReceipts" @rollback="previewRollback" />
           <div class="savebar">
             <NtButton variant="primary" :disabled="auth.isViewer() || saving || (!dirty && !impact)" @click="saveCurrent">
               {{ impact ? (rollbackTarget == null ? '确认保存新版本' : '确认回滚为新版本') : '预览本类变更' }}
@@ -764,33 +779,6 @@ onBeforeUnmount(() => {
 
 .field.wide {
   grid-column: 1 / -1;
-}
-
-.field__hint {
-  margin: 0;
-  color: var(--nt-text-3);
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.area {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--nt-text-2);
-  font-size: 12px;
-}
-
-.area textarea {
-  min-height: 72px;
-  padding: 8px;
-  resize: vertical;
-  border: 1px solid var(--nt-border-2);
-  border-radius: var(--nt-radius-s);
-  background: var(--nt-bg-0);
-  color: var(--nt-text-1);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
 }
 
 .savebar {

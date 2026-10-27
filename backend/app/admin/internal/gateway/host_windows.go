@@ -111,7 +111,8 @@ func parseCSVFloatNA(s string) float64 {
 func gpuNodes(ctx context.Context) []map[string]string {
 	gpus, ok := queryGPU(ctx)
 	if !ok {
-		return []map[string]string{nodeStatus("显存", "down", "未检测到 nvidia-smi")}
+		// W3 拆态收口：nvidia-smi 缺失 = 无法观测（无 GPU 的开发机是结构性缺省），不是显存坏了——unknown 暗点。
+		return []map[string]string{nodeStatus("显存", "unknown", "未检测到 nvidia-smi")}
 	}
 	rows := make([]map[string]string, 0, len(gpus))
 	for i, info := range gpus {

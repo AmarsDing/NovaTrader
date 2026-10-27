@@ -272,6 +272,9 @@ message Sentiment {
   double score_coef = 14;
   double position_scale = 15;
   bool stale = 16;
+  // 风险度 0 正常 … 3 极高（与 WS market.state 同一处 Rules 计算）。
+  // 只在实时截面给出；历史快照不落库该值，缺省（not present）表示未记录，0 才是真的「正常」。
+  optional int32 risk_level = 17;
 }
 
 message GetLimitBoardsRequest {

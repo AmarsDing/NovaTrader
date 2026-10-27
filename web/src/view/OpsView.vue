@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { BACKUP_CONFIRM, opsStatus, runBackup, type BackupResult, type OpsNode } from '@/api/ops'
 import { router } from '@/router'
 import NtButton from '@/ui/NtButton.vue'
@@ -77,7 +77,35 @@ async function load() {
   }
 }
 
-onMounted(load)
+/** 静默追帧（W3-1 值守面）：不翻 loading 章、失败不清空旧数据——中断本身会由行内状态点表达。 */
+async function refreshQuiet() {
+  try {
+    const data = await opsStatus()
+    services.value = data.services
+    sources.value = data.sources
+    models.value = data.models as OpsModelRow[]
+    resources.value = data.resources
+    error.value = ''
+  } catch {
+    /* 静默：保留上一份数据，等下一拍 */
+  }
+}
+
+/** 运维是值守常驻视图（W3-1）：30s 静默追帧补齐手动刷新的盲区；隐藏页暂停。 */
+const QUIET_POLL_MS = 30_000
+let pollTimer: ReturnType<typeof setInterval> | undefined
+
+onMounted(() => {
+  void load()
+  pollTimer = setInterval(() => {
+    if (document.hidden) return
+    void refreshQuiet()
+  }, QUIET_POLL_MS)
+})
+
+onBeforeUnmount(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 function openMonitor() {
   void router.push('/monitor')

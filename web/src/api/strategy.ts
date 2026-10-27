@@ -22,10 +22,6 @@ export async function getSignal(id: string): Promise<RawRecord> {
   return (await request(`/api/strategy/signals/${encodeURIComponent(id)}`)) as RawRecord
 }
 
-export function transitionSignal(id: string, body: Record<string, unknown>): Promise<unknown> {
-  return request(`/api/strategy/signals/${encodeURIComponent(id)}/transition`, { method: 'POST', json: body })
-}
-
 export async function scan(body: ScanBody): Promise<ScanReply> {
   const raw = (await request('/api/strategy/scan', { method: 'POST', json: body })) as RawRecord
   return {

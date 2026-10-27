@@ -11,6 +11,7 @@ import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import { useSymbolStore } from '@/stores/symbol'
+import { stagePanelParams } from '@/workspace/panel-bus'
 
 const mock = vi.hoisted(() => ({
   preview: vi.fn(),
@@ -81,6 +82,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.useFakeTimers()
   vi.resetAllMocks()
+  // W3-2 偏好持久化：用例间清档，防前一用例的页签存档影响挂载初值（断言本身不改）。
+  localStorage.clear()
   // jsdom 版本保底：面板用 crypto.randomUUID 生成两段编号，缺了就用可控替身。
   if (typeof globalThis.crypto?.randomUUID !== 'function') {
     vi.stubGlobal('crypto', { randomUUID: () => `uuid-test-${++uuidSeq}` })
@@ -197,4 +200,36 @@ describe('trade bar（视频落地 P0）', () => {
     await flushPromises()
     expect(mock.tradeStore.cancel).toHaveBeenCalledWith('SIM', 'manual-x1')
   }, 15_000)
+
+  it('挂载前 stage 的 XD 参数（P0-2）：consume 预填卖向与裸码，预览体带出 sell + 裸码已归一', async () => {
+    stagePanelParams('trade-bar', { side: 'sell', symbol: '000001' })
+    await mountPanel()
+    // 代码进表即归一（总线进站归一），且回写全局 store 记 source=trade-bar。
+    expect(wrapper!.findAllComponents(NtInput)[0]!.props('modelValue')).toBe('000001.SZ')
+    expect(useSymbolStore().code).toBe('000001.SZ')
+    expect(useSymbolStore().source).toBe('trade-bar')
+    await setInput(1, '12')
+    await setInput(2, '200')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    const body = mock.preview.mock.calls.at(-1)![0] as { symbol: string; side: string }
+    expect(body.symbol).toBe('000001.SZ')
+    expect(body.side).toBe('sell')
+  })
+
+  it('已挂载时 XD 直达（推送路径）：buy 预填方向、代码落表；非法 side 忽略不动表', async () => {
+    await mountPanel()
+    stagePanelParams('trade-bar', { side: 'buy', symbol: '300750' })
+    await flushPromises()
+    expect(wrapper!.findAllComponents(NtInput)[0]!.props('modelValue')).toBe('300750.SZ')
+    stagePanelParams('trade-bar', { side: 'hold' })
+    await flushPromises()
+    await setInput(1, '180')
+    await setInput(2, '100')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    const body = mock.preview.mock.calls.at(-1)![0] as { symbol: string; side: string }
+    expect(body.symbol).toBe('300750.SZ')
+    expect(body.side).toBe('buy')
+  })
 })

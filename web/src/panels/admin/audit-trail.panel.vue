@@ -3,7 +3,7 @@
  * 审计日志面板（M11）：读取 admin 网关 /api/v1/audit。
  * 支持按动作过滤 + 条数限制，时间倒序展示谁在什么时候动了什么。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { listAudit, type AuditRow } from '@/api/audit'
 import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
@@ -13,12 +13,37 @@ import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
+import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const rows = ref<AuditRow[]>([])
 const loading = ref(false)
 const error = ref('')
-const action = ref('')
-const limit = ref(100)
+
+// W3-2 面板偏好持久化：键版勿改，旧档自然失效。
+const PREFS_KEY = 'nt.prefs.audit-trail.v1'
+const PREFS_ALLOW = {
+  action: [
+    '',
+    'login',
+    'risk.mode',
+    'risk.killswitch',
+    'risk.killswitch.reset',
+    'risk.params',
+    'trade.order',
+    'trade.cancel',
+    'trade.confirm',
+    'strategy.approve',
+    'strategy.reject',
+    'strategy.rollback',
+  ],
+  limit: ['50', '100', '200', '500'],
+} as const
+const prefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
+const action = ref(prefs.action ?? '')
+const limit = ref(Number(prefs.limit ?? 100))
+watch([action, limit], () =>
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { action: action.value, limit: String(limit.value) }),
+)
 
 const ACTIONS = [
   'login',

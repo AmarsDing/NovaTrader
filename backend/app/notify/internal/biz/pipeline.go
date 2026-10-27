@@ -169,7 +169,8 @@ func (p *Pipeline) deliver(ctx context.Context, row Message) error {
 	text := Render(p.cfg.template(fresh.Category), fresh)
 	note := DesktopNote{
 		ID: fresh.ID, EventID: fresh.EventID, Priority: fresh.Priority,
-		Category: fresh.Category, Title: fresh.Title, Body: text, At: p.now(), TraceID: fresh.TraceID,
+		Category: fresh.Category, Level: fresh.Fields["level"], Symbol: fresh.Fields["symbol"],
+		Title: fresh.Title, Body: text, At: p.now(), DedupKey: fresh.DedupKey, TraceID: fresh.TraceID,
 	}
 	var deskErr, feiErr error
 	var deskN, feiN int
