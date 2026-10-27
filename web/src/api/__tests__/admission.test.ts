@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { parseAdmission } from '../admission'
+import { describe, expect, it, vi } from 'vitest'
+import { getAdmission, grantLive, parseAdmission, revokeLive } from '../admission'
+
+const m = vi.hoisted(() => ({ request: vi.fn() }))
+vi.mock('../http', () => ({ request: m.request }))
 
 export function admissionFixture() {
   return {
@@ -48,5 +51,32 @@ describe('连续运行证据合同', () => {
       expect(() => parseAdmission({ report_json: JSON.stringify({ ...admissionFixture(), ...patch }) })).toThrow()
     }
     expect(() => parseAdmission({})).toThrow()
+  })
+})
+
+describe('准入信封（W3c：总闸/通道独立取位）', () => {
+  it('信封 liveEnabled/brokerConnected 取自回执信封，缺链按 false（fail-closed）；内部报告 live_enabled 合同不松', async () => {
+    m.request.mockResolvedValue({ report_json: JSON.stringify(admissionFixture()), live_enabled: true, broker_connected: true })
+    const env = await getAdmission()
+    expect(env.liveEnabled).toBe(true)
+    expect(env.brokerConnected).toBe(true)
+    expect(env.report.live_enabled).toBe(false)
+    m.request.mockResolvedValue({ reportJson: JSON.stringify(admissionFixture()) })
+    const missing = await getAdmission()
+    expect(missing.liveEnabled).toBe(false)
+    expect(missing.brokerConnected).toBe(false)
+  })
+
+  it('grant/revoke 走审计端点带 operator（LIVE 总闸开关不经配置页）；回执即翻闸后信封直接回填', async () => {
+    m.request.mockResolvedValue({ report_json: JSON.stringify(admissionFixture()), live_enabled: true, broker_connected: true })
+    const granted = await grantLive('owner-a')
+    expect(m.request).toHaveBeenLastCalledWith('/api/trade/admission/live/grant', { method: 'POST', json: { operator: 'owner-a' } })
+    expect(granted.liveEnabled).toBe(true)
+    expect(granted.report.run_evidence_ready).toBe(false)
+    m.request.mockResolvedValue({ report_json: JSON.stringify(admissionFixture()), live_enabled: false, broker_connected: false })
+    const revoked = await revokeLive('owner-a')
+    expect(m.request).toHaveBeenLastCalledWith('/api/trade/admission/live/revoke', { method: 'POST', json: { operator: 'owner-a' } })
+    expect(revoked.liveEnabled).toBe(false)
+    expect(revoked.brokerConnected).toBe(false)
   })
 })

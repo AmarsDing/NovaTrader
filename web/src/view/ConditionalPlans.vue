@@ -11,12 +11,17 @@ import {
 } from '@/api/automation'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
+import { getOpsReadiness, type ReadinessGate } from '@/api/ops'
 import { onPush, onResync } from '@/ws/hub'
 import { createPageRefresh } from './page-refresh'
 import { amount, clock, messageOf, price } from '@/utils/format'
 import { serverNow } from '@/utils/server-clock'
+import { openDeeplink } from '@/utils/deeplink'
+import { blockingGaps, gateItems, PLAN_AUTH_GATES } from '@/utils/preflight'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
+import NtModal from '@/ui/NtModal.vue'
+import NtPreflightChecklist, { type PreflightItem } from '@/display/NtPreflightChecklist.vue'
 import SymbolName from '@/display/SymbolName.vue'
 
 const props = defineProps<{ signalId?: string }>()
@@ -33,7 +38,8 @@ const now = ref(serverNow())
 const focused = computed(() => rows.value.filter((r) => !props.signalId || String(r.plan.signal_id) === props.signalId))
 const unknown = computed(() => intents.value.filter((i) => ['claimed', 'unknown'].includes(i.state)))
 const selectedSignal = computed(() => Number(props.signalId))
-const operator = computed(() => auth.user?.name ?? '')
+/* 审计操作人单一出处（displayName || name，与 KillSwitchBar/trade-bar 同口径）：授权/执行/撤权全链共用。 */
+const operator = computed(() => auth.operatorName)
 const canManage = computed(() => auth.user?.role === 'owner')
 let generation = 0,
   disposed = false
@@ -75,6 +81,64 @@ async function mutate(action: () => Promise<unknown>) {
   } finally {
     busy.value = false
   }
+}
+/* ---------- W3c 启用模态：计划授权（策略启用）清单式前置检查（R-UI-30/36） ---------- */
+const authOpen = ref(false),
+  authBusy = ref(false),
+  authError = ref('')
+const authTarget = ref<{ plan: PlanRecord; title: string; mode: 'sim_auto' | 'sim_confirm' } | null>(null)
+const gates = ref<ReadinessGate[]>([]),
+  gatesBusy = ref(false)
+let authFetchSeq = 0
+function openAuth(plan: PlanRecord, mode: 'sim_auto' | 'sim_confirm') {
+  if (!canManage.value || !operator.value) return
+  authError.value = ''
+  authTarget.value = { plan, title: mode === 'sim_auto' ? '授权 SIM 条件自动' : '授权逐次确认', mode }
+  authOpen.value = true
+  /* 不带上轮快照进场：取到前必堵行全按「未证实」落锁；就绪口不可达同锁（fail-closed，没取到≠0）。 */
+  gates.value = []
+  gatesBusy.value = true
+  const seq = ++authFetchSeq
+  void getOpsReadiness()
+    .then((r) => {
+      /* 代际+卸载双守门：重开/卸载后晚到的旧响应不得盖新（R-UI-35 慢响应顾序纪律）。 */
+      if (seq === authFetchSeq && !disposed) gates.value = r.gates
+    })
+    .catch(() => {
+      /* 保持未证实：不静默放行 */
+    })
+    .finally(() => {
+      if (seq === authFetchSeq) gatesBusy.value = false
+    })
+}
+const authItems = computed<PreflightItem[]>(() => gateItems(gates.value, PLAN_AUTH_GATES))
+const authBlockText = computed(() => {
+  if (!canManage.value) return '仅 owner 可授权计划'
+  if (!operator.value) return '操作人身份缺失，不能留痕授权'
+  if (gatesBusy.value) return '就绪口核验中，稍候'
+  const g = blockingGaps(authItems.value)
+  if (g.length) return g.map((i) => `${i.label}${i.why ? `：${i.why}` : ''}`).join('；')
+  return ''
+})
+async function confirmAuth() {
+  const t = authTarget.value
+  if (!t || authBlockText.value) return
+  authBusy.value = true
+  authError.value = ''
+  try {
+    await authorizePlan(t.plan, t.mode, operator.value)
+    authOpen.value = false
+    await refresh.refresh()
+  } catch (e) {
+    authError.value = messageOf(e)
+  } finally {
+    authBusy.value = false
+  }
+}
+/** 清单「去处理」：先收模态再跳修复位——全屏 scrim 不关会遮住刚打开的目标面板（跳转即白点）。 */
+function onGuide(link: string) {
+  authOpen.value = false
+  openDeeplink(link)
 }
 function expired(r: PlanRecord) {
   return Date.parse(r.plan.valid_until) <= now.value
@@ -203,16 +267,8 @@ onBeforeUnmount(() => {
       </details>
       <div class="actions">
         <template v-if="r.plan.account_type === 'SIM' && !expired(r) && ['draft', 'revoked'].includes(r.state)">
-          <NtButton
-            size="sm"
-            :disabled="busy || !canManage || !operator"
-            @click="mutate(() => authorizePlan(r, 'sim_confirm', operator))"
-            >逐次确认</NtButton
-          >
-          <NtButton
-            size="sm"
-            :disabled="busy || !canManage || !operator"
-            @click="mutate(() => authorizePlan(r, 'sim_auto', operator))"
+          <NtButton size="sm" :disabled="busy || !canManage || !operator" @click="openAuth(r, 'sim_confirm')">逐次确认</NtButton>
+          <NtButton size="sm" :disabled="busy || !canManage || !operator" @click="openAuth(r, 'sim_auto')"
             >授权 SIM 条件自动</NtButton
           >
         </template>
@@ -250,6 +306,26 @@ onBeforeUnmount(() => {
         <p>{{ i.reason }}</p>
       </div>
     </details>
+    <!-- W3c 启用模态（策略启用）：「必需」项未就位禁提交并逐条说明；提示项断了会空跑但不伤现状仓位。 -->
+    <NtModal v-model:open="authOpen" :title="authTarget?.title || '计划授权'" width="520px">
+      <p class="note">
+        「必需」项未就位不能提交（fail-closed）；数据源/模型为提示项，断了会空跑但不伤现状仓位，可授权后补处理。
+      </p>
+      <NtPreflightChecklist :items="authItems" title="计划授权前置检查" @navigate="onGuide" />
+      <NtErrorGuide :error="authError" />
+      <template #footer>
+        <NtButton variant="quiet" size="sm" @click="authOpen = false">先不授权</NtButton>
+        <NtButton
+          size="sm"
+          variant="primary"
+          :loading="authBusy"
+          :disabled="!!authBlockText"
+          :disabled-reason="authBlockText"
+          @click="void confirmAuth()"
+          >确认授权</NtButton
+        >
+      </template>
+    </NtModal>
   </section>
 </template>
 

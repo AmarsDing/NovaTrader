@@ -2,6 +2,8 @@
 // NtBlockerCard：闸门就绪引导卡（W3b；UI 宪法 R-UI-30/36）。
 // 只展示与发导航意图：deeplink 原样 emit 给接线面板，本件不碰 router/store（组件三层纪律）。
 // 「没取到≠0」：state=unknown 显「未证实」暗点，不显绿；progress 缺省不画条。
+// GATE_LABEL/GATE_STATE_LABEL 册唯一出处在 utils/gate-labels.ts（W3c 归一，勿回抄本地）。
+import { GATE_LABEL, GATE_STATE_LABEL } from '@/utils/gate-labels'
 export interface BlockerItem {
   gate: string
   state: 'ok' | 'warn' | 'down' | 'unknown'
@@ -23,29 +25,12 @@ const props = withDefaults(
 
 const emit = defineEmits<{ (e: 'navigate', deeplink: string): void }>()
 
-/** 闸门代码 → 中文名；未登记代码原样显（宁可露码也不编名）。 */
-const GATE_LABEL: Record<string, string> = {
-  risk_engine: '风险引擎',
-  risk_config: '风控配置',
-  risk_killswitch: '急停开关',
-  sim_admission: '模拟准入',
-  broker_gw: '文件单通道',
-  datahub_sources: '数据源',
-  llm_config: '模型配置',
-}
-
-const STATE_LABEL: Record<string, string> = {
-  warn: '待处理',
-  down: '不可用',
-  unknown: '未证实',
-}
-
 function labelOf(gate: string): string {
   return GATE_LABEL[gate] || gate
 }
 
 function stateLabel(b: BlockerItem): string {
-  return STATE_LABEL[b.state] || b.state
+  return GATE_STATE_LABEL[b.state] || b.state
 }
 
 /** 进度百分比；total 缺失或非正时不画条（缺数不伪造 0%）。 */

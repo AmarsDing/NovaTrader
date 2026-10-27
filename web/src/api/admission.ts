@@ -1,5 +1,5 @@
 import { request } from './http'
-import { pick } from '@/utils/format'
+import { pick, type RawRecord } from '@/utils/format'
 
 export interface AdmissionDay {
   trading_day: string
@@ -22,11 +22,20 @@ export interface AdmissionReport {
   consecutive_days: number
   latest_closed_trading_day: string
   run_evidence_ready: boolean
+  /** 报告内部快照恒 false（serve 端写死）：证据本身永不当权限凭证，总闸状态看信封 liveEnabled。 */
   live_enabled: false
   days: AdmissionDay[]
   reasons: string[]
   other_required_evidence: string[]
   policy: string
+}
+/** GetAdmission 回执信封（admission.proto 5/6 号位）：总闸与通道状态独立于证据快照。 */
+export interface AdmissionEnvelope {
+  report: AdmissionReport
+  /** LIVE 总闸当前状态：GrantLive 审计留痕开启 / 缺链按 false（fail-closed，proto 头注的口径）。 */
+  liveEnabled: boolean
+  /** 文件单通道探测：掉线/探测失败回落 false（fail-closed）。 */
+  brokerConnected: boolean
 }
 function count(v: unknown): v is number {
   return Number.isSafeInteger(v) && (v as number) >= 0
@@ -80,6 +89,27 @@ export function parseAdmission(raw: unknown): AdmissionReport {
   }
   return r
 }
-export async function getAdmission(): Promise<AdmissionReport> {
-  return parseAdmission(await request('/api/trade/admission', { query: { account: 'SIM', limit: 30 } }))
+/** 证据 + 总闸/通道信封。旧报告内部 live_enabled 恒 false 合同不松；总闸只从信封取。 */
+function toEnvelope(raw: unknown): AdmissionEnvelope {
+  const r = (raw ?? {}) as RawRecord
+  return {
+    report: parseAdmission(r),
+    liveEnabled: pick<boolean>(r, 'liveEnabled', 'live_enabled') === true,
+    brokerConnected: pick<boolean>(r, 'brokerConnected', 'broker_connected') === true,
+  }
+}
+export async function getAdmission(): Promise<AdmissionEnvelope> {
+  return toEnvelope(await request('/api/trade/admission', { query: { account: 'SIM', limit: 30 } }))
+}
+/**
+ * GrantLive 开实盘总闸的唯一路径：admin 网关 Owner 鉴权+审计（trade.grant_live）后转发。
+ * 回执就是翻闸后的 AdmissionEvidenceReply（双闸旗标 + 重算报告，服务端 admissionReply 同构拼）——
+ * 直接回填界面，不补一次 GET（服务端 RevokeLive 内部已重跑准入评估，再拉是纯冗余往返）。
+ */
+export async function grantLive(operator: string): Promise<AdmissionEnvelope> {
+  return toEnvelope(await request('/api/trade/admission/live/grant', { method: 'POST', json: { operator } }))
+}
+/** RevokeLive 收权：同样审计留痕后立即关闭，新实盘委托 fail-closed；回执回口同 grant。 */
+export async function revokeLive(operator: string): Promise<AdmissionEnvelope> {
+  return toEnvelope(await request('/api/trade/admission/live/revoke', { method: 'POST', json: { operator } }))
 }
