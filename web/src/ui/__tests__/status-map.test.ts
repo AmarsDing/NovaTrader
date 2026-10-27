@@ -1,7 +1,7 @@
 /**
  * status-map（方案 §7.1 状态字典唯一来源）合同测试：
  * - 链路五态文案一字锁定（live 在线 / ok 正常 / stale 陈旧 / down 中断 / off 关闭）；
- * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
+ * - 业务状态册首批 20 键 + 第二批 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键 + 第十一批 role 域 4 键 + 第十二批 ds 域 12 键 + 第十三批 notify 域 1 键全覆盖且文案/tone 逐条锁死（改文案 = 改本测试，防自封文案回流）；
  * - 全册 tone 落在 NtBadge 合法枚举内；册对象为冻结只读。
  */
 import { describe, expect, it } from 'vitest'
@@ -319,5 +319,94 @@ describe('业务状态册（第十批 depth 盘口域 1 键；B3 走查收编）
   it('回归抽样：第九批旧键未被扩册改动（verify.pass / missing.unverified）', () => {
     expect(statusOf('verify.pass')).toEqual({ text: '已验证', tone: 'success' })
     expect(statusOf('missing.unverified')).toEqual({ text: '未验证', tone: 'neutral' })
+  })
+})
+
+describe('业务状态册（第十一批 audit 角色域 4 键；W4b 审计三段式收编）', () => {
+  const EXPECTED_BATCH11: Record<string, { text: string; tone: StatusTone }> = {
+    'role.owner': { text: '属主', tone: 'accent' },
+    'role.viewer': { text: '查看', tone: 'neutral' },
+    'role.operator': { text: '操作员', tone: 'neutral' },
+    'role.unknown': { text: '未知', tone: 'neutral' },
+  }
+
+  it('第十一批 4 键全在册内（不多不少）', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('role.')).length).toBe(4)
+    for (const key of Object.keys(EXPECTED_BATCH11)) expect(STATUS_MAP).toHaveProperty(key)
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH11))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('角色是权限事实不是警报：owner accent 点出、viewer/operator/unknown 中性不冒绿不冒红', () => {
+    expect(statusOf('role.owner').tone).toBe('accent')
+    expect(statusOf('role.viewer').tone).toBe('neutral')
+    expect(statusOf('role.operator').tone).toBe('neutral')
+    expect(statusOf('role.unknown').tone).toBe('neutral')
+    for (const key of Object.keys(EXPECTED_BATCH11)) {
+      expect(statusOf(key as StatusKey).tone).not.toBe('success')
+      expect(statusOf(key as StatusKey).tone).not.toBe('danger')
+    }
+  })
+
+  it('回归抽样：第十批旧键未被扩册改动（depth.synth）', () => {
+    expect(statusOf('depth.synth')).toEqual({ text: '合成·待数据', tone: 'warn' })
+  })
+})
+
+describe('业务状态册（第十二批 datasource 源目录域 12 键；W4b 数据源中心裸码族入册）', () => {
+  const EXPECTED_BATCH12: Record<string, { text: string; tone: StatusTone }> = {
+    'ds.fee.free': { text: '免费', tone: 'neutral' },
+    'ds.fee.freemium': { text: '免费+', tone: 'warn' },
+    'ds.fee.paid': { text: '付费', tone: 'neutral' },
+    'ds.req.token': { text: '需 token', tone: 'warn' },
+    'ds.req.key': { text: '需密钥', tone: 'warn' },
+    'ds.req.sidecar': { text: '需边车', tone: 'warn' },
+    'ds.req.none': { text: '免凭证', tone: 'neutral' },
+    'ds.src.official': { text: '官方', tone: 'accent' },
+    'ds.src.unregistered': { text: '未启用', tone: 'neutral' },
+    'ds.override.active': { text: '运行态覆盖生效', tone: 'accent' },
+    'ds.override.default': { text: 'yaml 默认', tone: 'neutral' },
+    'ds.undeclared': { text: '—', tone: 'neutral' },
+  }
+
+  it('第十二批 13 键全在册内（ds.fee 3 + ds.req 4 + ds.src 2 + ds.override 2 + ds.cred 2 + ds.undeclared 1）', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('ds.')).length).toBe(14)
+    for (const key of Object.keys(EXPECTED_BATCH12)) expect(STATUS_MAP).toHaveProperty(key)
+    expect(STATUS_MAP).toHaveProperty('ds.cred.set')
+    expect(STATUS_MAP).toHaveProperty('ds.cred.unset')
+  })
+
+  it.each(Object.entries(EXPECTED_BATCH12))('%s 入册条目一字锁定', (key, entry) => {
+    expect(statusOf(key as StatusKey)).toEqual(entry)
+  })
+
+  it('ds.cred 凭证写面两键锁定：已设置=success 正面回执，未设置=neutral 待配置不是故障', () => {
+    expect(statusOf('ds.cred.set')).toEqual({ text: '已设置', tone: 'success' })
+    expect(statusOf('ds.cred.unset')).toEqual({ text: '未设置', tone: 'neutral' })
+  })
+
+  it('费用档语义：免费/付费=中性事实不冒绿不冒红；免费+有付费边界=warn 提示位', () => {
+    expect(statusOf('ds.fee.free').tone).toBe('neutral')
+    expect(statusOf('ds.fee.paid').tone).toBe('neutral')
+    expect(statusOf('ds.fee.freemium').tone).toBe('warn')
+  })
+
+  it('回归抽样：第十一批旧键未被扩册改动（role.owner / role.unknown）', () => {
+    expect(statusOf('role.owner')).toEqual({ text: '属主', tone: 'accent' })
+    expect(statusOf('role.unknown')).toEqual({ text: '未知', tone: 'neutral' })
+  })
+})
+
+describe('业务状态册（第十三批 notify 通知域 1 键；W4b 静默注记入册）', () => {
+  it('notify.silenced 入册且锁定：静默=漏斗判定不扰民只落账，neutral 事实不是警报', () => {
+    expect(Object.keys(STATUS_MAP).filter((k) => k.startsWith('notify.')).length).toBe(1)
+    expect(statusOf('notify.silenced')).toEqual({ text: '静默', tone: 'neutral' })
+  })
+
+  it('回归抽样：第十二批旧键未被扩册改动（ds.src.official / ds.cred.set）', () => {
+    expect(statusOf('ds.src.official')).toEqual({ text: '官方', tone: 'accent' })
+    expect(statusOf('ds.cred.set')).toEqual({ text: '已设置', tone: 'success' })
   })
 })

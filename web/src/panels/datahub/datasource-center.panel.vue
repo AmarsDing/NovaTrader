@@ -27,6 +27,7 @@ import {
 } from '@/api/config'
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
@@ -36,6 +37,7 @@ import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTabs from '@/ui/NtTabs.vue'
+import { statusOf as statusMapOf, severityEntry, type StatusEntry, type StatusKey } from '@/ui/status-map'
 import { clock, messageOf, ratioPct } from '@/utils/format'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { serverNow } from '@/utils/server-clock'
@@ -104,29 +106,36 @@ interface WallCard {
   secretSet: boolean
   qps: string | null
   quota: string | null
+  /* W4b review F7：册章预取一次（fee/requires），模板零函数调用——轮询/草稿编辑不再每帧重查册。 */
+  fee: StatusEntry
+  req: StatusEntry
 }
 
-function feeTone(tier: SourceManifest['feeTier']): 'success' | 'warn' | 'neutral' {
-  if (tier === 'free') return 'success'
-  if (tier === 'freemium') return 'warn'
-  return 'neutral'
+/* W4b 裸码族入册（第十二批 ds.*）：费用档/凭证需求/接入通道/注册态/覆盖态/凭证写面文案唯一出处。 */
+/* feeTier/requires 类型含 ''（目录未声明档）——查表落空返回 ds.undeclared 档（text '—'），
+ * 显式缺位徽注照旧显（数据纪律「没取到≠0」：未知档显「—」，不是不渲染让卡片静默缺一角）。 */
+const FEE_KEY = {
+  free: 'ds.fee.free',
+  freemium: 'ds.fee.freemium',
+  paid: 'ds.fee.paid',
+} as const satisfies Record<string, StatusKey>
+function feeEntry(m: SourceManifest) {
+  const key = m.feeTier ? FEE_KEY[m.feeTier as keyof typeof FEE_KEY] : undefined
+  return key ? statusMapOf(key) : statusMapOf('ds.undeclared')
 }
 
-function feeLabel(m: SourceManifest): string {
-  if (m.feeTier === 'free') return '免费'
-  if (m.feeTier === 'freemium') return '免费+'
-  if (m.feeTier === 'paid') return '付费'
-  return '—'
+const REQ_KEY = {
+  token: 'ds.req.token',
+  key: 'ds.req.key',
+  sidecar: 'ds.req.sidecar',
+  none: 'ds.req.none',
+} as const satisfies Record<string, StatusKey>
+function requiresEntry(m: SourceManifest) {
+  const key = m.requires ? REQ_KEY[m.requires as keyof typeof REQ_KEY] : undefined
+  return key ? statusMapOf(key) : statusMapOf('ds.undeclared')
 }
 
-function requiresLabel(v: SourceManifest['requires']): string {
-  if (v === 'token') return '需 token'
-  if (v === 'key') return '需密钥'
-  if (v === 'sidecar') return '需边车'
-  if (v === 'none') return '免凭证'
-  return '—'
-}
-
+/* 接入通道是技术事实不是状态警报：mono 原值透出，不入册不打章（值域开放，伪注册表才是违规）。 */
 function viaLabel(v: string): string {
   if (v === 'go_direct') return 'Go 直连'
   if (v === 'pyworker') return 'pyworker'
@@ -177,6 +186,8 @@ const wallCards = computed<WallCard[]>(() => {
       secretSet: credKey ? secretSet[credKey] === true : false,
       qps: Object.prototype.hasOwnProperty.call(values, `app.ds.${m.id}.qps`) ? values[`app.ds.${m.id}.qps`] : null,
       quota: Object.prototype.hasOwnProperty.call(values, `app.ds.${m.id}.quota`) ? values[`app.ds.${m.id}.quota`] : null,
+      fee: feeEntry(m),
+      req: requiresEntry(m),
     }
   })
 })
@@ -421,6 +432,7 @@ async function load() {
 /* ------------------------------------------------------------------ */
 
 type SourceRow = DataSource & Record<string, unknown>
+// W4b：detail 长文出列——主表 7 列；说明/错误全文走「数据源治理」面板抽屉（本面板只读页签不开第二详情入口）。
 const healthColumns: NtTableColumn<SourceRow>[] = [
   { key: 'name', title: '数据源' },
   { key: 'kind', title: '域', mono: true },
@@ -428,12 +440,12 @@ const healthColumns: NtTableColumn<SourceRow>[] = [
   { key: 'latencyMs', title: '最近延迟(ms)', align: 'right' },
   { key: 'fails', title: '成功/失败', align: 'right' },
   { key: 'lastAt', title: '最近成功', mono: true },
-  { key: 'detail', title: '说明' },
   { key: 'enabled', title: '启停' },
 ]
 const healthRows = computed(() => sources.value as unknown as SourceRow[])
 
 type QualityRow = QualityIssue & Record<string, unknown>
+// W4b：message 长文出列——主表 8 列；质量细节全文走 datasource-health 面板抽屉（本面板不开第二写面/详情入口）。
 const qualityColumns: NtTableColumn<QualityRow>[] = [
   { key: 'domain', title: '域', mono: true },
   { key: 'checkName', title: '检查项' },
@@ -443,31 +455,30 @@ const qualityColumns: NtTableColumn<QualityRow>[] = [
   { key: 'source', title: '来源', mono: true },
   { key: 'hits', title: '条数', align: 'right' },
   { key: 'lastSeen', title: '最近出现', mono: true },
-  { key: 'message', title: '说明' },
 ]
 const qualityRows = computed(() => quality.value as unknown as QualityRow[])
+
+/* 严重度章走 status-map severityEntry 共享出口（W4b review F4：双面板同一份查册逻辑，禁复制漂移）。 */
 
 onMounted(load)
 </script>
 
 <template>
-  <div class="nt-page">
-    <header class="nt-head">
-      <div>
-        <h1 class="nt-title">数据源中心</h1>
-        <p class="nt-note">
-          源目录（谁提供什么）+ 域降级链自助编辑 + 健康总览。
-          {{ catalog?.servicesNote || '' }}
-        </p>
-      </div>
+  <!-- W4b 三段式：筛选条=NtTabs 页签迁入（零伪造筛选维度，页签即本面板唯一分段轴）→ 主体=三页签内容 → 无抽屉（三页签已分段，详情走 datasource-health 面板）。 -->
+  <NtAdminScaffold title="数据源中心">
+    <template #actions>
       <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
-    </header>
-
-    <NtTabs v-model="tab" :items="tabItems" />
-
-    <NtErrorGuide :error="error" />
-    <p v-if="hint" class="nt-note">{{ hint }}</p>
-    <p v-if="auth.isViewer()" class="nt-note">viewer 只读：开关、凭证与降级链编辑需要 owner。</p>
+    </template>
+    <template #filter>
+      <NtTabs v-model="tab" :items="tabItems" />
+      <p class="nt-note dc-filter-note">
+        源目录 + 域降级链自助编辑 + 健康总览。{{ catalog?.servicesNote || '' }}
+        <template v-if="auth.isViewer()">viewer 只读：开关、凭证与降级链编辑需要 owner。</template>
+      </p>
+    </template>
+    <div class="dc-body">
+      <NtErrorGuide :error="error" />
+      <p v-if="hint" class="nt-note">{{ hint }}</p>
 
     <!-- ============================== 页签 A：源墙 ============================== -->
     <section v-if="tab === 'wall'" class="wall">
@@ -480,15 +491,15 @@ onMounted(load)
           <header class="wall__card-head">
             <NtStatusDot :status="card.manifest.registered ? statusOf({ enabled: card.effEnabled, status: card.health.status, lastAt: card.health.lastAt }) : 'off'" />
             <span class="wall__name">{{ card.manifest.id }}</span>
-            <NtBadge v-if="card.manifest.official" tone="accent">官方</NtBadge>
-            <NtBadge :tone="feeTone(card.manifest.feeTier)" :title="card.manifest.feeNote || ''">{{ feeLabel(card.manifest) }}</NtBadge>
-            <NtBadge v-if="!card.manifest.registered" tone="neutral">未启用</NtBadge>
+            <NtBadge v-if="card.manifest.official" :tone="statusMapOf('ds.src.official').tone">{{ statusMapOf('ds.src.official').text }}</NtBadge>
+            <NtBadge :tone="card.fee.tone" :title="card.manifest.feeNote || ''">{{ card.fee.text }}</NtBadge>
+            <NtBadge v-if="!card.manifest.registered" :tone="statusMapOf('ds.src.unregistered').tone">{{ statusMapOf('ds.src.unregistered').text }}</NtBadge>
           </header>
           <div class="wall__domains">
             <NtBadge v-for="d in card.manifest.domains" :key="d" tone="neutral">{{ d }}</NtBadge>
           </div>
           <dl class="wall__facts">
-            <div><dt>凭证</dt><dd>{{ requiresLabel(card.manifest.requires) }}</dd></div>
+            <div><dt>凭证</dt><dd>{{ card.req.text }}</dd></div>
             <div><dt>接入</dt><dd>{{ viaLabel(card.manifest.via) }}</dd></div>
             <div><dt>成功率</dt><dd>{{ card.health.successRate != null ? ratioPct(card.health.successRate, 0) : '—' }}</dd></div>
             <div><dt>最近延迟</dt><dd>{{ card.health.latencyMs != null ? Math.round(card.health.latencyMs) + 'ms' : '—' }}</dd></div>
@@ -503,6 +514,7 @@ onMounted(load)
               <NtSwitch :model-value="cardOn(card)" :disabled="capSwitch.state !== 'ok'" @update:model-value="setCardOn(card, $event)" />
               <span v-if="card.overrideOn != null" class="wall__hint">已覆盖：{{ card.overrideOn === 'true' ? '开' : '关' }}</span>
             </div>
+            <!-- 凭证区例外（W4b 验收）：password 输入 + 已设置徽章固定在主体卡写面受控位，不进抽屉裸显。 -->
             <div v-if="card.secretKey" class="wall__row">
               <span class="wall__label">{{ card.manifest.requires === 'key' ? '密钥' : 'token' }}</span>
               <NtInput
@@ -512,7 +524,7 @@ onMounted(load)
                 :disabled="capSecret.state !== 'ok'"
                 @update:model-value="setCardToken(card, $event)"
               />
-              <NtBadge v-if="card.secretSet" tone="success" dot>已设置</NtBadge>
+              <NtBadge v-if="card.secretSet" :tone="statusMapOf('ds.cred.set').tone" dot>{{ statusMapOf('ds.cred.set').text }}</NtBadge>
             </div>
             <div v-if="capQpsQuota.state === 'ok'" class="wall__row">
               <span class="wall__label">QPS/配额</span>
@@ -547,7 +559,7 @@ onMounted(load)
       <div v-for="row in domainRows" :key="row.name" class="chain nt-panel">
         <header class="chain__head">
           <span class="chain__name">{{ row.name }}</span>
-          <NtBadge :tone="row.overridden ? 'accent' : 'neutral'">{{ row.overridden ? '运行态覆盖生效' : 'yaml 默认' }}</NtBadge>
+          <NtBadge :tone="statusMapOf(row.overridden ? 'ds.override.active' : 'ds.override.default').tone">{{ statusMapOf(row.overridden ? 'ds.override.active' : 'ds.override.default').text }}</NtBadge>
         </header>
         <ol class="chain__row">
           <li v-for="(src, i) in editChain(row)" :key="src" class="chain__item">
@@ -592,20 +604,37 @@ onMounted(load)
         </NtTable>
       </section>
       <section class="nt-panel">
-        <h2 class="nt-panel__title">质量问题（逐条）</h2>
+        <h2 class="nt-panel__title">质量问题（逐条；只读——说明全文与双源对照走「数据源治理」面板抽屉，此处不开第二入口）</h2>
         <NtTable :columns="qualityColumns" :rows="qualityRows" row-key="id" dense empty="没有质量问题记录">
           <template #cell-severity="{ row }">
-            <span :class="{ warn: row.severity === 'high', mid: row.severity === 'medium' }">{{ row.severity || '—' }}</span>
+            <NtBadge :tone="severityEntry(row.severity)?.tone ?? 'neutral'">
+              {{ severityEntry(row.severity)?.text ?? (row.severity || '—') }}
+            </NtBadge>
           </template>
           <template #cell-hits="{ row }">{{ row.hits != null ? row.hits : '—' }}</template>
           <template #cell-lastSeen="{ row }">{{ clock(row.lastSeen) || '—' }}</template>
         </NtTable>
       </section>
     </section>
-  </div>
+    </div>
+  </NtAdminScaffold>
 </template>
 
 <style scoped>
+/* W4b：三段式主体容器（filter 槽内的 nt-note 与 body 内统一间距）。 */
+.dc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.dc-filter-note {
+  margin: 0;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-3);
+  flex: 1 1 100%;
+}
+
 .warn {
   color: var(--nt-warn);
   font-weight: 600;

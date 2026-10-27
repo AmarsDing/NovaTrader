@@ -9,12 +9,14 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { listMessages, type NotifyMessage } from '@/api/notify'
+import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
 import NtTimeline, { type TimelineAction, type TimelineEntry } from '@/display/NtTimeline.vue'
 import { useNotifyStore, type FeedEntry } from '@/stores/notify'
 import { causeKey, levelOf, renderAlertCopy, type AlertLevel } from '@/ui/alert-levels'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtSelect from '@/ui/NtSelect.vue'
+import { statusOf } from '@/ui/status-map'
 import { clock, messageOf } from '@/utils/format'
 import { capNotifReadIds, loadNotifReadIds, saveNotifReadIds } from '@/utils/notify-read'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
@@ -175,7 +177,8 @@ const entries = computed<TimelineEntry[]>(() =>
     read: r.read,
     level: r.level,
     actions: actionsOf(r),
-    note: r.silenced ? '静默' : undefined,
+    /* 静默注记走册（第十三批 notify.silenced）：文案唯一出处，面板禁自封「静默」。 */
+    note: r.silenced ? statusOf('notify.silenced').text : undefined,
   })),
 )
 
@@ -253,6 +256,16 @@ function markOneRead(item: TimelineEntry) {
   saveNotifReadIds(readIds.value)
 }
 
+/* W4b 抽屉选中行：select 分流=标已读（G3 语义保真）+ 开抽屉双发；动作钮只跳面板不开抽屉。 */
+const drawerOpen = ref(false)
+const selectedId = ref('')
+const selectedRow = computed(() => merged.value.find((r) => r.id === selectedId.value) ?? null)
+function onSelect(item: TimelineEntry) {
+  markOneRead(item)
+  selectedId.value = String(item.id)
+  drawerOpen.value = true
+}
+
 function markAllRead() {
   readIds.value = capNotifReadIds([...items.value.map((m) => m.id), ...readIds.value])
   saveNotifReadIds(readIds.value)
@@ -275,39 +288,129 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="nt-page">
-    <header class="nt-head">
-      <div>
-        <h1 class="nt-title">通知中心</h1>
-        <p class="nt-note">{{ merged.length }} 条消息 · 未读 {{ unreadInList }} · 点条目标记已读</p>
+  <!-- W4b 三段式：筛选条=三 Select 平移 → 主体=NtTimeline → 320 抽屉=消息详情（select 分流=标已读+开抽屉）。 -->
+  <NtAdminScaffold v-model:drawer-open="drawerOpen" title="通知中心" :drawer-width="320">
+    <template #actions>
+      <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
+      <NtButton size="sm" :disabled="unreadInList === 0" @click="markAllRead">全部已读</NtButton>
+    </template>
+    <template #filter>
+      <NtSelect v-model="level" :options="levelOptions" />
+      <NtSelect v-model="grade" :options="gradeOptions" />
+      <NtSelect v-model="kind" :options="kindOptions" />
+      <p class="nt-note nc-filter-note">{{ merged.length }} 条消息 · 未读 {{ unreadInList }} · 点条目看详情（收件箱条目标已读；漏斗落账条无已读态）</p>
+    </template>
+    <div class="nc-body">
+      <NtErrorGuide :error="error" />
+      <section class="nt-panel">
+        <NtTimeline
+          :items="entries"
+          :empty="loading ? '读取中…' : error ? '消息未返回——点上方刷新重试' : hasFilter ? '当前筛选条件下没有消息——可放宽级别/类别筛选再看看' : '还没有消息——系统动作、风控与人工复核建议都会推送在这里'"
+          selectable
+          @select="onSelect"
+          @action="onRowAction"
+        />
+      </section>
+    </div>
+    <template #drawer>
+      <div v-if="selectedRow" class="nc-drawer">
+        <h4>消息详情</h4>
+        <dl>
+          <div><dt>时间</dt><dd>{{ selectedRow.time }}</dd></div>
+          <div><dt>分级</dt><dd>{{ selectedRow.level }}</dd></div>
+          <div><dt>级别</dt><dd>{{ selectedRow.rawLevel || '—' }}</dd></div>
+          <div><dt>类别</dt><dd>{{ selectedRow.kind || '—' }}</dd></div>
+          <div v-if="selectedRow.symbol"><dt>证券</dt><dd>{{ selectedRow.symbol }}</dd></div>
+          <div><dt>已读</dt><dd>{{ selectedRow.read ? '已读' : '未读' }}</dd></div>
+          <div v-if="selectedRow.silenced"><dt>注记</dt><dd>{{ statusOf('notify.silenced').text }}</dd></div>
+        </dl>
+        <h4>标题</h4>
+        <p class="detail-full">{{ selectedRow.title }}</p>
+        <h4>正文</h4>
+        <p class="detail-full">{{ selectedRow.body || '—' }}</p>
+        <p class="id-line">id：{{ selectedRow.id }}</p>
       </div>
-      <div class="filters">
-        <NtSelect v-model="level" :options="levelOptions" />
-        <NtSelect v-model="grade" :options="gradeOptions" />
-        <NtSelect v-model="kind" :options="kindOptions" />
-        <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
-        <NtButton size="sm" :disabled="unreadInList === 0" @click="markAllRead">全部已读</NtButton>
-      </div>
-    </header>
-
-    <NtErrorGuide :error="error" />
-
-    <section class="nt-panel">
-      <NtTimeline
-        :items="entries"
-        :empty="loading ? '读取中…' : error ? '消息未返回——点上方刷新重试' : hasFilter ? '当前筛选条件下没有消息——可放宽级别/类别筛选再看看' : '还没有消息——系统动作、风控与人工复核建议都会推送在这里'"
-        selectable
-        @select="markOneRead"
-        @action="onRowAction"
-      />
-    </section>
-  </div>
+      <p v-else class="nc-drawer-empty">
+        <!-- W4b review F2：live 推送/筛选可把选中行挤出 200 上限——显「被挤出」诚实缺位，不冒充未选。 -->
+        {{ selectedId ? '该条已被新推送挤出列表或不在当前筛选内。' : '在左侧点一条消息看全文。' }}
+      </p>
+    </template>
+  </NtAdminScaffold>
 </template>
 
 <style scoped>
-.filters {
+.nc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.nc-filter-note {
+  margin: 0;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-3);
+  flex: 1 1 100%;
+}
+
+.nc-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.nc-drawer h4 {
+  margin: 4px 0 2px;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-2);
+}
+
+.nc-drawer dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--nt-fs-caption);
+}
+
+.nc-drawer dl > div {
   display: flex;
   gap: 8px;
-  align-items: center;
+}
+
+.nc-drawer dt {
+  flex: none;
+  width: 44px;
+  color: var(--nt-text-3);
+}
+
+.nc-drawer dd {
+  margin: 0;
+  color: var(--nt-text-1);
+  word-break: break-all;
+}
+
+.detail-full {
+  margin: 0;
+  font-size: var(--nt-fs-caption);
+  line-height: 1.6;
+  color: var(--nt-text-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.id-line {
+  margin: 0;
+  font-family: var(--nt-font-mono);
+  font-size: var(--nt-fs-micro);
+  color: var(--nt-text-3);
+}
+
+.nc-drawer-empty {
+  margin: 0;
+  padding: 12px;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-3);
 }
 </style>

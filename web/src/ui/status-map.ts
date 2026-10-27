@@ -11,7 +11,9 @@
  * - lint 候选方向（§7.1）：禁面板 scoped 内散写含「色」的状态 class（.warn/.danger 文字级
  *   只允许经本册导出），由后续 G4 棘轮收编。
  *
- * 批次索引：首批 20 键 →…→ 第八批 missing 域 5 键 → 第九批 verify 判据域 1 键（W8b）。
+ * 批次索引：首批 20 键 →…→ 第八批 missing 域 5 键 → 第九批 verify 判据域 1 键（W8b）
+ * → 第十批 depth 域 1 键（B3）→ 第十一批 audit 角色域 4 键（W4b）
+ * → 第十二批 datasource 源目录域 12 键（W4b）→ 第十三批 notify 域 1 键（W4b）。
  */
 import type { BadgeTone } from './NtBadge.vue'
 import type { DotStatus } from './NtStatusDot.vue'
@@ -37,7 +39,7 @@ export const LINK_STATUS: Readonly<Record<DotStatus, StatusEntry>> = Object.free
   off: { text: '关闭', tone: 'neutral' },
 } satisfies Record<DotStatus, StatusEntry>)
 
-/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键；全册只读，入册才可引用）。 */
+/** 业务状态册（§7.1，首批 20 键 + 第二批散值入册 36 键 + 第三批 board 域 3 键 + 第四批 ops 域 1 键 + 第五批 brain 域 1 键 + 第六批 ai/monitor 域 5 键 + 第七批 move 域 3 键 + 第八批 missing 域 5 键 + 第九批 verify 域 1 键 + 第十批 depth 域 1 键 + 第十一批 role 域 4 键 + 第十二批 ds 域 12 键 + 第十三批 notify 域 1 键；全册只读，入册才可引用）。 */
 export const STATUS_MAP = Object.freeze({
   'alert.armed': { text: '布防中', tone: 'accent' },
   'alert.triggered': { text: '已触发', tone: 'warn' },
@@ -156,6 +158,37 @@ export const STATUS_MAP = Object.freeze({
   // 消费实体=viz/NtDepthBoard（viz 层零 @/ui 依赖先例不引 statusOf，组件条款注释与本键一字对齐、双测试锁防漂移）；
   // 归因细节（无源/合成规则）由组件 title 承载（R-UI-20 徽注原因），册只立状态级词。
   'depth.synth': { text: '合成·待数据', tone: 'warn' },
+  // —— 第十一批（audit 角色域 4 键；W4b 审计日志三段式收编面板自封角色徽标）——
+  // 角色是权限事实不是警报：owner=高权操作位用 accent 点出，viewer/unknown 中性不冒充负面；
+  // unknown（空串/未识别角色）显「未知」不冒绿不冒红——「没取到≠0」的角色域投影。
+  'role.owner': { text: '属主', tone: 'accent' },
+  'role.viewer': { text: '查看', tone: 'neutral' },
+  'role.operator': { text: '操作员', tone: 'neutral' },
+  'role.unknown': { text: '未知', tone: 'neutral' },
+  // —— 第十二批（datasource 源目录域 12 键；W4b 数据源中心裸码族入册，R-UI-04）——
+  // ds.fee 费用档：免费=中性事实（不冒绿——免费不是「好」徽章）；免费+有付费边界=warn 提示；付费=中性事实。
+  // ds.req 凭证需求：免凭证=中性；需 token/密钥/边车=warn 提示位（需人工动作才可用）。
+  // ds.src 注册态：官方=accent 点出权威位；未注册=neutral 不冒充负面（未接入≠故障）。
+  // ds.override 配置覆盖态：运行态覆盖生效=accent 点出「非 yaml 默认」事实；yaml 默认=neutral。
+  // ds.cred 凭证写面：已设置=success（只写不读回执的正面确认）；未设置=neutral（待配置不是故障）。
+  'ds.fee.free': { text: '免费', tone: 'neutral' },
+  'ds.fee.freemium': { text: '免费+', tone: 'warn' },
+  'ds.fee.paid': { text: '付费', tone: 'neutral' },
+  'ds.req.token': { text: '需 token', tone: 'warn' },
+  'ds.req.key': { text: '需密钥', tone: 'warn' },
+  'ds.req.sidecar': { text: '需边车', tone: 'warn' },
+  'ds.req.none': { text: '免凭证', tone: 'neutral' },
+  'ds.src.official': { text: '官方', tone: 'accent' },
+  'ds.src.unregistered': { text: '未启用', tone: 'neutral' },
+  'ds.override.active': { text: '运行态覆盖生效', tone: 'accent' },
+  'ds.override.default': { text: 'yaml 默认', tone: 'neutral' },
+  'ds.cred.set': { text: '已设置', tone: 'success' },
+  'ds.cred.unset': { text: '未设置', tone: 'neutral' },
+  /* 目录未声明档（feeTier/requires=''）的显式缺位章：数据纪律「没取到≠0」——未知档显「—」不静默缺角。 */
+  'ds.undeclared': { text: '—', tone: 'neutral' },
+  // —— 第十三批（notify 通知域 1 键；W4b 通知中心静默注记入册）——
+  // 静默=告警漏斗判定不扰民只落账（neutral 事实不是警报）；细节由条目 body/原因字段承载。
+  'notify.silenced': { text: '静默', tone: 'neutral' },
 } as const satisfies Record<string, StatusEntry>)
 
 export type StatusKey = keyof typeof STATUS_MAP
@@ -168,4 +201,12 @@ export function statusOf(key: StatusKey): StatusEntry {
 /** 查链路五态：枚举来自 NtStatusDot，面板直接传现有 status 值。 */
 export function linkStatus(key: DotStatus): StatusEntry {
   return LINK_STATUS[key]
+}
+
+/** 质量严重度章（quality.* 三键，W4b 双面板共用唯一出处）：册外值返回 null，调用处原样回显（不自封文案）。 */
+export function severityEntry(v: string | null | undefined): StatusEntry | null {
+  if (v === 'high') return statusOf('quality.high')
+  if (v === 'medium') return statusOf('quality.medium')
+  if (v === 'low') return statusOf('quality.low')
+  return null
 }
