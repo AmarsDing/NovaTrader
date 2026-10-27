@@ -7,6 +7,7 @@ import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import TradeBar from '../trade/trade-bar.panel.vue'
+import NtBlockerCard from '@/display/NtBlockerCard.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
@@ -18,6 +19,8 @@ const mock = vi.hoisted(() => ({
   confirm: vi.fn(),
   place: vi.fn(),
   notify: vi.fn(),
+  readiness: vi.fn(),
+  workbench: vi.fn(),
   toast: { success: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() },
   live: true,
   accountStore: {
@@ -33,11 +36,12 @@ const mock = vi.hoisted(() => ({
   },
 }))
 vi.mock('@/api/risk', () => ({ previewOrder: mock.preview }))
+vi.mock('@/api/ops', () => ({ getOpsReadiness: mock.readiness }))
 vi.mock('@/stores/confirm', () => ({ askConfirm: mock.confirm }))
 vi.mock('@/utils/notify', () => ({ deskNotify: mock.notify }))
 vi.mock('@/ui/useToast', () => ({ useToast: () => mock.toast }))
 vi.mock('@/ws/hub', () => ({ isLive: () => mock.live }))
-vi.mock('@/workspace/inject', () => ({ getWorkbench: () => null }))
+vi.mock('@/workspace/inject', () => ({ getWorkbench: mock.workbench }))
 vi.mock('@/stores/account', () => ({ useAccountStore: () => mock.accountStore }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => false, operatorName: 'tester' }) }))
 vi.mock('@/stores/risk', () => ({ useRiskStore: () => mock.riskStore }))
@@ -96,6 +100,9 @@ beforeEach(() => {
   mock.tradeStore.ready = true
   mock.preview.mockResolvedValue({ ...PREVIEW_OK })
   mock.place.mockResolvedValue({ id: 'manual-1', status: 'submitted' })
+  // W3b.b 拦截位：默认全就绪不现身卡；单测各自覆写未就绪场景。
+  mock.readiness.mockResolvedValue({ asOf: '', ready: true, gates: [], blockers: [] })
+  mock.workbench.mockReturnValue(null)
 })
 
 afterEach(() => {
@@ -231,5 +238,36 @@ describe('trade bar（视频落地 P0）', () => {
     const body = mock.preview.mock.calls.at(-1)![0] as { symbol: string; side: string }
     expect(body.symbol).toBe('300750.SZ')
     expect(body.side).toBe('buy')
+  })
+
+  it('W3b.b：执行链闸门未就绪 → 下单页显「下单前置检查」卡（扫描链闸门不外溢），去处理跳到风控链面板', async () => {
+    const openPanel = vi.fn()
+    mock.workbench.mockReturnValue({ openPanel })
+    mock.readiness.mockResolvedValue({
+      asOf: '2026-10-27T09:00:00Z',
+      ready: false,
+      gates: [],
+      blockers: [
+        { gate: 'risk_killswitch', state: 'warn', severity: 'danger', why: '急停未复位', deeplink: '/risk#killswitch' },
+        { gate: 'llm_config', state: 'warn', why: '模型未配', deeplink: '/config#models' },
+      ],
+    })
+    await mountPanel()
+    const card = wrapper!.findComponent(NtBlockerCard)
+    expect(card.exists()).toBe(true)
+    expect(card.props('title')).toBe('下单前置检查')
+    // 股池闸门 llm_config 属扫描链，被 TRADE_GATES 过滤，不外溢到下单条。
+    const gates = (card.props('blockers') as { gate: string }[]).map((b) => b.gate)
+    expect(gates).toEqual(['risk_killswitch'])
+    card.vm.$emit('navigate', '/risk#killswitch')
+    expect(openPanel).toHaveBeenCalledWith('risk-chain')
+  })
+
+  it('W3b.b：就绪口不可达 → fail-silent 不现身卡，下单主体照常可用', async () => {
+    mock.readiness.mockRejectedValue(new Error('admin 不可达'))
+    await mountPanel()
+    expect(wrapper!.findComponent(NtBlockerCard).exists()).toBe(false)
+    await fillForm()
+    expect(mock.preview).toHaveBeenCalled()
   })
 })

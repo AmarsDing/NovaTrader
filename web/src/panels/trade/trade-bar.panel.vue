@@ -11,12 +11,14 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { askConfirm } from '@/stores/confirm'
 import { previewOrder, type PreviewBody, type PreviewReply } from '@/api/risk'
+import { getOpsReadiness, type OpsReadiness } from '@/api/ops'
 import type { OrderDraft } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { useSymbolStore } from '@/stores/symbol'
 import { useTradeStore } from '@/stores/trade'
+import NtBlockerCard from '@/display/NtBlockerCard.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
@@ -28,6 +30,7 @@ import { statusOf } from '@/ui/status-map'
 import { amount, clock, compactAmount, messageOf, pnlClass, price, sideLabel, canCancelOrder } from '@/utils/format'
 import { normalizeCode } from '@/utils/symbol'
 import { deskNotify } from '@/utils/notify'
+import { openDeeplink } from '@/utils/deeplink'
 import { serverNow } from '@/utils/server-clock'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { useToast } from '@/ui/useToast'
@@ -171,6 +174,21 @@ watch(
 )
 
 const previewBlocked = computed(() => (preview.value && !preview.value.approved ? preview.value : null))
+
+/* ---------- W3b.b 拦截位：执行链闸门就绪引导卡（R-UI-30/36） ---------- */
+
+/** 只列下单执行链闸门（风控三闸+准入+文件单通道）；数据源/模型闸属扫描链，归股池面板呈现。 */
+const TRADE_GATES = ['risk_engine', 'risk_config', 'risk_killswitch', 'sim_admission', 'broker_gw']
+const readiness = ref<OpsReadiness | null>(null)
+const readinessBlockers = computed(() => (readiness.value?.blockers ?? []).filter((b) => TRADE_GATES.includes(b.gate)))
+/** 就绪口取不到不盖面板：下单拦截另有风控试算 fail-closed 兜底，卡只在「拿到回执且未就绪」时现身。 */
+async function refreshReadiness() {
+  try {
+    readiness.value = await getOpsReadiness()
+  } catch {
+    /* fail-silent：理由见上，面板主体不被就绪口拖死 */
+  }
+}
 
 /* ---------- QD 攻心版 v1：双色买卖整块 + 仓位四键 + 持仓报价锚 ---------- */
 
@@ -349,7 +367,10 @@ const badge = computed(() => {
 })
 
 const REFRESH_MS = 10_000
+/** 就绪轮询 30s 静候档（与 datasource-health/OpsView 同谱）：document.hidden 跳拍；心智是提示位不是秒表。 */
+const READINESS_MS = 30_000
 let refreshTimer: ReturnType<typeof setInterval> | undefined
+let readinessTimer: ReturnType<typeof setInterval> | undefined
 
 /** §7.3 首批挂载：自助拉取模型的真实新鲜度证据 = 最近一次账本刷新成功落笔的时刻（服务端钟；全失败保留上一刻，由年龄自然变旧，不拿旧数据冒充新读数）。 */
 const bookFreshAt = ref<number | null>(null)
@@ -370,10 +391,15 @@ onMounted(() => {
   const staged = consumePanelParams('trade-bar')
   if (staged) applyOrderParams(staged)
   refreshBook()
+  void refreshReadiness()
   refreshTimer = setInterval(() => {
     if (disposed || document.hidden || !isLive()) return
     void trade.refresh(book.value)
   }, REFRESH_MS)
+  readinessTimer = setInterval(() => {
+    if (disposed || document.hidden) return
+    void refreshReadiness()
+  }, READINESS_MS)
 })
 
 onBeforeUnmount(() => {
@@ -381,6 +407,7 @@ onBeforeUnmount(() => {
   offPanelParams()
   if (previewTimer) clearTimeout(previewTimer)
   if (refreshTimer) clearInterval(refreshTimer)
+  if (readinessTimer) clearInterval(readinessTimer)
 })
 </script>
 
@@ -410,6 +437,15 @@ onBeforeUnmount(() => {
     </header>
 
     <section v-if="tab === 'order'" class="order">
+      <!-- W3b.b：执行链闸门未就绪先亮卡指路（就绪口不可达不盖面板——拦截兜底另有试算 fail-closed）。 -->
+      <NtBlockerCard
+        v-if="readiness && !readiness.ready && readinessBlockers.length"
+        :ready="false"
+        :blockers="readinessBlockers"
+        :as-of="clock(readiness.asOf)"
+        title="下单前置检查"
+        @navigate="openDeeplink"
+      />
       <form class="ticket" @submit.prevent="submit">
         <!-- QD 攻心版（P0-7）：买整块红/卖整块绿双目锚（§0.3 红涨绿跌）。快捷键徽注只标真实绑定：B/S=shortcuts.ts orderTicket 全局热键，唤起本票并预填买卖方向（B3 走查勘正）。 -->
         <div class="ticket__side" role="group" aria-label="买卖方向">

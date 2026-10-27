@@ -5,13 +5,16 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { addBlacklist, listCandidates, removeBlacklist, type Candidate } from '@/api/strategy'
+import { getOpsReadiness, type OpsReadiness } from '@/api/ops'
+import NtBlockerCard from '@/display/NtBlockerCard.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { useAuthStore } from '@/stores/auth'
-import { messageOf, missLabel, pnlClass, ratioPct } from '@/utils/format'
+import { openDeeplink } from '@/utils/deeplink'
+import { clock, messageOf, missLabel, pnlClass, ratioPct } from '@/utils/format'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const auth = useAuthStore()
@@ -63,6 +66,21 @@ const columns: NtTableColumn<Row>[] = [
 ]
 const rows = computed(() => filtered.value as unknown as Row[])
 
+/* ---------- W3b.b 拦截位：扫描链闸门就绪引导卡（R-UI-30/36） ---------- */
+
+/** 只列扫描链闸门（数据源+模型配置）；风控执行链闸门归下单条呈现。 */
+const SCAN_GATES = ['datahub_sources', 'llm_config']
+const readiness = ref<OpsReadiness | null>(null)
+const scanBlockers = computed(() => (readiness.value?.blockers ?? []).filter((b) => SCAN_GATES.includes(b.gate)))
+/** 就绪口取不到不盖面板：股池列表另有空态/错误态兜底，卡只在「拿到回执且未就绪」时现身。 */
+async function refreshReadiness() {
+  try {
+    readiness.value = await getOpsReadiness()
+  } catch {
+    /* fail-silent：理由见上，股池主体不被就绪口拖死 */
+  }
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -108,7 +126,10 @@ async function blRemove() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void refreshReadiness()
+})
 </script>
 
 <template>
@@ -120,6 +141,16 @@ onMounted(load)
       </div>
       <NtButton size="sm" :loading="loading" @click="load">刷新</NtButton>
     </header>
+
+    <!-- W3b.b：扫描链闸门未就绪先亮卡指路（数据源/模型未配时扫描必空，先修链再看池）。 -->
+    <NtBlockerCard
+      v-if="readiness && !readiness.ready && scanBlockers.length"
+      :ready="false"
+      :blockers="scanBlockers"
+      :as-of="clock(readiness.asOf)"
+      title="扫描链前置检查"
+      @navigate="openDeeplink"
+    />
 
     <div class="filters">
       <NtSelect
