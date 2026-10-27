@@ -25,7 +25,7 @@ import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { createPageRefresh } from './page-refresh'
 import { mergeGapRows } from './market-backfill'
-import { fillSideTone } from './market-markers'
+import { fillSideTone, aggregateKlineMarkers, withFillsCostLine } from './market-markers'
 
 // W3-2 面板偏好持久化：键版勿改，旧档自然失效。
 const PREFS_KEY = 'nt.prefs.view.market.v1'
@@ -118,7 +118,8 @@ const markers = computed<KlineMarker[]>(() => {
     shape: item.side === 'sell' ? 'arrowDown' : item.side === 'buy' ? 'arrowUp' : 'circle',
     text: item.side === 'sell' ? '卖' : item.side === 'buy' ? '买' : '·',
   }))
-  return [...fromNews, ...fromFills]
+  /* W6b 接线：成交密集时按时间桶采样抽稀（每桶每 side 最早一条）+ 消息不动（不参与方向采样）。 */
+  return aggregateKlineMarkers([...fromNews, ...fromFills])
 })
 
 /** 副图已迁入 NtKline 的 v5 pane；这里只保留"有没有有效指标"的判定（全空行不算有）。 */
@@ -126,21 +127,11 @@ const hasSubIndicators = computed(() =>
   indicators.value.some((point) => point.macd != null || point.dif != null || point.dea != null || point.rsi6 != null),
 )
 
-/** 摊薄成本参考线：（买成交额 − 卖成交额）/ 净持仓股数；含已实现盈亏，净额 ≤0 或数据不全则不画。 */
-const klineLevels = computed<KlineLevel[]>(() => {
-  const code = symbol.value.trim()
-  if (!code) return []
-  let qty = 0
-  let cost = 0
-  for (const fill of fills.value) {
-    if (fill.symbol !== code || fill.qty == null || fill.qty <= 0) continue
-    const amount = fill.amount ?? (fill.price != null ? fill.price * fill.qty : null)
-    if (amount == null) continue
-    if (fill.side === 'buy') { qty += fill.qty; cost += amount } else { qty -= fill.qty; cost -= amount }
-  }
-  if (qty <= 0 || cost <= 0) return []
-  return [{ price: cost / qty, color: PALETTE.warn, title: '摊薄成本', lineStyle: 'dashed' }]
-})
+/** 摊薄成本线（W6b 收编 cost 槽）：买卖成交额差 ÷ 净持仓股数；净额≤0 或数据不全不交成本线。
+ *  levels 维度照走 cost 槽语义（成本入 withCostLine 首），同价关键价被成本接管。 */
+const fillsCostOf = computed(() => withFillsCostLine([], fills.value, symbol.value.trim()))
+const klineLevels = computed<KlineLevel[]>(() => fillsCostOf.value.levels)
+const klineCost = computed(() => fillsCostOf.value.cost)
 
 /** 请求代际：旧的 load 结果不得覆盖新的（freq 切换/推送/手动刷新可能并发）。 */
 let loadSeq = 0
@@ -571,6 +562,7 @@ onBeforeUnmount(() => {
             :indicators="indicators"
             :markers="markers"
             :levels="klineLevels"
+            :cost="klineCost"
             :watermark="symbol.trim()"
             :symbol="symbol.trim()"
             :freq="freq"
@@ -579,7 +571,7 @@ onBeforeUnmount(() => {
           />
         </div>
         <p v-if="measuring && bars.length" class="nt-note">测量模式：在图上按住拖动画框，统计区间涨跌/振幅；Esc 或再次点按钮退出。</p>
-        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量<template v-if="symbolFills.length"> · 红↑=买 · 绿↓=卖</template><template v-if="freq === '1m'"> · 底色=集合竞价时段</template><template v-if="symbol.trim() && bars.length"> · 琥珀描边=涨/跌停封板（板块推断）</template><template v-if="klineLevels.length"> · 琥珀虚线为摊薄成本</template><template v-if="hasSubIndicators"> · 副图 MACD 柱/电蓝 DIF/琥珀 DEA、冰青 RSI6（虚线 80/20）</template></p>
+        <p class="legend">冰青 MA5 · 电蓝 MA10 · 琥珀 MA20 · 柱为成交量<template v-if="symbolFills.length"> · 红↑=买 · 绿↓=卖</template><template v-if="freq === '1m'"> · 底色=集合竞价时段</template><template v-if="symbol.trim() && bars.length"> · 琥珀描边=涨/跌停封板（板块推断）</template><template v-if="klineCost"> · 冰青实线为摊薄成本（成本与 MA5 同冰青色族，实线恒横，MA5 为折线残影）</template><template v-if="hasSubIndicators"> · 副图 MACD 柱/电蓝 DIF/琥珀 DEA、冰青 RSI6（虚线 80/20）</template></p>
         <p v-if="loaded && !loading && !fillsReady" class="nt-note">成交明细未返回，图上的买卖标记尚不完整。</p>
         <p v-if="freq === '1d' && loaded && !loading && !indicatorsReady" class="nt-empty">指标未返回。</p>
         <p v-else-if="freq === '1d' && loaded && !loading && !hasSubIndicators" class="nt-empty">副图指标（MACD/RSI）未返回。</p>
