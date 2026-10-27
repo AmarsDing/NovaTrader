@@ -23,6 +23,7 @@ const (
 	Configuration_SaveConfiguration_FullMethodName     = "/api.admin.v1.Configuration/SaveConfiguration"
 	Configuration_PreviewConfiguration_FullMethodName  = "/api.admin.v1.Configuration/PreviewConfiguration"
 	Configuration_RollbackConfiguration_FullMethodName = "/api.admin.v1.Configuration/RollbackConfiguration"
+	Configuration_GetConfigSchema_FullMethodName       = "/api.admin.v1.Configuration/GetConfigSchema"
 )
 
 // ConfigurationClient is the client API for Configuration service.
@@ -35,6 +36,8 @@ type ConfigurationClient interface {
 	SaveConfiguration(ctx context.Context, in *ConfigWriteRequest, opts ...grpc.CallOption) (*ConfigReadReply, error)
 	PreviewConfiguration(ctx context.Context, in *ConfigWriteRequest, opts ...grpc.CallOption) (*ConfigPreviewReply, error)
 	RollbackConfiguration(ctx context.Context, in *ConfigWriteRequest, opts ...grpc.CallOption) (*ConfigReadReply, error)
+	// Schema is read-as-GET; catalog ships in service binary, safe for client caching by schema_version.
+	GetConfigSchema(ctx context.Context, in *ConfigSchemaRequest, opts ...grpc.CallOption) (*ConfigSchemaReply, error)
 }
 
 type configurationClient struct {
@@ -85,6 +88,16 @@ func (c *configurationClient) RollbackConfiguration(ctx context.Context, in *Con
 	return out, nil
 }
 
+func (c *configurationClient) GetConfigSchema(ctx context.Context, in *ConfigSchemaRequest, opts ...grpc.CallOption) (*ConfigSchemaReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfigSchemaReply)
+	err := c.cc.Invoke(ctx, Configuration_GetConfigSchema_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ConfigurationServer is the server API for Configuration service.
 // All implementations must embed UnimplementedConfigurationServer
 // for forward compatibility.
@@ -95,6 +108,8 @@ type ConfigurationServer interface {
 	SaveConfiguration(context.Context, *ConfigWriteRequest) (*ConfigReadReply, error)
 	PreviewConfiguration(context.Context, *ConfigWriteRequest) (*ConfigPreviewReply, error)
 	RollbackConfiguration(context.Context, *ConfigWriteRequest) (*ConfigReadReply, error)
+	// Schema is read-as-GET; catalog ships in service binary, safe for client caching by schema_version.
+	GetConfigSchema(context.Context, *ConfigSchemaRequest) (*ConfigSchemaReply, error)
 	mustEmbedUnimplementedConfigurationServer()
 }
 
@@ -116,6 +131,9 @@ func (UnimplementedConfigurationServer) PreviewConfiguration(context.Context, *C
 }
 func (UnimplementedConfigurationServer) RollbackConfiguration(context.Context, *ConfigWriteRequest) (*ConfigReadReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method RollbackConfiguration not implemented")
+}
+func (UnimplementedConfigurationServer) GetConfigSchema(context.Context, *ConfigSchemaRequest) (*ConfigSchemaReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetConfigSchema not implemented")
 }
 func (UnimplementedConfigurationServer) mustEmbedUnimplementedConfigurationServer() {}
 func (UnimplementedConfigurationServer) testEmbeddedByValue()                       {}
@@ -210,6 +228,24 @@ func _Configuration_RollbackConfiguration_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Configuration_GetConfigSchema_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfigSchemaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ConfigurationServer).GetConfigSchema(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Configuration_GetConfigSchema_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ConfigurationServer).GetConfigSchema(ctx, req.(*ConfigSchemaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Configuration_ServiceDesc is the grpc.ServiceDesc for Configuration service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -232,6 +268,10 @@ var Configuration_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RollbackConfiguration",
 			Handler:    _Configuration_RollbackConfiguration_Handler,
+		},
+		{
+			MethodName: "GetConfigSchema",
+			Handler:    _Configuration_GetConfigSchema_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

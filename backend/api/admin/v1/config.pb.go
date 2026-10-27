@@ -554,6 +554,357 @@ func (x *ConfigPreviewReply) GetInvalidatesPlans() bool {
 	return false
 }
 
+// ConfigSchema is the server-owned field metadata catalog. 此前由前端
+// web/src/view/config-catalog.ts 硬编码；schema 下发后 admin gateway 成为唯一事实源，
+// 前端表单按本消息自动跟随——字段不兼容显示 R-UI-38 提示。
+type ConfigSchemaRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigSchemaRequest) Reset() {
+	*x = ConfigSchemaRequest{}
+	mi := &file_api_admin_v1_config_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigSchemaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigSchemaRequest) ProtoMessage() {}
+
+func (x *ConfigSchemaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_admin_v1_config_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigSchemaRequest.ProtoReflect.Descriptor instead.
+func (*ConfigSchemaRequest) Descriptor() ([]byte, []int) {
+	return file_api_admin_v1_config_proto_rawDescGZIP(), []int{7}
+}
+
+type ConfigSchemaOption struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         string                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigSchemaOption) Reset() {
+	*x = ConfigSchemaOption{}
+	mi := &file_api_admin_v1_config_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigSchemaOption) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigSchemaOption) ProtoMessage() {}
+
+func (x *ConfigSchemaOption) ProtoReflect() protoreflect.Message {
+	mi := &file_api_admin_v1_config_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigSchemaOption.ProtoReflect.Descriptor instead.
+func (*ConfigSchemaOption) Descriptor() ([]byte, []int) {
+	return file_api_admin_v1_config_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ConfigSchemaOption) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *ConfigSchemaOption) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+type ConfigSchemaField struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                        // 配置键（如 app.ds.tushare.qps）；blob 类字段此处为外层 blob 键
+	Label         string                 `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`                    // 中文标签
+	Hint          string                 `protobuf:"bytes,3,opt,name=hint,proto3" json:"hint,omitempty"`                      // 提示文案，可为空
+	Kind          string                 `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`                      // number|int|text|bool|json|secret|select
+	Fallback      string                 `protobuf:"bytes,5,opt,name=fallback,proto3" json:"fallback,omitempty"`              // 默认展示值（secret 类型恒为 ""）
+	Store         string                 `protobuf:"bytes,6,opt,name=store,proto3" json:"store,omitempty"`                    // config（通用参数表）| risk（风控子集）
+	Section       string                 `protobuf:"bytes,7,opt,name=section,proto3" json:"section,omitempty"`                // 分类内小节名，可为空
+	BlobKey       string                 `protobuf:"bytes,8,opt,name=blob_key,json=blobKey,proto3" json:"blob_key,omitempty"` // blob 字段的外层配置键（目前仅 market.sentiment.rules / market.sector.weights）
+	JsonKey       string                 `protobuf:"bytes,9,opt,name=json_key,json=jsonKey,proto3" json:"json_key,omitempty"` // blob 字段的内层键（非 blob 字段为空）
+	Options       []*ConfigSchemaOption  `protobuf:"bytes,10,rep,name=options,proto3" json:"options,omitempty"`
+	Wide          bool                   `protobuf:"varint,11,opt,name=wide,proto3" json:"wide,omitempty"`           // 表单整行（json / 长文本）
+	Clearable     bool                   `protobuf:"varint,12,opt,name=clearable,proto3" json:"clearable,omitempty"` // 允许清空（保存空串清除运行时覆盖回落配置文件）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigSchemaField) Reset() {
+	*x = ConfigSchemaField{}
+	mi := &file_api_admin_v1_config_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigSchemaField) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigSchemaField) ProtoMessage() {}
+
+func (x *ConfigSchemaField) ProtoReflect() protoreflect.Message {
+	mi := &file_api_admin_v1_config_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigSchemaField.ProtoReflect.Descriptor instead.
+func (*ConfigSchemaField) Descriptor() ([]byte, []int) {
+	return file_api_admin_v1_config_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ConfigSchemaField) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetHint() string {
+	if x != nil {
+		return x.Hint
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetFallback() string {
+	if x != nil {
+		return x.Fallback
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetStore() string {
+	if x != nil {
+		return x.Store
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetSection() string {
+	if x != nil {
+		return x.Section
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetBlobKey() string {
+	if x != nil {
+		return x.BlobKey
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetJsonKey() string {
+	if x != nil {
+		return x.JsonKey
+	}
+	return ""
+}
+
+func (x *ConfigSchemaField) GetOptions() []*ConfigSchemaOption {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+func (x *ConfigSchemaField) GetWide() bool {
+	if x != nil {
+		return x.Wide
+	}
+	return false
+}
+
+func (x *ConfigSchemaField) GetClearable() bool {
+	if x != nil {
+		return x.Clearable
+	}
+	return false
+}
+
+type ConfigSchemaCategory struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                          // 分类标识，如 datasource / models / agents / notify / funnel / score / price / first / pullback / risk / sentiment / sector
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`                    // 中文标题
+	Note          string                 `protobuf:"bytes,3,opt,name=note,proto3" json:"note,omitempty"`                      // 分类说明文案
+	BlobKey       string                 `protobuf:"bytes,4,opt,name=blob_key,json=blobKey,proto3" json:"blob_key,omitempty"` // blob 类分类的外层键（非 blob 分类为空）
+	Fields        []*ConfigSchemaField   `protobuf:"bytes,5,rep,name=fields,proto3" json:"fields,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigSchemaCategory) Reset() {
+	*x = ConfigSchemaCategory{}
+	mi := &file_api_admin_v1_config_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigSchemaCategory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigSchemaCategory) ProtoMessage() {}
+
+func (x *ConfigSchemaCategory) ProtoReflect() protoreflect.Message {
+	mi := &file_api_admin_v1_config_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigSchemaCategory.ProtoReflect.Descriptor instead.
+func (*ConfigSchemaCategory) Descriptor() ([]byte, []int) {
+	return file_api_admin_v1_config_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ConfigSchemaCategory) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ConfigSchemaCategory) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ConfigSchemaCategory) GetNote() string {
+	if x != nil {
+		return x.Note
+	}
+	return ""
+}
+
+func (x *ConfigSchemaCategory) GetBlobKey() string {
+	if x != nil {
+		return x.BlobKey
+	}
+	return ""
+}
+
+func (x *ConfigSchemaCategory) GetFields() []*ConfigSchemaField {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+type ConfigSchemaReply struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	SchemaVersion int32                   `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	Categories    []*ConfigSchemaCategory `protobuf:"bytes,2,rep,name=categories,proto3" json:"categories,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigSchemaReply) Reset() {
+	*x = ConfigSchemaReply{}
+	mi := &file_api_admin_v1_config_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigSchemaReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigSchemaReply) ProtoMessage() {}
+
+func (x *ConfigSchemaReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_admin_v1_config_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigSchemaReply.ProtoReflect.Descriptor instead.
+func (*ConfigSchemaReply) Descriptor() ([]byte, []int) {
+	return file_api_admin_v1_config_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ConfigSchemaReply) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+func (x *ConfigSchemaReply) GetCategories() []*ConfigSchemaCategory {
+	if x != nil {
+		return x.Categories
+	}
+	return nil
+}
+
 var File_api_admin_v1_config_proto protoreflect.FileDescriptor
 
 const file_api_admin_v1_config_proto_rawDesc = "" +
@@ -615,12 +966,42 @@ const file_api_admin_v1_config_proto_rawDesc = "" +
 	"\rknown_effects\x18\x04 \x03(\tR\fknownEffects\x12'\n" +
 	"\x0funknown_effects\x18\x05 \x03(\tR\x0eunknownEffects\x12\x1a\n" +
 	"\bservices\x18\x06 \x03(\tR\bservices\x12+\n" +
-	"\x11invalidates_plans\x18\a \x01(\bR\x10invalidatesPlans2\xdd\x03\n" +
+	"\x11invalidates_plans\x18\a \x01(\bR\x10invalidatesPlans\"\x15\n" +
+	"\x13ConfigSchemaRequest\"@\n" +
+	"\x12ConfigSchemaOption\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\tR\x05value\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\"\xd3\x02\n" +
+	"\x11ConfigSchemaField\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x12\n" +
+	"\x04hint\x18\x03 \x01(\tR\x04hint\x12\x12\n" +
+	"\x04kind\x18\x04 \x01(\tR\x04kind\x12\x1a\n" +
+	"\bfallback\x18\x05 \x01(\tR\bfallback\x12\x14\n" +
+	"\x05store\x18\x06 \x01(\tR\x05store\x12\x18\n" +
+	"\asection\x18\a \x01(\tR\asection\x12\x19\n" +
+	"\bblob_key\x18\b \x01(\tR\ablobKey\x12\x19\n" +
+	"\bjson_key\x18\t \x01(\tR\ajsonKey\x12:\n" +
+	"\aoptions\x18\n" +
+	" \x03(\v2 .api.admin.v1.ConfigSchemaOptionR\aoptions\x12\x12\n" +
+	"\x04wide\x18\v \x01(\bR\x04wide\x12\x1c\n" +
+	"\tclearable\x18\f \x01(\bR\tclearable\"\xa4\x01\n" +
+	"\x14ConfigSchemaCategory\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
+	"\x04note\x18\x03 \x01(\tR\x04note\x12\x19\n" +
+	"\bblob_key\x18\x04 \x01(\tR\ablobKey\x127\n" +
+	"\x06fields\x18\x05 \x03(\v2\x1f.api.admin.v1.ConfigSchemaFieldR\x06fields\"~\n" +
+	"\x11ConfigSchemaReply\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\x05R\rschemaVersion\x12B\n" +
+	"\n" +
+	"categories\x18\x02 \x03(\v2\".api.admin.v1.ConfigSchemaCategoryR\n" +
+	"categories2\xd0\x04\n" +
 	"\rConfiguration\x12g\n" +
 	"\x10GetConfiguration\x12\x1f.api.admin.v1.ConfigReadRequest\x1a\x1d.api.admin.v1.ConfigReadReply\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/api/config\x12l\n" +
 	"\x11SaveConfiguration\x12 .api.admin.v1.ConfigWriteRequest\x1a\x1d.api.admin.v1.ConfigReadReply\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\x1a\v/api/config\x12z\n" +
 	"\x14PreviewConfiguration\x12 .api.admin.v1.ConfigWriteRequest\x1a .api.admin.v1.ConfigPreviewReply\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/api/config/preview\x12y\n" +
-	"\x15RollbackConfiguration\x12 .api.admin.v1.ConfigWriteRequest\x1a\x1d.api.admin.v1.ConfigReadReply\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/api/config/rollbackB\x18Z\x16server/api/admin/v1;v1b\x06proto3"
+	"\x15RollbackConfiguration\x12 .api.admin.v1.ConfigWriteRequest\x1a\x1d.api.admin.v1.ConfigReadReply\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/api/config/rollback\x12q\n" +
+	"\x0fGetConfigSchema\x12!.api.admin.v1.ConfigSchemaRequest\x1a\x1f.api.admin.v1.ConfigSchemaReply\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/api/config/schemaB\x18Z\x16server/api/admin/v1;v1b\x06proto3"
 
 var (
 	file_api_admin_v1_config_proto_rawDescOnce sync.Once
@@ -634,7 +1015,7 @@ func file_api_admin_v1_config_proto_rawDescGZIP() []byte {
 	return file_api_admin_v1_config_proto_rawDescData
 }
 
-var file_api_admin_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_api_admin_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_admin_v1_config_proto_goTypes = []any{
 	(*ConfigReadRequest)(nil),    // 0: api.admin.v1.ConfigReadRequest
 	(*ConfigWriteRequest)(nil),   // 1: api.admin.v1.ConfigWriteRequest
@@ -643,30 +1024,40 @@ var file_api_admin_v1_config_proto_goTypes = []any{
 	(*ConfigReadReply)(nil),      // 4: api.admin.v1.ConfigReadReply
 	(*ConfigChange)(nil),         // 5: api.admin.v1.ConfigChange
 	(*ConfigPreviewReply)(nil),   // 6: api.admin.v1.ConfigPreviewReply
-	nil,                          // 7: api.admin.v1.ConfigWriteRequest.ValuesEntry
-	nil,                          // 8: api.admin.v1.ConfigReadReply.ValuesEntry
-	nil,                          // 9: api.admin.v1.ConfigReadReply.SecretSetEntry
+	(*ConfigSchemaRequest)(nil),  // 7: api.admin.v1.ConfigSchemaRequest
+	(*ConfigSchemaOption)(nil),   // 8: api.admin.v1.ConfigSchemaOption
+	(*ConfigSchemaField)(nil),    // 9: api.admin.v1.ConfigSchemaField
+	(*ConfigSchemaCategory)(nil), // 10: api.admin.v1.ConfigSchemaCategory
+	(*ConfigSchemaReply)(nil),    // 11: api.admin.v1.ConfigSchemaReply
+	nil,                          // 12: api.admin.v1.ConfigWriteRequest.ValuesEntry
+	nil,                          // 13: api.admin.v1.ConfigReadReply.ValuesEntry
+	nil,                          // 14: api.admin.v1.ConfigReadReply.SecretSetEntry
 }
 var file_api_admin_v1_config_proto_depIdxs = []int32{
-	7,  // 0: api.admin.v1.ConfigWriteRequest.values:type_name -> api.admin.v1.ConfigWriteRequest.ValuesEntry
-	8,  // 1: api.admin.v1.ConfigReadReply.values:type_name -> api.admin.v1.ConfigReadReply.ValuesEntry
-	9,  // 2: api.admin.v1.ConfigReadReply.secret_set:type_name -> api.admin.v1.ConfigReadReply.SecretSetEntry
+	12, // 0: api.admin.v1.ConfigWriteRequest.values:type_name -> api.admin.v1.ConfigWriteRequest.ValuesEntry
+	13, // 1: api.admin.v1.ConfigReadReply.values:type_name -> api.admin.v1.ConfigReadReply.ValuesEntry
+	14, // 2: api.admin.v1.ConfigReadReply.secret_set:type_name -> api.admin.v1.ConfigReadReply.SecretSetEntry
 	2,  // 3: api.admin.v1.ConfigReadReply.receipts:type_name -> api.admin.v1.ConfigLoadReceipt
 	3,  // 4: api.admin.v1.ConfigReadReply.history:type_name -> api.admin.v1.ConfigVersionSummary
 	5,  // 5: api.admin.v1.ConfigPreviewReply.changes:type_name -> api.admin.v1.ConfigChange
-	0,  // 6: api.admin.v1.Configuration.GetConfiguration:input_type -> api.admin.v1.ConfigReadRequest
-	1,  // 7: api.admin.v1.Configuration.SaveConfiguration:input_type -> api.admin.v1.ConfigWriteRequest
-	1,  // 8: api.admin.v1.Configuration.PreviewConfiguration:input_type -> api.admin.v1.ConfigWriteRequest
-	1,  // 9: api.admin.v1.Configuration.RollbackConfiguration:input_type -> api.admin.v1.ConfigWriteRequest
-	4,  // 10: api.admin.v1.Configuration.GetConfiguration:output_type -> api.admin.v1.ConfigReadReply
-	4,  // 11: api.admin.v1.Configuration.SaveConfiguration:output_type -> api.admin.v1.ConfigReadReply
-	6,  // 12: api.admin.v1.Configuration.PreviewConfiguration:output_type -> api.admin.v1.ConfigPreviewReply
-	4,  // 13: api.admin.v1.Configuration.RollbackConfiguration:output_type -> api.admin.v1.ConfigReadReply
-	10, // [10:14] is the sub-list for method output_type
-	6,  // [6:10] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	8,  // 6: api.admin.v1.ConfigSchemaField.options:type_name -> api.admin.v1.ConfigSchemaOption
+	9,  // 7: api.admin.v1.ConfigSchemaCategory.fields:type_name -> api.admin.v1.ConfigSchemaField
+	10, // 8: api.admin.v1.ConfigSchemaReply.categories:type_name -> api.admin.v1.ConfigSchemaCategory
+	0,  // 9: api.admin.v1.Configuration.GetConfiguration:input_type -> api.admin.v1.ConfigReadRequest
+	1,  // 10: api.admin.v1.Configuration.SaveConfiguration:input_type -> api.admin.v1.ConfigWriteRequest
+	1,  // 11: api.admin.v1.Configuration.PreviewConfiguration:input_type -> api.admin.v1.ConfigWriteRequest
+	1,  // 12: api.admin.v1.Configuration.RollbackConfiguration:input_type -> api.admin.v1.ConfigWriteRequest
+	7,  // 13: api.admin.v1.Configuration.GetConfigSchema:input_type -> api.admin.v1.ConfigSchemaRequest
+	4,  // 14: api.admin.v1.Configuration.GetConfiguration:output_type -> api.admin.v1.ConfigReadReply
+	4,  // 15: api.admin.v1.Configuration.SaveConfiguration:output_type -> api.admin.v1.ConfigReadReply
+	6,  // 16: api.admin.v1.Configuration.PreviewConfiguration:output_type -> api.admin.v1.ConfigPreviewReply
+	4,  // 17: api.admin.v1.Configuration.RollbackConfiguration:output_type -> api.admin.v1.ConfigReadReply
+	11, // 18: api.admin.v1.Configuration.GetConfigSchema:output_type -> api.admin.v1.ConfigSchemaReply
+	14, // [14:19] is the sub-list for method output_type
+	9,  // [9:14] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_api_admin_v1_config_proto_init() }
@@ -681,7 +1072,7 @@ func file_api_admin_v1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_admin_v1_config_proto_rawDesc), len(file_api_admin_v1_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

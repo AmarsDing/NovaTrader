@@ -19,12 +19,15 @@ var _ = binding.EncodeURL
 
 const _ = http.SupportPackageIsVersion1
 
+const OperationConfigurationGetConfigSchema = "/api.admin.v1.Configuration/GetConfigSchema"
 const OperationConfigurationGetConfiguration = "/api.admin.v1.Configuration/GetConfiguration"
 const OperationConfigurationPreviewConfiguration = "/api.admin.v1.Configuration/PreviewConfiguration"
 const OperationConfigurationRollbackConfiguration = "/api.admin.v1.Configuration/RollbackConfiguration"
 const OperationConfigurationSaveConfiguration = "/api.admin.v1.Configuration/SaveConfiguration"
 
 type ConfigurationHTTPServer interface {
+	// GetConfigSchema Schema is read-as-GET; catalog ships in service binary, safe for client caching by schema_version.
+	GetConfigSchema(context.Context, *ConfigSchemaRequest) (*ConfigSchemaReply, error)
 	GetConfiguration(context.Context, *ConfigReadRequest) (*ConfigReadReply, error)
 	PreviewConfiguration(context.Context, *ConfigWriteRequest) (*ConfigPreviewReply, error)
 	RollbackConfiguration(context.Context, *ConfigWriteRequest) (*ConfigReadReply, error)
@@ -37,6 +40,7 @@ func RegisterConfigurationHTTPServer(s *http.Server, srv ConfigurationHTTPServer
 	r.PUT("/api/config", _Configuration_SaveConfiguration0_HTTP_Handler(srv))
 	r.POST("/api/config/preview", _Configuration_PreviewConfiguration0_HTTP_Handler(srv))
 	r.POST("/api/config/rollback", _Configuration_RollbackConfiguration0_HTTP_Handler(srv))
+	r.GET("/api/config/schema", _Configuration_GetConfigSchema0_HTTP_Handler(srv))
 }
 
 func _Configuration_GetConfiguration0_HTTP_Handler(srv ConfigurationHTTPServer) func(ctx http.Context) error {
@@ -124,7 +128,28 @@ func _Configuration_RollbackConfiguration0_HTTP_Handler(srv ConfigurationHTTPSer
 	}
 }
 
+func _Configuration_GetConfigSchema0_HTTP_Handler(srv ConfigurationHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ConfigSchemaRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationConfigurationGetConfigSchema)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetConfigSchema(ctx, req.(*ConfigSchemaRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*ConfigSchemaReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type ConfigurationHTTPClient interface {
+	// GetConfigSchema Schema is read-as-GET; catalog ships in service binary, safe for client caching by schema_version.
+	GetConfigSchema(ctx context.Context, req *ConfigSchemaRequest, opts ...http.CallOption) (rsp *ConfigSchemaReply, err error)
 	GetConfiguration(ctx context.Context, req *ConfigReadRequest, opts ...http.CallOption) (rsp *ConfigReadReply, err error)
 	PreviewConfiguration(ctx context.Context, req *ConfigWriteRequest, opts ...http.CallOption) (rsp *ConfigPreviewReply, err error)
 	RollbackConfiguration(ctx context.Context, req *ConfigWriteRequest, opts ...http.CallOption) (rsp *ConfigReadReply, err error)
@@ -137,6 +162,20 @@ type ConfigurationHTTPClientImpl struct {
 
 func NewConfigurationHTTPClient(client *http.Client) ConfigurationHTTPClient {
 	return &ConfigurationHTTPClientImpl{client}
+}
+
+// GetConfigSchema Schema is read-as-GET; catalog ships in service binary, safe for client caching by schema_version.
+func (c *ConfigurationHTTPClientImpl) GetConfigSchema(ctx context.Context, in *ConfigSchemaRequest, opts ...http.CallOption) (*ConfigSchemaReply, error) {
+	var out ConfigSchemaReply
+	pattern := "/api/config/schema"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationConfigurationGetConfigSchema))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *ConfigurationHTTPClientImpl) GetConfiguration(ctx context.Context, in *ConfigReadRequest, opts ...http.CallOption) (*ConfigReadReply, error) {

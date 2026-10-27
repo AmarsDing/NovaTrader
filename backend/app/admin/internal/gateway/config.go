@@ -133,6 +133,13 @@ func (g *Gate) config(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 401, "未登录")
 		return
 	}
+	// Schema 下发是只读元数据，目录随二进制发放、不依赖参数存储——先于参数库
+	// 健康闸出值，保证 DB 故障时表单仍能渲染（且 viewer 也可读，编辑本身另走
+	// base_revision 闸）。
+	if r.Method == http.MethodGet && r.URL.Path == "/api/config/schema" {
+		writeJSON(w, 200, configSchemaPayload())
+		return
+	}
 	if g.Params == nil || !g.Params.Enabled() {
 		writeErr(w, 503, "参数表不可用")
 		return

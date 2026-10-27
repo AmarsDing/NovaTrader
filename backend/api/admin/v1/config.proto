@@ -9,6 +9,8 @@ service Configuration {
  rpc SaveConfiguration(ConfigWriteRequest) returns (ConfigReadReply) { option (google.api.http) = {put:"/api/config" body:"*"}; }
  rpc PreviewConfiguration(ConfigWriteRequest) returns (ConfigPreviewReply) { option (google.api.http) = {post:"/api/config/preview" body:"*"}; }
  rpc RollbackConfiguration(ConfigWriteRequest) returns (ConfigReadReply) { option (google.api.http) = {post:"/api/config/rollback" body:"*"}; }
+ // Schema is read-as-GET; catalog ships in service binary, safe for client caching by schema_version.
+ rpc GetConfigSchema(ConfigSchemaRequest) returns (ConfigSchemaReply) { option (google.api.http) = {get:"/api/config/schema"}; }
 }
 message ConfigReadRequest {}
 message ConfigWriteRequest {
@@ -46,4 +48,35 @@ message ConfigPreviewReply {
  repeated string unknown_effects = 5;
  repeated string services = 6;
  bool invalidates_plans = 7;
+}
+
+// ConfigSchema is the server-owned field metadata catalog. 此前由前端
+// web/src/view/config-catalog.ts 硬编码；schema 下发后 admin gateway 成为唯一事实源，
+// 前端表单按本消息自动跟随——字段不兼容显示 R-UI-38 提示。
+message ConfigSchemaRequest {}
+message ConfigSchemaOption { string value = 1; string label = 2; }
+message ConfigSchemaField {
+ string key = 1;          // 产品目录键（如 app.ds.tushare.qps / m06.select_score）；blob 字段此处为内层 json 键（外层见 blob_key）
+ string label = 2;        // 中文标签
+ string hint = 3;         // 提示文案，可为空
+ string kind = 4;         // number|int|text|bool|json|secret|select
+ string fallback = 5;     // 引擎侧默认值（secret 类型恒为 ""，不写真实 fallback 防体感错位）
+ string store = 6;        // config（通用参数表）| risk（风控子集）
+ string section = 7;      // 分类内小节名，可为空
+ string blob_key = 8;     // blob 字段的外层配置键（目前仅 market.sentiment.rules / market.sector.weights），非 blob 字段为空
+ string json_key = 9;     // blob 字段的内层键 = key；非 blob 字段为空
+ repeated ConfigSchemaOption options = 10;
+ bool wide = 11;          // 表单整行（json / 长文本）
+ bool clearable = 12;     // 允许清空（保存空串清除运行时覆盖回落配置文件）
+}
+message ConfigSchemaCategory {
+ string id = 1;            // 分类标识，如 datasource / models / agents / notify / funnel / score / price / first / pullback / risk / sentiment / sector
+ string title = 2;         // 中文标题
+ string note = 3;          // 分类说明文案
+ string blob_key = 4;      // blob 类分类的外层键（非 blob 分类为空）
+ repeated ConfigSchemaField fields = 5;
+}
+message ConfigSchemaReply {
+ int32 schema_version = 1;
+ repeated ConfigSchemaCategory categories = 2;
 }
