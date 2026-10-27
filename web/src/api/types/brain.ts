@@ -89,6 +89,8 @@ export interface Briefing {
   evidence: EvidenceItem[]
   /** 被替换为「（略※）」的数字个数；旧晨报/降级晨报为 null（未核对≠0）。 */
   omittedCount: number | null
+  /** 回执契约版号（W2a：biz.SchemaVersionBriefing 恒置 1）；旧代理缺链为 null → 前端按未版注旧契约给提示位。 */
+  schemaVersion: number | null
   createdAt: string
   /* ---- 兼容派生（monitor/overview 沿用）：由上面真实字段折算，不另走后端字段。 ---- */
   summary: string

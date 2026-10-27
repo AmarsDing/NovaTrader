@@ -89,6 +89,8 @@ function normalizeBriefing(raw: RawRecord): Briefing {
     reason: pick<string>(raw, 'reason') || '',
     evidence,
     omittedCount: num(pick(raw, 'omittedCount', 'omitted_count')),
+    // W2b.b 接线补归一：契约版号缺链不伪造 1（未版注=旧契约，卡片给提示位）。
+    schemaVersion: num(pick(raw, 'schemaVersion', 'schema_version')),
     createdAt: pick<string>(raw, 'createdAt', 'created_at') || '',
     summary: pick<string>(raw, 'summary', 'digest') || headline,
     items: items.length ? items : asList(raw, 'items', 'sections').map(normalizeBriefingItem),

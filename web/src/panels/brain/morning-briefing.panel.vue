@@ -11,6 +11,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
+import NtReportCard, { type ReportCardData } from '@/display/NtReportCard.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { statusOf, type StatusTone } from '@/ui/status-map'
 import { useAuthStore } from '@/stores/auth'
@@ -38,6 +39,25 @@ const briefingAt = computed<number | null>(() => {
   if (!raw) return null
   const t = Date.parse(String(raw))
   return Number.isFinite(t) ? t : null
+})
+
+/** W2b.b 报告卡接线（晨报是简报四段真宿主，QD P0-2 映射族）：决策=头版结论+大盘判断理由（真字段改落位，
+ *  头版/大盘判断两节并入本卡不再单独成节）；置信度/质量总分晨报无出处→缺位灰显，不伪造 0（数据纪律）；
+ *  质量缺失指标=三档核对 omitted 字段名去重登记（真源=evidence 留痕）；情景/风险计划晨报未声明→整段缺位
+ *  （R-UI-23 缺口灰显不蒸发、不硬塞风险清单冒充情景）。schemaVersion 缺链=未版注旧契约，卡片自带提示位。 */
+const briefingReport = computed<ReportCardData | null>(() => {
+  const b = briefing.value
+  if (!b) return null
+  const missing = [...new Set(b.evidence.filter((e) => e.verdict === 'omitted').map((e) => e.field).filter(Boolean))]
+  return {
+    schemaVersion: b.schemaVersion ?? undefined,
+    decision: b.headline || b.marketView
+      ? { decision: b.headline || undefined, rationale: b.marketView || undefined }
+      : null,
+    quality: { overall: null, missing },
+    scenarios: null,
+    riskPlan: null,
+  }
 })
 
 const VERDICTS: { v: string; t: string; tone: StatusTone }[] = [
@@ -122,15 +142,8 @@ onMounted(load)
     <p v-if="briefing?.degraded && briefing.reason" class="nt-note">降级原因：{{ briefing.reason }}</p>
 
     <template v-if="briefing">
-      <section v-if="briefing.headline" class="nt-panel">
-        <h2 class="nt-panel__title">头版 · {{ briefing.date || date }}</h2>
-        <p class="headline">{{ briefing.headline }}</p>
-      </section>
-
-      <section v-if="briefing.marketView" class="nt-panel">
-        <h2 class="nt-panel__title">大盘判断</h2>
-        <p class="body">{{ briefing.marketView }}</p>
-      </section>
+      <!-- W2b.b：头版+大盘判断并入报告卡决策段（原两节不重复渲染）；缺口段灰显由卡自治。 -->
+      <NtReportCard :report="briefingReport" :title="`晨报决策 · ${briefing.date || date}`" />
 
       <section v-if="briefing.risks.length" class="nt-panel">
         <h2 class="nt-panel__title">风险</h2>
@@ -214,22 +227,6 @@ onMounted(load)
 
 .date {
   width: 130px;
-}
-
-.headline {
-  margin: 0;
-  font-size: var(--nt-fs-title);
-  line-height: 1.7;
-  font-weight: 600;
-  color: var(--nt-text-1); /* text-0 是 hero 档禁段落正文（tokens.css §5.3）——晨报头版退回 text-1 */
-}
-
-.body {
-  margin: 0;
-  font-size: var(--nt-fs-panel); /* 收编自 13px 裸值（§5.3 panel 档，同值） */
-  line-height: 1.7;
-  color: var(--nt-text-1);
-  white-space: pre-wrap;
 }
 
 .plain {

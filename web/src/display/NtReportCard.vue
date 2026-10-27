@@ -232,6 +232,8 @@ function isLegacy(r: ReportCardData | null): boolean {
   font-size: 11px;
   line-height: 1.6;
   color: var(--nt-text-2);
+  /* W2b.b 接线勘补：理由正文承接晨报大盘判断等多段落文本，换行须保留（pre-line），否则整段糊成一行。 */
+  white-space: pre-line;
 }
 
 .nt-report__quality {
