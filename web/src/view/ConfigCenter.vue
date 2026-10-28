@@ -19,7 +19,19 @@ window.addEventListener('nt:open-config', (event) => {
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getConfigSnapshot, saveConfig, previewConfig, rollbackConfig, type ConfigSnapshot, type ConfigPreview } from '@/api/config'
+import {
+  getConfigSchema,
+  getConfigSnapshot,
+  saveConfig,
+  previewConfig,
+  rollbackConfig,
+  type ConfigPreview,
+  type ConfigSchema,
+  type ConfigSchemaCategory,
+  type ConfigSchemaField,
+  type ConfigSnapshot,
+} from '@/api/config'
+import NtSchemaForm, { type SchemaFormRow } from '@/display/NtSchemaForm.vue'
 import ConfigRevisionPanel from './ConfigRevisionPanel.vue'
 import { opsStatus, type OpsNode } from '@/api/ops'
 import { useAuthStore } from '@/stores/auth'
@@ -27,7 +39,6 @@ import { useRiskStore } from '@/stores/risk'
 import { useSettingsStore, type ColorVisionName, type DensityName, type ThemeName } from '@/stores/settings'
 import type { VisualQuality } from '@/theme/visual-quality'
 import NtButton from '@/ui/NtButton.vue'
-import NtConfigField, { type ConfigFieldLite } from '@/ui/NtConfigField.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
@@ -36,16 +47,7 @@ import { getHost, setHost } from '@/utils/endpoint'
 import { messageOf } from '@/utils/format'
 import { inTauri } from '@/utils/tauri'
 import { restartLink } from '@/ws/hub'
-import {
-  coerceField,
-  configCategories,
-  fieldId,
-  fileItems,
-  mergeBlob,
-  readBlobField,
-  type ConfigCategory,
-  type ConfigField,
-} from './config-catalog'
+import { coerceField, fieldId, fileItems, mergeBlob, readBlobField, type ConfigCategory, type ConfigField } from './config-catalog'
 import { effectiveScopeOf } from './config-field-meta'
 
 const props = defineProps<{ overlay?: boolean }>()
@@ -80,12 +82,46 @@ const modeHint: Record<string, string> = {
   L3: '按 L2 处理',
 }
 
-const nav = [
+/** W7b：把后端 schema 字段映射为 catalog 既有的 ConfigField/ConfigCategory 形态（薄壳适配）。 */
+function fieldFromSchema(field: ConfigSchemaField): ConfigField {
+  return {
+    key: field.key,
+    label: field.label,
+    hint: field.hint,
+    kind: field.kind,
+    fallback: field.fallback,
+    store: field.store,
+    section: field.section || undefined,
+    jsonKey: field.jsonKey || undefined,
+    options: field.options.length ? field.options : undefined,
+    wide: field.wide || undefined,
+    clearable: field.clearable || undefined,
+  }
+}
+function categoryFromSchema(cat: ConfigSchemaCategory): ConfigCategory {
+  return {
+    id: cat.id,
+    title: cat.title,
+    note: cat.note,
+    blobKey: cat.blobKey || undefined,
+    fields: cat.fields.map(fieldFromSchema),
+  }
+}
+function categoriesFromSchema(schema: ConfigSchema): ConfigCategory[] {
+  return schema.categories.map(categoryFromSchema)
+}
+
+const schemaCategories = ref<ConfigCategory[] | null>(null)
+const schemaError = ref('')
+const schemaReady = computed(() => schemaCategories.value !== null)
+const configCategories = computed<ConfigCategory[]>(() => schemaCategories.value ?? [])
+
+const nav = computed(() => [
   { id: 'look', title: '外观' },
   { id: 'link', title: '连接与桌面' },
-  ...configCategories.map((item) => ({ id: item.id, title: item.title })),
+  ...configCategories.value.map((item) => ({ id: item.id, title: item.title })),
   { id: 'files', title: '启动项' },
-]
+])
 
 const instanceId = Math.random().toString(36).slice(2)
 const currentId = ref('look')
@@ -108,41 +144,12 @@ const rollbackTarget = ref<number | null>(null)
 const clearSecrets = ref<string[]>([])
 let configGeneration = 0
 
-const current = computed(() => configCategories.find((item) => item.id === currentId.value))
+const current = computed(() => configCategories.value.find((item) => item.id === currentId.value))
 const dirty = computed(() => {
   const category = current.value
   if (!category) return false
   return category.fields.some((field) => clearSecrets.value.includes(field.key) || draft.value[fieldId(category.blobKey, field)] !== baseline.value[fieldId(category.blobKey, field)])
 })
-
-function showSection(category: ConfigCategory, index: number): boolean {
-  const section = category.fields[index]?.section
-  if (!section) return false
-  return index === 0 || category.fields[index - 1]?.section !== section
-}
-
-function sectionBlocks(category: ConfigCategory): { title: string; fields: ConfigField[] }[] {
-  const blocks: { title: string; fields: ConfigField[] }[] = []
-  for (const field of category.fields) {
-    const title = field.section || '其他'
-    const last = blocks[blocks.length - 1]
-    if (last && last.title === title) last.fields.push(field)
-    else blocks.push({ title, fields: [field] })
-  }
-  return blocks
-}
-
-/** 五件套映射（§9.1 第一件）：catalog 字段 → 字段卡 props；clearable 留空提示进 placeholder。 */
-function liteOf(field: ConfigField): ConfigFieldLite {
-  return {
-    key: field.key,
-    label: field.label,
-    kind: field.kind,
-    hint: field.hint || undefined,
-    options: field.options,
-    placeholder: field.clearable ? '留空跟随配置文件' : undefined,
-  }
-}
 
 /** 密文三态（§9.1 章口径）：清除待保存=clearing；否则按服务端 secretSet。 */
 function secretStateOf(field: ConfigField): 'unset' | 'set' | 'clearing' {
@@ -151,10 +158,33 @@ function secretStateOf(field: ConfigField): 'unset' | 'set' | 'clearing' {
 }
 
 /** 字段卡回写草稿：bool 归一 'true'/'false' 字串（strategy_config 存字串），其余显式转串。 */
-function onFieldValue(field: ConfigField, id: string, value: unknown) {
+function onSchemaValue(id: string, value: unknown, field: { kind: ConfigField['kind'] }) {
   if (field.kind === 'bool') setDraft(id, value === true ? 'true' : 'false')
   else setDraft(id, value == null ? '' : String(value))
 }
+
+/** 当前分类 → NtSchemaForm rows（含生效范围与密文态，display 层不读 store）。 */
+const schemaRows = computed<SchemaFormRow[]>(() => {
+  const category = current.value
+  if (!category) return []
+  return category.fields.map((field) => ({
+    id: fieldId(category.blobKey, field),
+    field: {
+      key: field.key,
+      label: field.label,
+      hint: field.hint || undefined,
+      kind: field.kind,
+      fallback: field.fallback,
+      section: field.section,
+      options: field.options,
+      wide: field.wide,
+      clearable: field.clearable,
+    },
+    value: draft.value[fieldId(category.blobKey, field)] ?? '',
+    secretState: field.kind === 'secret' ? secretStateOf(field) : undefined,
+    effective: effectiveScopeOf(field.key),
+  }))
+})
 
 function pickField(category: ConfigCategory, field: ConfigField): string {
   if (field.kind === 'secret') return ''
@@ -167,7 +197,7 @@ function pickField(category: ConfigCategory, field: ConfigField): string {
 }
 
 function fill(category?: ConfigCategory) {
-  const list = category ? [category] : configCategories
+  const list = category ? [category] : configCategories.value
   const next = { ...draft.value }
   const base = { ...baseline.value }
   for (const item of list) {
@@ -224,7 +254,7 @@ function setDraft(id: string, value: string) {
 }
 
 function jumpToCategory(id: unknown) {
-  if (typeof id !== 'string' || !id || !nav.some((item) => item.id === id)) return
+  if (typeof id !== 'string' || !id || !nav.value.some((item) => item.id === id)) return
   select(id)
 }
 
@@ -322,6 +352,7 @@ async function previewRollback(target: number) {
 }
 async function saveCurrent() {
   if (!current.value || saving.value || auth.isViewer()) return
+  if (schemaError.value) { error.value = '配置 schema 不可达，不能保存（R-UI-38）'; return }
   if (!configLoaded.value || !configSnapshot.value) { error.value = '还没读到版本化配置，无法保存'; return }
   error.value = ''; hint.value = ''; saving.value = true
   const generation = configGeneration
@@ -353,13 +384,23 @@ function onSaved(event: Event) {
 onMounted(async () => {
   window.addEventListener('nt:config-saved', onSaved)
   window.addEventListener('nt:open-config', onConfigJump)
-  // overlay 路线：事件先于挂载派发，模块暂存在这里消费（无暂存时落在默认分组）。
+  desktop.value = inTauri()
+  // W7b：先把 schema 拉上来再决定渲染面。schema 不可达时表单整组缺位（R-UI-38）——
+  // 不静默回退到旧硬编码目录（漂移口径会误导用户去保存不存在的字段）。
+  // 深链跳转必须等 schema 入 nav 之后，否则 jumpToCategory 找不到分类。
+  try {
+    const schema = await getConfigSchema()
+    schemaCategories.value = categoriesFromSchema(schema)
+    schemaError.value = ''
+  } catch (err) {
+    schemaCategories.value = []
+    schemaError.value = messageOf(err) || '配置 schema 不可达'
+  }
   if (pendingConfigCategory) {
     const category = pendingConfigCategory
     pendingConfigCategory = null
     jumpToCategory(category)
   }
-  desktop.value = inTauri()
   void load()
   try {
     const data = await opsStatus()
@@ -406,6 +447,9 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="cfg__main">
+        <p v-if="schemaError" class="cfg-schema-error" role="alert" data-testid="schema-error">
+          配置结构已变更或不可达：{{ schemaError }}。字段目录由后端下发，本次不能保存任何配置分类（R-UI-38）。
+        </p>
         <section v-if="currentId === 'look'" class="block">
           <p class="nt-note">改完立即作用在这个窗口。</p>
           <div class="pref">
@@ -494,75 +538,28 @@ onBeforeUnmount(() => {
 
         <section v-else-if="current" class="block">
           <p class="nt-note">{{ current.note }}</p>
-          <div v-if="ready && current.id === 'datasource'" class="src-cards">
-            <article v-for="block in sectionBlocks(current)" :key="block.title" class="src-card">
-              <header class="src-card__head">
-                <div>
-                  <h3>{{ block.title }}</h3>
-                </div>
-              </header>
-              <div class="src-card__body">
-                <div
-                  v-for="field in block.fields"
-                  :key="fieldId(current.blobKey, field)"
-                  class="field"
-                  :class="{ wide: field.kind !== 'bool' }"
-                >
-                  <NtConfigField
-                    :field="liteOf(field)"
-                    :model-value="field.kind === 'secret' ? '' : (draft[fieldId(current.blobKey, field)] ?? '')"
-                    :default-value="field.kind === 'secret' ? undefined : field.fallback"
-                    :disabled="auth.isViewer()"
-                    :secret-state="field.kind === 'secret' ? secretStateOf(field) : undefined"
-                    :effective="effectiveScopeOf(field.key)"
-                    @update:model-value="onFieldValue(field, fieldId(current.blobKey, field), $event)"
-                    @clear="clearSecret(field.key)"
-                  />
-                  <NtInput
-                    v-if="field.kind === 'secret'"
-                    type="password"
-                    :model-value="draft[fieldId(current.blobKey, field)] || ''"
-                    :placeholder="configSnapshot?.secretSet[field.key] ? '留空保留，输入替换' : '填写后保存生效'"
-                    :disabled="auth.isViewer()"
-                    @update:model-value="setDraft(fieldId(current.blobKey, field), $event)"
-                  />
-                </div>
-              </div>
-            </article>
-          </div>
-          <div v-else-if="ready" class="grid">
-            <template v-for="(field, index) in current.fields" :key="fieldId(current.blobKey, field)">
-              <h3 v-if="showSection(current, index)" class="sec">{{ field.section }}</h3>
-              <div class="field" :class="{ wide: field.kind === 'json' }">
-                <NtConfigField
-                  :field="liteOf(field)"
-                  :model-value="field.kind === 'secret' ? '' : (draft[fieldId(current.blobKey, field)] ?? '')"
-                  :default-value="field.kind === 'secret' ? undefined : field.fallback"
-                  :disabled="auth.isViewer()"
-                  :secret-state="field.kind === 'secret' ? secretStateOf(field) : undefined"
-                  :effective="effectiveScopeOf(field.key)"
-                  @update:model-value="onFieldValue(field, fieldId(current.blobKey, field), $event)"
-                  @clear="clearSecret(field.key)"
-                />
-                <NtInput
-                  v-if="field.kind === 'secret'"
-                  type="password"
-                  :model-value="draft[fieldId(current.blobKey, field)] || ''"
-                  :placeholder="configSnapshot?.secretSet[field.key] ? '留空保留，输入替换' : '填写后保存生效'"
-                  :disabled="auth.isViewer()"
-                  @update:model-value="setDraft(fieldId(current.blobKey, field), $event)"
-                />
-              </div>
-            </template>
-          </div>
+          <NtSchemaForm
+            v-if="ready"
+            :rows="schemaRows"
+            :layout="current.id === 'datasource' ? 'cards' : 'grid'"
+            :disabled="auth.isViewer() || !!schemaError"
+            :schema-error="schemaError"
+            @update:value="onSchemaValue"
+            @clear="clearSecret"
+          />
           <p v-else class="nt-empty">正在读取当前值。</p>
-          <ConfigRevisionPanel :snapshot="configSnapshot" :preview="impact" :dirty="dirty" @refresh="refreshReceipts" @rollback="previewRollback" />
-          <div class="savebar">
-            <NtButton variant="primary" :disabled="auth.isViewer() || saving || (!dirty && !impact)" @click="saveCurrent">
-              {{ impact ? (rollbackTarget == null ? '确认保存新版本' : '确认回滚为新版本') : '预览本类变更' }}
-            </NtButton>
-            <NtButton :disabled="saving" @click="load">重新读取配置</NtButton>
-          </div>
+          <template v-if="!schemaError">
+            <ConfigRevisionPanel :snapshot="configSnapshot" :preview="impact" :dirty="dirty" @refresh="refreshReceipts" @rollback="previewRollback" />
+            <div class="savebar">
+              <NtButton variant="primary" :disabled="auth.isViewer() || saving || (!dirty && !impact)" @click="saveCurrent">
+                {{ impact ? (rollbackTarget == null ? '确认保存新版本' : '确认回滚为新版本') : '预览本类变更' }}
+              </NtButton>
+              <NtButton :disabled="saving" @click="load">重新读取配置</NtButton>
+            </div>
+          </template>
+        </section>
+        <section v-else-if="!schemaReady" class="block">
+          <p class="nt-empty">正在读取字段目录。</p>
         </section>
 
         <section v-else class="block">
@@ -609,6 +606,16 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+}
+
+.cfg-schema-error {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--nt-warn);
+  background: color-mix(in srgb, var(--nt-warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nt-warn) 35%, transparent);
+  border-radius: var(--nt-radius-s);
+  font-size: var(--nt-fs-caption);
 }
 
 .cfg__body {

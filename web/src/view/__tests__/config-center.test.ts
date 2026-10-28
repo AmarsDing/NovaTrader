@@ -2,26 +2,55 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import ConfigCenter from '../ConfigCenter.vue'
 import ConfigRevisionPanel from '../ConfigRevisionPanel.vue'
-import NtConfigField from '@/ui/NtConfigField.vue'
+import NtSchemaForm from '@/display/NtSchemaForm.vue'
 import NtButton from '@/ui/NtButton.vue'
-const m = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), preview: vi.fn(), rollback: vi.fn() }))
-vi.mock('@/api/config', () => ({ getConfigSnapshot: m.get, saveConfig: m.save, previewConfig: m.preview, rollbackConfig: m.rollback }))
+const m = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), preview: vi.fn(), rollback: vi.fn(), schema: vi.fn() }))
+vi.mock('@/api/config', () => ({
+  getConfigSnapshot: m.get,
+  saveConfig: m.save,
+  previewConfig: m.preview,
+  rollbackConfig: m.rollback,
+  getConfigSchema: m.schema,
+}))
 vi.mock('@/api/ops', () => ({ opsStatus: async () => ({ sources: [] }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => false, operatorName: 'owner' }) }))
-vi.mock('@/stores/risk', () => ({ useRiskStore: () => ({ params: {}, refresh: async () => true }) }))
+vi.mock('@/stores/risk', () => ({ useRiskStore: () => ({ params: {}, refresh: async () => true, mode: 'L1', switchMode: vi.fn() }) }))
 vi.mock('@/stores/settings', () => ({ useSettingsStore: () => ({ theme: 'dark', density: 'normal', visualQuality: 'full' }) }))
 vi.mock('@/utils/tauri', () => ({ inTauri: () => false }))
 vi.mock('@/ws/hub', () => ({ restartLink: vi.fn() }))
 let w: VueWrapper | undefined
 const snapshot = (revision = 7) => ({ revision, values: { 'm06.select_score': '75' }, secretSet: {}, receipts: [], history: [], createdAt: '', note: '', receiptError: '' })
 const preview = () => ({ baseRevision: 7, changes: [{ key: 'm06.select_score', before: '75', after: '80', secret: false, service: 'strategy', effective: '下次扫描' }], knownEffects: [], unknownEffects: ['收益未测'], services: ['strategy'], invalidatesPlans: true })
-beforeEach(() => { vi.resetAllMocks(); m.get.mockResolvedValue(snapshot()); m.preview.mockResolvedValue(preview()); m.save.mockResolvedValue(snapshot(8)) })
+const schema = () => ({
+  schemaVersion: 1 as const,
+  categories: [{
+    id: 'score',
+    title: '评分与信号',
+    note: '融合权重和信号节拍。下次扫描读取。',
+    blobKey: '',
+    fields: [{
+      key: 'm06.select_score', label: '入选分', hint: '综合分达到即入选', kind: 'number' as const,
+      fallback: '75', store: 'config' as const, section: '融合', blobKey: '', jsonKey: '',
+      options: [], wide: false, clearable: false,
+    }],
+  }],
+})
+beforeEach(() => {
+  vi.resetAllMocks()
+  m.get.mockResolvedValue(snapshot())
+  m.preview.mockResolvedValue(preview())
+  m.save.mockResolvedValue(snapshot(8))
+  m.schema.mockResolvedValue(schema())
+})
 afterEach(() => { w?.unmount(); w = undefined })
 async function open() {
   w = shallowMount(ConfigCenter, { global: { renderStubDefaultSlot: true } }); await flushPromises()
   await w.findAll('nav button').find(b => b.text() === '评分与信号')!.trigger('click')
 }
-async function edit(value: string) { w!.findAllComponents(NtConfigField).find(c => (c.props('field') as { label?: string })?.label === '入选分')!.vm.$emit('update:modelValue', value); await flushPromises() }
+async function edit(value: string) {
+  w!.findComponent(NtSchemaForm).vm.$emit('update:value', 'm06.select_score', value, { kind: 'number', key: 'm06.select_score' })
+  await flushPromises()
+}
 async function action() { w!.findAllComponents(NtButton).find(c => /预览本类|确认保存/.test(c.text()))!.vm.$emit('click'); await flushPromises() }
 describe('configuration save workflow', () => {
   it('previews frozen edits then saves with the exact read revision; never labels save as loaded', async () => {
@@ -43,5 +72,26 @@ describe('configuration save workflow', () => {
     await action(); await edit('81'); resolve(preview()); await flushPromises()
     expect(w!.findComponent(ConfigRevisionPanel).props('preview')).toBeNull()
     await action(); expect(m.save).not.toHaveBeenCalled(); expect(m.preview).toHaveBeenLastCalledWith({ 'm06.select_score': '81' }, 7)
+  })
+})
+
+describe('configuration schema wiring (W7b)', () => {
+  it('loads schema before rendering category nav and wires NtSchemaForm', async () => {
+    await open()
+    expect(m.schema).toHaveBeenCalled()
+    const form = w!.findComponent(NtSchemaForm)
+    expect(form.exists()).toBe(true)
+    expect(form.props('schemaError')).toBe('')
+    expect(form.props('rows')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'm06.select_score', value: '75' }),
+    ]))
+  })
+  it('surfaces R-UI-38 banner when schema is unreachable and hides schema categories', async () => {
+    m.schema.mockRejectedValueOnce(new Error('网关 502'))
+    w = shallowMount(ConfigCenter, { global: { renderStubDefaultSlot: true } })
+    await flushPromises()
+    expect(w.find('[data-testid="schema-error"]').text()).toContain('网关 502')
+    expect(w.findAll('nav button').some(b => b.text() === '评分与信号')).toBe(false)
+    expect(w.findComponent(NtSchemaForm).exists()).toBe(false)
   })
 })
