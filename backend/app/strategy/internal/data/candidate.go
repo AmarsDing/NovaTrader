@@ -129,3 +129,52 @@ func (r *candidateRepo) SetOutcome(ctx context.Context, id int, t1, t3, t5 *floa
 		SetNillableRetT1(t1).SetNillableRetT3(t3).SetNillableRetT5(t5).
 		Exec(ctx)
 }
+
+// MissFunnel 两次 group-by：先每日候选总数，再每日 miss_reason 分布。
+func (r *candidateRepo) MissFunnel(ctx context.Context, from, to time.Time, pool string) ([]biz.MissFunnelDayRow, error) {
+	base := r.d.client.StrategyCandidate.Query().
+		Where(strategycandidate.TradeDateGTE(from), strategycandidate.TradeDateLTE(to))
+	if pool != "" {
+		base.Where(strategycandidate.Pool(pool))
+	}
+	var totals []struct {
+		TradeDate time.Time `json:"trade_date"`
+		Count     int       `json:"count"`
+	}
+	if err := base.Clone().
+		GroupBy(strategycandidate.FieldTradeDate).
+		Aggregate(ent.Count()).
+		Scan(ctx, &totals); err != nil {
+		return nil, err
+	}
+	if len(totals) == 0 {
+		return nil, nil
+	}
+	var reasons []struct {
+		TradeDate  time.Time `json:"trade_date"`
+		MissReason string    `json:"miss_reason"`
+		Count      int       `json:"count"`
+	}
+	if err := base.Clone().
+		Where(strategycandidate.MissReasonNEQ("")).
+		GroupBy(strategycandidate.FieldTradeDate, strategycandidate.FieldMissReason).
+		Aggregate(ent.Count()).
+		Scan(ctx, &reasons); err != nil {
+		return nil, err
+	}
+	byDay := make(map[string]int, len(totals))
+	out := make([]biz.MissFunnelDayRow, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, biz.MissFunnelDayRow{Day: localDate(t.TradeDate), Total: t.Count, Reasons: map[string]int{}})
+		byDay[t.TradeDate.Format("2006-01-02")] = len(out) - 1
+	}
+	for _, rr := range reasons {
+		idx, ok := byDay[rr.TradeDate.Format("2006-01-02")]
+		if !ok {
+			continue
+		}
+		out[idx].Reasons[rr.MissReason] = rr.Count
+		out[idx].Missed += rr.Count
+	}
+	return out, nil
+}

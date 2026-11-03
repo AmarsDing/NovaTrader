@@ -20,7 +20,9 @@ var _ = binding.EncodeURL
 const _ = http.SupportPackageIsVersion1
 
 const OperationStrategyAddBlacklist = "/strategy.v1.Strategy/AddBlacklist"
+const OperationStrategyGetMissFunnel = "/strategy.v1.Strategy/GetMissFunnel"
 const OperationStrategyGetSignal = "/strategy.v1.Strategy/GetSignal"
+const OperationStrategyGetSignalEvents = "/strategy.v1.Strategy/GetSignalEvents"
 const OperationStrategyListCandidates = "/strategy.v1.Strategy/ListCandidates"
 const OperationStrategyListSignals = "/strategy.v1.Strategy/ListSignals"
 const OperationStrategyPerformance = "/strategy.v1.Strategy/Performance"
@@ -31,7 +33,11 @@ const OperationStrategyTransitionSignal = "/strategy.v1.Strategy/TransitionSigna
 
 type StrategyHTTPServer interface {
 	AddBlacklist(context.Context, *AddBlacklistRequest) (*BlacklistReply, error)
+	// GetMissFunnel BE-12 miss_reason 漏斗按日聚合（只读）：scan 单轮 misses 的历史聚合看板。
+	GetMissFunnel(context.Context, *MissFunnelRequest) (*MissFunnelReply, error)
 	GetSignal(context.Context, *GetSignalRequest) (*Signal, error)
+	// GetSignalEvents BE-02 信号状态变迁历史（只读）：signal_events 流水按发生时间升序，from_status 为空表示创建。
+	GetSignalEvents(context.Context, *SignalEventsRequest) (*SignalEventsReply, error)
 	ListCandidates(context.Context, *ListCandidatesRequest) (*ListCandidatesReply, error)
 	ListSignals(context.Context, *ListSignalsRequest) (*ListSignalsReply, error)
 	// Performance 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
@@ -56,6 +62,8 @@ func RegisterStrategyHTTPServer(s *http.Server, srv StrategyHTTPServer) {
 	r.DELETE("/v1/strategy/blacklist/{symbol}", _Strategy_RemoveBlacklist0_HTTP_Handler(srv))
 	r.GET("/v1/strategy/performance", _Strategy_Performance0_HTTP_Handler(srv))
 	r.GET("/v1/strategy/score-vs-pnl", _Strategy_ScoreVsPnl0_HTTP_Handler(srv))
+	r.GET("/v1/strategy/signals/{id}/events", _Strategy_GetSignalEvents0_HTTP_Handler(srv))
+	r.GET("/v1/strategy/miss-funnel", _Strategy_GetMissFunnel0_HTTP_Handler(srv))
 }
 
 func _Strategy_ListSignals0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Context) error {
@@ -247,9 +255,54 @@ func _Strategy_ScoreVsPnl0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Co
 	}
 }
 
+func _Strategy_GetSignalEvents0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SignalEventsRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationStrategyGetSignalEvents)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetSignalEvents(ctx, req.(*SignalEventsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SignalEventsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Strategy_GetMissFunnel0_HTTP_Handler(srv StrategyHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in MissFunnelRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationStrategyGetMissFunnel)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetMissFunnel(ctx, req.(*MissFunnelRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*MissFunnelReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type StrategyHTTPClient interface {
 	AddBlacklist(ctx context.Context, req *AddBlacklistRequest, opts ...http.CallOption) (rsp *BlacklistReply, err error)
+	// GetMissFunnel BE-12 miss_reason 漏斗按日聚合（只读）：scan 单轮 misses 的历史聚合看板。
+	GetMissFunnel(ctx context.Context, req *MissFunnelRequest, opts ...http.CallOption) (rsp *MissFunnelReply, err error)
 	GetSignal(ctx context.Context, req *GetSignalRequest, opts ...http.CallOption) (rsp *Signal, err error)
+	// GetSignalEvents BE-02 信号状态变迁历史（只读）：signal_events 流水按发生时间升序，from_status 为空表示创建。
+	GetSignalEvents(ctx context.Context, req *SignalEventsRequest, opts ...http.CallOption) (rsp *SignalEventsReply, err error)
 	ListCandidates(ctx context.Context, req *ListCandidatesRequest, opts ...http.CallOption) (rsp *ListCandidatesReply, err error)
 	ListSignals(ctx context.Context, req *ListSignalsRequest, opts ...http.CallOption) (rsp *ListSignalsReply, err error)
 	// Performance 监控驾驶舱 P1（只读）：近 N 笔已后验信号的绩效汇总。
@@ -284,11 +337,39 @@ func (c *StrategyHTTPClientImpl) AddBlacklist(ctx context.Context, in *AddBlackl
 	return &out, nil
 }
 
+// GetMissFunnel BE-12 miss_reason 漏斗按日聚合（只读）：scan 单轮 misses 的历史聚合看板。
+func (c *StrategyHTTPClientImpl) GetMissFunnel(ctx context.Context, in *MissFunnelRequest, opts ...http.CallOption) (*MissFunnelReply, error) {
+	var out MissFunnelReply
+	pattern := "/v1/strategy/miss-funnel"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationStrategyGetMissFunnel))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *StrategyHTTPClientImpl) GetSignal(ctx context.Context, in *GetSignalRequest, opts ...http.CallOption) (*Signal, error) {
 	var out Signal
 	pattern := "/v1/strategy/signals/{id}"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationStrategyGetSignal))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetSignalEvents BE-02 信号状态变迁历史（只读）：signal_events 流水按发生时间升序，from_status 为空表示创建。
+func (c *StrategyHTTPClientImpl) GetSignalEvents(ctx context.Context, in *SignalEventsRequest, opts ...http.CallOption) (*SignalEventsReply, error) {
+	var out SignalEventsReply
+	pattern := "/v1/strategy/signals/{id}/events"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationStrategyGetSignalEvents))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

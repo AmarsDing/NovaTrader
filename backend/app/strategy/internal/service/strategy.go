@@ -128,6 +128,50 @@ func (s *StrategyService) GetSignal(ctx context.Context, req *v1.GetSignalReques
 	return toPB(sig), nil
 }
 
+func (s *StrategyService) GetSignalEvents(ctx context.Context, req *v1.SignalEventsRequest) (*v1.SignalEventsReply, error) {
+	if req.GetId() <= 0 {
+		return nil, kerrors.BadRequest("BAD_REQUEST", "id 必填且为正整数")
+	}
+	list, err := s.uc.SignalEvents(ctx, int(req.GetId()))
+	if err != nil {
+		return nil, toErr(err)
+	}
+	reply := &v1.SignalEventsReply{Items: make([]*v1.SignalEvent, len(list))}
+	for i, e := range list {
+		reply.Items[i] = &v1.SignalEvent{
+			Id: int64(e.ID), SignalId: int64(e.SignalID), FromStatus: e.From, ToStatus: e.To,
+			Reason: e.Reason, Actor: e.Actor, TraceId: e.TraceID, At: fmtTime(e.At),
+		}
+	}
+	return reply, nil
+}
+
+func (s *StrategyService) GetMissFunnel(ctx context.Context, req *v1.MissFunnelRequest) (*v1.MissFunnelReply, error) {
+	rows, err := s.uc.MissFunnel(ctx, int(req.GetDays()), req.GetPool())
+	if err != nil {
+		return nil, toErr(err)
+	}
+	reply := &v1.MissFunnelReply{Days: make([]*v1.MissFunnelDay, len(rows))}
+	for i, row := range rows {
+		day := &v1.MissFunnelDay{
+			TradeDate: fmtDay(row.Day), Total: int32(row.Total), Missed: int32(row.Missed),
+			Reasons: make([]*v1.MissReasonCount, 0, len(row.Reasons)),
+		}
+		for reason, count := range row.Reasons {
+			day.Reasons = append(day.Reasons, &v1.MissReasonCount{Reason: reason, Count: int32(count)})
+		}
+		// 按计数倒序、同计数按 reason 字典序，保证输出稳定。
+		sort.Slice(day.Reasons, func(a, b int) bool {
+			if day.Reasons[a].Count != day.Reasons[b].Count {
+				return day.Reasons[a].Count > day.Reasons[b].Count
+			}
+			return day.Reasons[a].Reason < day.Reasons[b].Reason
+		})
+		reply.Days[i] = day
+	}
+	return reply, nil
+}
+
 func (s *StrategyService) TransitionSignal(ctx context.Context, req *v1.TransitionSignalRequest) (*v1.Signal, error) {
 	if req.GetId() <= 0 || req.GetTo() == "" || req.GetActor() == "" {
 		return nil, kerrors.BadRequest("BAD_REQUEST", "id、to、actor 必填")

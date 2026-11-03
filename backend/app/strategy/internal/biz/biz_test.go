@@ -118,11 +118,12 @@ func (p fakeParams) ActiveVersion(context.Context) (*int, error) {
 }
 
 type fakeSignals struct {
-	mu     sync.Mutex
-	rows   map[int]*Signal
-	next   int
-	events []events.Envelope
-	trail  []string
+	mu        sync.Mutex
+	rows      map[int]*Signal
+	next      int
+	events    []events.Envelope
+	trail     []string
+	eventRows []SignalEvent
 }
 
 func newFakeSignals() *fakeSignals { return &fakeSignals{rows: map[int]*Signal{}} }
@@ -179,6 +180,20 @@ func (f *fakeSignals) Get(_ context.Context, id int) (*Signal, error) {
 	}
 	cp := *row
 	return &cp, nil
+}
+
+// Events 返回按编号升序的变迁流水（BE-02 测试桩）。
+func (f *fakeSignals) Events(_ context.Context, signalID int) ([]SignalEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []SignalEvent
+	for _, e := range f.eventRows {
+		if e.SignalID == signalID {
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].ID < out[b].ID })
+	return out, nil
 }
 
 func (f *fakeSignals) sorted(match func(*Signal) bool) []*Signal {
@@ -251,9 +266,11 @@ func (f *fakeSignals) put(s Signal) int {
 }
 
 type fakeCandidates struct {
-	mu   sync.Mutex
-	rows map[string]*Candidate
-	next int
+	mu           sync.Mutex
+	rows         map[string]*Candidate
+	next         int
+	mfFrom, mfTo time.Time
+	mfPool       string
 }
 
 func newFakeCandidates() *fakeCandidates { return &fakeCandidates{rows: map[string]*Candidate{}} }
@@ -320,6 +337,40 @@ func (f *fakeCandidates) SetOutcome(_ context.Context, id int, t1, t3, t5 *float
 }
 
 func (f *fakeCandidates) List(context.Context, CandidateFilter) ([]Candidate, error) { return nil, nil }
+
+// MissFunnel 按日聚合候选与 miss_reason（BE-12 测试桩），并记录入参供断言。
+func (f *fakeCandidates) MissFunnel(_ context.Context, from, to time.Time, pool string) ([]MissFunnelDayRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mfFrom, f.mfTo, f.mfPool = from, to, pool
+	byDay := map[string]*MissFunnelDayRow{}
+	var days []string
+	for _, c := range f.rows {
+		if c.TradeDate.Before(from) || c.TradeDate.After(to) {
+			continue
+		}
+		if pool != "" && c.Pool != pool {
+			continue
+		}
+		k := c.TradeDate.Format("2006-01-02")
+		row, ok := byDay[k]
+		if !ok {
+			row = &MissFunnelDayRow{Day: c.TradeDate, Reasons: map[string]int{}}
+			byDay[k] = row
+			days = append(days, k)
+		}
+		row.Total++
+		if c.MissReason != "" {
+			row.Missed++
+			row.Reasons[c.MissReason]++
+		}
+	}
+	out := make([]MissFunnelDayRow, 0, len(days))
+	for _, k := range days {
+		out = append(out, *byDay[k])
+	}
+	return out, nil
+}
 
 func (f *fakeCandidates) get(symbol string) *Candidate {
 	f.mu.Lock()

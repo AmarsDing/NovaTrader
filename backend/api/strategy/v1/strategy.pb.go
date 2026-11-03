@@ -1655,6 +1655,410 @@ func (x *ScoreVsPnlReply) GetSample() int32 {
 	return 0
 }
 
+type SignalEventsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"` // 信号主键
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignalEventsRequest) Reset() {
+	*x = SignalEventsRequest{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignalEventsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignalEventsRequest) ProtoMessage() {}
+
+func (x *SignalEventsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignalEventsRequest.ProtoReflect.Descriptor instead.
+func (*SignalEventsRequest) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *SignalEventsRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+type SignalEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	SignalId      int64                  `protobuf:"varint,2,opt,name=signal_id,json=signalId,proto3" json:"signal_id,omitempty"`
+	FromStatus    string                 `protobuf:"bytes,3,opt,name=from_status,json=fromStatus,proto3" json:"from_status,omitempty"` // 空 = 创建事件
+	ToStatus      string                 `protobuf:"bytes,4,opt,name=to_status,json=toStatus,proto3" json:"to_status,omitempty"`
+	Reason        string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	Actor         string                 `protobuf:"bytes,6,opt,name=actor,proto3" json:"actor,omitempty"`
+	TraceId       string                 `protobuf:"bytes,7,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	At            string                 `protobuf:"bytes,8,opt,name=at,proto3" json:"at,omitempty"` // RFC3339
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignalEvent) Reset() {
+	*x = SignalEvent{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignalEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignalEvent) ProtoMessage() {}
+
+func (x *SignalEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignalEvent.ProtoReflect.Descriptor instead.
+func (*SignalEvent) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *SignalEvent) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *SignalEvent) GetSignalId() int64 {
+	if x != nil {
+		return x.SignalId
+	}
+	return 0
+}
+
+func (x *SignalEvent) GetFromStatus() string {
+	if x != nil {
+		return x.FromStatus
+	}
+	return ""
+}
+
+func (x *SignalEvent) GetToStatus() string {
+	if x != nil {
+		return x.ToStatus
+	}
+	return ""
+}
+
+func (x *SignalEvent) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *SignalEvent) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *SignalEvent) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
+	}
+	return ""
+}
+
+func (x *SignalEvent) GetAt() string {
+	if x != nil {
+		return x.At
+	}
+	return ""
+}
+
+type SignalEventsReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*SignalEvent         `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"` // 按发生时间升序；信号无历史时为空
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SignalEventsReply) Reset() {
+	*x = SignalEventsReply{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SignalEventsReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SignalEventsReply) ProtoMessage() {}
+
+func (x *SignalEventsReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SignalEventsReply.ProtoReflect.Descriptor instead.
+func (*SignalEventsReply) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *SignalEventsReply) GetItems() []*SignalEvent {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type MissFunnelRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Days          int32                  `protobuf:"varint,1,opt,name=days,proto3" json:"days,omitempty"` // 回看日历天数（含今天），默认 7，上限 30
+	Pool          string                 `protobuf:"bytes,2,opt,name=pool,proto3" json:"pool,omitempty"`  // 空 = 全部池
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MissFunnelRequest) Reset() {
+	*x = MissFunnelRequest{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MissFunnelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MissFunnelRequest) ProtoMessage() {}
+
+func (x *MissFunnelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MissFunnelRequest.ProtoReflect.Descriptor instead.
+func (*MissFunnelRequest) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *MissFunnelRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+func (x *MissFunnelRequest) GetPool() string {
+	if x != nil {
+		return x.Pool
+	}
+	return ""
+}
+
+type MissReasonCount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"`
+	Count         int32                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MissReasonCount) Reset() {
+	*x = MissReasonCount{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MissReasonCount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MissReasonCount) ProtoMessage() {}
+
+func (x *MissReasonCount) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MissReasonCount.ProtoReflect.Descriptor instead.
+func (*MissReasonCount) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *MissReasonCount) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *MissReasonCount) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+type MissFunnelDay struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TradeDate     string                 `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"`
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`    // 当日候选总数（含未落选）
+	Missed        int32                  `protobuf:"varint,3,opt,name=missed,proto3" json:"missed,omitempty"`  // 当日落选数（miss_reason 非空）
+	Reasons       []*MissReasonCount     `protobuf:"bytes,4,rep,name=reasons,proto3" json:"reasons,omitempty"` // 按 count 倒序，同数按 reason 字典序
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MissFunnelDay) Reset() {
+	*x = MissFunnelDay{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MissFunnelDay) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MissFunnelDay) ProtoMessage() {}
+
+func (x *MissFunnelDay) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MissFunnelDay.ProtoReflect.Descriptor instead.
+func (*MissFunnelDay) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *MissFunnelDay) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *MissFunnelDay) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *MissFunnelDay) GetMissed() int32 {
+	if x != nil {
+		return x.Missed
+	}
+	return 0
+}
+
+func (x *MissFunnelDay) GetReasons() []*MissReasonCount {
+	if x != nil {
+		return x.Reasons
+	}
+	return nil
+}
+
+type MissFunnelReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Days          []*MissFunnelDay       `protobuf:"bytes,1,rep,name=days,proto3" json:"days,omitempty"` // 按日期升序；无候选的日期缺席（不补零）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MissFunnelReply) Reset() {
+	*x = MissFunnelReply{}
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MissFunnelReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MissFunnelReply) ProtoMessage() {}
+
+func (x *MissFunnelReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_strategy_v1_strategy_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MissFunnelReply.ProtoReflect.Descriptor instead.
+func (*MissFunnelReply) Descriptor() ([]byte, []int) {
+	return file_api_strategy_v1_strategy_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *MissFunnelReply) GetDays() []*MissFunnelDay {
+	if x != nil {
+		return x.Days
+	}
+	return nil
+}
+
 var File_api_strategy_v1_strategy_proto protoreflect.FileDescriptor
 
 const file_api_strategy_v1_strategy_proto_rawDesc = "" +
@@ -1838,7 +2242,35 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\x0fScoreVsPnlReply\x122\n" +
 	"\x06points\x18\x01 \x03(\v2\x1a.strategy.v1.ScorePnlPointR\x06points\x12\x18\n" +
 	"\apearson\x18\x02 \x01(\x01R\apearson\x12\x16\n" +
-	"\x06sample\x18\x03 \x01(\x05R\x06sample2\xfc\a\n" +
+	"\x06sample\x18\x03 \x01(\x05R\x06sample\"%\n" +
+	"\x13SignalEventsRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\"\xd1\x01\n" +
+	"\vSignalEvent\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
+	"\tsignal_id\x18\x02 \x01(\x03R\bsignalId\x12\x1f\n" +
+	"\vfrom_status\x18\x03 \x01(\tR\n" +
+	"fromStatus\x12\x1b\n" +
+	"\tto_status\x18\x04 \x01(\tR\btoStatus\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\x12\x14\n" +
+	"\x05actor\x18\x06 \x01(\tR\x05actor\x12\x19\n" +
+	"\btrace_id\x18\a \x01(\tR\atraceId\x12\x0e\n" +
+	"\x02at\x18\b \x01(\tR\x02at\"C\n" +
+	"\x11SignalEventsReply\x12.\n" +
+	"\x05items\x18\x01 \x03(\v2\x18.strategy.v1.SignalEventR\x05items\";\n" +
+	"\x11MissFunnelRequest\x12\x12\n" +
+	"\x04days\x18\x01 \x01(\x05R\x04days\x12\x12\n" +
+	"\x04pool\x18\x02 \x01(\tR\x04pool\"?\n" +
+	"\x0fMissReasonCount\x12\x16\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\"\x94\x01\n" +
+	"\rMissFunnelDay\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x16\n" +
+	"\x06missed\x18\x03 \x01(\x05R\x06missed\x126\n" +
+	"\areasons\x18\x04 \x03(\v2\x1c.strategy.v1.MissReasonCountR\areasons\"A\n" +
+	"\x0fMissFunnelReply\x12.\n" +
+	"\x04days\x18\x01 \x03(\v2\x1a.strategy.v1.MissFunnelDayR\x04days2\xec\t\n" +
 	"\bStrategy\x12k\n" +
 	"\vListSignals\x12\x1f.strategy.v1.ListSignalsRequest\x1a\x1d.strategy.v1.ListSignalsReply\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/strategy/signals\x12b\n" +
 	"\tGetSignal\x12\x1d.strategy.v1.GetSignalRequest\x1a\x13.strategy.v1.Signal\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/strategy/signals/{id}\x12~\n" +
@@ -1849,7 +2281,9 @@ const file_api_strategy_v1_strategy_proto_rawDesc = "" +
 	"\x0fRemoveBlacklist\x12#.strategy.v1.RemoveBlacklistRequest\x1a\x1b.strategy.v1.BlacklistReply\"'\x82\xd3\xe4\x93\x02!*\x1f/v1/strategy/blacklist/{symbol}\x12o\n" +
 	"\vPerformance\x12\x1f.strategy.v1.PerformanceRequest\x1a\x1d.strategy.v1.PerformanceReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/strategy/performance\x12m\n" +
 	"\n" +
-	"ScoreVsPnl\x12\x1e.strategy.v1.ScoreVsPnlRequest\x1a\x1c.strategy.v1.ScoreVsPnlReply\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/strategy/score-vs-pnlB\x1bZ\x19server/api/strategy/v1;v1b\x06proto3"
+	"ScoreVsPnl\x12\x1e.strategy.v1.ScoreVsPnlRequest\x1a\x1c.strategy.v1.ScoreVsPnlReply\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/strategy/score-vs-pnl\x12}\n" +
+	"\x0fGetSignalEvents\x12 .strategy.v1.SignalEventsRequest\x1a\x1e.strategy.v1.SignalEventsReply\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/strategy/signals/{id}/events\x12o\n" +
+	"\rGetMissFunnel\x12\x1e.strategy.v1.MissFunnelRequest\x1a\x1c.strategy.v1.MissFunnelReply\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/v1/strategy/miss-funnelB\x1bZ\x19server/api/strategy/v1;v1b\x06proto3"
 
 var (
 	file_api_strategy_v1_strategy_proto_rawDescOnce sync.Once
@@ -1863,7 +2297,7 @@ func file_api_strategy_v1_strategy_proto_rawDescGZIP() []byte {
 	return file_api_strategy_v1_strategy_proto_rawDescData
 }
 
-var file_api_strategy_v1_strategy_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_api_strategy_v1_strategy_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_api_strategy_v1_strategy_proto_goTypes = []any{
 	(*Signal)(nil),                  // 0: strategy.v1.Signal
 	(*ListSignalsRequest)(nil),      // 1: strategy.v1.ListSignalsRequest
@@ -1884,41 +2318,55 @@ var file_api_strategy_v1_strategy_proto_goTypes = []any{
 	(*ScoreVsPnlRequest)(nil),       // 16: strategy.v1.ScoreVsPnlRequest
 	(*ScorePnlPoint)(nil),           // 17: strategy.v1.ScorePnlPoint
 	(*ScoreVsPnlReply)(nil),         // 18: strategy.v1.ScoreVsPnlReply
-	nil,                             // 19: strategy.v1.Signal.DimsEntry
-	nil,                             // 20: strategy.v1.ScanReply.DroppedEntry
-	nil,                             // 21: strategy.v1.ScanReply.MissesEntry
+	(*SignalEventsRequest)(nil),     // 19: strategy.v1.SignalEventsRequest
+	(*SignalEvent)(nil),             // 20: strategy.v1.SignalEvent
+	(*SignalEventsReply)(nil),       // 21: strategy.v1.SignalEventsReply
+	(*MissFunnelRequest)(nil),       // 22: strategy.v1.MissFunnelRequest
+	(*MissReasonCount)(nil),         // 23: strategy.v1.MissReasonCount
+	(*MissFunnelDay)(nil),           // 24: strategy.v1.MissFunnelDay
+	(*MissFunnelReply)(nil),         // 25: strategy.v1.MissFunnelReply
+	nil,                             // 26: strategy.v1.Signal.DimsEntry
+	nil,                             // 27: strategy.v1.ScanReply.DroppedEntry
+	nil,                             // 28: strategy.v1.ScanReply.MissesEntry
 }
 var file_api_strategy_v1_strategy_proto_depIdxs = []int32{
-	19, // 0: strategy.v1.Signal.dims:type_name -> strategy.v1.Signal.DimsEntry
+	26, // 0: strategy.v1.Signal.dims:type_name -> strategy.v1.Signal.DimsEntry
 	0,  // 1: strategy.v1.ListSignalsReply.items:type_name -> strategy.v1.Signal
-	20, // 2: strategy.v1.ScanReply.dropped:type_name -> strategy.v1.ScanReply.DroppedEntry
-	21, // 3: strategy.v1.ScanReply.misses:type_name -> strategy.v1.ScanReply.MissesEntry
+	27, // 2: strategy.v1.ScanReply.dropped:type_name -> strategy.v1.ScanReply.DroppedEntry
+	28, // 3: strategy.v1.ScanReply.misses:type_name -> strategy.v1.ScanReply.MissesEntry
 	7,  // 4: strategy.v1.ListCandidatesReply.items:type_name -> strategy.v1.Candidate
 	15, // 5: strategy.v1.PerformanceReply.attributions:type_name -> strategy.v1.AttributionCount
 	17, // 6: strategy.v1.ScoreVsPnlReply.points:type_name -> strategy.v1.ScorePnlPoint
-	1,  // 7: strategy.v1.Strategy.ListSignals:input_type -> strategy.v1.ListSignalsRequest
-	3,  // 8: strategy.v1.Strategy.GetSignal:input_type -> strategy.v1.GetSignalRequest
-	4,  // 9: strategy.v1.Strategy.TransitionSignal:input_type -> strategy.v1.TransitionSignalRequest
-	5,  // 10: strategy.v1.Strategy.Scan:input_type -> strategy.v1.ScanRequest
-	8,  // 11: strategy.v1.Strategy.ListCandidates:input_type -> strategy.v1.ListCandidatesRequest
-	10, // 12: strategy.v1.Strategy.AddBlacklist:input_type -> strategy.v1.AddBlacklistRequest
-	11, // 13: strategy.v1.Strategy.RemoveBlacklist:input_type -> strategy.v1.RemoveBlacklistRequest
-	13, // 14: strategy.v1.Strategy.Performance:input_type -> strategy.v1.PerformanceRequest
-	16, // 15: strategy.v1.Strategy.ScoreVsPnl:input_type -> strategy.v1.ScoreVsPnlRequest
-	2,  // 16: strategy.v1.Strategy.ListSignals:output_type -> strategy.v1.ListSignalsReply
-	0,  // 17: strategy.v1.Strategy.GetSignal:output_type -> strategy.v1.Signal
-	0,  // 18: strategy.v1.Strategy.TransitionSignal:output_type -> strategy.v1.Signal
-	6,  // 19: strategy.v1.Strategy.Scan:output_type -> strategy.v1.ScanReply
-	9,  // 20: strategy.v1.Strategy.ListCandidates:output_type -> strategy.v1.ListCandidatesReply
-	12, // 21: strategy.v1.Strategy.AddBlacklist:output_type -> strategy.v1.BlacklistReply
-	12, // 22: strategy.v1.Strategy.RemoveBlacklist:output_type -> strategy.v1.BlacklistReply
-	14, // 23: strategy.v1.Strategy.Performance:output_type -> strategy.v1.PerformanceReply
-	18, // 24: strategy.v1.Strategy.ScoreVsPnl:output_type -> strategy.v1.ScoreVsPnlReply
-	16, // [16:25] is the sub-list for method output_type
-	7,  // [7:16] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	20, // 7: strategy.v1.SignalEventsReply.items:type_name -> strategy.v1.SignalEvent
+	23, // 8: strategy.v1.MissFunnelDay.reasons:type_name -> strategy.v1.MissReasonCount
+	24, // 9: strategy.v1.MissFunnelReply.days:type_name -> strategy.v1.MissFunnelDay
+	1,  // 10: strategy.v1.Strategy.ListSignals:input_type -> strategy.v1.ListSignalsRequest
+	3,  // 11: strategy.v1.Strategy.GetSignal:input_type -> strategy.v1.GetSignalRequest
+	4,  // 12: strategy.v1.Strategy.TransitionSignal:input_type -> strategy.v1.TransitionSignalRequest
+	5,  // 13: strategy.v1.Strategy.Scan:input_type -> strategy.v1.ScanRequest
+	8,  // 14: strategy.v1.Strategy.ListCandidates:input_type -> strategy.v1.ListCandidatesRequest
+	10, // 15: strategy.v1.Strategy.AddBlacklist:input_type -> strategy.v1.AddBlacklistRequest
+	11, // 16: strategy.v1.Strategy.RemoveBlacklist:input_type -> strategy.v1.RemoveBlacklistRequest
+	13, // 17: strategy.v1.Strategy.Performance:input_type -> strategy.v1.PerformanceRequest
+	16, // 18: strategy.v1.Strategy.ScoreVsPnl:input_type -> strategy.v1.ScoreVsPnlRequest
+	19, // 19: strategy.v1.Strategy.GetSignalEvents:input_type -> strategy.v1.SignalEventsRequest
+	22, // 20: strategy.v1.Strategy.GetMissFunnel:input_type -> strategy.v1.MissFunnelRequest
+	2,  // 21: strategy.v1.Strategy.ListSignals:output_type -> strategy.v1.ListSignalsReply
+	0,  // 22: strategy.v1.Strategy.GetSignal:output_type -> strategy.v1.Signal
+	0,  // 23: strategy.v1.Strategy.TransitionSignal:output_type -> strategy.v1.Signal
+	6,  // 24: strategy.v1.Strategy.Scan:output_type -> strategy.v1.ScanReply
+	9,  // 25: strategy.v1.Strategy.ListCandidates:output_type -> strategy.v1.ListCandidatesReply
+	12, // 26: strategy.v1.Strategy.AddBlacklist:output_type -> strategy.v1.BlacklistReply
+	12, // 27: strategy.v1.Strategy.RemoveBlacklist:output_type -> strategy.v1.BlacklistReply
+	14, // 28: strategy.v1.Strategy.Performance:output_type -> strategy.v1.PerformanceReply
+	18, // 29: strategy.v1.Strategy.ScoreVsPnl:output_type -> strategy.v1.ScoreVsPnlReply
+	21, // 30: strategy.v1.Strategy.GetSignalEvents:output_type -> strategy.v1.SignalEventsReply
+	25, // 31: strategy.v1.Strategy.GetMissFunnel:output_type -> strategy.v1.MissFunnelReply
+	21, // [21:32] is the sub-list for method output_type
+	10, // [10:21] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_api_strategy_v1_strategy_proto_init() }
@@ -1934,7 +2382,7 @@ func file_api_strategy_v1_strategy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_strategy_v1_strategy_proto_rawDesc), len(file_api_strategy_v1_strategy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

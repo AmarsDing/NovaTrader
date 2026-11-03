@@ -114,6 +114,8 @@ type SignalRepo interface {
 	LastDoneBuy(ctx context.Context, book, symbol string) (*Signal, error)
 	// List 按编号倒序返回。
 	List(ctx context.Context, f SignalFilter) ([]*Signal, error)
+	// Events 返回信号的状态变迁流水（BE-02），按发生时间升序；无历史返回空切片。
+	Events(ctx context.Context, signalID int) ([]SignalEvent, error)
 }
 
 // ClosureProjectionRepo 是闭仓归并的只读投影端口（M06 done→closed 设计合同
@@ -176,6 +178,9 @@ type CandidateRepo interface {
 	SetOutcome(ctx context.Context, id int, t1, t3, t5 *float64) error
 	// List 按最终分、规则分倒序返回。
 	List(ctx context.Context, f CandidateFilter) ([]Candidate, error)
+	// MissFunnel 聚合 [from, to] 闭区间内每日候选总数与 miss_reason 计数（BE-12），
+	// pool 为空聚合全部池；无候选的日期不出现在结果里。
+	MissFunnel(ctx context.Context, from, to time.Time, pool string) ([]MissFunnelDayRow, error)
 }
 
 type BlacklistRepo interface {

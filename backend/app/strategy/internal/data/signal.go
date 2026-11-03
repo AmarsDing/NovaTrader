@@ -7,6 +7,7 @@ import (
 
 	"server/app/strategy/internal/biz"
 	"server/ent"
+	"server/ent/signalevent"
 	"server/ent/tradesignal"
 	"server/pkg/outbox"
 
@@ -187,6 +188,25 @@ func (r *signalRepo) Get(ctx context.Context, id int) (*biz.Signal, error) {
 		return nil, err
 	}
 	return toSignal(row), nil
+}
+
+// Events 返回信号的状态变迁流水（BE-02），按发生时间、编号升序。
+func (r *signalRepo) Events(ctx context.Context, signalID int) ([]biz.SignalEvent, error) {
+	rows, err := r.d.client.SignalEvent.Query().
+		Where(signalevent.SignalID(signalID)).
+		Order(signalevent.ByCreatedAt(), signalevent.ByID()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.SignalEvent, len(rows))
+	for i, row := range rows {
+		out[i] = biz.SignalEvent{
+			ID: row.ID, SignalID: row.SignalID, From: row.FromStatus, To: row.ToStatus,
+			Reason: row.Reason, Actor: row.Actor, TraceID: row.TraceID, At: row.CreatedAt,
+		}
+	}
+	return out, nil
 }
 
 func (r *signalRepo) Latest(ctx context.Context, book, symbol, side string) (*biz.Signal, error) {

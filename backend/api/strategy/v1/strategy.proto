@@ -39,6 +39,14 @@ service Strategy {
   rpc ScoreVsPnl(ScoreVsPnlRequest) returns (ScoreVsPnlReply) {
     option (google.api.http) = {get: "/v1/strategy/score-vs-pnl"};
   }
+  // BE-02 信号状态变迁历史（只读）：signal_events 流水按发生时间升序，from_status 为空表示创建。
+  rpc GetSignalEvents(SignalEventsRequest) returns (SignalEventsReply) {
+    option (google.api.http) = {get: "/v1/strategy/signals/{id}/events"};
+  }
+  // BE-12 miss_reason 漏斗按日聚合（只读）：scan 单轮 misses 的历史聚合看板。
+  rpc GetMissFunnel(MissFunnelRequest) returns (MissFunnelReply) {
+    option (google.api.http) = {get: "/v1/strategy/miss-funnel"};
+  }
 }
 
 message Signal {
@@ -219,4 +227,48 @@ message ScoreVsPnlReply {
   repeated ScorePnlPoint points = 1;
   double pearson = 2; // 样本 <2 或方差为 0 时返回 0，由前端写「样本不足」
   int32 sample = 3;   // 参与相关系数的笔数
+}
+
+/* ---------- BE-02 信号状态变迁历史 ---------- */
+
+message SignalEventsRequest {
+  int64 id = 1; // 信号主键
+}
+
+message SignalEvent {
+  int64 id = 1;
+  int64 signal_id = 2;
+  string from_status = 3; // 空 = 创建事件
+  string to_status = 4;
+  string reason = 5;
+  string actor = 6;
+  string trace_id = 7;
+  string at = 8; // RFC3339
+}
+
+message SignalEventsReply {
+  repeated SignalEvent items = 1; // 按发生时间升序；信号无历史时为空
+}
+
+/* ---------- BE-12 miss_reason 漏斗按日聚合 ---------- */
+
+message MissFunnelRequest {
+  int32 days = 1;  // 回看日历天数（含今天），默认 7，上限 30
+  string pool = 2; // 空 = 全部池
+}
+
+message MissReasonCount {
+  string reason = 1;
+  int32 count = 2;
+}
+
+message MissFunnelDay {
+  string trade_date = 1;
+  int32 total = 2;  // 当日候选总数（含未落选）
+  int32 missed = 3; // 当日落选数（miss_reason 非空）
+  repeated MissReasonCount reasons = 4; // 按 count 倒序，同数按 reason 字典序
+}
+
+message MissFunnelReply {
+  repeated MissFunnelDay days = 1; // 按日期升序；无候选的日期缺席（不补零）
 }
