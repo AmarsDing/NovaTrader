@@ -448,6 +448,46 @@ func (r *Repo) SectorMembers(ctx context.Context, day time.Time) (map[string][]s
 	return members, names, nil
 }
 
+// SectorMembership 返回 symbols 在 day 当天有效的板块归属行（BE-05 反向查询）：
+// in_date ≤ day，且 out_date 为空或晚于 day；板块名缺失时 Name 为空串。
+func (r *Repo) SectorMembership(ctx context.Context, symbols []string, day time.Time) ([]biz.SectorMembershipRow, error) {
+	d := pgDay(day)
+	rows, err := r.db.SectorMember.Query().Where(
+		sectormember.SymbolIn(symbols...),
+		sectormember.InDateLTE(d),
+		sectormember.Or(sectormember.OutDateIsNil(), sectormember.OutDateGT(d)),
+	).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	codes := make([]string, 0, len(rows))
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if !seen[row.SectorCode] {
+			seen[row.SectorCode] = true
+			codes = append(codes, row.SectorCode)
+		}
+	}
+	names := map[string]string{}
+	if len(codes) > 0 {
+		secs, err := r.db.Sector.Query().Where(sector.CodeIn(codes...)).
+			Select(sector.FieldCode, sector.FieldName).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range secs {
+			names[s.Code] = s.Name
+		}
+	}
+	out := make([]biz.SectorMembershipRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, biz.SectorMembershipRow{
+			Symbol: row.Symbol, SectorCode: row.SectorCode, SectorName: names[row.SectorCode],
+		})
+	}
+	return out, nil
+}
+
 // MoneyFlows 只返回当天有资金流记录的股票，每只取截至当天最近 n 天，升序。
 func (r *Repo) MoneyFlows(ctx context.Context, day time.Time, n int) (map[string][]market.Flow, error) {
 	d := pgDay(day)

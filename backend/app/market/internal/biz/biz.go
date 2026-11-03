@@ -73,6 +73,9 @@ type Repo interface {
 	SaveSectorHeat(ctx context.Context, day, asOf time.Time, rows []market.SectorHeat) error
 
 	SectorMembers(ctx context.Context, day time.Time) (map[string][]string, map[string]string, error)
+	// SectorMembership 返回 symbols 在 day 当天有效的板块归属行（BE-05 反向查询，
+	// in_date ≤ day < out_date），含板块名称（缺名为空串）。
+	SectorMembership(ctx context.Context, symbols []string, day time.Time) ([]SectorMembershipRow, error)
 	MoneyFlows(ctx context.Context, day time.Time, n int) (map[string][]market.Flow, error)
 	DayAmounts(ctx context.Context, day time.Time) (map[string]float64, error)
 	LhbSeats(ctx context.Context, day time.Time) (map[string][]market.Seat, error)

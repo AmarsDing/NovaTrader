@@ -122,15 +122,20 @@ func (u *Usecase) Quote(ctx context.Context, symbol string) (QuoteRow, error) {
 	return q, nil
 }
 
-// lookupSnapshot 在实时快照批次里找当日口径的一只。快照陈旧但日期是当日仍采用
-// （陈旧由 Stale 表达）；跨日残留快照不如 1d 收盘行口径清楚，弃用。
-// 快照源失败降级 1d，不让侧栏因为 Redis 抖动整屏空白。
+// lookupSnapshot 拉取实时快照批次并找当日口径的一只。快照源失败降级 1d，
+// 不让侧栏因为 Redis 抖动整屏空白。
 func (u *Usecase) lookupSnapshot(ctx context.Context, symbol string, tradeDay time.Time) *market.Snapshot {
 	all, err := u.snaps.All(ctx)
 	if err != nil {
 		u.log.Warnf("quote snapshot source failed: %v", err)
 		return nil
 	}
+	return findSnapshot(all, symbol, tradeDay)
+}
+
+// findSnapshot 在一批快照里找 symbol 的当日口径快照。快照陈旧但日期是当日仍采用
+// （陈旧由 Stale 表达）；跨日残留快照不如 1d 收盘行口径清楚，弃用。
+func findSnapshot(all []market.Snapshot, symbol string, tradeDay time.Time) *market.Snapshot {
 	for i := range all {
 		if all[i].Symbol != symbol || all[i].Last <= 0 {
 			continue
@@ -197,4 +202,83 @@ func (u *Usecase) week52Extremes(ctx context.Context, symbol string, now time.Ti
 	}
 	h, l := maxH, minL
 	return &h, &l
+}
+
+/* ---------- 三指数快照（BE-10） ---------- */
+
+// indexUniverse 是侧栏固定展示的三只 A 股指数，顺序即回包顺序（与 brain/review.go 约定一致）。
+var indexUniverse = []struct {
+	Code string
+	Name string
+}{
+	{Code: "000001.SH", Name: "上证指数"},
+	{Code: "399001.SZ", Name: "深证成指"},
+	{Code: "399006.SZ", Name: "创业板指"},
+}
+
+// IndexQuoteRow 是一只指数的快照 biz 视图（对应 api market.v1.IndexQuote）。
+// 口径与 QuoteRow 同源：Source 记 snap/1d 出处，Found=false 表示两边都缺数。
+// High/Low/PreClose 仅内部计算用，不随接口透出。
+type IndexQuoteRow struct {
+	Code, Name                string
+	Last, Chg, PctChg         float64
+	Amplitude                 float64 // %
+	High, Low, PreClose       float64
+	AsOf                      time.Time
+	Source                    string // snap / 1d / ""
+	Stale, Found              bool
+}
+
+// IndexSnapshot 拼三只固定指数的快照：共享一次 snaps.All 拉取（避免三次 Redis
+// 往返），每只先找当日快照、缺则回退最近 1d 收盘行，两边都缺 Found=false。
+// stale 与回退纪律与单券 Quote 一致；快照源失败降级 1d，1d 读库错误整批上抛。
+func (u *Usecase) IndexSnapshot(ctx context.Context) ([]IndexQuoteRow, error) {
+	now := time.Now()
+	tradeDay := market.DateOf(now)
+	_, inSession := market.Slot(now)
+
+	var all []market.Snapshot
+	if rows, err := u.snaps.All(ctx); err != nil {
+		u.log.Warnf("index snapshot source failed: %v", err)
+	} else {
+		all = rows
+	}
+
+	out := make([]IndexQuoteRow, 0, len(indexUniverse))
+	for _, idx := range indexUniverse {
+		row := IndexQuoteRow{Code: idx.Code, Name: idx.Name}
+		if snap := findSnapshot(all, idx.Code, tradeDay); snap != nil {
+			row.Source = "snap"
+			row.Last, row.High, row.Low, row.PreClose = snap.Last, snap.High, snap.Low, snap.PreClose
+			row.AsOf = snap.FreshnessTime()
+			if row.AsOf.IsZero() {
+				row.AsOf = now
+			}
+			row.Stale = snap.Stale || (snap.Expired(now, u.cfg.StaleAfter) && inSession)
+			row.Found = true
+		} else {
+			rows, err := u.repo.Bars(ctx, idx.Code, "1d", time.Time{}, now, 2)
+			if err != nil {
+				return nil, err
+			}
+			if len(rows) > 0 {
+				b := rows[len(rows)-1]
+				row.Source = "1d"
+				row.Last, row.High, row.Low, row.PreClose = b.Close, b.High, b.Low, b.PreClose
+				row.AsOf = b.Time
+				row.Found = true
+			}
+		}
+		if row.PreClose > 0 {
+			if row.Last > 0 {
+				row.Chg = row.Last - row.PreClose
+				row.PctChg = row.Chg / row.PreClose * 100
+			}
+			if row.High > 0 && row.Low > 0 {
+				row.Amplitude = (row.High - row.Low) / row.PreClose * 100
+			}
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }

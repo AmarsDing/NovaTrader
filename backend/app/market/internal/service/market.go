@@ -19,8 +19,9 @@ import (
 var ProviderSet = wire.NewSet(NewMarketService)
 
 const (
-	maxWatchSymbols = 500
-	maxWatchTTL     = 24 * time.Hour
+	maxWatchSymbols      = 500
+	maxWatchTTL          = 24 * time.Hour
+	maxMembershipSymbols = 200
 )
 
 type MarketService struct {
@@ -365,6 +366,66 @@ func (s *MarketService) GetSectorHeat(ctx context.Context, req *v1.GetSectorHeat
 			LeaderReason: h.LeaderReason, OverseasImpulse: h.OverseasImpulse, AsOf: fmtTime(at),
 		})
 	}
+	return reply, nil
+}
+
+// GetSectorMembership 反向查询一批股票的当日有效板块归属（BE-05）。
+// 任一 symbol 解析失败整批 400；超出上限截断；无归属的 symbol 回空 sectors，不是错误。
+func (s *MarketService) GetSectorMembership(ctx context.Context, req *v1.SectorMembershipRequest) (*v1.SectorMembershipReply, error) {
+	raw := req.GetSymbols()
+	if len(raw) == 0 {
+		return nil, badRequest("symbols is required")
+	}
+	if len(raw) > maxMembershipSymbols {
+		raw = raw[:maxMembershipSymbols]
+	}
+	syms, err := parseSymbols(raw)
+	if err != nil {
+		return nil, err
+	}
+	day, err := parseDay(req.GetTradeDate())
+	if err != nil {
+		return nil, err
+	}
+	by, err := s.uc.SectorMembership(ctx, syms, day)
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.SectorMembershipReply{
+		TradeDate: fmtDay(day),
+		Items:     make([]*v1.SectorMembershipItem, 0, len(syms)),
+	}
+	// items 按请求 symbols 顺序回包（含零归属券），前端好对位。
+	for _, sym := range syms {
+		item := &v1.SectorMembershipItem{Symbol: sym, Sectors: []*v1.SectorRef{}}
+		for _, ref := range by[sym] {
+			item.Sectors = append(item.Sectors, &v1.SectorRef{Code: ref.Code, Name: ref.Name})
+		}
+		reply.Items = append(reply.Items, item)
+	}
+	return reply, nil
+}
+
+// GetIndexSnapshot 返回三只固定指数的快照（BE-10，口径与单券 Quote 同源）。
+func (s *MarketService) GetIndexSnapshot(ctx context.Context, _ *v1.IndexSnapshotRequest) (*v1.IndexSnapshotReply, error) {
+	rows, err := s.uc.IndexSnapshot(ctx)
+	if err != nil {
+		return nil, internal(err)
+	}
+	reply := &v1.IndexSnapshotReply{Indices: make([]*v1.IndexQuote, 0, len(rows))}
+	var latest time.Time
+	for _, r := range rows {
+		if r.AsOf.After(latest) {
+			latest = r.AsOf
+		}
+		reply.Indices = append(reply.Indices, &v1.IndexQuote{
+			Code: r.Code, Name: r.Name, Last: r.Last, Chg: r.Chg, PctChg: r.PctChg,
+			Amplitude: r.Amplitude, AsOf: fmtTime(r.AsOf), Source: r.Source,
+			Stale: r.Stale, Found: r.Found,
+		})
+	}
+	// as_of 取各指数 as_of 的最大值，表征本批次整体新鲜度上界。
+	reply.AsOf = fmtTime(latest)
 	return reply, nil
 }
 

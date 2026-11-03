@@ -5826,6 +5826,429 @@ func (x *SearchSecuritiesReply) GetMatches() []*SecurityMatch {
 	return nil
 }
 
+// SectorRef 一个板块引用；name 缺失时为空串（前端显代码），后端不编名。
+type SectorRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorRef) Reset() {
+	*x = SectorRef{}
+	mi := &file_api_market_v1_market_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorRef) ProtoMessage() {}
+
+func (x *SectorRef) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorRef.ProtoReflect.Descriptor instead.
+func (*SectorRef) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *SectorRef) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *SectorRef) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// SectorMembershipRequest 批量归属查询。symbols 任一解析失败整批 400；
+// 上限 200（前端持仓+候选量级远低于此），超出截断并仍正常返回。
+type SectorMembershipRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbols       []string               `protobuf:"bytes,1,rep,name=symbols,proto3" json:"symbols,omitempty"`                      // 必传非空；裸码/后缀码均可，规整为 600519.SH
+	TradeDate     string                 `protobuf:"bytes,2,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"` // YYYY-MM-DD，空为今天；有效期口径 in_date ≤ 当日 < out_date
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorMembershipRequest) Reset() {
+	*x = SectorMembershipRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorMembershipRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorMembershipRequest) ProtoMessage() {}
+
+func (x *SectorMembershipRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorMembershipRequest.ProtoReflect.Descriptor instead.
+func (*SectorMembershipRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *SectorMembershipRequest) GetSymbols() []string {
+	if x != nil {
+		return x.Symbols
+	}
+	return nil
+}
+
+func (x *SectorMembershipRequest) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+// SectorMembershipItem 一只证券的归属结果；sectors 为空 = 当日无有效归属（「未归属」），不是错误。
+type SectorMembershipItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbol        string                 `protobuf:"bytes,1,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Sectors       []*SectorRef           `protobuf:"bytes,2,rep,name=sectors,proto3" json:"sectors,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorMembershipItem) Reset() {
+	*x = SectorMembershipItem{}
+	mi := &file_api_market_v1_market_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorMembershipItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorMembershipItem) ProtoMessage() {}
+
+func (x *SectorMembershipItem) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorMembershipItem.ProtoReflect.Descriptor instead.
+func (*SectorMembershipItem) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *SectorMembershipItem) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *SectorMembershipItem) GetSectors() []*SectorRef {
+	if x != nil {
+		return x.Sectors
+	}
+	return nil
+}
+
+// SectorMembershipReply items 按请求 symbols 顺序回包（含零归属券），便于前端对位。
+type SectorMembershipReply struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	TradeDate     string                  `protobuf:"bytes,1,opt,name=trade_date,json=tradeDate,proto3" json:"trade_date,omitempty"` // 实际生效的归属窗口日（YYYY-MM-DD）
+	Items         []*SectorMembershipItem `protobuf:"bytes,2,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SectorMembershipReply) Reset() {
+	*x = SectorMembershipReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SectorMembershipReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SectorMembershipReply) ProtoMessage() {}
+
+func (x *SectorMembershipReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SectorMembershipReply.ProtoReflect.Descriptor instead.
+func (*SectorMembershipReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *SectorMembershipReply) GetTradeDate() string {
+	if x != nil {
+		return x.TradeDate
+	}
+	return ""
+}
+
+func (x *SectorMembershipReply) GetItems() []*SectorMembershipItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type IndexSnapshotRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexSnapshotRequest) Reset() {
+	*x = IndexSnapshotRequest{}
+	mi := &file_api_market_v1_market_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexSnapshotRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexSnapshotRequest) ProtoMessage() {}
+
+func (x *IndexSnapshotRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexSnapshotRequest.ProtoReflect.Descriptor instead.
+func (*IndexSnapshotRequest) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{75}
+}
+
+// IndexQuote 一只指数的快照。口径与 Quote 同源：snap=盘中实时快照（Redis snap:latest，
+// 仅当行情时间落在当日），1d=最近日线收盘；两边都缺 found=false、价格列零值（显式缺失，不编数）。
+// as_of：snap 口径取行情时间与写入时间较早者，1d 口径取 bar 日零点；缺失为空串。
+// stale：snap 陈旧或交易时段快照过期规则命中；1d 口径恒 false（收盘截面不算陈旧）。
+type IndexQuote struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"` // 000001.SH / 399001.SZ / 399006.SZ
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"` // 上证指数 / 深证成指 / 创业板指（与 brain 复盘口径一致的固定三只）
+	Last          float64                `protobuf:"fixed64,3,opt,name=last,proto3" json:"last,omitempty"`
+	Chg           float64                `protobuf:"fixed64,4,opt,name=chg,proto3" json:"chg,omitempty"`                     // last - prev_close；prev_close=0 时为 0
+	PctChg        float64                `protobuf:"fixed64,5,opt,name=pct_chg,json=pctChg,proto3" json:"pct_chg,omitempty"` // 相对昨收涨跌幅 %
+	Amplitude     float64                `protobuf:"fixed64,6,opt,name=amplitude,proto3" json:"amplitude,omitempty"`         // (high - low) / prev_close；prev_close=0 为 0
+	AsOf          string                 `protobuf:"bytes,7,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"`         // RFC3339
+	Source        string                 `protobuf:"bytes,8,opt,name=source,proto3" json:"source,omitempty"`                 // snap / 1d / ""
+	Stale         bool                   `protobuf:"varint,9,opt,name=stale,proto3" json:"stale,omitempty"`
+	Found         bool                   `protobuf:"varint,10,opt,name=found,proto3" json:"found,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexQuote) Reset() {
+	*x = IndexQuote{}
+	mi := &file_api_market_v1_market_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexQuote) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexQuote) ProtoMessage() {}
+
+func (x *IndexQuote) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexQuote.ProtoReflect.Descriptor instead.
+func (*IndexQuote) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *IndexQuote) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *IndexQuote) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *IndexQuote) GetLast() float64 {
+	if x != nil {
+		return x.Last
+	}
+	return 0
+}
+
+func (x *IndexQuote) GetChg() float64 {
+	if x != nil {
+		return x.Chg
+	}
+	return 0
+}
+
+func (x *IndexQuote) GetPctChg() float64 {
+	if x != nil {
+		return x.PctChg
+	}
+	return 0
+}
+
+func (x *IndexQuote) GetAmplitude() float64 {
+	if x != nil {
+		return x.Amplitude
+	}
+	return 0
+}
+
+func (x *IndexQuote) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
+func (x *IndexQuote) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *IndexQuote) GetStale() bool {
+	if x != nil {
+		return x.Stale
+	}
+	return false
+}
+
+func (x *IndexQuote) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+// IndexSnapshotReply as_of = 各指数 as_of 的最大值（RFC3339；全部缺失为空串）。
+// indices 恒为三只、固定顺序（上证/深成/创指），缺数靠 found=false 表达。
+type IndexSnapshotReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AsOf          string                 `protobuf:"bytes,1,opt,name=as_of,json=asOf,proto3" json:"as_of,omitempty"`
+	Indices       []*IndexQuote          `protobuf:"bytes,2,rep,name=indices,proto3" json:"indices,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexSnapshotReply) Reset() {
+	*x = IndexSnapshotReply{}
+	mi := &file_api_market_v1_market_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexSnapshotReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexSnapshotReply) ProtoMessage() {}
+
+func (x *IndexSnapshotReply) ProtoReflect() protoreflect.Message {
+	mi := &file_api_market_v1_market_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexSnapshotReply.ProtoReflect.Descriptor instead.
+func (*IndexSnapshotReply) Descriptor() ([]byte, []int) {
+	return file_api_market_v1_market_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *IndexSnapshotReply) GetAsOf() string {
+	if x != nil {
+		return x.AsOf
+	}
+	return ""
+}
+
+func (x *IndexSnapshotReply) GetIndices() []*IndexQuote {
+	if x != nil {
+		return x.Indices
+	}
+	return nil
+}
+
 var File_api_market_v1_market_proto protoreflect.FileDescriptor
 
 const file_api_market_v1_market_proto_rawDesc = "" +
@@ -6430,18 +6853,51 @@ const file_api_market_v1_market_proto_rawDesc = "" +
 	"match_kind\x18\x06 \x01(\tR\tmatchKind\x12\x16\n" +
 	"\x06pinyin\x18\a \x01(\tR\x06pinyin\"O\n" +
 	"\x15SearchSecuritiesReply\x126\n" +
-	"\amatches\x18\x01 \x03(\v2\x1c.api.market.v1.SecurityMatchR\amatches*$\n" +
+	"\amatches\x18\x01 \x03(\v2\x1c.api.market.v1.SecurityMatchR\amatches\"3\n" +
+	"\tSectorRef\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"R\n" +
+	"\x17SectorMembershipRequest\x12\x18\n" +
+	"\asymbols\x18\x01 \x03(\tR\asymbols\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x02 \x01(\tR\ttradeDate\"b\n" +
+	"\x14SectorMembershipItem\x12\x16\n" +
+	"\x06symbol\x18\x01 \x01(\tR\x06symbol\x122\n" +
+	"\asectors\x18\x02 \x03(\v2\x18.api.market.v1.SectorRefR\asectors\"q\n" +
+	"\x15SectorMembershipReply\x12\x1d\n" +
+	"\n" +
+	"trade_date\x18\x01 \x01(\tR\ttradeDate\x129\n" +
+	"\x05items\x18\x02 \x03(\v2#.api.market.v1.SectorMembershipItemR\x05items\"\x16\n" +
+	"\x14IndexSnapshotRequest\"\xea\x01\n" +
+	"\n" +
+	"IndexQuote\x12\x12\n" +
+	"\x04code\x18\x01 \x01(\tR\x04code\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04last\x18\x03 \x01(\x01R\x04last\x12\x10\n" +
+	"\x03chg\x18\x04 \x01(\x01R\x03chg\x12\x17\n" +
+	"\apct_chg\x18\x05 \x01(\x01R\x06pctChg\x12\x1c\n" +
+	"\tamplitude\x18\x06 \x01(\x01R\tamplitude\x12\x13\n" +
+	"\x05as_of\x18\a \x01(\tR\x04asOf\x12\x16\n" +
+	"\x06source\x18\b \x01(\tR\x06source\x12\x14\n" +
+	"\x05stale\x18\t \x01(\bR\x05stale\x12\x14\n" +
+	"\x05found\x18\n" +
+	" \x01(\bR\x05found\"^\n" +
+	"\x12IndexSnapshotReply\x12\x13\n" +
+	"\x05as_of\x18\x01 \x01(\tR\x04asOf\x123\n" +
+	"\aindices\x18\x02 \x03(\v2\x19.api.market.v1.IndexQuoteR\aindices*$\n" +
 	"\x06Adjust\x12\b\n" +
 	"\x04NONE\x10\x00\x12\a\n" +
 	"\x03QFQ\x10\x01\x12\a\n" +
-	"\x03HFQ\x10\x022\xcb\x16\n" +
+	"\x03HFQ\x10\x022\xd7\x18\n" +
 	"\x06Market\x12^\n" +
 	"\aGetBars\x12\x1d.api.market.v1.GetBarsRequest\x1a\x1b.api.market.v1.GetBarsReply\"\x17\x82\xd3\xe4\x93\x02\x11\x12\x0f/v1/market/bars\x12v\n" +
 	"\rGetIndicators\x12#.api.market.v1.GetIndicatorsRequest\x1a!.api.market.v1.GetIndicatorsReply\"\x1d\x82\xd3\xe4\x93\x02\x17\x12\x15/v1/market/indicators\x12y\n" +
 	"\x0fGetFactorsCross\x12%.api.market.v1.GetFactorsCrossRequest\x1a#.api.market.v1.GetFactorsCrossReply\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/market/factors\x12j\n" +
 	"\fGetSentiment\x12\".api.market.v1.GetSentimentRequest\x1a\x18.api.market.v1.Sentiment\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/market/sentiment\x12u\n" +
 	"\x0eGetLimitBoards\x12$.api.market.v1.GetLimitBoardsRequest\x1a\".api.market.v1.GetLimitBoardsReply\"\x19\x82\xd3\xe4\x93\x02\x13\x12\x11/v1/market/limits\x12s\n" +
-	"\rGetSectorHeat\x12#.api.market.v1.GetSectorHeatRequest\x1a!.api.market.v1.GetSectorHeatReply\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/market/sectors\x12u\n" +
+	"\rGetSectorHeat\x12#.api.market.v1.GetSectorHeatRequest\x1a!.api.market.v1.GetSectorHeatReply\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/market/sectors\x12\x8a\x01\n" +
+	"\x13GetSectorMembership\x12&.api.market.v1.SectorMembershipRequest\x1a$.api.market.v1.SectorMembershipReply\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/market/sectors/membership\x12}\n" +
+	"\x10GetIndexSnapshot\x12#.api.market.v1.IndexSnapshotRequest\x1a!.api.market.v1.IndexSnapshotReply\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/market/index-snapshot\x12u\n" +
 	"\fSetWatchlist\x12\".api.market.v1.SetWatchlistRequest\x1a .api.market.v1.SetWatchlistReply\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/market/watchlist\x12r\n" +
 	"\fGetWatchlist\x12\".api.market.v1.GetWatchlistRequest\x1a .api.market.v1.GetWatchlistReply\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/market/watchlist\x12j\n" +
 	"\n" +
@@ -6476,7 +6932,7 @@ func file_api_market_v1_market_proto_rawDescGZIP() []byte {
 }
 
 var file_api_market_v1_market_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_api_market_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 73)
+var file_api_market_v1_market_proto_msgTypes = make([]protoimpl.MessageInfo, 80)
 var file_api_market_v1_market_proto_goTypes = []any{
 	(Adjust)(0),                        // 0: api.market.v1.Adjust
 	(*GetBarsRequest)(nil),             // 1: api.market.v1.GetBarsRequest
@@ -6550,16 +7006,23 @@ var file_api_market_v1_market_proto_goTypes = []any{
 	(*SearchSecuritiesRequest)(nil),    // 69: api.market.v1.SearchSecuritiesRequest
 	(*SecurityMatch)(nil),              // 70: api.market.v1.SecurityMatch
 	(*SearchSecuritiesReply)(nil),      // 71: api.market.v1.SearchSecuritiesReply
-	nil,                                // 72: api.market.v1.IndicatorPoint.ValuesEntry
-	nil,                                // 73: api.market.v1.FactorRow.ValuesEntry
+	(*SectorRef)(nil),                  // 72: api.market.v1.SectorRef
+	(*SectorMembershipRequest)(nil),    // 73: api.market.v1.SectorMembershipRequest
+	(*SectorMembershipItem)(nil),       // 74: api.market.v1.SectorMembershipItem
+	(*SectorMembershipReply)(nil),      // 75: api.market.v1.SectorMembershipReply
+	(*IndexSnapshotRequest)(nil),       // 76: api.market.v1.IndexSnapshotRequest
+	(*IndexQuote)(nil),                 // 77: api.market.v1.IndexQuote
+	(*IndexSnapshotReply)(nil),         // 78: api.market.v1.IndexSnapshotReply
+	nil,                                // 79: api.market.v1.IndicatorPoint.ValuesEntry
+	nil,                                // 80: api.market.v1.FactorRow.ValuesEntry
 }
 var file_api_market_v1_market_proto_depIdxs = []int32{
 	0,  // 0: api.market.v1.GetBarsRequest.adjust:type_name -> api.market.v1.Adjust
 	2,  // 1: api.market.v1.GetBarsReply.bars:type_name -> api.market.v1.Bar
 	0,  // 2: api.market.v1.GetIndicatorsRequest.adjust:type_name -> api.market.v1.Adjust
-	72, // 3: api.market.v1.IndicatorPoint.values:type_name -> api.market.v1.IndicatorPoint.ValuesEntry
+	79, // 3: api.market.v1.IndicatorPoint.values:type_name -> api.market.v1.IndicatorPoint.ValuesEntry
 	5,  // 4: api.market.v1.GetIndicatorsReply.points:type_name -> api.market.v1.IndicatorPoint
-	73, // 5: api.market.v1.FactorRow.values:type_name -> api.market.v1.FactorRow.ValuesEntry
+	80, // 5: api.market.v1.FactorRow.values:type_name -> api.market.v1.FactorRow.ValuesEntry
 	8,  // 6: api.market.v1.GetFactorsCrossReply.rows:type_name -> api.market.v1.FactorRow
 	13, // 7: api.market.v1.GetLimitBoardsReply.boards:type_name -> api.market.v1.LimitBoard
 	16, // 8: api.market.v1.GetSectorHeatReply.sectors:type_name -> api.market.v1.SectorHeat
@@ -6588,59 +7051,66 @@ var file_api_market_v1_market_proto_depIdxs = []int32{
 	64, // 31: api.market.v1.GetBarsBatchReply.results:type_name -> api.market.v1.SymbolBars
 	67, // 32: api.market.v1.GetFinanceBriefReply.rows:type_name -> api.market.v1.FinanceBriefRow
 	70, // 33: api.market.v1.SearchSecuritiesReply.matches:type_name -> api.market.v1.SecurityMatch
-	1,  // 34: api.market.v1.Market.GetBars:input_type -> api.market.v1.GetBarsRequest
-	4,  // 35: api.market.v1.Market.GetIndicators:input_type -> api.market.v1.GetIndicatorsRequest
-	7,  // 36: api.market.v1.Market.GetFactorsCross:input_type -> api.market.v1.GetFactorsCrossRequest
-	10, // 37: api.market.v1.Market.GetSentiment:input_type -> api.market.v1.GetSentimentRequest
-	12, // 38: api.market.v1.Market.GetLimitBoards:input_type -> api.market.v1.GetLimitBoardsRequest
-	15, // 39: api.market.v1.Market.GetSectorHeat:input_type -> api.market.v1.GetSectorHeatRequest
-	18, // 40: api.market.v1.Market.SetWatchlist:input_type -> api.market.v1.SetWatchlistRequest
-	20, // 41: api.market.v1.Market.GetWatchlist:input_type -> api.market.v1.GetWatchlistRequest
-	23, // 42: api.market.v1.Market.GetAuction:input_type -> api.market.v1.GetAuctionRequest
-	26, // 43: api.market.v1.Market.GetLadder:input_type -> api.market.v1.GetLadderRequest
-	30, // 44: api.market.v1.Market.GetLimitPremium:input_type -> api.market.v1.GetLimitPremiumRequest
-	34, // 45: api.market.v1.Market.GetBreadth:input_type -> api.market.v1.GetBreadthRequest
-	37, // 46: api.market.v1.Market.GetKlineGaps:input_type -> api.market.v1.GetKlineGapsRequest
-	40, // 47: api.market.v1.Market.GetEmotionPath:input_type -> api.market.v1.GetEmotionPathRequest
-	43, // 48: api.market.v1.Market.GetIntradayAlerts:input_type -> api.market.v1.GetIntradayAlertsRequest
-	46, // 49: api.market.v1.Market.GetQuote:input_type -> api.market.v1.GetQuoteRequest
-	50, // 50: api.market.v1.Market.GetSecurityBasics:input_type -> api.market.v1.GetSecurityBasicsRequest
-	52, // 51: api.market.v1.Market.GetSeatStats:input_type -> api.market.v1.GetSeatStatsRequest
-	55, // 52: api.market.v1.Market.GetChipDistribution:input_type -> api.market.v1.GetChipDistributionRequest
-	57, // 53: api.market.v1.Market.GetReportEstimates:input_type -> api.market.v1.GetReportEstimatesRequest
-	63, // 54: api.market.v1.Market.GetBarsBatch:input_type -> api.market.v1.GetBarsBatchRequest
-	66, // 55: api.market.v1.Market.GetFinanceBrief:input_type -> api.market.v1.GetFinanceBriefRequest
-	69, // 56: api.market.v1.Market.SearchSecurities:input_type -> api.market.v1.SearchSecuritiesRequest
-	60, // 57: api.market.v1.Market.GetAHPremium:input_type -> api.market.v1.GetAHPremiumRequest
-	3,  // 58: api.market.v1.Market.GetBars:output_type -> api.market.v1.GetBarsReply
-	6,  // 59: api.market.v1.Market.GetIndicators:output_type -> api.market.v1.GetIndicatorsReply
-	9,  // 60: api.market.v1.Market.GetFactorsCross:output_type -> api.market.v1.GetFactorsCrossReply
-	11, // 61: api.market.v1.Market.GetSentiment:output_type -> api.market.v1.Sentiment
-	14, // 62: api.market.v1.Market.GetLimitBoards:output_type -> api.market.v1.GetLimitBoardsReply
-	17, // 63: api.market.v1.Market.GetSectorHeat:output_type -> api.market.v1.GetSectorHeatReply
-	19, // 64: api.market.v1.Market.SetWatchlist:output_type -> api.market.v1.SetWatchlistReply
-	22, // 65: api.market.v1.Market.GetWatchlist:output_type -> api.market.v1.GetWatchlistReply
-	25, // 66: api.market.v1.Market.GetAuction:output_type -> api.market.v1.GetAuctionReply
-	29, // 67: api.market.v1.Market.GetLadder:output_type -> api.market.v1.GetLadderReply
-	33, // 68: api.market.v1.Market.GetLimitPremium:output_type -> api.market.v1.GetLimitPremiumReply
-	36, // 69: api.market.v1.Market.GetBreadth:output_type -> api.market.v1.GetBreadthReply
-	39, // 70: api.market.v1.Market.GetKlineGaps:output_type -> api.market.v1.GetKlineGapsReply
-	42, // 71: api.market.v1.Market.GetEmotionPath:output_type -> api.market.v1.GetEmotionPathReply
-	45, // 72: api.market.v1.Market.GetIntradayAlerts:output_type -> api.market.v1.GetIntradayAlertsReply
-	48, // 73: api.market.v1.Market.GetQuote:output_type -> api.market.v1.Quote
-	51, // 74: api.market.v1.Market.GetSecurityBasics:output_type -> api.market.v1.GetSecurityBasicsReply
-	54, // 75: api.market.v1.Market.GetSeatStats:output_type -> api.market.v1.GetSeatStatsReply
-	56, // 76: api.market.v1.Market.GetChipDistribution:output_type -> api.market.v1.GetChipDistributionReply
-	59, // 77: api.market.v1.Market.GetReportEstimates:output_type -> api.market.v1.GetReportEstimatesReply
-	65, // 78: api.market.v1.Market.GetBarsBatch:output_type -> api.market.v1.GetBarsBatchReply
-	68, // 79: api.market.v1.Market.GetFinanceBrief:output_type -> api.market.v1.GetFinanceBriefReply
-	71, // 80: api.market.v1.Market.SearchSecurities:output_type -> api.market.v1.SearchSecuritiesReply
-	61, // 81: api.market.v1.Market.GetAHPremium:output_type -> api.market.v1.GetAHPremiumReply
-	58, // [58:82] is the sub-list for method output_type
-	34, // [34:58] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	72, // 34: api.market.v1.SectorMembershipItem.sectors:type_name -> api.market.v1.SectorRef
+	74, // 35: api.market.v1.SectorMembershipReply.items:type_name -> api.market.v1.SectorMembershipItem
+	77, // 36: api.market.v1.IndexSnapshotReply.indices:type_name -> api.market.v1.IndexQuote
+	1,  // 37: api.market.v1.Market.GetBars:input_type -> api.market.v1.GetBarsRequest
+	4,  // 38: api.market.v1.Market.GetIndicators:input_type -> api.market.v1.GetIndicatorsRequest
+	7,  // 39: api.market.v1.Market.GetFactorsCross:input_type -> api.market.v1.GetFactorsCrossRequest
+	10, // 40: api.market.v1.Market.GetSentiment:input_type -> api.market.v1.GetSentimentRequest
+	12, // 41: api.market.v1.Market.GetLimitBoards:input_type -> api.market.v1.GetLimitBoardsRequest
+	15, // 42: api.market.v1.Market.GetSectorHeat:input_type -> api.market.v1.GetSectorHeatRequest
+	73, // 43: api.market.v1.Market.GetSectorMembership:input_type -> api.market.v1.SectorMembershipRequest
+	76, // 44: api.market.v1.Market.GetIndexSnapshot:input_type -> api.market.v1.IndexSnapshotRequest
+	18, // 45: api.market.v1.Market.SetWatchlist:input_type -> api.market.v1.SetWatchlistRequest
+	20, // 46: api.market.v1.Market.GetWatchlist:input_type -> api.market.v1.GetWatchlistRequest
+	23, // 47: api.market.v1.Market.GetAuction:input_type -> api.market.v1.GetAuctionRequest
+	26, // 48: api.market.v1.Market.GetLadder:input_type -> api.market.v1.GetLadderRequest
+	30, // 49: api.market.v1.Market.GetLimitPremium:input_type -> api.market.v1.GetLimitPremiumRequest
+	34, // 50: api.market.v1.Market.GetBreadth:input_type -> api.market.v1.GetBreadthRequest
+	37, // 51: api.market.v1.Market.GetKlineGaps:input_type -> api.market.v1.GetKlineGapsRequest
+	40, // 52: api.market.v1.Market.GetEmotionPath:input_type -> api.market.v1.GetEmotionPathRequest
+	43, // 53: api.market.v1.Market.GetIntradayAlerts:input_type -> api.market.v1.GetIntradayAlertsRequest
+	46, // 54: api.market.v1.Market.GetQuote:input_type -> api.market.v1.GetQuoteRequest
+	50, // 55: api.market.v1.Market.GetSecurityBasics:input_type -> api.market.v1.GetSecurityBasicsRequest
+	52, // 56: api.market.v1.Market.GetSeatStats:input_type -> api.market.v1.GetSeatStatsRequest
+	55, // 57: api.market.v1.Market.GetChipDistribution:input_type -> api.market.v1.GetChipDistributionRequest
+	57, // 58: api.market.v1.Market.GetReportEstimates:input_type -> api.market.v1.GetReportEstimatesRequest
+	63, // 59: api.market.v1.Market.GetBarsBatch:input_type -> api.market.v1.GetBarsBatchRequest
+	66, // 60: api.market.v1.Market.GetFinanceBrief:input_type -> api.market.v1.GetFinanceBriefRequest
+	69, // 61: api.market.v1.Market.SearchSecurities:input_type -> api.market.v1.SearchSecuritiesRequest
+	60, // 62: api.market.v1.Market.GetAHPremium:input_type -> api.market.v1.GetAHPremiumRequest
+	3,  // 63: api.market.v1.Market.GetBars:output_type -> api.market.v1.GetBarsReply
+	6,  // 64: api.market.v1.Market.GetIndicators:output_type -> api.market.v1.GetIndicatorsReply
+	9,  // 65: api.market.v1.Market.GetFactorsCross:output_type -> api.market.v1.GetFactorsCrossReply
+	11, // 66: api.market.v1.Market.GetSentiment:output_type -> api.market.v1.Sentiment
+	14, // 67: api.market.v1.Market.GetLimitBoards:output_type -> api.market.v1.GetLimitBoardsReply
+	17, // 68: api.market.v1.Market.GetSectorHeat:output_type -> api.market.v1.GetSectorHeatReply
+	75, // 69: api.market.v1.Market.GetSectorMembership:output_type -> api.market.v1.SectorMembershipReply
+	78, // 70: api.market.v1.Market.GetIndexSnapshot:output_type -> api.market.v1.IndexSnapshotReply
+	19, // 71: api.market.v1.Market.SetWatchlist:output_type -> api.market.v1.SetWatchlistReply
+	22, // 72: api.market.v1.Market.GetWatchlist:output_type -> api.market.v1.GetWatchlistReply
+	25, // 73: api.market.v1.Market.GetAuction:output_type -> api.market.v1.GetAuctionReply
+	29, // 74: api.market.v1.Market.GetLadder:output_type -> api.market.v1.GetLadderReply
+	33, // 75: api.market.v1.Market.GetLimitPremium:output_type -> api.market.v1.GetLimitPremiumReply
+	36, // 76: api.market.v1.Market.GetBreadth:output_type -> api.market.v1.GetBreadthReply
+	39, // 77: api.market.v1.Market.GetKlineGaps:output_type -> api.market.v1.GetKlineGapsReply
+	42, // 78: api.market.v1.Market.GetEmotionPath:output_type -> api.market.v1.GetEmotionPathReply
+	45, // 79: api.market.v1.Market.GetIntradayAlerts:output_type -> api.market.v1.GetIntradayAlertsReply
+	48, // 80: api.market.v1.Market.GetQuote:output_type -> api.market.v1.Quote
+	51, // 81: api.market.v1.Market.GetSecurityBasics:output_type -> api.market.v1.GetSecurityBasicsReply
+	54, // 82: api.market.v1.Market.GetSeatStats:output_type -> api.market.v1.GetSeatStatsReply
+	56, // 83: api.market.v1.Market.GetChipDistribution:output_type -> api.market.v1.GetChipDistributionReply
+	59, // 84: api.market.v1.Market.GetReportEstimates:output_type -> api.market.v1.GetReportEstimatesReply
+	65, // 85: api.market.v1.Market.GetBarsBatch:output_type -> api.market.v1.GetBarsBatchReply
+	68, // 86: api.market.v1.Market.GetFinanceBrief:output_type -> api.market.v1.GetFinanceBriefReply
+	71, // 87: api.market.v1.Market.SearchSecurities:output_type -> api.market.v1.SearchSecuritiesReply
+	61, // 88: api.market.v1.Market.GetAHPremium:output_type -> api.market.v1.GetAHPremiumReply
+	63, // [63:89] is the sub-list for method output_type
+	37, // [37:63] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_api_market_v1_market_proto_init() }
@@ -6666,7 +7136,7 @@ func file_api_market_v1_market_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_market_v1_market_proto_rawDesc), len(file_api_market_v1_market_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   73,
+			NumMessages:   80,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

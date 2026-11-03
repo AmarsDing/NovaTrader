@@ -49,6 +49,8 @@ type fakeRepo struct {
 	members map[string][]string
 	names   map[string]string
 	quotes  []market.Quote
+	// BE-05 板块归属反向查询桩数据（默认 nil = 无归属行）。
+	membership []SectorMembershipRow
 	// H5 批量日线 / E7 财务摘要桩数据（默认 nil；multiErr/finErr 供错误路径用例）。
 	// multiSyms/finPeriods 记录调用参，钉参数管道与截断默认。
 	barsMulti  map[string][]BarRow
@@ -118,6 +120,9 @@ func (f *fakeRepo) SaveSectorHeat(context.Context, time.Time, time.Time, []marke
 }
 func (f *fakeRepo) SectorMembers(context.Context, time.Time) (map[string][]string, map[string]string, error) {
 	return f.members, f.names, nil
+}
+func (f *fakeRepo) SectorMembership(context.Context, []string, time.Time) ([]SectorMembershipRow, error) {
+	return f.membership, nil
 }
 func (f *fakeRepo) MoneyFlows(context.Context, time.Time, int) (map[string][]market.Flow, error) {
 	return nil, nil

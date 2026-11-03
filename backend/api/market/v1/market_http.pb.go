@@ -28,6 +28,7 @@ const OperationMarketGetChipDistribution = "/api.market.v1.Market/GetChipDistrib
 const OperationMarketGetEmotionPath = "/api.market.v1.Market/GetEmotionPath"
 const OperationMarketGetFactorsCross = "/api.market.v1.Market/GetFactorsCross"
 const OperationMarketGetFinanceBrief = "/api.market.v1.Market/GetFinanceBrief"
+const OperationMarketGetIndexSnapshot = "/api.market.v1.Market/GetIndexSnapshot"
 const OperationMarketGetIndicators = "/api.market.v1.Market/GetIndicators"
 const OperationMarketGetIntradayAlerts = "/api.market.v1.Market/GetIntradayAlerts"
 const OperationMarketGetKlineGaps = "/api.market.v1.Market/GetKlineGaps"
@@ -38,6 +39,7 @@ const OperationMarketGetQuote = "/api.market.v1.Market/GetQuote"
 const OperationMarketGetReportEstimates = "/api.market.v1.Market/GetReportEstimates"
 const OperationMarketGetSeatStats = "/api.market.v1.Market/GetSeatStats"
 const OperationMarketGetSectorHeat = "/api.market.v1.Market/GetSectorHeat"
+const OperationMarketGetSectorMembership = "/api.market.v1.Market/GetSectorMembership"
 const OperationMarketGetSecurityBasics = "/api.market.v1.Market/GetSecurityBasics"
 const OperationMarketGetSentiment = "/api.market.v1.Market/GetSentiment"
 const OperationMarketGetWatchlist = "/api.market.v1.Market/GetWatchlist"
@@ -69,6 +71,8 @@ type MarketHTTPServer interface {
 	// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
 	// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
 	GetFinanceBrief(context.Context, *GetFinanceBriefRequest) (*GetFinanceBriefReply, error)
+	// GetIndexSnapshot 三大指数快照（BE-10）：上证/深成/创指，实时快照优先、缺当日快照回退最近 1d 收盘行。
+	GetIndexSnapshot(context.Context, *IndexSnapshotRequest) (*IndexSnapshotReply, error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(context.Context, *GetIndicatorsRequest) (*GetIndicatorsReply, error)
 	// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
@@ -92,6 +96,8 @@ type MarketHTTPServer interface {
 	GetSeatStats(context.Context, *GetSeatStatsRequest) (*GetSeatStatsReply, error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(context.Context, *GetSectorHeatRequest) (*GetSectorHeatReply, error)
+	// GetSectorMembership 板块成员归属（BE-05）：给一批证券代码，返回各自当日有效的所属板块列表。
+	GetSectorMembership(context.Context, *SectorMembershipRequest) (*SectorMembershipReply, error)
 	// GetSecurityBasics 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
 	GetSecurityBasics(context.Context, *GetSecurityBasicsRequest) (*GetSecurityBasicsReply, error)
 	// GetSentiment 情绪截面，as_of 规则同上。
@@ -114,6 +120,8 @@ func RegisterMarketHTTPServer(s *http.Server, srv MarketHTTPServer) {
 	r.GET("/v1/market/sentiment", _Market_GetSentiment0_HTTP_Handler(srv))
 	r.GET("/v1/market/limits", _Market_GetLimitBoards0_HTTP_Handler(srv))
 	r.GET("/v1/market/sectors", _Market_GetSectorHeat0_HTTP_Handler(srv))
+	r.GET("/v1/market/sectors/membership", _Market_GetSectorMembership0_HTTP_Handler(srv))
+	r.GET("/v1/market/index-snapshot", _Market_GetIndexSnapshot0_HTTP_Handler(srv))
 	r.POST("/v1/market/watchlist", _Market_SetWatchlist0_HTTP_Handler(srv))
 	r.GET("/v1/market/watchlist", _Market_GetWatchlist0_HTTP_Handler(srv))
 	r.GET("/v1/market/auction", _Market_GetAuction0_HTTP_Handler(srv))
@@ -244,6 +252,44 @@ func _Market_GetSectorHeat0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Con
 			return err
 		}
 		reply := out.(*GetSectorHeatReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetSectorMembership0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SectorMembershipRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetSectorMembership)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetSectorMembership(ctx, req.(*SectorMembershipRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SectorMembershipReply)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _Market_GetIndexSnapshot0_HTTP_Handler(srv MarketHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in IndexSnapshotRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationMarketGetIndexSnapshot)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetIndexSnapshot(ctx, req.(*IndexSnapshotRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*IndexSnapshotReply)
 		return ctx.Result(200, reply)
 	}
 }
@@ -621,6 +667,8 @@ type MarketHTTPClient interface {
 	// 附录 B-3（只读）：财务排雷摘要——finance_report（业绩预告/快报/关键指标，M01 写入）。
 	// 披露列全 optional：DB NULL ↔ proto 缺省；found=false = 该券无披露行，前端显「无」不告警。
 	GetFinanceBrief(ctx context.Context, req *GetFinanceBriefRequest, opts ...http.CallOption) (rsp *GetFinanceBriefReply, err error)
+	// GetIndexSnapshot 三大指数快照（BE-10）：上证/深成/创指，实时快照优先、缺当日快照回退最近 1d 收盘行。
+	GetIndexSnapshot(ctx context.Context, req *IndexSnapshotRequest, opts ...http.CallOption) (rsp *IndexSnapshotReply, err error)
 	// GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 	GetIndicators(ctx context.Context, req *GetIndicatorsRequest, opts ...http.CallOption) (rsp *GetIndicatorsReply, err error)
 	// GetIntradayAlerts 复盘体系 P0-4（只读）：盘中异动流水——急拉/封板/开板（引擎落 intraday_alerts），fired_at 倒序上限 200。
@@ -644,6 +692,8 @@ type MarketHTTPClient interface {
 	GetSeatStats(ctx context.Context, req *GetSeatStatsRequest, opts ...http.CallOption) (rsp *GetSeatStatsReply, err error)
 	// GetSectorHeat 板块热度排名。
 	GetSectorHeat(ctx context.Context, req *GetSectorHeatRequest, opts ...http.CallOption) (rsp *GetSectorHeatReply, err error)
+	// GetSectorMembership 板块成员归属（BE-05）：给一批证券代码，返回各自当日有效的所属板块列表。
+	GetSectorMembership(ctx context.Context, req *SectorMembershipRequest, opts ...http.CallOption) (rsp *SectorMembershipReply, err error)
 	// GetSecurityBasics 名称字典（UI 显示方案 §6.2 / 附录 B-1，只读）：证券基础信息。codes 为空返回全量，上限 6000 行。
 	GetSecurityBasics(ctx context.Context, req *GetSecurityBasicsRequest, opts ...http.CallOption) (rsp *GetSecurityBasicsReply, err error)
 	// GetSentiment 情绪截面，as_of 规则同上。
@@ -798,6 +848,20 @@ func (c *MarketHTTPClientImpl) GetFinanceBrief(ctx context.Context, in *GetFinan
 	return &out, nil
 }
 
+// GetIndexSnapshot 三大指数快照（BE-10）：上证/深成/创指，实时快照优先、缺当日快照回退最近 1d 收盘行。
+func (c *MarketHTTPClientImpl) GetIndexSnapshot(ctx context.Context, in *IndexSnapshotRequest, opts ...http.CallOption) (*IndexSnapshotReply, error) {
+	var out IndexSnapshotReply
+	pattern := "/v1/market/index-snapshot"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetIndexSnapshot))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetIndicators 日线指标，用与实时计算相同的公式即时算出。
 func (c *MarketHTTPClientImpl) GetIndicators(ctx context.Context, in *GetIndicatorsRequest, opts ...http.CallOption) (*GetIndicatorsReply, error) {
 	var out GetIndicatorsReply
@@ -933,6 +997,20 @@ func (c *MarketHTTPClientImpl) GetSectorHeat(ctx context.Context, in *GetSectorH
 	pattern := "/v1/market/sectors"
 	path := binding.EncodeURL(pattern, in, true)
 	opts = append(opts, http.Operation(OperationMarketGetSectorHeat))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetSectorMembership 板块成员归属（BE-05）：给一批证券代码，返回各自当日有效的所属板块列表。
+func (c *MarketHTTPClientImpl) GetSectorMembership(ctx context.Context, in *SectorMembershipRequest, opts ...http.CallOption) (*SectorMembershipReply, error) {
+	var out SectorMembershipReply
+	pattern := "/v1/market/sectors/membership"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationMarketGetSectorMembership))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {

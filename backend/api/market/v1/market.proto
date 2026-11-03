@@ -45,6 +45,18 @@ service Market {
       get: "/v1/market/sectors"
     };
   }
+  // 板块成员归属（BE-05）：给一批证券代码，返回各自当日有效的所属板块列表。
+  rpc GetSectorMembership(SectorMembershipRequest) returns (SectorMembershipReply) {
+    option (google.api.http) = {
+      get: "/v1/market/sectors/membership"
+    };
+  }
+  // 三大指数快照（BE-10）：上证/深成/创指，实时快照优先、缺当日快照回退最近 1d 收盘行。
+  rpc GetIndexSnapshot(IndexSnapshotRequest) returns (IndexSnapshotReply) {
+    option (google.api.http) = {
+      get: "/v1/market/index-snapshot"
+    };
+  }
   // 登记候选池。同一 owner 再次登记会整体替换并续租。
   rpc SetWatchlist(SetWatchlistRequest) returns (SetWatchlistReply) {
     option (google.api.http) = {
@@ -874,4 +886,59 @@ message SecurityMatch {
 
 message SearchSecuritiesReply {
   repeated SecurityMatch matches = 1;
+}
+
+/* ---------- BE-05 板块成员归属（stock → sector 反向查询） ---------- */
+
+// SectorRef 一个板块引用；name 缺失时为空串（前端显代码），后端不编名。
+message SectorRef {
+  string code = 1;
+  string name = 2;
+}
+
+// SectorMembershipRequest 批量归属查询。symbols 任一解析失败整批 400；
+// 上限 200（前端持仓+候选量级远低于此），超出截断并仍正常返回。
+message SectorMembershipRequest {
+  repeated string symbols = 1; // 必传非空；裸码/后缀码均可，规整为 600519.SH
+  string trade_date = 2;       // YYYY-MM-DD，空为今天；有效期口径 in_date ≤ 当日 < out_date
+}
+
+// SectorMembershipItem 一只证券的归属结果；sectors 为空 = 当日无有效归属（「未归属」），不是错误。
+message SectorMembershipItem {
+  string symbol = 1;
+  repeated SectorRef sectors = 2;
+}
+
+// SectorMembershipReply items 按请求 symbols 顺序回包（含零归属券），便于前端对位。
+message SectorMembershipReply {
+  string trade_date = 1; // 实际生效的归属窗口日（YYYY-MM-DD）
+  repeated SectorMembershipItem items = 2;
+}
+
+/* ---------- BE-10 三大指数快照 ---------- */
+
+message IndexSnapshotRequest {}
+
+// IndexQuote 一只指数的快照。口径与 Quote 同源：snap=盘中实时快照（Redis snap:latest，
+// 仅当行情时间落在当日），1d=最近日线收盘；两边都缺 found=false、价格列零值（显式缺失，不编数）。
+// as_of：snap 口径取行情时间与写入时间较早者，1d 口径取 bar 日零点；缺失为空串。
+// stale：snap 陈旧或交易时段快照过期规则命中；1d 口径恒 false（收盘截面不算陈旧）。
+message IndexQuote {
+  string code = 1;      // 000001.SH / 399001.SZ / 399006.SZ
+  string name = 2;      // 上证指数 / 深证成指 / 创业板指（与 brain 复盘口径一致的固定三只）
+  double last = 3;
+  double chg = 4;       // last - prev_close；prev_close=0 时为 0
+  double pct_chg = 5;   // 相对昨收涨跌幅 %
+  double amplitude = 6; // (high - low) / prev_close；prev_close=0 为 0
+  string as_of = 7;     // RFC3339
+  string source = 8;    // snap / 1d / ""
+  bool stale = 9;
+  bool found = 10;
+}
+
+// IndexSnapshotReply as_of = 各指数 as_of 的最大值（RFC3339；全部缺失为空串）。
+// indices 恒为三只、固定顺序（上证/深成/创指），缺数靠 found=false 表达。
+message IndexSnapshotReply {
+  string as_of = 1;
+  repeated IndexQuote indices = 2;
 }
