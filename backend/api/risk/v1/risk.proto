@@ -57,6 +57,12 @@ service Risk {
       get: "/risk/v1/report"
     };
   }
+  // 拒绝聚合看板（BE-11）：窗口内每日校验/拒绝计数 + 按规则聚合 TopN。
+  rpc GetRejectTrend(RejectTrendRequest) returns (RejectTrendReply) {
+    option (google.api.http) = {
+      get: "/risk/v1/rejects/trend"
+    };
+  }
   // 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
   rpc Limits(LimitsRequest) returns (LimitsReply) {
     option (google.api.http) = {
@@ -236,6 +242,33 @@ message DailyReportReply {
   repeated RuleCount rejects = 6;
   repeated RiskEventItem events = 7;
   int64 p99_latency_us = 8;
+}
+
+/* ---------- BE-11 拒绝聚合：日报 TopN 与 7 日拦截率曲线共用 ---------- */
+
+message RejectTrendRequest {
+  // 窗口结束日 YYYY-MM-DD，空为今天（上海时区）
+  string end = 1;
+  // 回看天数（含结束日）；<=0 取默认 7，上限 31
+  int32 days = 2;
+}
+
+// RejectDay 一个上海日的校验与拒绝计数。
+message RejectDay {
+  string date = 1;
+  int32 checks = 2;
+  int32 rejected = 3;
+  // rejected/checks；checks 为 0 时是 0
+  double reject_rate = 4;
+}
+
+message RejectTrendReply {
+  string end = 1;
+  int32 days = 2;
+  // 按日期升序，窗口内每日一格（无数据日全 0）
+  repeated RejectDay trend = 3;
+  // 窗口内按规则聚合的拒绝计数，count 降序、rule 升序兜底
+  repeated RuleCount top_rules = 4;
 }
 
 /* ---------- 监控驾驶舱 P1：限额上限 × 当前用量（只读） ---------- */

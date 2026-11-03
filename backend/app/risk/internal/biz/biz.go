@@ -30,6 +30,8 @@ type Repo interface {
 	// SaveAlert 写 kind=reject_rate 事件，并经 outbox 发 risk.alert。
 	SaveAlert(ctx context.Context, message string) error
 	Report(ctx context.Context, from, to time.Time) (*Report, error)
+	// RejectTrend 聚合 [from,to) 内 risk_check：每日校验/拒绝计数 + 窗口按规则拒绝计数。
+	RejectTrend(ctx context.Context, from, to time.Time) (*RejectTrend, error)
 	// RestoreDay 读 from 以来已锁存的账户熔断和已放行的买单数，重启后当日状态不丢。
 	RestoreDay(ctx context.Context, from time.Time) (DayState, error)
 	// RefData 读 stock_basic 和 day 那天的日线成交额。

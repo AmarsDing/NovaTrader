@@ -181,6 +181,38 @@ func (s *RiskService) DailyReport(ctx context.Context, req *v1.DailyReportReques
 	return out, nil
 }
 
+// GetRejectTrend 是 BE-11 拒绝聚合：窗口内每日校验/拒绝计数 + 按规则聚合 TopN。
+func (s *RiskService) GetRejectTrend(ctx context.Context, req *v1.RejectTrendRequest) (*v1.RejectTrendReply, error) {
+	end, days, t, err := s.e.RejectTrend(ctx, strings.TrimSpace(req.GetEnd()), int(req.GetDays()))
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.RejectTrendReply{End: end, Days: int32(days)}
+	for _, d := range t.Days {
+		rate := 0.0
+		if d.Checks > 0 {
+			rate = float64(d.Rejected) / float64(d.Checks)
+		}
+		out.Trend = append(out.Trend, &v1.RejectDay{
+			Date: d.Date, Checks: int32(d.Checks), Rejected: int32(d.Rejected), RejectRate: rate,
+		})
+	}
+	rules := make([]string, 0, len(t.Rules))
+	for k := range t.Rules {
+		rules = append(rules, k)
+	}
+	sort.Slice(rules, func(i, j int) bool {
+		if t.Rules[rules[i]] != t.Rules[rules[j]] {
+			return t.Rules[rules[i]] > t.Rules[rules[j]]
+		}
+		return rules[i] < rules[j]
+	})
+	for _, k := range rules {
+		out.TopRules = append(out.TopRules, &v1.RuleCount{Rule: k, Name: risk.RuleName(k), Count: int32(t.Rules[k])})
+	}
+	return out, nil
+}
+
 // Limits 返回各项限额的上限与当前用量（监控驾驶舱 P1，只读）。
 func (s *RiskService) Limits(_ context.Context, req *v1.LimitsRequest) (*v1.LimitsReply, error) {
 	out := &v1.LimitsReply{AccountType: strings.ToUpper(strings.TrimSpace(req.GetAccountType()))}

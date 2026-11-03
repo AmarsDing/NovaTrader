@@ -24,6 +24,7 @@ const OperationRiskCreateAlertRule = "/api.risk.v1.Risk/CreateAlertRule"
 const OperationRiskDailyReport = "/api.risk.v1.Risk/DailyReport"
 const OperationRiskDeleteAlertRule = "/api.risk.v1.Risk/DeleteAlertRule"
 const OperationRiskEditAlertRule = "/api.risk.v1.Risk/EditAlertRule"
+const OperationRiskGetRejectTrend = "/api.risk.v1.Risk/GetRejectTrend"
 const OperationRiskGetState = "/api.risk.v1.Risk/GetState"
 const OperationRiskLimits = "/api.risk.v1.Risk/Limits"
 const OperationRiskListAlertRules = "/api.risk.v1.Risk/ListAlertRules"
@@ -42,6 +43,8 @@ type RiskHTTPServer interface {
 	DeleteAlertRule(context.Context, *DeleteAlertRuleRequest) (*AlertRulesReply, error)
 	// EditAlertRule 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
 	EditAlertRule(context.Context, *EditAlertRuleRequest) (*AlertRulesReply, error)
+	// GetRejectTrend 拒绝聚合看板（BE-11）：窗口内每日校验/拒绝计数 + 按规则聚合 TopN。
+	GetRejectTrend(context.Context, *RejectTrendRequest) (*RejectTrendReply, error)
 	GetState(context.Context, *GetStateRequest) (*StateReply, error)
 	// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
 	Limits(context.Context, *LimitsRequest) (*LimitsReply, error)
@@ -68,6 +71,7 @@ func RegisterRiskHTTPServer(s *http.Server, srv RiskHTTPServer) {
 	r.POST("/risk/v1/killswitch/reset", _Risk_ResetKillSwitch0_HTTP_Handler(srv))
 	r.POST("/risk/v1/params", _Risk_UpdateParam0_HTTP_Handler(srv))
 	r.GET("/risk/v1/report", _Risk_DailyReport0_HTTP_Handler(srv))
+	r.GET("/risk/v1/rejects/trend", _Risk_GetRejectTrend0_HTTP_Handler(srv))
 	r.GET("/risk/v1/limits", _Risk_Limits0_HTTP_Handler(srv))
 	r.GET("/risk/v1/alert/rules", _Risk_ListAlertRules0_HTTP_Handler(srv))
 	r.POST("/risk/v1/alert/rules", _Risk_CreateAlertRule0_HTTP_Handler(srv))
@@ -246,6 +250,25 @@ func _Risk_DailyReport0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) 
 	}
 }
 
+func _Risk_GetRejectTrend0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in RejectTrendRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationRiskGetRejectTrend)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetRejectTrend(ctx, req.(*RejectTrendRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*RejectTrendReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 func _Risk_Limits0_HTTP_Handler(srv RiskHTTPServer) func(ctx http.Context) error {
 	return func(ctx http.Context) error {
 		var in LimitsRequest
@@ -380,6 +403,8 @@ type RiskHTTPClient interface {
 	DeleteAlertRule(ctx context.Context, req *DeleteAlertRuleRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
 	// EditAlertRule 编辑按白名单重建：触发态字段清零、基线重采（防幽灵基线）。
 	EditAlertRule(ctx context.Context, req *EditAlertRuleRequest, opts ...http.CallOption) (rsp *AlertRulesReply, err error)
+	// GetRejectTrend 拒绝聚合看板（BE-11）：窗口内每日校验/拒绝计数 + 按规则聚合 TopN。
+	GetRejectTrend(ctx context.Context, req *RejectTrendRequest, opts ...http.CallOption) (rsp *RejectTrendReply, err error)
 	GetState(ctx context.Context, req *GetStateRequest, opts ...http.CallOption) (rsp *StateReply, err error)
 	// Limits 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
 	Limits(ctx context.Context, req *LimitsRequest, opts ...http.CallOption) (rsp *LimitsReply, err error)
@@ -465,6 +490,20 @@ func (c *RiskHTTPClientImpl) EditAlertRule(ctx context.Context, in *EditAlertRul
 	opts = append(opts, http.Operation(OperationRiskEditAlertRule))
 	opts = append(opts, http.PathTemplate(pattern))
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetRejectTrend 拒绝聚合看板（BE-11）：窗口内每日校验/拒绝计数 + 按规则聚合 TopN。
+func (c *RiskHTTPClientImpl) GetRejectTrend(ctx context.Context, in *RejectTrendRequest, opts ...http.CallOption) (*RejectTrendReply, error) {
+	var out RejectTrendReply
+	pattern := "/risk/v1/rejects/trend"
+	path := binding.EncodeURL(pattern, in, true)
+	opts = append(opts, http.Operation(OperationRiskGetRejectTrend))
+	opts = append(opts, http.PathTemplate(pattern))
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

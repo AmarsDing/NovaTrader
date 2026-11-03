@@ -31,6 +31,10 @@ type fakeRepo struct {
 	accountErr   error
 	blacklist    map[string]bool
 	blacklistErr error
+	trend        *RejectTrend
+	trendErr     error
+	trendFrom    time.Time
+	trendTo      time.Time
 }
 
 func (f *fakeRepo) LoadAccountSnapshots(context.Context) ([]accountstate.Snapshot, error) {
@@ -82,6 +86,10 @@ func (f *fakeRepo) SaveBreaker(_ context.Context, _ risk.AccountType, _ bool, re
 }
 func (f *fakeRepo) Report(context.Context, time.Time, time.Time) (*Report, error) {
 	return &Report{}, nil
+}
+func (f *fakeRepo) RejectTrend(_ context.Context, from, to time.Time) (*RejectTrend, error) {
+	f.trendFrom, f.trendTo = from, to
+	return f.trend, f.trendErr
 }
 func (f *fakeRepo) RestoreDay(context.Context, time.Time) (DayState, error) {
 	f.mu.Lock()

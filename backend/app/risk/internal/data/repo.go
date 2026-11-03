@@ -237,6 +237,35 @@ func (r *Repo) Report(ctx context.Context, from, to time.Time) (*biz.Report, err
 	return rep, nil
 }
 
+// RejectTrend 聚合 [from,to) 内 risk_check：按上海日分桶的校验/拒绝计数，与窗口内按规则的拒绝计数。
+// Days 稀疏（只有出现记录的日），连续补零由 biz 层做。
+func (r *Repo) RejectTrend(ctx context.Context, from, to time.Time) (*biz.RejectTrend, error) {
+	rows, err := r.client.RiskCheck.Query().
+		Where(riskcheck.CreatedAtGTE(from), riskcheck.CreatedAtLT(to)).
+		Select(riskcheck.FieldCreatedAt, riskcheck.FieldApproved, riskcheck.FieldRuleID).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &biz.RejectTrend{Rules: map[string]int{}}
+	idx := map[string]int{}
+	for _, row := range rows {
+		d := row.CreatedAt.In(tradecal.Shanghai()).Format("2006-01-02")
+		i, ok := idx[d]
+		if !ok {
+			i = len(out.Days)
+			idx[d] = i
+			out.Days = append(out.Days, biz.RejectDay{Date: d})
+		}
+		out.Days[i].Checks++
+		if !row.Approved {
+			out.Days[i].Rejected++
+			out.Rules[row.RuleID]++
+		}
+	}
+	return out, nil
+}
+
 func (r *Repo) RestoreDay(ctx context.Context, from time.Time) (biz.DayState, error) {
 	st := biz.DayState{Breakers: map[risk.AccountType]string{}, Buys: map[risk.AccountType]int{}}
 	evs, err := r.client.RiskEvent.Query().
