@@ -337,6 +337,101 @@ export async function getRejectTrend(end = '', days = 7): Promise<RejectTrend> {
   }
 }
 
+/* ---------- FE-R2 拒绝明细：抽屉逐条记录（只读，与 risk_check 行一一对应） ---------- */
+
+export interface RejectRecordQuery {
+  /** 窗口结束日 YYYY-MM-DD，空为今天（上海时区） */
+  end?: string
+  /** 回看天数（含结束日）；<=0 后端取默认 1，上限 31 */
+  days?: number
+  /** 规则号精确过滤（R00–R15），空为全部 */
+  rule?: string
+  /** 标的精确过滤，空为全部 */
+  symbol?: string
+  /** 操作人精确过滤，空为全部 */
+  operator?: string
+  /** 账户类型 SIM / LIVE，空为全部 */
+  accountType?: string
+  /** 拒绝原因子串（不区分大小写），空为全部 */
+  reason?: string
+  /** 分页偏移，<0 后端归 0 */
+  offset?: number
+  /** 页大小，<=0 后端取默认 50，上限 200 */
+  limit?: number
+}
+
+export interface RejectRecordItem {
+  clientOrderId: string
+  accountType: string
+  symbol: string
+  /** buy / sell */
+  side: string
+  /** auto / watch / manual */
+  source: string
+  operator: string
+  price: number
+  volumeReq: number
+  volumeFinal: number
+  /** 触发拒绝的规则号 R00–R15 */
+  rule: string
+  /** 规则中文名（与 R01–R15 链一致） */
+  ruleName: string
+  reason: string
+  latencyUs: number
+  /** RFC3339 */
+  createdAt: string
+}
+
+export interface RejectRecords {
+  end: string
+  days: number
+  /** 过滤条件下窗口内拒绝总数 */
+  total: number
+  offset: number
+  limit: number
+  /** 按 created_at 降序 */
+  items: RejectRecordItem[]
+}
+
+/** 拒绝明细：抽屉逐条记录，参数口径与后端一致（见 RejectRecordQuery 注释）。 */
+export async function getRejectRecords(q: RejectRecordQuery = {}): Promise<RejectRecords> {
+  const query: Record<string, string> = {}
+  if (q.end) query.end = q.end
+  if (q.days && q.days > 0) query.days = String(q.days)
+  if (q.rule) query.rule = q.rule
+  if (q.symbol) query.symbol = q.symbol
+  if (q.operator) query.operator = q.operator
+  if (q.accountType) query.account_type = q.accountType
+  if (q.reason) query.reason = q.reason
+  if (q.offset && q.offset > 0) query.offset = String(q.offset)
+  if (q.limit && q.limit > 0) query.limit = String(q.limit)
+  const raw = await request('/api/risk/rejects', { query })
+  const record = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
+  return {
+    end: pick<string>(record, 'end') || '',
+    days: num(pick(record, 'days')) ?? 0,
+    total: num(pick(record, 'total')) ?? 0,
+    offset: num(pick(record, 'offset')) ?? 0,
+    limit: num(pick(record, 'limit')) ?? 0,
+    items: asList<RawRecord>(record, 'items').map((it) => ({
+      clientOrderId: pick<string>(it, 'clientOrderId', 'client_order_id') || '',
+      accountType: pick<string>(it, 'accountType', 'account_type') || '',
+      symbol: pick<string>(it, 'symbol') || '',
+      side: pick<string>(it, 'side') || '',
+      source: pick<string>(it, 'source') || '',
+      operator: pick<string>(it, 'operator') || '',
+      price: num(pick(it, 'price')) ?? 0,
+      volumeReq: num(pick(it, 'volumeReq', 'volume_req')) ?? 0,
+      volumeFinal: num(pick(it, 'volumeFinal', 'volume_final')) ?? 0,
+      rule: pick<string>(it, 'rule') || '',
+      ruleName: pick<string>(it, 'ruleName', 'rule_name') || '',
+      reason: pick<string>(it, 'reason') || '',
+      latencyUs: num(pick(it, 'latencyUs', 'latency_us')) ?? 0,
+      createdAt: pick<string>(it, 'createdAt', 'created_at') || '',
+    })),
+  }
+}
+
 export function setMode(body: ModeBody): Promise<unknown> {
   return request('/api/risk/mode', { method: 'POST', json: body })
 }

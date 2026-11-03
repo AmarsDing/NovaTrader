@@ -5,10 +5,18 @@
  * 指标行由 api/risk.ts 按计数拼出，缺的计数写「未返回」。
  */
 import { computed, onMounted, ref } from 'vue'
-import { getRiskReport, getRejectTrend, type RejectTrend, type RiskReport } from '@/api/risk'
+import {
+  getRejectRecords,
+  getRiskReport,
+  getRejectTrend,
+  type RejectRecords,
+  type RejectTrend,
+  type RiskReport,
+} from '@/api/risk'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
+import NtModal from '@/ui/NtModal.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtEChart from '@/viz/NtEChart.vue'
@@ -154,6 +162,137 @@ const trendWindowText = computed(() => {
   return `${t.trend[0].date} ~ ${t.end || t.trend[t.trend.length - 1].date}`
 })
 
+/* ---------- FE-R2 拒绝明细抽屉：TopN 行点击展开，窗口与 TopN 一致（activeDate 起 7 日） ----------
+   数据走 GET /api/risk/rejects 真明细（risk_check 行），不用聚合值拼。 */
+const detailOpen = ref(false)
+const detailData = ref<RejectRecords | null>(null)
+const detailLoading = ref(false)
+const detailError = ref('')
+/** TopN 行带入的规则过滤，可清除查全部。 */
+const detailRule = ref('')
+const detailSymbol = ref('')
+const detailOperator = ref('')
+const detailReason = ref('')
+const detailOffset = ref(0)
+const DETAIL_LIMIT = 50
+
+const detailPageText = computed(() => {
+  const d = detailData.value
+  // items 空但 total>0：翻页途中数据被并发消减，offset 越过末页，不显示「第 101–50 条」这种倒挂。
+  if (!d || d.total === 0 || d.items.length === 0) return ''
+  const from = d.offset + 1
+  const to = Math.min(d.offset + d.items.length, d.total)
+  return `第 ${from}–${to} / ${d.total} 条`
+})
+const detailHasPrev = computed(() => detailOffset.value > 0)
+const detailHasNext = computed(() => {
+  const d = detailData.value
+  return !!d && d.offset + d.items.length < d.total
+})
+
+async function loadDetail() {
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    detailData.value = await getRejectRecords({
+      end: activeDate.value,
+      days: 7,
+      rule: detailRule.value,
+      symbol: detailSymbol.value.trim(),
+      operator: detailOperator.value.trim(),
+      reason: detailReason.value.trim(),
+      offset: detailOffset.value,
+      limit: DETAIL_LIMIT,
+    })
+  } catch (err) {
+    detailData.value = null
+    detailError.value = messageOf(err)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function openDetail(rule: string) {
+  detailRule.value = rule === '未返回' ? '' : rule
+  // 清掉上次抽屉残留的过滤，避免再开时带着旧条件却以为是 TopN 全量。
+  detailSymbol.value = ''
+  detailOperator.value = ''
+  detailReason.value = ''
+  detailOffset.value = 0
+  detailOpen.value = true
+  void loadDetail()
+}
+
+/** 改过滤条件：offset 归零重查。 */
+function applyDetailFilter() {
+  detailOffset.value = 0
+  void loadDetail()
+}
+
+function clearDetailRule() {
+  detailRule.value = ''
+  applyDetailFilter()
+}
+
+function detailPrev() {
+  if (!detailHasPrev.value) return
+  detailOffset.value = Math.max(0, detailOffset.value - DETAIL_LIMIT)
+  void loadDetail()
+}
+
+function detailNext() {
+  if (!detailHasNext.value) return
+  detailOffset.value += DETAIL_LIMIT
+  void loadDetail()
+}
+
+const SIDE_LABEL: Record<string, string> = { buy: '买入', sell: '卖出' }
+const SOURCE_LABEL: Record<string, string> = { auto: '自动', watch: '盯盘', manual: '手动' }
+
+type DetailRow = {
+  at: string
+  symbol: string
+  side: string
+  price: string
+  volume: string
+  rule: string
+  reason: string
+  actor: string
+  latency: string
+} & Record<string, unknown>
+const detailColumns: NtTableColumn<DetailRow>[] = [
+  { key: 'at', title: '时间', mono: true },
+  { key: 'symbol', title: '标的', mono: true },
+  { key: 'side', title: '方向' },
+  { key: 'price', title: '价格', mono: true },
+  { key: 'volume', title: '量(请求→放行)', mono: true },
+  { key: 'rule', title: '规则' },
+  { key: 'reason', title: '原因' },
+  { key: 'actor', title: '账户 · 来源 · 操作人' },
+  { key: 'latency', title: '延迟', mono: true },
+]
+const detailRows = computed<DetailRow[]>(() =>
+  (detailData.value?.items ?? []).map((it) => ({
+    at: it.createdAt ? clock(it.createdAt) : '时刻未返回',
+    symbol: it.symbol || '未返回',
+    side: SIDE_LABEL[it.side] ?? (it.side || '未返回'),
+    price: String(it.price),
+    volume: `${it.volumeReq} → ${it.volumeFinal}`,
+    rule: it.rule ? `${it.rule} ${it.ruleName}` : '未返回',
+    reason: it.reason || '未返回',
+    actor: [it.accountType, SOURCE_LABEL[it.source] ?? it.source, it.operator].filter(Boolean).join(' · ') || '未返回',
+    latency: `${it.latencyUs}µs`,
+  })),
+)
+/** 三态诚呈（同面板 182 行约定）：读取中 / 失败重试 / 真空分说。 */
+const detailEmpty = computed(() => {
+  if (detailLoading.value) return '读取中…'
+  if (detailError.value) return '明细未返回——点「查询」重试'
+  // total>0 而本页空：offset 越过末页（翻页途中数据被并发消减），引导返回而不是谎称窗口无记录。
+  if ((detailData.value?.total ?? 0) > 0) return '本页无记录——点「上一页」返回'
+  return '窗口内没有符合条件的拒绝记录'
+})
+
 onMounted(load)
 
 /** 三分态诚呈（同 alert-rules:182 约定）：首载中 / 读取失败 / 真空表分说，不把失败误示为「暂无」。
@@ -214,19 +353,48 @@ const kpiRows = computed<Row[]>(() => rows.value.slice(0, 4))
     </section>
 
     <section class="nt-panel">
-      <h2 class="nt-panel__title">拒绝规则 TopN（近 7 日窗口）</h2>
+      <h2 class="nt-panel__title">
+        拒绝规则 TopN（近 7 日窗口）
+        <span class="window">点击行查看构成该计数的逐条明细</span>
+      </h2>
       <NtTable
         :columns="topRuleColumns"
         :rows="topRuleRows"
         row-key="rule"
         dense
-        :empty="trendError ? '拒绝聚合未返回' : '窗口内没有规则拒绝记录'" />
+        clickable
+        :empty="trendError ? '拒绝聚合未返回' : '窗口内没有规则拒绝记录'"
+        @row-click="openDetail($event.rule)" />
     </section>
 
     <section class="nt-panel">
       <h2 class="nt-panel__title">风控事件（急停 / 模式 / 熔断）</h2>
       <NtTable :columns="eventColumns" :rows="eventRows" row-key="at" dense :empty="eventsEmpty" />
     </section>
+
+    <!-- FE-R2 拒绝明细抽屉：窗口与 TopN 一致（面板日期起 7 日），逐条对应 risk_check 原始记录。 -->
+    <NtModal v-model:open="detailOpen" title="拒绝明细" width="920px">
+      <div class="detail-filters">
+        <span v-if="detailRule" class="rule-chip">
+          {{ detailRule }}
+          <NtButton size="sm" variant="quiet" @click="clearDetailRule">× 全部规则</NtButton>
+        </span>
+        <NtInput v-model="detailSymbol" class="filter-input" placeholder="标的 精确" mono @keydown.enter="applyDetailFilter" />
+        <NtInput v-model="detailOperator" class="filter-input" placeholder="操作人 精确" mono @keydown.enter="applyDetailFilter" />
+        <NtInput v-model="detailReason" class="filter-input" placeholder="原因 包含" mono @keydown.enter="applyDetailFilter" />
+        <NtButton size="sm" :loading="detailLoading" @click="applyDetailFilter">查询</NtButton>
+      </div>
+      <p class="detail-note">
+        窗口与 TopN 一致{{ trendWindowText ? `（${trendWindowText}）` : '' }}；按时间倒序，逐条来自风控校验原始记录。
+      </p>
+      <p v-if="detailError" class="detail-error">{{ detailError }}</p>
+      <NtTable :columns="detailColumns" :rows="detailRows" row-key="at" dense :empty="detailEmpty" />
+      <div class="detail-pager">
+        <NtButton size="sm" :disabled="!detailHasPrev || detailLoading" @click="detailPrev">上一页</NtButton>
+        <span class="page-text">{{ detailPageText || '—' }}</span>
+        <NtButton size="sm" :disabled="!detailHasNext || detailLoading" @click="detailNext">下一页</NtButton>
+      </div>
+    </NtModal>
   </div>
 </template>
 
@@ -260,5 +428,55 @@ const kpiRows = computed<Row[]>(() => rows.value.slice(0, 4))
   margin: 0;
   color: var(--nt-text-3);
   font-size: 12px;
+}
+
+.detail-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.rule-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: 999px;
+  font-family: var(--nt-font-mono);
+  font-size: 12px;
+  color: var(--nt-text-1);
+}
+
+.filter-input {
+  width: 150px;
+}
+
+.detail-note {
+  margin: 0 0 8px;
+  color: var(--nt-text-3);
+  font-size: 12px;
+}
+
+.detail-error {
+  margin: 0 0 8px;
+  color: var(--nt-danger);
+  font-size: 12px;
+}
+
+.detail-pager {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.page-text {
+  color: var(--nt-text-3);
+  font-size: 12px;
+  font-family: var(--nt-font-mono);
 }
 </style>
