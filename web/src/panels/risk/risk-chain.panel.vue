@@ -4,7 +4,7 @@
  * 对一笔假设订单跑 /api/risk/check，逐条显示规则通过/拦截情况。
  */
 import { computed, onMounted, ref } from 'vue'
-import { checkOrder, type RuleHit } from '@/api/risk'
+import { checkOrder, getRejectTrend, type RejectTrend, type RuleHit } from '@/api/risk'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import NtBadge from '@/ui/NtBadge.vue'
@@ -76,8 +76,27 @@ async function runCheck() {
 const hits = computed(() => result.value?.hits ?? [])
 const passedCount = computed(() => hits.value.filter((h) => h.pass).length)
 
+/** FE-R1：今日规则拦截徽标（BE-11，end 空=今天、days=1）；接口失败静默降级，不挡预检主流程。 */
+const todayReject = ref<RejectTrend | null>(null)
+const todaySummary = computed(() => {
+  const day = todayReject.value?.trend[0]
+  if (!day || !day.checks) return null
+  return { checks: day.checks, rejected: day.rejected, pct: +(day.rejectRate * 100).toFixed(1) }
+})
+/** rule code → 今日拦截次数，预检结果链节点上叠加徽标用。 */
+const ruleRejectMap = computed(() => {
+  const m = new Map<string, number>()
+  for (const r of todayReject.value?.topRules ?? []) {
+    if (r.rule && r.count !== null && r.count > 0) m.set(r.rule, r.count)
+  }
+  return m
+})
+
 onMounted(() => {
   void risk.refresh()
+  getRejectTrend('', 1)
+    .then((res) => { todayReject.value = res })
+    .catch(() => { todayReject.value = null })
 })
 </script>
 
@@ -93,6 +112,10 @@ onMounted(() => {
           <NtBadge v-if="risk.killActive" :tone="statusOf('risk.killswitch').tone" dot>Kill Switch {{ statusOf('risk.killswitch').text }}</NtBadge>
           <NtBadge v-if="risk.marketBreaker" :tone="statusOf('risk.breaker').tone">{{ statusOf('risk.breaker').text }} {{ risk.marketBreaker }}</NtBadge>
           <span v-if="risk.buysToday != null" class="meta">今日已买入 {{ risk.buysToday }}/{{ buyLimit ?? '上限未设' }}</span>
+          <!-- FE-R1 今日校验/拦截汇总（BE-11 单日窗口） -->
+          <span v-if="todaySummary" class="meta">
+            今日校验 {{ todaySummary.checks }} · 拦截 {{ todaySummary.rejected }}（{{ todaySummary.pct }}%）
+          </span>
         </p>
       </div>
     </header>
@@ -150,6 +173,7 @@ onMounted(() => {
         <li v-for="hit in hits" :key="hit.code" class="chain__step" :class="{ blocked: !hit.pass }">
           <span class="chain__code">{{ hit.code }}</span>
           <span class="chain__name">{{ hit.name }}</span>
+          <span v-if="ruleRejectMap.get(hit.code)" class="chain__today">今日拦截 {{ ruleRejectMap.get(hit.code) }}</span>
           <span class="chain__verdict">{{ hit.pass ? '✓' : '✗' }}</span>
           <span v-if="hit.detail" class="chain__detail">{{ hit.detail }}</span>
         </li>
@@ -258,6 +282,16 @@ onMounted(() => {
 .chain__verdict {
   font-family: var(--nt-font-mono);
   color: var(--nt-success);
+}
+
+.chain__today {
+  font-size: 11px;
+  color: var(--nt-warn);
+  border: 1px solid var(--nt-border-1);
+  border-radius: 3px;
+  padding: 0 5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .chain__step.blocked .chain__verdict {

@@ -152,6 +152,12 @@ export async function listSectors(top = 8): Promise<SectorRow[]> {
     avgPct: num(pick(raw, 'avgPct', 'avg_pct')),
     overseas: num(pick(raw, 'overseasImpulse', 'overseas_impulse')),
     leader: pick<string>(raw, 'leaderSymbol', 'leader_symbol') || '',
+    /* 批次 A9：proto SectorHeat 全量接线（曾丢弃）——涨停数/上涨占比/成交额/成员数/龙头理由。 */
+    upLimitCount: num(pick(raw, 'upLimitCount', 'up_limit_count')),
+    advanceRatio: num(pick(raw, 'advanceRatio', 'advance_ratio')),
+    amount: num(pick(raw, 'amount')),
+    memberCount: num(pick(raw, 'memberCount', 'member_count')),
+    leaderReason: pick<string>(raw, 'leaderReason', 'leader_reason') || '',
     asOf: pick<string>(raw, 'asOf', 'as_of') || '',
   }))
 }
@@ -700,4 +706,114 @@ export async function getIntradayAlerts(date: string, minPct = 0, watchOnly = fa
   // 附录 B-5 回填：异动行的 symbol/name 顺手进名称字典。
   backfillSecurityBasics(alerts.map((a) => ({ code: a.symbol, name: a.name || null })))
   return alerts
+}
+
+/* ---------- 目录册增补 B2（只读）：席位胜率时序（GetSeatStats） ----------
+ * 全市场口径：按基准日取滚动窗口（60 交易日）席位胜率，无 symbol 维度——
+ * 侧栏席位卡明确标注全市场，不冒充个股关联。 */
+
+export interface SeatStatRow {
+  seat: string
+  /** 统计基准日（窗口右端，yyyy-mm-dd）。 */
+  asOf: string
+  /** 窗口交易日数（60）。 */
+  lookback: number
+  /** 窗口内上榜次数（含 T+5 未发生）。 */
+  sample: number
+  /** 其中 T+5 已发生的子样本数。 */
+  sampleT5: number
+  /** T+1/T+5 胜率与收益：proto optional——有效样本为零/T+5 未发生时省略发送，
+   *  null 显「—」（「没取到≠0」，0 无歧义但缺席≠0）。 */
+  winRateT1: number | null
+  avgRetT1: number | null
+  medRetT1: number | null
+  winRateT5: number | null
+  avgRetT5: number | null
+  medRetT5: number | null
+  source: string
+}
+
+export interface SeatStatsReply {
+  tradeDate: string
+  /** false=该基准日 seat_stats 无行（当日龙虎榜空或任务未跑）——显「无行」不告警。 */
+  found: boolean
+  rows: SeatStatRow[]
+  asOf: string
+}
+
+export async function getSeatStats(tradeDate = '', top = 50): Promise<SeatStatsReply> {
+  const data = await request('/api/market/seat-stats', {
+    query: { trade_date: tradeDate || undefined, top: top || undefined },
+  })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    tradeDate: pick<string>(raw, 'tradeDate', 'trade_date') || '',
+    found: !!raw.found,
+    rows: asList<RawRecord>(raw, 'rows').map((row) => ({
+      seat: pick<string>(row, 'seat') || '',
+      asOf: pick<string>(row, 'asOf', 'as_of') || '',
+      lookback: num(pick(row, 'lookback')) ?? 0,
+      sample: num(pick(row, 'sample')) ?? 0,
+      sampleT5: num(pick(row, 'sampleT5', 'sample_t5')) ?? 0,
+      winRateT1: num(pick(row, 'winRateT1', 'win_rate_t1')),
+      avgRetT1: num(pick(row, 'avgRetT1', 'avg_ret_t1')),
+      medRetT1: num(pick(row, 'medRetT1', 'med_ret_t1')),
+      winRateT5: num(pick(row, 'winRateT5', 'win_rate_t5')),
+      avgRetT5: num(pick(row, 'avgRetT5', 'avg_ret_t5')),
+      medRetT5: num(pick(row, 'medRetT5', 'med_ret_t5')),
+      source: pick<string>(row, 'source') || '',
+    })),
+    asOf: pick<string>(raw, 'asOf', 'as_of') || '',
+  }
+}
+
+/* ---------- 目录册增补 B3（只读）：筹码分布 CYQ（GetChipDistribution） ----------
+ * 换手衰减模型纯计算（前复权日K×换手率），不落库。 */
+
+export interface ChipDistribution {
+  symbol: string
+  /** 四态：ok / missing（库中无该券或窗口无日线）/ not_meaningful（数据不足不可算）/ error（请求非法）。 */
+  status: string
+  /** status≠ok 时的显式原因文案（后端下发，原样透显，不自封）。 */
+  reason: string
+  /** 价格与衍生列 proto optional——status≠ok 全部缺席（null），不产假数（「没取到≠0」）。 */
+  profit: number | null
+  avgCost: number | null
+  cost90Lo: number | null
+  cost90Hi: number | null
+  cost70Lo: number | null
+  cost70Hi: number | null
+  concentration90: number | null
+  concentration70: number | null
+  peakPrice: number | null
+  price: number | null
+  /** 事实列照常回波（非 ok 时为窗口实际入算行数/累计换手%）。 */
+  daysUsed: number
+  cumTurnoverPct: number
+  windowStart: string
+  windowEnd: string
+}
+
+export async function getChipDistribution(symbol: string): Promise<ChipDistribution> {
+  const data = await request('/api/market/chip-distribution', { query: { symbol } })
+  const raw = (data ?? {}) as RawRecord
+  return {
+    symbol: pick<string>(raw, 'symbol') || symbol,
+    status: pick<string>(raw, 'status') || '',
+    reason: pick<string>(raw, 'reason') || '',
+    profit: num(pick(raw, 'profit')),
+    avgCost: num(pick(raw, 'avgCost', 'avg_cost')),
+    cost90Lo: num(pick(raw, 'cost90Lo', 'cost90_lo')),
+    cost90Hi: num(pick(raw, 'cost90Hi', 'cost90_hi')),
+    cost70Lo: num(pick(raw, 'cost70Lo', 'cost70_lo')),
+    cost70Hi: num(pick(raw, 'cost70Hi', 'cost70_hi')),
+    concentration90: num(pick(raw, 'concentration90')),
+    concentration70: num(pick(raw, 'concentration70')),
+    peakPrice: num(pick(raw, 'peakPrice', 'peak_price')),
+    price: num(pick(raw, 'price')),
+    daysUsed: num(pick(raw, 'daysUsed', 'days_used')) ?? 0,
+    cumTurnoverPct: num(pick(raw, 'cumTurnoverPct', 'cum_turnover_pct')) ?? 0,
+    windowStart: pick<string>(raw, 'windowStart', 'window_start') || '',
+    windowEnd: pick<string>(raw, 'windowEnd', 'window_end') || '',
+  }
 }

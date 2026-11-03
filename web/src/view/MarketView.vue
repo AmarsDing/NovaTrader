@@ -3,12 +3,13 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { timeline, type IntelItem } from '@/api/intel'
 import { getBars, getIndicators, type Bar, type MarketIndicator } from '@/api/market'
 import { listFills, type Fill } from '@/api/trade'
-import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtKline, { type KlineLevel, type KlineMarker } from '@/viz/NtKline.vue'
+import NtIndexStrip from '@/display/NtIndexStrip.vue'
+import IntelRow from '@/display/IntelRow.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import { PALETTE } from '@/theme/tokens'
@@ -495,6 +496,7 @@ onBeforeUnmount(() => {
       </div>
       <NtFreshness label="行情" :at="freshAt" :cut="freshCut" :stale-after-ms="freshStaleMs" />
     </header>
+    <NtIndexStrip />
     <form class="nt-form" @submit.prevent="applyManualSymbol">
       <label class="grow">
         <span>代码</span>
@@ -544,14 +546,8 @@ onBeforeUnmount(() => {
         <h2 class="nt-panel__title">消息</h2>
         <p v-if="!news.length" class="nt-empty">{{ newsReady ? '本次查询没有相关消息。' : loaded ? '消息未返回，不能判断有无相关消息。' : '读取证券后查看相关消息。' }}</p>
         <ul v-else>
-          <li v-for="item in news" :key="item.id || item.time + item.title" @click="openIntel(item)">
-            <div class="news__head">
-              <b :class="pnlClass(item.sentiment)">{{ clock(item.time) }}</b>
-              <NtBadge v-if="(item.importance ?? 0) >= 4" tone="warn">重要</NtBadge>
-              <span v-if="item.kind" class="news__kind">{{ item.kind }}</span>
-            </div>
-            <span>{{ item.title }}</span>
-          </li>
+          <!-- W0-3b/FE-I4：消息行=IntelRow 单一事实组件（时点/来源/重要度/kind/原文外链唯一出处），行点击跳情报面板 -->
+          <IntelRow v-for="item in news" :key="item.id || item.time + item.title" :item="item" clickable @open="openIntel" />
         </ul>
       </aside>
       <section class="nt-panel">
@@ -661,33 +657,10 @@ onBeforeUnmount(() => {
   }
 }
 
-.news li {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.news li:hover span:last-child {
+/* W0-3b/FE-I4：行级样式（cursor/head/kind）已随 IntelRow 组件收口；容器级 .news ul（高度/滚动/间距）保留，
+   hover 提亮标题沿用原交互（组件根 li 带父级 scope 属性，.news li 仍命中）。 */
+.news li:hover :deep(.title) {
   color: var(--nt-text-1);
-}
-
-.news__head {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.news__head b {
-  font-family: var(--nt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
-.news__kind {
-  font-size: 11px;
-  color: var(--nt-text-3);
 }
 
 .link {

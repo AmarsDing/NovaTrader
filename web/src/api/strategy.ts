@@ -130,6 +130,61 @@ export async function getStrategyPerformance(last = 20): Promise<StrategyPerform
   }
 }
 
+/* ---------- W3 业务深度：BE-02 信号状态变迁流水 / BE-12 miss_reason 漏斗 ---------- */
+
+export interface SignalEventItem {
+  id: number
+  signalId: number
+  fromStatus: string // 空 = 创建事件
+  toStatus: string
+  reason: string
+  actor: string
+  traceId: string
+  at: string // RFC3339
+}
+
+export async function getSignalEvents(id: string): Promise<SignalEventItem[]> {
+  const data = await request(`/api/strategy/signals/${encodeURIComponent(id)}/events`)
+  return asList<RawRecord>(data, 'items').map((item) => ({
+    id: num(pick(item, 'id')) ?? 0,
+    signalId: num(pick(item, 'signalId', 'signal_id')) ?? 0,
+    fromStatus: pick<string>(item, 'fromStatus', 'from_status') || '',
+    toStatus: pick<string>(item, 'toStatus', 'to_status') || '',
+    reason: pick<string>(item, 'reason') || '',
+    actor: pick<string>(item, 'actor') || '',
+    traceId: pick<string>(item, 'traceId', 'trace_id') || '',
+    at: pick<string>(item, 'at') || '',
+  }))
+}
+
+export interface MissReasonCountItem {
+  reason: string
+  count: number
+}
+
+export interface MissFunnelDayItem {
+  tradeDate: string
+  total: number
+  missed: number
+  reasons: MissReasonCountItem[]
+}
+
+export async function getMissFunnel(days = 7, pool = ''): Promise<MissFunnelDayItem[]> {
+  const query: Record<string, string> = {}
+  if (days > 0) query.days = String(days)
+  if (pool) query.pool = pool
+  const data = await request('/api/strategy/miss-funnel', { query })
+  return asList<RawRecord>(data, 'days').map((day) => ({
+    tradeDate: pick<string>(day, 'tradeDate', 'trade_date') || '',
+    total: num(pick(day, 'total')) ?? 0,
+    missed: num(pick(day, 'missed')) ?? 0,
+    reasons: asList<RawRecord>(day, 'reasons').map((item) => ({
+      reason: pick<string>(item, 'reason') || '未归因',
+      count: num(pick(item, 'count')) ?? 0,
+    })),
+  }))
+}
+
 export async function getScoreVsPnl(last = 50): Promise<ScoreVsPnl> {
   // 哨兵钉死（P3-10c）：入点信号恒有分（阈值 75 才成信号）；actualReturn=0 是「持有到期平收」真值；
   // pearson 在 sample<2 时无统计意义，sample=0 同样由界面「样本不足」口径表达。

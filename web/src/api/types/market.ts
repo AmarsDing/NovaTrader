@@ -107,6 +107,14 @@ export interface SectorRow {
   avgPct: number | null
   overseas: number | null
   leader: string
+  /* 批次 A9：板块全景补全（proto SectorHeat 早已下发，归一曾丢弃）。
+     advanceRatio 是份额口径（backend pkg/market/sector.go：上涨家数/memberCount），渲染走 ratioPct；
+     amount 单位元（渲染走 compactAmount）。 */
+  upLimitCount: number | null
+  advanceRatio: number | null
+  amount: number | null
+  memberCount: number | null
+  leaderReason: string
   asOf: string
 }
 

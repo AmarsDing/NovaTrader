@@ -10,11 +10,18 @@ import { getBriefing, type Briefing } from '@/api/brain'
 import { getConfigValues } from '@/api/config'
 import { listSources, type DataSource } from '@/api/datahub'
 import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
+import { getAuction, type AuctionSummary } from '@/api/market'
+import { getRiskReport, type RiskReport } from '@/api/risk'
 import { listCandidates } from '@/api/strategy'
+import { sectorMembership, type SectorMembershipItem } from '@/api/membership'
 import type { Candidate } from '@/api/types/strategy'
-import NtSectorBar from '@/viz/NtSectorBar.vue'
+import NtSectorDist from '@/viz/NtSectorDist.vue'
+import type { SectorDistRow } from '@/viz/NtSectorDist.vue'
+import IntelRow from '@/display/IntelRow.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import SymbolName from '@/display/SymbolName.vue'
+import TicketDetail from '@/display/TicketDetail.vue'
+import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
@@ -25,14 +32,15 @@ import { useSignalsStore } from '@/stores/signals'
 import {
   amount,
   clock,
+  compactAmount,
   messageOf,
   phaseName,
   pnlClass,
+  ppText,
   price,
   ratioPct,
   sideLabel,
   signed,
-  validRemainText,
 } from '@/utils/format'
 import { serverNow } from '@/utils/server-clock'
 import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
@@ -40,13 +48,17 @@ import { createPageRefresh } from './page-refresh'
 import { getWorkbench } from '@/workspace/inject'
 import type { Position } from '@/api/trade'
 import {
+  buildAuctionStrip,
   buildGaps,
   buildMissed,
   buildTickets,
   buildDecisionAction,
+  buildTradeState,
   countBlockedSources,
+  groupMissed,
   hasAvailableSource,
-  missLabel,
+  laneBadge,
+  laneRemainText,
   type DeskGap,
   type DeskTicket,
   type DecisionContext,
@@ -76,6 +88,18 @@ const loading = ref(false)
 const pulse = ref('')
 /** 风控参数（risk.max_single_pct）。读不到就传 null，票上写「以风控实检为准」 */
 const maxSinglePct = ref<number | null>(null)
+/** FE-O5 竞价截面（GetAuction 09:25 落库）；辅助条独立成败——接口未应答 auctionReady=false，
+ *  found=false 显「竞价截面未落库」，不拖核心 ready（没取到≠0）。 */
+const auction = ref<AuctionSummary | null>(null)
+const auctionReady = ref(false)
+/** FE-O1 今日风控卡的「拦截 n」读风控日报；独立成败——未应答 sub 写「未返回」，不拖核心 ready。 */
+const riskReport = ref<RiskReport | null>(null)
+const riskReportReady = ref(false)
+/** FE-O4 板块分布（BE-05）：持仓+候选 symbols 反查板块归属；辅助图独立成败，
+ *  接口未应答 membershipReady=false 显占位，不拖核心 ready；membershipNote 写明覆盖口径。 */
+const membershipItems = ref<SectorMembershipItem[]>([])
+const membershipReady = ref(false)
+const membershipNote = ref('')
 /** 当前展开的那张票 */
 const selectedId = ref('')
 /** 异议点到的维，四维行高亮 */
@@ -98,18 +122,68 @@ const refreshes = createPageRefresh({ key: refreshKey, read: readPage, pushInter
 const noTape = computed(() => !market.ready || market.up == null || market.down == null || (market.up === 0 && market.down === 0))
 /** 顶栏之外，决策台卡片以当日盈亏领衔；缺 dayPnl 时用浮动盈亏兜底并在 sub 里写明。 */
 const dayPnlValue = computed(() => account.accountOk ? (account.dayPnl != null ? account.dayPnl : account.unrealized) : null)
-const usedPct = computed(() => {
-  if (!account.accountOk || !account.equity || account.cash == null) return null
-  return 1 - account.cash / account.equity
+/** FE-O1 今日买入上限读参数册 risk.max_daily_buys；键缺失显「—」不猜数（与 risk-chain 面板同口径）。 */
+const buyLimit = computed(() => {
+  const v = risk.params['max_daily_buys']
+  return v == null ? null : String(v)
 })
-const chartRows = computed(() =>
-  (market.ready ? market.sectors : [])
-    .filter((row) => row.avgPct != null)
-    .map((row) => ({ name: row.name, avgPct: Number((row.avgPct as number).toFixed(2)) })),
-)
+/** 买入满额时卡面转 warn——「今天还能不能买」是这张卡要回答的问题。 */
+const buyCapHit = computed(() => {
+  const max = Number(buyLimit.value)
+  return risk.buysToday != null && Number.isFinite(max) && max > 0 && risk.buysToday >= max
+})
+const distTop = 12
+/** FE-O4 板块分布：持仓+候选各券按归属板块计数（一券多板块各记一次），
+ *  无有效归属（接口显式回空 sectors，非错误）归入「未归属」桶；
+ *  计数降序、同名按板块名兜底，超出 distTop 合成「其他」桶保可读性。 */
+const distRows = computed<SectorDistRow[]>(() => {
+  if (!membershipItems.value.length) return []
+  const counts = new Map<string, number>()
+  let unassigned = 0
+  for (const item of membershipItems.value) {
+    if (!item.sectors.length) {
+      unassigned += 1
+      continue
+    }
+    for (const sec of item.sectors) counts.set(sec.name, (counts.get(sec.name) ?? 0) + 1)
+  }
+  const rows = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hans-CN'))
+  const top = rows.slice(0, distTop)
+  const rest = rows.slice(distTop)
+  if (rest.length) top.push({ name: `其他（${rest.length} 个板块）`, count: rest.reduce((sum, row) => sum + row.count, 0) })
+  if (unassigned) top.push({ name: '未归属', count: unassigned })
+  return top
+})
 const tickets = computed(() => buildTickets(signals.value, maxSinglePct.value))
 const missed = computed(() => buildMissed(candidates.value))
+/** FE-O3 漏选分组计数头：完整列表按 missReason 聚合，组按条数降序。 */
+const missedGroups = computed(() => groupMissed(missed.value))
 const selectedCount = computed(() => candidates.value.filter((row) => row.stage === 'selected').length)
+
+/* FE-O2 票卡标准化：徽标（signal 册）与有效期倒计时随票随钟出，模板不重复算。 */
+const pendingCards = computed(() =>
+  tickets.value.pending.map((ticket) => ({
+    ticket,
+    badge: laneBadge(ticket, nowTick.value),
+    remain: laneRemainText(ticket.validUntil, nowTick.value),
+  })),
+)
+const executedCards = computed(() =>
+  tickets.value.executed.map((ticket) => ({ ticket, badge: laneBadge(ticket, nowTick.value) })),
+)
+/* FE-O5 竞价强弱条：时段判定走 serverNow（buildAuctionStrip 内部 sessionOf），过时段整条 null 不渲。 */
+const auctionStrip = computed(() => buildAuctionStrip(auction.value, nowTick.value))
+
+/** 方向文字色：买入红/卖出绿（A 股红涨绿跌，与票头方向同口径）。 */
+function sideClass(side: string): string {
+  return side === 'buy' ? 'up' : side === 'sell' ? 'down' : ''
+}
+/** 方向色带：票卡左缘 inset 2px（红买绿卖——09:45 的买单和 14:45 的卖单不再长一个样）。 */
+function bandClass(side: string): string {
+  return side === 'buy' ? 'side-buy' : side === 'sell' ? 'side-sell' : ''
+}
 const selected = computed<DeskTicket | null>(
   () =>
     tickets.value.pending.find((item) => item.id === selectedId.value) ??
@@ -139,6 +213,8 @@ const gaps = computed<DeskGap[]>(() =>
     live: isLive(),
   }),
 )
+/** FE-O1 四卡之「可交易状态」：gaps 的抬头读数（阻断 n / 链路齐），明细仍由下方「现在缺什么」清单承接。 */
+const tradeState = computed(() => buildTradeState(gaps.value))
 
 /* 选中的票没了（被执行/被撤）就回落到待执行第一张；没有选中项时默认展开第一张待执行 */
 watch(tickets, (next) => {
@@ -263,15 +339,22 @@ async function readPage(key: string): Promise<boolean> {
     wordRes,
     briefRes,
     sourceRes,
+    auctionRes,
+    riskReportRes,
   ] = await Promise.allSettled([
     account.refresh(),
     market.refresh(),
     risk.refresh(),
     signalStore.refresh(),
-    listCandidates({ limit: 40 }),
+    // FE-O3 完整列表：上限对齐后端默认 200（clamp 上限 1000），不再靠 8 条截断收口。
+    listCandidates({ limit: 200 }),
     hotWords(),
     getBriefing(''),
     listSources(),
+    // FE-O5：竞价截面是辅助条，独立成败不拖核心 ready。
+    getAuction(10),
+    // FE-O1：风控日报给「今日风控」卡的拦截数，独立成败不拖核心 ready。
+    getRiskReport(),
   ])
 
   if (disposed || key !== refreshKey() || sequence !== loadSequence || account.book !== checkedBook) return false
@@ -294,6 +377,38 @@ async function readPage(key: string): Promise<boolean> {
     sources.value = []
     sourcesFailed.value = true
     sourcesLoaded.value = false
+  }
+  // FE-O5 竞价截面独立成败：失败只让竞价条显「竞价接口未应答」（时段内），不拖主表错误语义。
+  auctionReady.value = auctionRes.status === 'fulfilled'
+  auction.value = auctionRes.status === 'fulfilled' ? auctionRes.value : null
+  // FE-O1 风控日报独立成败：失败只让「今日风控」卡的拦截数显「未返回」，不进主表错误语义。
+  riskReportReady.value = riskReportRes.status === 'fulfilled'
+  riskReport.value = riskReportRes.status === 'fulfilled' ? riskReportRes.value : null
+
+  // FE-O4 板块分布独立成败：依赖本轮持仓+候选结果，单独拉取不拖核心 ready。
+  const posSymbols = account.positionsOk ? account.positions.map((row) => row.symbol) : []
+  const candSymbols = candidateRes.status === 'fulfilled' ? candidateRes.value.map((row) => row.symbol) : []
+  // 持仓在前（权重更高）；去重保序；上限对齐后端 maxMembershipSymbols=200，截断部分在注释行写明覆盖。
+  const distSymbols = [...new Set([...posSymbols, ...candSymbols].filter(Boolean))]
+  if (!distSymbols.length) {
+    membershipItems.value = []
+    membershipReady.value = true
+    membershipNote.value = '持仓与候选均为空'
+  } else {
+    try {
+      const res = await sectorMembership(distSymbols.slice(0, 200))
+      if (disposed || sequence !== loadSequence) return false
+      membershipItems.value = res.items
+      membershipReady.value = true
+      const cover = res.items.length < distSymbols.length ? `，归属覆盖 ${res.items.length}/${distSymbols.length} 券` : ''
+      const date = res.tradeDate ? ` · 归属窗口 ${res.tradeDate}` : ''
+      membershipNote.value = `持仓 ${posSymbols.length} + 候选 ${candSymbols.length} 券${cover}${date}`
+    } catch {
+      if (disposed || sequence !== loadSequence) return false
+      membershipItems.value = []
+      membershipReady.value = false
+      membershipNote.value = ''
+    }
   }
 
   decisionContext.value = {
@@ -402,8 +517,8 @@ watch(
     <NtErrorGuide :error="error" />
 
     <section class="nt-cards">
-      <!-- B3 攻心版收单焦点（决策台条 P0-8 终收编）：当日盈亏=首屏唯一 hero（第一答案）；
-           权益降正常档、保留可用资金子句——B1 曾登记双英雄例外，本批按直觉3「只留一个最大数字」收口。 -->
+      <!-- FE-O1 四卡重排（§2.1 目标形态）：当日盈亏 hero＋可交易状态＋情绪＋今日风控；
+           权益卡撤除——权益/可用与顶栏 CommandBar 同口径重复，一屏不留两个大数（B1 双英雄例外判例收口）。 -->
       <NtStatCard
         label="当日盈亏"
         :value="signed(dayPnlValue)"
@@ -411,26 +526,47 @@ watch(
         :tone="pnlClass(dayPnlValue) || 'neutral'"
         hero
       />
-      <NtStatCard
-        label="权益"
-        :value="amount(account.accountOk ? account.equity : null)"
-        :sub="account.accountOk ? `可用 ${amount(account.cash)}${usedPct != null ? ` · 已用 ${(usedPct * 100).toFixed(0)}%` : ''}` : '账户读取未核对'"
-      />
+      <!-- 可交易状态=gaps 的抬头读数：值只给阻断数（链路齐是常态不着色），明细仍由下方「现在缺什么」清单承接。 -->
+      <NtStatCard label="可交易状态" :value="tradeState.value" :sub="tradeState.sub" :tone="tradeState.tone" />
+      <!-- 情绪卡收编炸板率（原系统卡口径归情绪域），涨/跌家数进子句。 -->
       <NtStatCard
         label="情绪"
         :value="noTape ? '无快照' : phaseName(market.phase)"
         :sub="
           noTape
             ? '全市场快照未入库'
-            : `仓位系数 ${market.positionScale ?? '—'} · 上涨 ${market.up ?? '—'} / 下跌 ${market.down ?? '—'}`
+            : `仓位系数 ${market.positionScale ?? '—'} · 涨 ${market.up ?? '—'} / 跌 ${market.down ?? '—'} · 炸板率 ${ratioPct(market.ready ? market.brokenRate : null)}`
         "
       />
+      <!-- 今日风控：买入 x/上限（键缺失显「—」不猜数，与 risk-chain 同口径）＋日报拦截数；
+           日报独立成败——未应答 sub 写「未返回」，不拖核心 ready；买入满额转 warn。 -->
       <NtStatCard
-        label="系统"
-        :value="isLive() ? '实时' : '不是实时'"
-        :sub="`模式 ${risk.ready ? risk.mode : '—'} · 炸板率 ${ratioPct(market.ready ? market.brokenRate : null)}`"
+        label="今日风控"
+        :value="`买入 ${risk.buysToday ?? '—'}/${buyLimit ?? '—'}`"
+        :sub="riskReportReady ? `拦截 ${riskReport?.rejected ?? '—'}` : '风控日报未返回'"
+        :tone="buyCapHit ? 'warn' : 'neutral'"
       />
     </section>
+    <!-- FE-O1 链路徽注行：原「系统」卡拆为弱档徽注——实时性与模式是链路属性，不占一张卡的读数位。 -->
+    <p class="link-strip">
+      <NtBadge :tone="isLive() ? 'success' : 'warn'" dot>{{ isLive() ? '行情实时' : '行情非实时' }}</NtBadge>
+      <NtBadge tone="neutral">模式 {{ risk.ready ? risk.mode : '—' }}</NtBadge>
+    </p>
+
+    <!-- FE-O5 竞价强弱条：仅集合竞价时段（09:15–09:30）显，过时段自动隐藏；
+         截面未落库/接口未应答显缺口文案（没取到≠0，均涨幅/未匹配缺样本显「—」）。 -->
+    <p v-if="auctionStrip" class="auction-strip">
+      <span class="auction-strip__label">竞价</span>
+      <template v-if="auctionStrip.found">
+        <span>涨停 <b>{{ auctionStrip.limitUpCount }}</b> 家</span>
+        <span>竞价额 <b>{{ compactAmount(auctionStrip.totalAmount) }}</b></span>
+        <span>样本 <b>{{ auctionStrip.sampleCount }}</b> 只</span>
+        <span>均涨幅 <b :class="pnlClass(auctionStrip.avgPct)">{{ auctionStrip.avgPct == null ? '—' : ppText(auctionStrip.avgPct, 2) }}</b></span>
+        <span>未匹配净买 <b>{{ auctionStrip.unmatchedShares == null ? '—' : `${(auctionStrip.unmatchedShares / 1e4).toFixed(2)} 万股` }}</b></span>
+        <span v-if="auctionStrip.asOf" class="auction-strip__meta">截面 {{ auctionStrip.asOf }}</span>
+      </template>
+      <span v-else class="auction-strip__meta">{{ auctionReady ? '竞价截面未落库（09:25 截面未入库）' : '竞价接口未应答' }}</span>
+    </p>
 
     <!-- B3 攻心版换位（直觉4 任务即视图）：答案卡先扫，阻断清单紧随——缺什么总在票区前读，不会到下单才发现链路断。 -->
     <section class="nt-panel">
@@ -455,19 +591,27 @@ watch(
           <p v-if="!signalStore.ready" class="nt-empty">信号未返回，待执行数量未知。</p>
           <p v-else-if="!tickets.pending.length" class="nt-empty">没有待执行信号。</p>
           <ul v-else>
+            <!-- FE-O2 票卡标准化：方向色带（红买绿卖）+ 时间/代码/状态徽标一行，方向/分数/入场区间/有效期倒计时一行 -->
             <li
-              v-for="ticket in tickets.pending"
-              :key="ticket.id"
-              :class="{ on: selectedId === ticket.id }"
-              @click="pick(ticket.id)"
+              v-for="card in pendingCards"
+              :key="card.ticket.id"
+              :class="[{ on: selectedId === card.ticket.id }, bandClass(card.ticket.side)]"
+              @click="pick(card.ticket.id)"
             >
-              <span class="tm">{{ clock(ticket.time) }}</span>
-              <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
-              <SymbolName :code="ticket.symbol" mode="inline" />
-              <em v-if="ticket.degraded" class="tag">规则分</em>
-              <b :class="{ hot: ticket.highValue }">{{
-                ticket.degraded ? (ticket.ruleScore ?? '—') : (ticket.score ?? '—')
-              }}</b>
+              <span class="row">
+                <span class="tm">{{ clock(card.ticket.time) }}</span>
+                <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
+                <SymbolName :code="card.ticket.symbol" mode="inline" />
+                <NtBadge v-if="card.badge" :tone="card.badge.tone">{{ card.badge.text }}</NtBadge>
+              </span>
+              <span class="meta">
+                <em :class="sideClass(card.ticket.side)">{{ sideLabel(card.ticket.side) }}</em>
+                <b :class="{ hot: card.ticket.highValue }">{{
+                  card.ticket.degraded ? `规则 ${card.ticket.ruleScore ?? '—'}` : (card.ticket.score ?? '—')
+                }}</b>
+                <span>入场 {{ price(card.ticket.entryLow) }}–{{ price(card.ticket.entryHigh) }}</span>
+                <span :class="{ warn: !card.ticket.validUntil }">{{ card.remain }}</span>
+              </span>
             </li>
           </ul>
         </div>
@@ -478,16 +622,24 @@ watch(
           <p v-if="!signalStore.ready" class="nt-empty">信号未返回，已执行数量未知。</p>
           <p v-else-if="!tickets.executed.length" class="nt-empty">今天还没有执行的票。</p>
           <ul v-else>
+            <!-- FE-O2 票卡标准化：已执行票与待执行同款方向色带，副行给成交均价/数量（目标形态：成交价/量/后验 pnl） -->
             <li
-              v-for="ticket in tickets.executed"
-              :key="ticket.id"
-              :class="{ on: selectedId === ticket.id }"
-              @click="pick(ticket.id)"
+              v-for="card in executedCards"
+              :key="card.ticket.id"
+              :class="[{ on: selectedId === card.ticket.id }, bandClass(card.ticket.side)]"
+              @click="pick(card.ticket.id)"
             >
-              <span class="tm">{{ clock(ticket.time) }}</span>
-              <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
-              <SymbolName :code="ticket.symbol" mode="inline" />
-              <span class="done">{{ ticket.closedNote || '已执行' }}</span>
+              <span class="row">
+                <span class="tm">{{ clock(card.ticket.time) }}</span>
+                <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
+                <SymbolName :code="card.ticket.symbol" mode="inline" />
+                <span class="row-note">{{ card.ticket.closedNote || '已执行' }}</span>
+              </span>
+              <span class="meta">
+                <em :class="sideClass(card.ticket.side)">{{ sideLabel(card.ticket.side) }}</em>
+                <span>成交均价 {{ price(card.ticket.executedPrice ?? null) }}</span>
+                <span>{{ card.ticket.executedVolume ?? '—' }} 股</span>
+              </span>
             </li>
           </ul>
         </div>
@@ -498,122 +650,50 @@ watch(
           <p class="nt-note">候选 {{ candidatesReady ? candidates.length : '—' }} · 入选 {{ candidatesReady ? selectedCount : '—' }}。</p>
           <p v-if="!candidatesReady" class="nt-empty">候选未返回，漏选数量未知。</p>
           <p v-else-if="!missed.length" class="nt-empty">没有漏选记录。</p>
-          <ul v-else>
-            <li v-for="row in missed" :key="row.symbol + row.strategy">
-              <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
-              <SymbolName :code="row.symbol" mode="inline" />
-              <span class="miss">{{ missLabel(row.reason) }}</span>
-              <b>规则 {{ row.ruleScore ?? '—' }}</b>
-            </li>
-          </ul>
+          <!-- FE-O3 完整列表：不再截断 8 条；按 missReason 分组出计数头（组按条数降序），
+               组内保持规则分倒序；长列表在 miss-groups 滚动区收口，不撑高整列。 -->
+          <div v-else class="miss-groups">
+            <section v-for="group in missedGroups" :key="group.reason" class="miss-group">
+              <h4>{{ group.label }} <b>{{ group.count }}</b></h4>
+              <ul>
+                <!-- FE-O2 漏选卡可钻取：点击跳信号中枢并按代码定位（验收：漏选每行 2 次点击内到达解释） -->
+                <li v-for="row in group.rows" :key="row.symbol + row.strategy">
+                  <button type="button" class="miss-row" title="到信号中枢定位这只票" @click="openPanel('signals', { symbol: row.symbol })">
+                    <SymbolName :code="row.symbol" mode="inline" />
+                    <b>规则 {{ row.ruleScore ?? '—' }}</b>
+                  </button>
+                </li>
+              </ul>
+            </section>
+          </div>
         </div>
       </div>
 
       <div class="desk__body">
         <template v-if="selected">
-          <header class="ticket__head">
-            <!-- §P0 走查：代码+名称自制双件统一 SymbolName(inline)，名称走字典，缺名显「名称未返回」 -->
-            <SymbolName :code="selected.symbol" mode="inline" />
-            <em :class="selected.side === 'buy' ? 'up' : selected.side === 'sell' ? 'down' : ''">{{
-              sideLabel(selected.side)
-            }}</em>
-            <span class="date">形成日 {{ selected.tradeDate || '—' }}</span>
-            <span class="date"
-              >账本 {{ selected.book || '未返回' }} · 版本 {{ selected.strategyVersionId || '未返回' }}</span
-            >
-            <span v-if="selected.degraded" class="tag">规则分 {{ selected.ruleScore ?? '—' }}</span>
-            <b v-else class="score" :class="{ hot: selected.highValue }">{{ selected.score ?? '—' }}</b>
-            <span v-if="selected.lane === 'executed'" class="done">{{ selected.closedNote || '已执行' }}</span>
-          </header>
-
-          <p v-if="selected.lane === 'executed'" class="nt-note">账本已核成交 {{ selected.executedVolume ?? '—' }} 股 · 成交均价 {{ price(selected.executedPrice ?? null) }}。部分成交可能仍有余量，请核对原订单。</p>
-          <section v-if="selectedAction" class="action-plan" :class="selectedAction.state" aria-label="当前行动计划">
-            <h4>当前动作：{{ selectedAction.title }}</h4>
-            <p><strong>什么时候行动</strong>{{ selectedAction.timing }}</p>
-            <p><strong>失效条件</strong>{{ selectedAction.invalidation }}</p>
-            <p v-if="selectedAction.blocker" class="action-plan__blocker">
-              <strong>主要阻断</strong>{{ selectedAction.blocker }}
-            </p>
-            <p class="action-plan__caution"><strong>先看反证</strong>{{ selectedAction.caution }}</p>
-            <p v-if="selectedAction.canOpenTrade" class="nt-note">
-              当前仅可准备模拟盘确认，尚未校验最新个股价格、数量与下单风控。
-            </p>
-          </section>
-
-          <ConditionalPlans :signal-id="selected.id" />
-          <div class="ticket__grid">
-            <div class="ticket__block">
-              <h4>价格</h4>
-              <p class="px">
-                入场 {{ price(selected.entryLow) }}–{{ price(selected.entryHigh) }} · 止损 {{ price(selected.stop) }} ·
-                止盈 {{ price(selected.take) }}
-              </p>
-              <p class="valid" :class="{ warn: !selected.validUntil }">
-                {{ selected.validUntil ? validRemainText(selected.validUntil, nowTick) || '已过期' : '无有效期' }}
-                <template v-if="selected.risk.requestedPct != null">
-                  · 请求仓位 {{ (selected.risk.requestedPct * 100).toFixed(0) }}%</template
-                >
-              </p>
-            </div>
-
-            <div class="ticket__block">
-              <h4>四维投票</h4>
-              <ul class="votes">
-                <li
-                  v-for="vote in selected.votes"
-                  :key="vote.key"
-                  :class="{ against: vote.against, focus: focusDim === vote.key }"
-                  @click="vote.against && pointDim(vote.key)"
-                >
-                  <span>{{ vote.label }}</span>
-                  <b>{{ vote.score ?? '—' }}</b>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div v-if="selected.objections.length" class="ticket__block objections">
-            <h4>异议</h4>
-            <ul>
-              <li v-for="(item, index) in selected.objections" :key="index">{{ item }}</li>
-            </ul>
-          </div>
-
-          <div class="ticket__block">
-            <h4>理由</h4>
-            <p v-if="!selected.reasons.length" class="nt-empty">
-              {{ selected.degraded ? '规则分：模型降级，没有研判正文' : '未调用' }}
-            </p>
-            <ol v-else class="reasons">
-              <li v-for="(item, index) in selected.reasons" :key="index">{{ item }}</li>
-            </ol>
-            <p v-if="selected.evidence.length" class="evidence">
-              <span v-for="(item, index) in selected.evidence" :key="index" class="chip">{{ item }}</span>
-            </p>
-          </div>
-
-          <div class="ticket__block">
-            <h4>风控</h4>
-            <p class="px">
-              请求仓位
-              {{ selected.risk.requestedPct != null ? `${(selected.risk.requestedPct * 100).toFixed(1)}%` : '—' }} ·
-              单股上限估算
-              {{ selected.risk.allowedPct != null ? `${(selected.risk.allowedPct * 100).toFixed(1)}%` : '—' }}
-              <template v-if="selected.risk.rule"> · {{ selected.risk.rule }}</template>
-            </p>
-            <p class="nt-note">{{ selected.risk.note }}</p>
-          </div>
-
-          <footer class="ticket__actions">
-            <NtButton size="sm" variant="quiet" @click="openMarket(selected.symbol)">看行情</NtButton>
-            <NtButton
-              v-if="selected.lane === 'pending'"
-              size="sm"
-              :disabled="!selectedAction?.canOpenTrade"
-              @click="openTrade(selected)"
-              >准备模拟盘确认</NtButton
-            >
-          </footer>
+          <!-- W0-3b/FE-O6：票体=TicketDetail 单一事实组件（头/行动/价格/投票/异议/理由/风控唯一出处），
+               上面槽放条件计划、票脚槽放页侧按钮；焦点维焦点态仍由本页持有。 -->
+          <TicketDetail
+            :ticket="selected"
+            :action="selectedAction"
+            :now-tick="nowTick"
+            :focus-dim="focusDim"
+            @point-dim="pointDim"
+          >
+            <template #above>
+              <ConditionalPlans :signal-id="selected.id" />
+            </template>
+            <template #foot>
+              <NtButton size="sm" variant="quiet" @click="openMarket(selected.symbol)">看行情</NtButton>
+              <NtButton
+                v-if="selected.lane === 'pending'"
+                size="sm"
+                :disabled="!selectedAction?.canOpenTrade"
+                @click="openTrade(selected)"
+                >准备模拟盘确认</NtButton
+              >
+            </template>
+          </TicketDetail>
         </template>
         <p v-else-if="!signalStore.ready" class="nt-empty">信号未返回，暂时无法展开决策票。</p>
         <p v-else class="nt-empty">点左边一票读正文。没有研判正文时这里写「未调用」或「规则分」，不编理由。</p>
@@ -681,9 +761,10 @@ watch(
             <em>{{ weight(item) || '—' }}</em>
           </div>
         </div>
-        <h3 class="sub">板块涨跌（全市场）</h3>
-        <p v-if="!chartRows.length" class="nt-empty">板块快照未返回。</p>
-        <NtSectorBar v-else :rows="chartRows" height="220px" />
+        <h3 class="sub">板块分布（持仓+候选）</h3>
+        <p v-if="membershipNote" class="nt-note">{{ membershipNote }}</p>
+        <p v-if="!membershipReady" class="nt-empty">板块归属接口未应答。</p>
+        <NtSectorDist v-else :rows="distRows" height="220px" />
       </section>
     </div>
 
@@ -692,11 +773,9 @@ watch(
       <p v-if="intelSentiment != null" class="nt-note">近端综合情感 {{ intelSentiment }}</p>
       <p v-if="!intelItems.length" class="nt-empty">这条时间线是空的。新闻源没入库时，这里不会凭空出现消息。</p>
       <ul v-else class="rows">
-        <li v-for="item in intelItems" :key="item.id || item.title">
-          <b :class="pnlClass(item.sentiment)">{{ clock(item.time) }}</b>
-          <span>{{ item.title }}</span>
-          <em>{{ item.source }}</em>
-        </li>
+        <!-- W0-3b/FE-I4：消息行=IntelRow 单一事实组件（此前此处只剩 时间/标题/来源 三裁口径，
+             现与情报中枢/行情侧栏同源：重要度强章+弱标、kind、原文外链一并到位） -->
+        <IntelRow v-for="item in intelItems" :key="item.id || item.title" :item="item" />
       </ul>
     </section>
   </div>
@@ -705,6 +784,86 @@ watch(
 <style scoped>
 .desk-split {
   align-items: start;
+}
+
+/* FE-O5 竞价强弱条：一行收编（与梯队情绪细条同族），读数等宽、红涨绿跌走 pnlClass。 */
+.auction-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-bg-1);
+  font-size: 12px;
+  color: var(--nt-text-2);
+}
+
+.auction-strip__label {
+  color: var(--nt-text-3);
+  font-size: 11.5px;
+}
+
+.auction-strip b {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--nt-text-1);
+}
+
+.auction-strip b.up {
+  color: var(--nt-up);
+}
+
+.auction-strip b.down {
+  color: var(--nt-down);
+}
+
+.auction-strip__meta {
+  color: var(--nt-text-3);
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* FE-O1 链路徽注行：原「系统」卡拆出的弱档徽注，贴在四卡下方不抢读数。 */
+.link-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+}
+
+/* FE-O3 漏选分组滚动区：完整列表不再截断，长列表栏内滚动，不撑高整列与整页。 */
+.miss-groups {
+  margin-top: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* FE-O3 漏选分组计数头：原因中文口径左置、聚合计数右置（与 lane h3 计数同档）。 */
+.miss-group h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--nt-text-3);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.miss-group h4 b {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.miss-group ul {
+  margin-top: 4px;
 }
 
 .gaps,
@@ -741,7 +900,6 @@ watch(
   border-color: var(--nt-warn, var(--nt-border-2, var(--nt-border-1)));
 }
 
-.rows li,
 .brief-items li,
 .words li {
   display: flex;
@@ -750,19 +908,8 @@ watch(
   font-size: 12.5px;
 }
 
-.rows li span,
 .brief-items li span {
   min-width: 0;
-}
-
-.px {
-  color: var(--nt-text-2);
-}
-
-.px {
-  font-family: var(--nt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
 }
 
 .tm {
@@ -770,17 +917,6 @@ watch(
   font-size: 11px;
   font-family: var(--nt-font-mono);
   min-width: 42px;
-}
-
-.valid,
-.pos {
-  font-size: 11px;
-  color: var(--nt-text-3);
-  white-space: nowrap;
-}
-
-.valid.warn {
-  color: var(--nt-warn);
 }
 
 .link {
@@ -792,17 +928,7 @@ watch(
   font: inherit;
 }
 
-.rows b,
-.words b {
-  font-family: var(--nt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
-.rows b.hot {
-  color: var(--nt-warn); /* 删 fallback 遮羞布 */
-}
-
+/* W0-3b：.rows 情报行样式已随 IntelRow 组件收口（行体 flex/mono 时间/来源位）。 */
 .words b {
   margin-left: auto;
 }
@@ -921,20 +1047,87 @@ watch(
   gap: 4px;
 }
 
+/* FE-O2 票卡标准化：票卡两行——头行 时间/代码/状态徽标，副行 方向/分数/入场区间/有效期倒计时；
+   方向色带=左缘 inset 2px（梯队卡 inset 轨道先例收窄档），选中描边不受影响。 */
 .lane li {
   display: flex;
-  gap: 6px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 3px;
+  align-items: stretch;
   font-size: 12px;
-  padding: 5px 6px;
+  padding: 5px 6px 5px 8px;
   border-radius: var(--nt-radius-s);
   border: 1px solid transparent;
   cursor: pointer;
 }
 
+.lane li.side-buy {
+  box-shadow: inset 2px 0 var(--nt-up);
+}
+
+.lane li.side-sell {
+  box-shadow: inset 2px 0 var(--nt-down);
+}
+
 .lane li.on {
   border-color: var(--nt-accent);
   background: color-mix(in srgb, var(--nt-accent) 8%, transparent);
+}
+
+.lane li .row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.lane li .meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--nt-text-3);
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.lane li .meta em {
+  font-style: normal;
+}
+
+.lane li .meta em.up {
+  color: var(--nt-up);
+}
+
+.lane li .meta em.down {
+  color: var(--nt-down);
+}
+
+.lane li .meta .warn {
+  color: var(--nt-warn);
+}
+
+/* 已执行票头行的了结注（closedNote 单源）：弱档右置。 */
+.lane li .row-note {
+  font-size: 11px;
+  color: var(--nt-text-3);
+  white-space: nowrap;
+}
+
+/* FE-O2 漏选卡可钻取：整行按钮跳信号中枢按代码定位。 */
+.lane li .miss-row {
+  width: 100%;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
 }
 
 /* SymbolName 在 lane 里占弹性位，名称过长走组件内省略。 */
@@ -957,23 +1150,9 @@ watch(
   font-family: var(--nt-font-mono);
 }
 
-.tag {
-  font-style: normal;
-  font-size: 10px;
-  color: var(--nt-warn);
-  border: 1px solid var(--nt-warn);
-  border-radius: 3px;
-  padding: 0 3px;
-  white-space: nowrap;
-}
-
-.done,
-.miss {
-  font-size: 11px;
-  color: var(--nt-text-3);
-  white-space: nowrap;
-}
-
+/* W0-3b/FE-O6：票头 .tag/.done、票体 .ticket__*、.votes/.objections/.reasons/.evidence/.chip、
+   .action-plan 已随 TicketDetail/TicketAction 收编迁出（组件 scoped 内唯一出处）。
+   FE-O3：漏选原因徽注 .miss 随分组计数头收口删除（组头唯一出处）。 */
 .desk__body {
   min-width: 0;
   border: 1px solid var(--nt-border-1);
@@ -982,171 +1161,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.ticket__head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.ticket__head .big {
-  font-size: 15px;
-}
-
-.ticket__head strong {
-  font-size: 14px;
-}
-
-.ticket__head .up {
-  color: var(--nt-up);
-  font-style: normal;
-}
-
-.ticket__head .down {
-  color: var(--nt-down);
-  font-style: normal;
-}
-
-.ticket__head .date {
-  color: var(--nt-text-3);
-  font-size: 11px;
-}
-
-.ticket__head .score {
-  margin-left: auto;
-  font-family: var(--nt-font-mono);
-  font-size: var(--nt-fs-num-lg); /* 收编自 18px 裸值（§5.3 num-lg 档 17，归并入档；分数是配角不抢 hero） */
-  font-weight: 600;
-}
-
-.ticket__head .score.hot {
-  color: var(--nt-warn); /* 删裸值级联 fallback（--nt-warn 已冻结定义，fallback 是遮羞布） */
-}
-
-.ticket__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.ticket__block h4 {
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--nt-text-3);
-  letter-spacing: 0.04em;
-}
-
-.ticket__block p {
-  margin: 0;
-}
-
-.votes {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.votes li {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12.5px;
-  padding: 3px 6px;
-  border-radius: var(--nt-radius-s);
-  border: 1px solid transparent;
-}
-
-.votes li.against {
-  color: var(--nt-warn);
-  cursor: pointer;
-}
-
-.votes li.focus {
-  border-color: var(--nt-warn);
-}
-
-.votes li b {
-  font-family: var(--nt-font-mono);
-  font-weight: 500;
-}
-
-.objections ul {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--nt-warn);
-  font-size: 12.5px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.reasons {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12.5px;
-  color: var(--nt-text-1);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  line-height: 1.5;
-}
-
-.evidence {
-  margin-top: 6px;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.chip {
-  font-size: 10.5px;
-  font-family: var(--nt-font-mono);
-  color: var(--nt-text-2);
-  border: 1px solid var(--nt-border-1);
-  border-radius: 3px;
-  padding: 1px 5px;
-}
-
-.ticket__actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.action-plan {
-  padding: 10px 12px;
-  border: 1px solid var(--nt-border-2);
-  border-radius: var(--nt-radius-s);
-  background: var(--nt-bg-1);
-}
-
-.action-plan h4 {
-  margin: 0 0 8px;
-  color: var(--nt-text-1);
-  font-size: 13px;
-}
-
-.action-plan p {
-  margin: 5px 0;
-  color: var(--nt-text-2);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.action-plan strong {
-  margin-right: 8px;
-  font-weight: 500;
-  color: var(--nt-text-3);
-}
-
-.action-plan .action-plan__blocker,
-.action-plan .action-plan__caution {
-  color: var(--nt-warn);
 }
 
 @media (max-width: 900px) {

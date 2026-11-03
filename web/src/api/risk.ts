@@ -293,6 +293,50 @@ export function resetKillSwitch(body: KillBody): Promise<unknown> {
   return request('/api/risk/killswitch/reset', { method: 'POST', json: body })
 }
 
+/* ---------- BE-11 拒绝聚合：日报 TopN 与 N 日拦截率曲线（只读） ---------- */
+
+export interface RejectDay {
+  date: string
+  checks: number
+  rejected: number
+  /** rejected/checks；checks 为 0 时是 0（后端口径） */
+  rejectRate: number
+}
+
+export interface RejectTrend {
+  /** 窗口结束日（YYYY-MM-DD，上海时区） */
+  end: string
+  days: number
+  /** 按日期升序，窗口内每日一格（无数据日全 0） */
+  trend: RejectDay[]
+  /** 窗口内按规则聚合，count 降序、rule 升序兜底 */
+  topRules: RuleCount[]
+}
+
+/** 拒绝聚合：end 空为今天（上海），days<=0 后端取默认 7，上限 31。 */
+export async function getRejectTrend(end = '', days = 7): Promise<RejectTrend> {
+  const query: Record<string, string> = {}
+  if (end) query.end = end
+  if (days > 0) query.days = String(days)
+  const raw = await request('/api/risk/rejects/trend', { query })
+  const record = (raw && typeof raw === 'object' ? raw : {}) as RawRecord
+  return {
+    end: pick<string>(record, 'end') || '',
+    days: num(pick(record, 'days')) ?? 0,
+    trend: asList<RawRecord>(record, 'trend').map((d) => ({
+      date: pick<string>(d, 'date') || '',
+      checks: num(pick(d, 'checks')) ?? 0,
+      rejected: num(pick(d, 'rejected')) ?? 0,
+      rejectRate: num(pick(d, 'rejectRate', 'reject_rate')) ?? 0,
+    })),
+    topRules: asList<RawRecord>(record, 'topRules', 'top_rules').map((r) => ({
+      rule: pick<string>(r, 'rule') || '',
+      name: pick<string>(r, 'name') || '',
+      count: num(pick(r, 'count')),
+    })),
+  }
+}
+
 export function setMode(body: ModeBody): Promise<unknown> {
   return request('/api/risk/mode', { method: 'POST', json: body })
 }

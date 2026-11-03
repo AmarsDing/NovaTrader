@@ -3,10 +3,14 @@
  * 信号中枢：全部信号的卡片流。
  * 订阅 signal 主题 2 秒节流刷新；支持 方向/状态/模板 过滤与排序；
  * 有效期倒计时，过期置灰；85 分以上按发光预算高亮。
+ * W2 收编：卡片票体全量走 TicketDetail（与决策台同一事实层：头/行动/价格/四维投票+评语/异议/
+ * 理由证据/风控）；卡壳只保留评分环+雷达（above 槽）与状态章/新鲜度（head-extra 槽）。
+ * FE-O2：接面板参数 symbol 预置代码搜索词（决策台漏选行钻取定位）。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { SignalItem } from '@/api/signals'
 import { listSources } from '@/api/datahub'
+import { getConfigValues } from '@/api/config'
 import { useAccountStore } from '@/stores/account'
 import { useMarketStore } from '@/stores/market'
 import { useRiskStore } from '@/stores/risk'
@@ -16,6 +20,7 @@ import {
   buildDecisionAction,
   hasAvailableSource,
   isPendingStatus,
+  toDeskTicket,
   type DecisionContext,
 } from './decision-desk'
 import NtBadge from '@/ui/NtBadge.vue'
@@ -23,22 +28,20 @@ import NtButton from '@/ui/NtButton.vue'
 import ConditionalPlans from './ConditionalPlans.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
+import NtInput from '@/ui/NtInput.vue'
 import NtFunnel, { type FunnelStage } from '@/display/NtFunnel.vue'
+import NtSignalTimeline from '@/display/NtSignalTimeline.vue'
+import NtMissFunnelHistory from '@/viz/NtMissFunnelHistory.vue'
 import NtProgressRing from '@/ui/NtProgressRing.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtRadar from '@/viz/NtRadar.vue'
-import SymbolName from '@/display/SymbolName.vue'
+import TicketDetail from '@/display/TicketDetail.vue'
 import { statusOf } from '@/ui/status-map'
 import {
   clock,
   dimValue,
   isValidExpired,
   messageOf,
-  pnlClass,
-  price,
-  pctText,
-  ratioPct,
-  sideLabel,
   strategyLabel,
   validRemainText,
 } from '@/utils/format'
@@ -46,6 +49,7 @@ import { serverNow } from '@/utils/server-clock'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { isLive, onPush, onResync, type WsPushMessage } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
+import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
 
 type SideFilter = '' | 'buy' | 'sell'
 type StateFilter = '' | 'active' | 'executed' | 'expired' | 'closed'
@@ -70,14 +74,29 @@ const risk = useRiskStore()
 const decisionContext = ref<DecisionContext | null>(null)
 const error = ref('')
 const loading = ref(false)
+/** W2 收编：单股上限（risk.max_single_pct，与决策台同源）只喂票体风控块估算，读不到=null 显「以风控实检为准」。 */
+const maxSinglePct = ref<number | null>(null)
 const sideFilter = ref<SideFilter>((savedPrefs.side as SideFilter | undefined) ?? '')
 const stateFilter = ref<StateFilter>((savedPrefs.state as StateFilter | undefined) ?? '')
 const strategyFilter = ref(savedPrefs.strategy ?? '')
 const sortKey = ref<SortKey>((savedPrefs.sort as SortKey | undefined) ?? 'score')
+/** 批次 A3：代码搜索（浏览态输入，不入偏好档——搜索词是会话态不是布局偏好）。 */
+const query = ref('')
 const planSignalId = ref('')
 /** 有效期与按钮状态同一时钟（P2-10 服务端钟，未校准回退本地），避免过期后仍保留可执行入口。 */
 const nowTick = ref(serverNow())
 const labels = ['技术面', '消息面', '资金面', '外围']
+/** 卡内焦点维：点反对维高亮（与决策台票体同一互动），每卡独立一档。 */
+const focusDims = ref<Record<string, string>>({})
+
+/** 票体转换（W2 收编）：一条信号一张 DeskTicket，lane 按状态归位；转换是纯计算，按需出票不缓存。 */
+function ticketOf(item: SignalItem) {
+  return toDeskTicket(item, maxSinglePct.value)
+}
+/** 卡键：信号无 id 时退 symbol+time（与原卡 v-for key 同口径），焦点维索引同键。 */
+function keyOf(item: SignalItem) {
+  return item.id || item.symbol + item.time
+}
 
 const sideOptions = [
   { value: '', label: '全部方向' },
@@ -130,7 +149,9 @@ function isExpired(item: SignalItem): boolean {
 }
 
 const filtered = computed(() => {
+  const q = query.value.trim().toUpperCase()
   const list = rows.value.filter((item) => {
+    if (q && !item.symbol.toUpperCase().includes(q)) return false
     if (sideFilter.value && item.side !== sideFilter.value) return false
     if (strategyFilter.value && item.strategy !== strategyFilter.value) return false
     if (stateFilter.value === 'active' && (!isPendingStatus(item.status) || isExpired(item))) return false
@@ -179,15 +200,19 @@ async function readPage(key: string): Promise<boolean> {
   const checkedBook = account.book
   loading.value = true
   error.value = ''
-  const [signalRes, accountRes, riskRes, marketRes, sourceRes] = await Promise.allSettled([
+  const [signalRes, accountRes, riskRes, marketRes, sourceRes, configRes] = await Promise.allSettled([
     signalStore.refresh(),
     account.refresh(),
     risk.refresh(),
     market.refresh(),
     listSources(),
+    getConfigValues(),
   ])
   if (disposed || key !== refreshKey() || sequence !== loadSequence || checkedBook !== account.book) return false
   nowTick.value = serverNow()
+  // 单股上限是票体风控块的估算参数（辅助位）：读取失败只降级显示，不拖页面的 ready 判定。
+  const parsed = configRes.status === 'fulfilled' ? Number(configRes.value['risk.max_single_pct']) : NaN
+  maxSinglePct.value = Number.isFinite(parsed) && parsed > 0 ? parsed : null
   const failed = [signalRes, accountRes, riskRes, marketRes].find((result) => result.status === 'rejected')
   const ready = [signalRes, accountRes, riskRes, marketRes].every((result) => result.status === 'fulfilled' && result.value === true)
   if (!ready) error.value = failed?.status === 'rejected' ? messageOf(failed.reason) : '核心状态未恢复，不能执行信号'
@@ -243,23 +268,27 @@ function openTrade(item: SignalItem) {
   })
 }
 
+/** FE-O2 漏选钻取定位：面板参数（symbol）预置代码搜索词——决策台漏选行/通知深链跳进来即过滤到目标票。 */
+function applyPanelParams(params: Record<string, unknown>) {
+  const symbol = typeof params.symbol === 'string' ? params.symbol.trim() : ''
+  if (symbol) query.value = symbol
+}
+const offPanelParams = onPanelParams('signals', applyPanelParams)
+
 function dimsOf(item: SignalItem) {
   return labels.map((label) => ({ label, value: dimValue(item.dims, label) }))
+}
+
+/** 卡内焦点维切换（同键再点取消，与决策台 pointDim 同语义）。 */
+function pointDim(item: SignalItem, key: string) {
+  const id = keyOf(item)
+  focusDims.value[id] = focusDims.value[id] === key ? '' : key
 }
 
 /** 信号行自带时间戳 → epoch ms；丢给 NtFreshness，无时点证据显「时点未知」（不冒充 0s）。 */
 function timeOf(value: string): number | null {
   const ts = new Date(value).getTime()
   return Number.isFinite(ts) ? ts : null
-}
-
-/** 盈亏比（G8/QD 借鉴 R 倍数列位）：reward/risk，锚定入场区间中值；任一腿缺失或风险非正显「—」（数据纪律，不拿 0 冒充）。 */
-function riskReward(item: SignalItem): string {
-  if (item.entryLow == null || item.entryHigh == null || item.stop == null || item.take == null) return '—'
-  const mid = (item.entryLow + item.entryHigh) / 2
-  const risk = mid - item.stop
-  if (!(risk > 0)) return '—'
-  return `${((item.take - mid) / risk).toFixed(1)}R`
 }
 
 /** 状态章文案/tone 出自 signal 册（§7.1，一字锁定）：终态优先于过期判定，未终态且 validUntil 已过按「已过期」论；
@@ -296,6 +325,9 @@ function onVisible() {
 
 onMounted(() => {
   void load()
+  // FE-O2：冷启动暂存的 symbol 参数在首拉前消费，预置代码搜索词（漏选行点击定位）。
+  const staged = consumePanelParams('signals')
+  if (staged) applyPanelParams(staged)
   // signal 属常驻主题（BASE_TOPICS），只需 onPush，不必再 subscribe。
   offPush = onPush(onPushMessage)
   tickTimer = setInterval(() => {
@@ -318,6 +350,7 @@ onBeforeUnmount(() => {
   refreshes.dispose()
   offPush?.()
   offResync?.()
+  offPanelParams?.()
   document.removeEventListener('visibilitychange', onVisible)
   if (tickTimer) clearInterval(tickTimer)
   if (refreshTimer) clearInterval(refreshTimer)
@@ -347,6 +380,8 @@ watch(
     </header>
 
     <div class="filters">
+      <!-- 批次 A3：代码搜索——信号多时先按代码收口再读卡 -->
+      <NtInput v-model="query" class="filters__search" type="search" icon="search" placeholder="搜代码，如 600519" mono />
       <NtSelect v-model="sideFilter" :options="sideOptions" />
       <NtSelect v-model="stateFilter" :options="stateOptions" />
       <NtSelect v-model="strategyFilter" :options="strategyOptions" />
@@ -360,6 +395,12 @@ watch(
       <NtFunnel :stages="funnelStages" />
     </section>
 
+    <!-- BE-12 漏斗历史看板：近 7 日候选 vs 未入选 + 最近一日未入选原因 -->
+    <section class="nt-panel">
+      <h2 class="nt-panel__title">漏斗历史（近 7 日）</h2>
+      <NtMissFunnelHistory :days="7" />
+    </section>
+
     <p v-if="loading" class="nt-empty">读取中…</p>
     <NtErrorGuide :error="error" />
     <p v-if="!loading && !rows.length" class="nt-empty">{{ signalStore.ready ? '今日没有信号。' : '信号状态尚未恢复，不能判断是否有机会。' }}</p>
@@ -367,110 +408,68 @@ watch(
     <div v-if="filtered.length" class="grid">
       <article
         v-for="item in filtered"
-        :key="item.id || item.symbol + item.time"
+        :key="keyOf(item)"
         class="card"
         :class="{
           hot: item.highValue,
           stale: isHandled(item) || isExpired(item) || ['rejected', 'cancelled'].includes(item.status.toLowerCase()),
         }"
       >
-        <header>
-          <!-- §6.3 R2 信号行：证券位统一 SymbolName；名称取 security 字典（signals API 已回填），不再双数据源 -->
-          <SymbolName :code="item.symbol" mode="stacked" />
-          <span class="tm">{{ clock(item.time) }}</span>
-          <!-- 红涨绿跌：买入红、卖出绿 -->
-          <em :class="item.side === 'buy' ? 'up' : item.side === 'sell' ? 'down' : ''">{{ sideLabel(item.side) }}</em>
-          <!-- 状态章文案/tone 出自 signal 册（§7.1，一字锁定）；未终态且有效期已过按「已过期」论，
-               册外状态码原样回显（禁自封）；未终态信号章侧附剩余时效（非状态文案）。 -->
-          <NtBadge :tone="stateBadge(item).entry?.tone ?? 'neutral'">{{ stateBadge(item).entry?.text ?? (item.status || '—') }}</NtBadge>
-          <span v-if="stateBadge(item).remain" class="tm">{{ stateBadge(item).remain }}</span>
-          <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
-          <NtFreshness label="信号" :at="timeOf(item.time)" />
-        </header>
-        <section class="action-plan" :class="actionOf(item).state" aria-label="当前行动计划">
-          <h3>当前动作：{{ actionOf(item).title }}</h3>
-          <p><strong>什么时候行动</strong>{{ actionOf(item).timing }}</p>
-          <p><strong>失效条件</strong>{{ actionOf(item).invalidation }}</p>
-          <p v-if="actionOf(item).blocker" class="action-plan__blocker">
-            <strong>主要阻断</strong>{{ actionOf(item).blocker }}
-          </p>
-          <p class="action-plan__caution"><strong>先看反证</strong>{{ actionOf(item).caution }}</p>
-        </section>
-        <div class="body">
-          <!-- hero 档（方案 §5.2-4 第 3 处）：评分环中央大数字走 --nt-text-0，≥85 由 hot 发光预算接管 -->
-          <NtProgressRing :value="item.score" :hot="item.highValue" :size="56" hero />
-          <template v-if="!item.degraded">
-            <NtRadar :dims="dimsOf(item)" :size="84" />
-            <ul>
-              <li v-for="label in labels" :key="label">
-                <span>{{ label }}</span>
-                <b>{{ dimValue(item.dims, label) ?? '—' }}</b>
-              </li>
-            </ul>
-          </template>
-          <p v-else class="degraded-note">模型降级：四维未复核，仅有规则分 {{ item.ruleScore ?? '—' }}</p>
-        </div>
-        <p v-if="isHandled(item)" class="nt-note">账本已核成交 {{ item.executedVolume ?? '—' }} 股 · 均价 {{ price(item.executedPrice ?? null) }}。已有成交不代表整单完成，余量以原订单为准。</p>
-        <dl>
-          <div>
-            <dt>入场</dt>
-            <dd>{{ price(item.entryLow) }} – {{ price(item.entryHigh) }}</dd>
-          </div>
-          <div>
-            <dt>止损</dt>
-            <dd class="down">{{ price(item.stop) }}</dd>
-          </div>
-          <div>
-            <dt>止盈</dt>
-            <dd class="up">{{ price(item.take) }}</dd>
-          </div>
-          <div>
-            <dt>盈亏比</dt>
-            <dd class="mono">{{ riskReward(item) }}</dd>
-          </div>
-          <div>
-            <dt>建议仓位</dt>
-            <dd>{{ item.positionPct != null ? ratioPct(item.positionPct, 0) : '—' }}</dd>
-          </div>
-          <div>
-            <!-- R2 列位补齐：有效期 text-2；validUntil 缺失显「—」（数据纪律） -->
-            <dt>有效期</dt>
-            <dd class="t2">{{ item.validUntil ? clock(item.validUntil) : '—' }}</dd>
-          </div>
-          <div>
-            <dt>ATR</dt>
-            <dd>{{ price(item.atr) }}</dd>
-          </div>
-          <div v-if="item.hasPnl">
-            <dt>后验盈亏</dt>
-            <dd :class="pnlClass(item.pnlPct)">
-              {{ pctText(item.pnlPct)
-              }}<template v-if="item.holdingDays != null"> · {{ item.holdingDays }} 日</template>
-            </dd>
-          </div>
-        </dl>
-        <p class="meta">
-          {{ strategyLabel(item.strategy) }} · 规则 {{ item.ruleScore ?? '—' }} · AI {{ item.aiScore ?? '—' }} · 账本
-          {{ item.book || '未返回' }} · 版本 {{ item.strategyVersionId || '未返回' }}
-          <template v-if="item.holdDaysMax != null"> · 最长持有 {{ item.holdDaysMax }} 日</template>
-          <template v-if="item.traceId"> · {{ item.traceId }}</template>
-        </p>
-        <p v-if="item.reason" class="reason">{{ item.reason }}</p>
-        <ul v-if="item.evidence.length" class="evidence">
-          <li v-for="(line, index) in item.evidence" :key="index">{{ line }}</li>
-        </ul>
-        <button
-          v-if="!isHandled(item) && !isExpired(item)" type="button" class="plan-open" @click="planSignalId = item.id"
-        >查看 / 冻结条件计划</button>
-        <button
-          v-if="!isHandled(item)"
-          type="button"
-          class="go"
-          :disabled="!actionOf(item).canOpenTrade"
-          @click="openTrade(item)"
+        <!-- W2 收编：卡片全量走 TicketDetail 票体（头/行动/价格/投票+评语/异议/理由证据/风控唯一出处），
+             卡壳只留评分环+雷达（above 槽）与状态章/时间/新鲜度（head-extra 槽）。 -->
+        <TicketDetail
+          :ticket="ticketOf(item)"
+          :action="actionOf(item)"
+          :now-tick="nowTick"
+          :focus-dim="focusDims[keyOf(item)]"
+          @point-dim="pointDim(item, $event)"
         >
-          准备模拟盘确认
-        </button>
+          <template #head-extra>
+            <span class="tm">{{ clock(item.time) }}</span>
+            <!-- 状态章文案/tone 出自 signal 册（§7.1，一字锁定）；未终态且有效期已过按「已过期」论，
+                 册外状态码原样回显（禁自封）；未终态信号章侧附剩余时效（非状态文案）。 -->
+            <NtBadge :tone="stateBadge(item).entry?.tone ?? 'neutral'">{{ stateBadge(item).entry?.text ?? (item.status || '—') }}</NtBadge>
+            <span v-if="stateBadge(item).remain" class="tm">{{ stateBadge(item).remain }}</span>
+            <!-- §7.3 首批挂载：卡头新鲜度取信号时间戳，无时点证据显「时点未知」 -->
+            <NtFreshness label="信号" :at="timeOf(item.time)" />
+          </template>
+          <template #above>
+            <div class="body">
+              <!-- hero 档（方案 §5.2-4 第 3 处）：评分环中央大数字走 --nt-text-0，≥85 由 hot 发光预算接管 -->
+              <NtProgressRing :value="item.score" :hot="item.highValue" :size="56" hero />
+              <template v-if="!item.degraded">
+                <NtRadar :dims="dimsOf(item)" :size="84" />
+              </template>
+              <p v-else class="degraded-note">模型降级：四维未复核，仅有规则分 {{ item.ruleScore ?? '—' }}</p>
+            </div>
+          </template>
+          <template #foot>
+            <p class="meta">
+              {{ strategyLabel(item.strategy) }} · 规则 {{ item.ruleScore ?? '—' }} · AI {{ item.aiScore ?? '—' }}
+              <template v-if="item.holdDaysMax != null"> · 最长持有 {{ item.holdDaysMax }} 日</template>
+              <template v-if="item.traceId"> · {{ item.traceId }}</template>
+            </p>
+            <button
+              v-if="!isHandled(item) && !isExpired(item)" type="button" class="plan-open" @click="planSignalId = item.id"
+            >查看 / 冻结条件计划</button>
+            <button
+              v-if="!isHandled(item)"
+              type="button"
+              class="go"
+              :disabled="!actionOf(item).canOpenTrade"
+              @click="openTrade(item)"
+            >
+              准备模拟盘确认
+            </button>
+            <!-- FE-S2 生命周期时间轴（BE-02 事件流；空/失败回退创建/关闭近似节点） -->
+            <NtSignalTimeline
+              :signal-id="item.id"
+              :time="item.time"
+              :closed-at="item.closedAt"
+              :status="item.status"
+            />
+          </template>
+        </TicketDetail>
       </article>
     </div>
   </div>
@@ -486,6 +485,11 @@ watch(
 
 .filters :deep(.nt-select) {
   min-width: 120px;
+}
+
+/* 批次 A3：搜索框与下拉同高对齐（NtInput 默认 32px 高，限宽不顶满）。 */
+.filters__search {
+  width: 180px;
 }
 
 .grid {
@@ -516,93 +520,30 @@ watch(
   border-style: dashed;
 }
 
-header {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-
 .tm {
   color: var(--nt-text-3);
   font-size: 11px;
   font-family: var(--nt-font-mono);
 }
 
-em {
-  margin-left: auto;
-  font-style: normal;
-  font-weight: 600;
-}
-
+/* 卡壳（above 槽）：评分环+雷达双列，降级说明整宽压底（四维分数行/评语已由票体四维投票收编）。 */
 .body {
-  display: grid;
-  grid-template-columns: 56px 84px 1fr;
-  gap: 10px;
+  display: flex;
+  gap: 12px;
   align-items: center;
 }
 
 .degraded-note {
-  grid-column: 2 / 4;
   margin: 0;
   font-size: 12px;
   color: var(--nt-warn);
 }
 
-ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.body li,
-dl {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-}
-
-dl {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px 12px;
-  margin: 0;
-  font-family: var(--nt-font-mono);
-}
-
-dt {
-  color: var(--nt-text-3);
-}
-
-dd {
-  margin: 0;
-}
-
-/* R2 有效期位降一档（text-2），不打断 mono 价格列的节奏。 */
-dd.t2 {
-  color: var(--nt-text-2);
-}
-
-/* B3 走查销号：盈亏比 R 倍数等宽数字——本文件此前裸用 .mono 类无定义（其余 7 件各自带），补齐随 tabular-nums。 */
-.mono {
-  font-family: var(--nt-font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.meta,
-.reason {
-  margin: 0;
+.meta {
+  margin: 0 auto 0 0;
   color: var(--nt-text-2);
   font-size: 11.5px;
-}
-
-.evidence {
-  color: var(--nt-text-2);
-  font-size: 11.5px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-self: center;
 }
 
 .go, .plan-open {
@@ -627,33 +568,5 @@ dd.t2 {
   cursor: not-allowed;
 }
 
-.action-plan {
-  border-top: 1px solid var(--nt-border-1);
-  border-bottom: 1px solid var(--nt-border-1);
-  padding: 8px 0;
-}
-
-.action-plan h3 {
-  margin: 0 0 6px;
-  font-size: 12.5px;
-  color: var(--nt-text-1);
-}
-
-.action-plan p {
-  margin: 4px 0;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--nt-text-2);
-}
-
-.action-plan strong {
-  margin-right: 6px;
-  color: var(--nt-text-3);
-  font-weight: 500;
-}
-
-.action-plan .action-plan__blocker,
-.action-plan .action-plan__caution {
-  color: var(--nt-warn);
-}
+/* W0-3b/FE-O6：action-plan 块（h3 标目档/弱边框/密字排）已随 TicketAction 收编迁出（组件 scoped 内唯一出处）。 */
 </style>
