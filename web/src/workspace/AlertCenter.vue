@@ -16,12 +16,21 @@ import { clock, pick } from '@/utils/format'
 import { onPush } from '@/ws/hub'
 import { getWorkbench } from './inject'
 
-/** FE-N2 深链白名单：预警 kind → 可跳转面板。白名单外（如 monitor 静默）不给按钮。 */
+/**
+ * FE-N2 深链白名单：预警 kind → 可跳转面板。白名单外（如 monitor 静默）不给按钮。
+ * kind 全集合已闭合：risk_event 5 类（killswitch/mode/breaker/param/reject_rate）+ 健康链 order_unknown。
+ * mode/param 详情在 risk-report 的「风控事件」表（后端 Events 接口 kindIn 含此四类）。
+ * 注意：本表只决定「去看详情」按钮与跳转目标；是否弹全屏锁由 onPushMessage 入队白名单
+ * （L4_KINDS：killswitch/breaker/reject_rate/order_unknown）控制——mode/param 属常规运维
+ * 事件，不该触发 L4 模态锁+声音，故不入队、但入队后（如 extra 通道）可深链。
+ */
 const DETAIL_PANEL: Record<string, string> = {
   killswitch: 'risk-chain',
   breaker: 'risk-chain',
   reject_rate: 'risk-report',
   order_unknown: 'trade-bar',
+  mode: 'risk-report',
+  param: 'risk-report',
 }
 
 interface AlertEvent {
@@ -88,6 +97,10 @@ function titleOf(kind: string): string {
       return '拦截率预警'
     case 'order_unknown':
       return '委托状态未知'
+    case 'mode':
+      return '模式已切换'
+    case 'param':
+      return '风控参数变更'
     default:
       return '风控预警'
   }
