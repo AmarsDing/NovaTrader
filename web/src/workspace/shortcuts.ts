@@ -5,6 +5,7 @@
  * - Shift+K：打开 Kill Switch 对话框（只读焦点，触发仍要二次确认）；
  * - Shift+M：打开涨停梯队；Shift+R：打开风控链；
  * - Shift+1..4：切换 G6 交易时段桌（event.code 判定，与键盘布局无关）；
+ * - Shift+5..9：套用已保存的布局预设（保存预设时自动分配空位，FE-C5）；
  * - 1..9：切换 dock 内第 N 个面板（按当前激活组标签顺序）；
  * - F1：打开 G2 帮助浮层（preventDefault 拦浏览器帮助）。
  * Ctrl 组合键在 WorkbenchView（Ctrl+K / Ctrl+Shift+P / Ctrl+Shift+K / Ctrl+Z），这里只管裸键与 Shift 组合。
@@ -12,6 +13,7 @@
  */
 import { matchDeskHotkey } from './desks'
 import { getWorkbench } from './inject'
+import { useLayoutStore } from '@/stores/layout'
 import { getPanel } from './panel-registry'
 import type { DockviewApi } from 'dockview-core'
 
@@ -75,6 +77,20 @@ export function startHotkeys(opts: HotkeyOptions): () => void {
         event.preventDefault()
         getWorkbench()?.applyDesk(desk.id)
         return
+      }
+      // FE-C5：命名桌热键——内置桌占 1..4，用户预设占 5..9（命中后按布局快照套用）
+      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+        const m = /^Digit([5-9])$/.exec(event.code)
+        if (m) {
+          const name = useLayoutStore().presetByHotkey(Number(m[1]))
+          const wb = getWorkbench()
+          const snapshot = name ? useLayoutStore().presets[name] : null
+          if (name && wb && snapshot) {
+            event.preventDefault()
+            wb.applyLayout(snapshot)
+            return
+          }
+        }
       }
       switch (key) {
         case 'T':

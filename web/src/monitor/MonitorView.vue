@@ -6,7 +6,7 @@
  * 画布只认 scene-model 产出的 SceneGraph，本文件不再自己排坐标。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getConfigSnapshot, saveConfig, previewConfig, type ConfigSnapshot, type ConfigPreview } from '@/api/config'
 import ConfigRevisionPanel from '@/view/ConfigRevisionPanel.vue'
 import { ApiError } from '@/api/http'
@@ -50,6 +50,7 @@ import type { Pulse } from './types'
 import './monitor.css'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const stage = ref<InstanceType<typeof CanvasStage> | null>(null)
 const input = ref(emptyMonitorInput())
@@ -86,6 +87,19 @@ const graph = computed(() => {
 })
 const cards = computed(() => buildChildren(input.value, selectedId.value))
 const picked = computed(() => graph.value.nodes.find((node) => node.id === selectedId.value) ?? null)
+
+/* FE-D3：/monitor?node=<名> 深链实体定位——图就绪后按 id/title 匹配选中（只做一次，不抢后续手动操作） */
+const deepLinked = ref(false)
+watch(graph, (g) => {
+  if (deepLinked.value) return
+  const q = typeof route.query.node === 'string' ? route.query.node : ''
+  if (!q || !g.nodes.length) return
+  const hit = g.nodes.find((n) => n.id === q || n.title === q || n.title.includes(q))
+  if (hit) {
+    selectedId.value = hit.id
+    deepLinked.value = true
+  }
+})
 const pickedEdge = computed(() => edgeOf(graph.value, selectedEdgeId.value))
 
 /* ---- S6 束线流量（§3.2/§4.4.3/§7）：计数器差分 + WS 脉冲计数，估不出固定宽度不猜 ----

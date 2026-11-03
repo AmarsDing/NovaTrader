@@ -14,6 +14,15 @@ import { useOverlay } from '@/ui/useOverlay'
 import { startAlarm, stopAlarm } from '@/utils/sound'
 import { clock, pick } from '@/utils/format'
 import { onPush } from '@/ws/hub'
+import { getWorkbench } from './inject'
+
+/** FE-N2 深链白名单：预警 kind → 可跳转面板。白名单外（如 monitor 静默）不给按钮。 */
+const DETAIL_PANEL: Record<string, string> = {
+  killswitch: 'risk-chain',
+  breaker: 'risk-chain',
+  reject_rate: 'risk-report',
+  order_unknown: 'trade-bar',
+}
 
 interface AlertEvent {
   id: number
@@ -149,6 +158,14 @@ function acknowledge() {
   if (!queue.value.length) overlay.close()
 }
 
+/** 去看详情：先解除模态锁再深链到白名单面板，避免 overlay 盖住目标。 */
+function goDetail() {
+  const item = current.value
+  const panelId = item ? DETAIL_PANEL[item.kind] : undefined
+  acknowledge()
+  if (panelId) getWorkbench()?.openPanel(panelId)
+}
+
 const offPush = onPush(onPushMessage)
 
 onBeforeUnmount(() => {
@@ -187,6 +204,14 @@ onBeforeUnmount(() => {
           </div>
         </dl>
         <div class="ac-actions">
+          <button
+            v-if="DETAIL_PANEL[current.kind]"
+            type="button"
+            class="ac-mute"
+            @click="goDetail"
+          >
+            去看详情
+          </button>
           <button v-if="settings.sound" type="button" class="ac-mute" @click="muted = !muted">
             {{ muted ? '取消静音' : ringing ? '静音' : '静音' }}
           </button>

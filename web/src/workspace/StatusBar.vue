@@ -11,6 +11,7 @@ import { useRiskStore } from '@/stores/risk'
 import { clock } from '@/utils/format'
 import { serverDate } from '@/utils/server-clock'
 import { formatClock, SESSION_TEXT, sessionOf } from '@/utils/time'
+import { getHttpPort, getWsPort } from '@/utils/endpoint'
 import { desiredTopics, isLive, link } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
 
@@ -90,11 +91,11 @@ onBeforeUnmount(() => {
   <footer class="bar">
     <div class="cell">
       <NtStatusDot :status="healthStatus" />
-      admin 2001 · {{ linkStatus(healthStatus).text }}
+      admin {{ getHttpPort() }} · {{ linkStatus(healthStatus).text }}
     </div>
     <div class="cell">
       <NtStatusDot :status="wsStatus" />
-      推送通道 2003 · {{ linkStatus(wsStatus).text }}
+      推送通道 {{ getWsPort() }} · {{ linkStatus(wsStatus).text }}
     </div>
     <div class="cell" :class="{ pending: link.sync !== 'ready' }" :title="link.error || recoveryText">{{ recoveryText }}</div>
     <div class="cell book" :class="{ live: account.book === 'LIVE', pending: !account.accountOk || !isLive() }" :title="accountHint">

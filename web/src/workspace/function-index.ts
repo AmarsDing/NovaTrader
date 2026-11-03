@@ -107,6 +107,7 @@ export const HOTKEY_ROWS: readonly HotkeyRow[] = [
   { keys: 'Shift+M', action: '开涨停梯队' },
   { keys: 'Shift+R', action: '开风控链' },
   { keys: 'Shift+1..4', action: '切换交易时段桌（盘前/竞价/打板/复盘）' },
+  { keys: 'Shift+5..9', action: '套用已保存的布局预设（保存时自动分配空位）' },
   { keys: '1..9', action: '聚焦组内第 N 个面板' },
   { keys: 'Ctrl+K', action: '命令面板（面板态）' },
   { keys: 'Ctrl+Shift+P / Ctrl+Shift+K', action: '命令面板（命令态）' },

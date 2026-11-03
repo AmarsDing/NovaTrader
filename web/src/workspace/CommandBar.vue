@@ -225,7 +225,7 @@ function logout() {
       <div class="preset-wrap">
         <NtButton size="sm" :aria-expanded="menuOpen" @click="toggleMenu">布局预设</NtButton>
         <div v-if="menuOpen" class="preset-menu" role="dialog" aria-label="布局预设">
-          <p class="preset-menu__label">交易时段桌（Shift+1~4 切换 · Ctrl+Z 撤销）</p>
+          <p class="preset-menu__label">交易时段桌（Shift+1~4 切换 · Ctrl+Z 撤销）· 预设自动占 Shift+5~9</p>
           <div v-for="desk in DESKS" :key="desk.id" class="preset-menu__row">
             <button type="button" class="preset-menu__name" :title="desk.description" @click="applyDesk(desk.id)">
               Shift+{{ desk.hotkey }} · {{ desk.title }}
@@ -244,7 +244,9 @@ function logout() {
               />
             </template>
             <template v-else>
-              <button type="button" class="preset-menu__name" @click="applyPreset(name)">{{ name }}</button>
+              <button type="button" class="preset-menu__name" @click="applyPreset(name)">
+                <template v-if="layout.hotkeyOfPreset(name) != null">Shift+{{ layout.hotkeyOfPreset(name) }} · </template>{{ name }}
+              </button>
               <button type="button" class="preset-menu__icon" title="重命名" @click="startRename(name)">✎</button>
               <button type="button" class="preset-menu__icon" title="删除预设" @click="dropPreset(name)">×</button>
             </template>

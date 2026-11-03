@@ -4,6 +4,7 @@ import ConfigCenter from '../ConfigCenter.vue'
 import ConfigRevisionPanel from '../ConfigRevisionPanel.vue'
 import NtSchemaForm from '@/display/NtSchemaForm.vue'
 import NtButton from '@/ui/NtButton.vue'
+import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 const m = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), preview: vi.fn(), rollback: vi.fn(), schema: vi.fn() }))
 vi.mock('@/api/config', () => ({
   getConfigSnapshot: m.get,
@@ -20,7 +21,7 @@ vi.mock('@/utils/tauri', () => ({ inTauri: () => false }))
 vi.mock('@/ws/hub', () => ({ restartLink: vi.fn() }))
 let w: VueWrapper | undefined
 const snapshot = (revision = 7) => ({ revision, values: { 'm06.select_score': '75' }, secretSet: {}, receipts: [], history: [], createdAt: '', note: '', receiptError: '' })
-const preview = () => ({ baseRevision: 7, changes: [{ key: 'm06.select_score', before: '75', after: '80', secret: false, service: 'strategy', effective: '下次扫描' }], knownEffects: [], unknownEffects: ['收益未测'], services: ['strategy'], invalidatesPlans: true })
+const preview = (invalidatesPlans = false) => ({ baseRevision: 7, changes: [{ key: 'm06.select_score', before: '75', after: '80', secret: false, service: 'strategy', effective: '下次扫描' }], knownEffects: [], unknownEffects: ['收益未测'], services: ['strategy'], invalidatesPlans })
 const schema = () => ({
   schemaVersion: 1 as const,
   categories: [{
@@ -58,6 +59,15 @@ describe('configuration save workflow', () => {
     expect(m.save).not.toHaveBeenCalled(); expect(m.preview).toHaveBeenCalledWith({ 'm06.select_score': '80' }, 7)
     await action(); expect(m.save).toHaveBeenCalledWith({ 'm06.select_score': '80' }, 7)
     expect(w!.text()).toContain('已保存版本 #8，请查看目标服务加载回执')
+  })
+  it('FE-N5：preview 报 invalidatesPlans 时统一拦下，不进入确认保存', async () => {
+    m.preview.mockResolvedValue(preview(true))
+    await open(); await edit('80'); await action()
+    expect(m.preview).toHaveBeenCalledWith({ 'm06.select_score': '80' }, 7)
+    expect(m.save).not.toHaveBeenCalled()
+    expect(w!.findComponent(NtErrorGuide).props('error')).toContain('在途计划失效')
+    // 再点也不应直接保存（impact 未落，重走 preview）
+    await action(); expect(m.save).not.toHaveBeenCalled()
   })
   it('preserves a draft when a newer revision is observed; cannot silently relabel it', async () => {
     await open(); await edit('80'); m.get.mockResolvedValueOnce(snapshot(9))

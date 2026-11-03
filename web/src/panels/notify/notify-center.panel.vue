@@ -3,12 +3,14 @@
  * 通知中心面板（M10）：消息列表 + 级别/类别筛选 + WS alert 推送即时入列。
  * G3：逐条已读态（点条目标记，localStorage 持久化）+ 全部已读；
  * 打开面板仍清零 StatusBar 角标（见 stores/notify.ts），两者语义独立。
+ * 批次 A5：已读同时写服务端（MarkRead，跨设备一致）——localStorage 降为乐观层；
+ * 服务端未读数经 alerts.refresh 回种角标，清零后若服务端仍有未读会如实回弹。
  * P2 承接层（方案 §8.6）：stores/notify 的 feed（告警漏斗落账）与 listMessages 合并去重，
  * feed 实时条目在前；每条归一分级章（feed 用其 level，api 用 levelOf 推导）、
  * L1–L4「级别」过滤与既有级别/类别可叠加、单条动作白名单 openPanel、静默条目角落注记。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { listMessages, type NotifyMessage } from '@/api/notify'
+import { listMessages, markRead as markReadServer, type NotifyMessage } from '@/api/notify'
 import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
 import NtTimeline, { type TimelineAction, type TimelineEntry } from '@/display/NtTimeline.vue'
 import { useNotifyStore, type FeedEntry } from '@/stores/notify'
@@ -63,6 +65,8 @@ interface CenterRow {
   read: boolean
   silenced?: boolean
   causeKey?: string
+  /** 批次 A5：同因合并计数（feed 条 10s 窗内同因累计；api 条无此概念）。 */
+  count?: number
 }
 
 /** feed 行 id 前缀：与后端消息 id 命名空间隔离；落账条无后端已读态，readIds 持久化跳过它。 */
@@ -95,6 +99,7 @@ function feedRow(f: FeedEntry): CenterRow {
     read: true,
     silenced: f.silenced,
     causeKey: f.causeKey,
+    count: f.count,
   }
 }
 
@@ -181,8 +186,15 @@ const entries = computed<TimelineEntry[]>(() =>
     read: r.read,
     level: r.level,
     actions: actionsOf(r),
-    /* 静默注记走册（第十三批 notify.silenced）：文案唯一出处，面板禁自封「静默」。 */
-    note: r.silenced ? statusOf('notify.silenced').text : undefined,
+    /* 静默注记走册（第十三批 notify.silenced）：文案唯一出处，面板禁自封「静默」；
+       批次 A5：同因计数「×N」并注（同一问题连报几轮一眼可见），册词原样不拆。 */
+    note:
+      [
+        r.silenced ? statusOf('notify.silenced').text : '',
+        r.count != null && r.count > 1 ? `同因 ×${r.count}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || undefined,
   })),
 )
 
@@ -258,6 +270,9 @@ function markOneRead(item: TimelineEntry) {
   if (readSet.value.has(id)) return
   readIds.value = capNotifReadIds([id, ...readIds.value])
   saveNotifReadIds(readIds.value)
+  /* 批次 A5：逐条已读同步服务端（跨设备一致）。ws- 前缀是本地推送合成条，不在服务端收件箱，跳过；
+     失败静默：本机 localStorage 乐观层仍显已读，他端未读未清，下轮拉取以服务端 read_at 为准。 */
+  if (!id.startsWith('ws-')) void markReadServer([id]).catch(() => {})
 }
 
 /* W4b 抽屉选中行：select 分流=标已读（G3 语义保真）+ 开抽屉双发；动作钮只跳面板不开抽屉。 */
@@ -272,10 +287,19 @@ function onSelect(item: TimelineEntry) {
   drawerOpen.value = true
 }
 
-function markAllRead() {
+async function markAllRead() {
   readIds.value = capNotifReadIds([...items.value.map((m) => m.id), ...readIds.value])
   saveNotifReadIds(readIds.value)
   notify.markRead()
+  /* 批次 A5：全部已读落服务端（跨设备一致）。本地合成条（ws-）不在收件箱，只发服务端真 id；
+     失败如实告知——本机已读保留，他端未读未清，重试或下轮刷新收敛。 */
+  const serverIds = items.value.map((m) => m.id).filter((id) => id && !id.startsWith('ws-'))
+  if (!serverIds.length) return
+  try {
+    await markReadServer(serverIds)
+  } catch (err) {
+    error.value = `服务端已读未写入：${messageOf(err)}（本机已标读，他端未读未清）`
+  }
 }
 
 // alert 是 BASE_TOPIC，hub 常驻订阅，onPush 即可收到，无需再 subscribe。

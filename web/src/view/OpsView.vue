@@ -2,12 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { BACKUP_CONFIRM, opsStatus, runBackup, type BackupResult, type OpsNode } from '@/api/ops'
 import { router } from '@/router'
+import NtSourceTable from '@/display/NtSourceTable.vue'
+import { opsNodeStatus, toOpsSourceRow } from '@/display/source-rows'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
-import NtStatusDot, { type DotStatus } from '@/ui/NtStatusDot.vue'
+import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
-import { linkStatus, statusOf as statusMapOf } from '@/ui/status-map'
 import { messageOf } from '@/utils/format'
 
 interface OpsModelRow extends OpsNode {
@@ -27,34 +28,28 @@ const baseColumns: NtTableColumn<NodeRow>[] = [
   { key: 'name', title: '名称' },
   { key: 'status', title: '状态' },
   { key: 'detail', title: '说明' },
+  { key: 'monitor', title: '' },
 ]
 const modelColumns: NtTableColumn<NodeRow>[] = [
   { key: 'name', title: '名称' },
   { key: 'status', title: '状态' },
   { key: 'latency', title: '延迟' },
   { key: 'detail', title: '说明' },
+  { key: 'monitor', title: '' },
 ]
 
 /**
- * 网关四态（W2-c 拆态）→ 链路五点色：ok 族=live 绿；warn=stale 点取 warn 色（半开/覆盖率未证实等降级类）；
- * unknown=off 点取中性灰（未观测/未配置/不采集等结构性缺省）；down 与其余异常=红。
- * 此前 warn/unknown 落 default 画红，把「降级」「没测过」谎报成「中断」。
+ * 网关节点状态（点色+册内状态词）唯一出处（W0-3b/FE-D1）：display/source-rows 的 opsNodeStatus。
+ * 服务/模型/本机块经这两个转发复用同一份映射；数据源块直接走 NtSourceTable(ops)。
  */
-function dotStatus(status: string): DotStatus {
-  const text = String(status || '').toLowerCase()
-  if (['ok', 'up', 'running', 'healthy', 'online'].includes(text)) return 'live'
-  if (text === 'warn') return 'stale'
-  if (text === 'unknown' || !text) return 'off'
-  return 'down'
-}
+/** W0-3b/FE-D1：数据源块归一行（状态点/状态词/缺位在 NtSourceTable 收口），本视图只喂 opsStatus 数据。 */
+const opsRows = computed(() => sources.value.map(toOpsSourceRow))
 
-/** 节点状态词只从册取（§7.1/§10-8，一字锁定）：warn=册键 degraded.partial「部分降级」，
- *  unknown=册键 ops.unknown「未知」；裸色点禁单显（§7.2-1）。精确归因见「说明」列 detail。 */
+function dotStatus(status: string) {
+  return opsNodeStatus(status).dot
+}
 function nodeStatusText(status: string): string {
-  const text = String(status || '').toLowerCase()
-  if (text === 'warn') return statusMapOf('degraded.partial').text
-  if (text === 'unknown') return statusMapOf('ops.unknown').text
-  return linkStatus(dotStatus(status)).text
+  return opsNodeStatus(status).text
 }
 
 async function load() {
@@ -110,6 +105,26 @@ onBeforeUnmount(() => {
 function openMonitor() {
   void router.push('/monitor')
 }
+
+/** FE-D3：行级深链——/monitor?node=<名> 让监控大屏定位到对应实体。 */
+function openMonitorEntity(name: string) {
+  void router.push({ path: '/monitor', query: { node: name } })
+}
+
+/** FE-D3：首屏红黄汇总条。红=down 及其余异常；黄=degraded/warn；灰（off/未知）不计入异常。 */
+const summary = computed(() => {
+  let red = 0
+  let warn = 0
+  let total = 0
+  const tally = (dot: string) => {
+    total += 1
+    if (dot === 'warn') warn += 1
+    else if (dot !== 'live' && dot !== 'off') red += 1
+  }
+  for (const row of [...services.value, ...models.value, ...resources.value]) tally(dotStatus(row.status))
+  for (const row of opsRows.value) tally(row.status)
+  return { red, warn, total }
+})
 
 // 备份是写盘动作（FR-11-08）：先要口令，再跑，成败都写审计。
 const asking = ref(false)
@@ -173,6 +188,11 @@ async function doBackup() {
       </div>
     </header>
     <NtErrorGuide :error="error" />
+    <!-- FE-D3：红黄汇总条（红=down 及其余异常；黄=degraded/warn） -->
+    <p v-if="summary.total" class="ops-summary" :data-tone="summary.red ? 'red' : summary.warn ? 'warn' : 'ok'">
+      共 {{ summary.total }} 个节点 · 异常 {{ summary.red }} · 预警 {{ summary.warn }}
+      <template v-if="!summary.red && !summary.warn">· 全部正常</template>
+    </p>
     <section
       v-for="block in [
         { title: '服务', rows: services, extra: false },
@@ -183,7 +203,10 @@ async function doBackup() {
       :key="block.title"
     >
       <h2 class="nt-panel__title">{{ block.title }}</h2>
+      <!-- W0-3b/FE-D1：数据源块走 NtSourceTable(ops) 单一事实组件，与配置中心链路页同源。 -->
+      <NtSourceTable v-if="block.title === '数据源'" variant="ops" :ops="opsRows" empty="暂无" />
       <NtTable
+        v-else
         :columns="block.extra ? modelColumns : baseColumns"
         :rows="block.rows as NodeRow[]"
         row-key="name"
@@ -202,6 +225,10 @@ async function doBackup() {
         <template #cell-status="{ value }">{{ value || '—' }}</template>
         <template #cell-latency="{ value }">{{ value || '—' }}</template>
         <template #cell-detail="{ value }">{{ value || '—' }}</template>
+        <!-- FE-D3：行级深链到监控大屏（实体定位） -->
+        <template #cell-monitor="{ row }">
+          <button type="button" class="nt-link" @click="openMonitorEntity(row.name)">在监控大屏查看</button>
+        </template>
       </NtTable>
     </section>
     <section>
@@ -244,6 +271,40 @@ async function doBackup() {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+/* FE-D3 红黄汇总条 */
+.ops-summary {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border: 1px solid var(--nt-border-1);
+  border-radius: 4px;
+  font-size: var(--nt-fs-caption);
+  color: var(--nt-text-2);
+}
+
+.ops-summary[data-tone='red'] {
+  border-color: var(--nt-danger);
+  color: var(--nt-danger);
+}
+
+.ops-summary[data-tone='warn'] {
+  border-color: var(--nt-warn);
+  color: var(--nt-warn);
+}
+
+.ops-summary[data-tone='ok'] {
+  color: var(--nt-success);
+}
+
+.nt-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--nt-accent);
+  font-size: var(--nt-fs-caption);
+  text-decoration: underline;
 }
 
 .confirm {

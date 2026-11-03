@@ -65,6 +65,11 @@ export const useNotifyStore = defineStore('notify', () => {
     unread.value = 0
   }
 
+  /** 服务端未读回种（批次 A5）：alerts.refresh 拉到权威列表后校准角标基线；两次回种之间的 WS 推送仍在 unread 上累加。 */
+  function setUnread(n: number) {
+    unread.value = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
+  }
+
   /** 漏斗落账：同因 10s 内→既有条目 count +1（或对齐聚合器 count）并刷新时刻；否则 unshift 并截断到上限。 */
   function ingestFeed(entry: Omit<FeedEntry, 'id' | 'count'> & { count?: number }): FeedEntry {
     const hit = entry.causeKey ? feed.value.find((f) => f.causeKey === entry.causeKey) : undefined
@@ -91,5 +96,5 @@ export const useNotifyStore = defineStore('notify', () => {
     delete attention.value[panelId]
   }
 
-  return { unread, lastTitle, lastAt, started, start, markRead, feed, attention, ingestFeed, pulseAttention, clearAttention }
+  return { unread, lastTitle, lastAt, started, start, markRead, setUnread, feed, attention, ingestFeed, pulseAttention, clearAttention }
 })

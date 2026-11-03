@@ -32,6 +32,8 @@ import {
   type ConfigSnapshot,
 } from '@/api/config'
 import NtSchemaForm, { type SchemaFormRow } from '@/display/NtSchemaForm.vue'
+import NtSourceTable from '@/display/NtSourceTable.vue'
+import { toOpsSourceRow } from '@/display/source-rows'
 import ConfigRevisionPanel from './ConfigRevisionPanel.vue'
 import { opsStatus, type OpsNode } from '@/api/ops'
 import { useAuthStore } from '@/stores/auth'
@@ -43,7 +45,7 @@ import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtSegmented from '@/ui/NtSegmented.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
-import { getHost, setHost } from '@/utils/endpoint'
+import { getHost, getHttpPort, getWsPort, setHost, setHttpPort, setWsPort } from '@/utils/endpoint'
 import { messageOf } from '@/utils/format'
 import { inTauri } from '@/utils/tauri'
 import { restartLink } from '@/ws/hub'
@@ -129,7 +131,11 @@ const stored = ref<Record<string, string>>({})
 const draft = ref<Record<string, string>>({})
 const baseline = ref<Record<string, string>>({})
 const host = ref(getHost())
+const httpPort = ref(String(getHttpPort()))
+const wsPort = ref(String(getWsPort()))
 const sources = ref<OpsNode[]>([])
+/** W0-3b/FE-D1：链路段数据源清单归一行（状态点/状态词在 NtSourceTable 收口），本页只喂 opsStatus 数据。 */
+const opsRows = computed(() => sources.value.map(toOpsSourceRow))
 const auto = ref(false)
 const desktop = ref(false)
 const error = ref('')
@@ -270,8 +276,10 @@ async function saveHost() {
   hint.value = ''
   try {
     host.value = setHost(host.value)
+    httpPort.value = String(setHttpPort(httpPort.value))
+    wsPort.value = String(setWsPort(wsPort.value))
     restartLink()
-    hint.value = '已改为 admin ' + host.value + ' 的 2001 / 2003'
+    hint.value = `已改为 admin ${host.value} 的 ${httpPort.value} / ${wsPort.value}`
   } catch (err) {
     error.value = messageOf(err)
   }
@@ -361,6 +369,8 @@ async function saveCurrent() {
       prepared.value = currentValues()
       if (!Object.keys(prepared.value).length) { hint.value = '这一类没有改动'; return }
       const next = await previewConfig(prepared.value, configSnapshot.value.revision)
+      // FE-N5：会使在途计划失效的改动统一拦下（对齐 datasource-center 既有做法）
+      if (next.invalidatesPlans) { error.value = '该改动会使在途计划失效，已拦下（先处理计划再改）'; return }
       if (generation === configGeneration) impact.value = next
       return
     }
@@ -507,17 +517,18 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else-if="currentId === 'link'" class="block">
-          <p class="nt-note">只填 admin 主机。HTTP 固定 2001，WebSocket 固定 2003。关闭窗口会缩进托盘。</p>
+          <p class="nt-note">填 admin 主机与端口。默认 HTTP 2001、WebSocket 2003；共享机部署可改。关闭窗口会缩进托盘。</p>
           <form class="nt-form" @submit.prevent="saveHost">
             <label class="grow"><span>admin 主机</span><NtInput v-model="host" mono /></label>
+            <label><span>HTTP</span><NtInput v-model="httpPort" mono /></label>
+            <label><span>WS</span><NtInput v-model="wsPort" mono /></label>
             <NtButton variant="primary" @click="saveHost">保存</NtButton>
           </form>
           <NtButton v-if="desktop" @click="toggleAuto">开机自启：{{ auto ? '已开' : '已关' }}</NtButton>
           <p v-else class="nt-empty">开机自启和系统通知只在桌面壳里可用。令牌放在系统凭据库。</p>
-          <ul class="src">
-            <li v-for="row in sources" :key="row.name">{{ row.name }} · {{ row.status || '—' }} · {{ row.detail }}</li>
-          </ul>
-          <p v-if="!sources.length" class="nt-empty">数据源清单未返回。健康状态在数据源面板。</p>
+          <!-- W0-3b/FE-D1：数据源清单=NtSourceTable(ops) 单一事实组件，与 OpsView 数据源块同源。
+               健康状态（灯/成功率/新鲜度）在数据源面板，此处只回答「连没连上」。 -->
+          <NtSourceTable variant="ops" :ops="opsRows" empty="数据源清单未返回。健康状态在数据源面板。" />
         </section>
 
         <section v-else-if="currentId === 'mode'" class="block">
@@ -794,7 +805,7 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
-.src,
+/* W0-3b：数据源清单改走 NtSourceTable(ops)，.src 列表样式随 ul 一并退役；.files 保留。 */
 .files {
   list-style: none;
   margin: 0;
@@ -802,11 +813,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.src {
-  color: var(--nt-text-2);
-  font-size: 12.5px;
 }
 
 .files li {
