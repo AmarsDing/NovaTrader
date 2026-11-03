@@ -117,12 +117,8 @@ describe('数据源治理面板（W4b 三段式）', () => {
   it('行点击开抽屉：源行→selectedSource 双态（质量互斥清空）；质量行→selectedQuality', async () => {
     await mountPanel()
     const tables = wrapper!.findAllComponents(NtTable)
-    tables[0].vm.$emit('row-click', {
-      id: 'news:cls', name: 'cls', kind: 'news', enabled: true, status: 'open',
-      detail: '熔断打开', lastAt: '2026-10-27T08:00:00+08:00', successRate: null,
-      latencyMs: null, consecutiveFailures: 5, successCount: 0, failureCount: 5,
-      lastError: '连接被拒绝（10 次重试失败）',
-    })
+    /* W0-3b：行形参=NtSourceTable 归一行（以 key 为身份），不再透原始 DataSource。 */
+    tables[0].vm.$emit('row-click', { key: 'news:cls' })
     await flushPromises()
     expect(wrapper!.findComponent(NtAdminScaffold).props('drawerOpen')).toBe(true)
   })

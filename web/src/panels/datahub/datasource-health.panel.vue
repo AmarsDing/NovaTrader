@@ -14,16 +14,16 @@ import {
 } from '@/api/datahub'
 import { useAuthStore } from '@/stores/auth'
 import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
+import NtSourceTable from '@/display/NtSourceTable.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
-import NtStatusDot from '@/ui/NtStatusDot.vue'
 import NtSwitch from '@/ui/NtSwitch.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { linkStatus, severityEntry } from '@/ui/status-map'
 import { clock, messageOf, ratioPct } from '@/utils/format'
-import { serverNow } from '@/utils/server-clock'
+import { SOURCE_STALE_MS, sourceStatus, toHealthRow, type SourceHealthRow } from '@/display/source-rows'
 
 const auth = useAuthStore()
 
@@ -35,24 +35,8 @@ const hint = ref('')
 const toggling = ref('')
 const collecting = ref('')
 
-const STALE_MS = 30 * 60 * 1000
-
-function statusOf(s: DataSource): 'live' | 'ok' | 'stale' | 'down' | 'off' {
-  if (!s.enabled) return 'off'
-  const state = s.status.toLowerCase()
-  if (state === 'open' || state === 'unavailable' || state.includes('down') || state.includes('error')) return 'down'
-  if (state === 'half_open') return 'stale'
-  if (!s.lastAt) return 'stale'
-  const at = new Date(s.lastAt).getTime()
-  if (!Number.isFinite(at)) return 'stale'
-  /* P2-10：lastAt 是服务端戳——新鲜度与后端时源对齐（未校准回退本地钟）。 */
-  return serverNow() - at < STALE_MS ? 'live' : 'stale'
-}
-
-/** 状态点双编码（§7.2-1）：dot 带字，状态词取自链路五态册（§7.1，一字锁定）。 */
-function dotLabel(s: DataSource): string {
-  return `${s.name || s.id} · ${linkStatus(statusOf(s)).text}`
-}
+/** 状态灯口径（W0-3b/FE-D1）：唯一出处在 display/source-rows.ts，本面板与中心面板共用一份。 */
+const STALE_MS = SOURCE_STALE_MS
 
 /** 面板头徽注（§7.2-2/§7.3）：时间证据取各源最近一次成功采集的最大值；全缺传 null 显「时点未知」。 */
 const latestFreshAt = computed<number | null>(() => {
@@ -65,19 +49,8 @@ const latestFreshAt = computed<number | null>(() => {
   return best > 0 ? best : null
 })
 
-type SourceRow = DataSource & Record<string, unknown>
-// W4b：说明长文出列进抽屉——主表 8 列；行点击开 320 抽屉放 lastError 全文+采集操作同闸副本。
-const sourceColumns: NtTableColumn<SourceRow>[] = [
-  { key: 'name', title: '数据源' },
-  { key: 'kind', title: '域', mono: true },
-  { key: 'successRate', title: '成功率', align: 'right' },
-  { key: 'latencyMs', title: '最近延迟(ms)', align: 'right' },
-  { key: 'fails', title: '成功/失败', align: 'right' },
-  { key: 'lastAt', title: '最近成功', mono: true },
-  { key: 'enabled', title: '启停' },
-  { key: 'collect', title: '' },
-]
-const sourceRows = computed(() => sources.value as unknown as SourceRow[])
+/** W0-3b/FE-D1：源表归一行（状态灯/点带字/缺位口径在 NtSourceTable 收口），本面板只喂 listSources 数据。 */
+const sourceRows = computed(() => sources.value.map(toHealthRow))
 
 type QualityRow = QualityIssue & Record<string, unknown>
 // W4b：说明长文出列进抽屉——主表 8 列；行点击开 320 抽屉放 message 全文+otherSource 对照。
@@ -162,10 +135,26 @@ const selectedQualityId = ref('')
  * 行掉出列表（源注销/问题消除）→ 抽屉显「已不在当前列表」诚实缺位，不冒充仍在。 */
 const selectedSource = computed(() => sources.value.find((s) => s.id === selectedSourceId.value) ?? null)
 const selectedQuality = computed(() => quality.value.find((q) => q.id === selectedQualityId.value) ?? null)
-function openSource(row: SourceRow) {
-  selectedSourceId.value = String(row.id)
+/** 行点击开抽屉（W0-3b：归一行以 key 为身份——row-click 的 row 形参取 NtSourceTable 的归一行）。 */
+function openSource(row: Record<string, unknown>) {
+  selectedSourceId.value = String(row.key ?? '')
   selectedQualityId.value = ''
   drawerOpen.value = true
+}
+
+/**
+ * 槽内归一行 → 原始 DataSource 再写操作（启停/采集需要行体里的 id/kind；
+ * 归一行只带读面字段）。行必出自 sources（归一即由它而来），查找落空静默不写——绝不拿假行打 API。
+ */
+function toggleRow(row: SourceHealthRow, enabled: boolean) {
+  const src = sources.value.find((s) => s.id === row.key)
+  if (!src) return
+  void toggle(src, enabled)
+}
+function collectRow(row: SourceHealthRow) {
+  const src = sources.value.find((s) => s.id === row.key)
+  if (!src) return
+  void collect(src)
 }
 function openQuality(row: QualityRow) {
   selectedQualityId.value = String(row.id)
@@ -202,49 +191,32 @@ onBeforeUnmount(() => {
 
       <section class="nt-panel">
         <h2 class="nt-panel__title">数据源</h2>
-        <NtTable
-          :columns="sourceColumns"
-          :rows="sourceRows"
-          row-key="id"
-          dense
+        <!-- W0-3b/FE-D1：源表=NtSourceTable 单一事实组件（列组/状态灯/缺位口径唯一出处）；
+             启停/采集写操作经槽注入且 @click.stop，不触发行点击开抽屉。 -->
+        <NtSourceTable
+          variant="health"
+          :health="sourceRows"
           clickable
           empty="还没有数据源"
           @row-click="openSource"
         >
-          <template #cell-name="{ row }">
-            <NtStatusDot :status="statusOf(row)" :label="dotLabel(row)" />
-          </template>
-          <template #cell-successRate="{ row }">
-            <!-- 「没取到≠0」（P3-10c 复核）：原 (row.successRate ?? 1) < 0.9 把缺失冒充满分、告警静默消失；
-                 null = 统计窗口无采样，显「—」不参与告警（不虚警），title 写明原因 -->
-            <span v-if="row.successRate != null" :class="{ warn: row.successRate < 0.9 }">{{ ratioPct(row.successRate, 0) }}</span>
-            <span v-else class="mid" title="统计窗口内无采样，成功率无法计算">—</span>
-          </template>
-          <template #cell-latencyMs="{ row }">{{ row.latencyMs != null ? Math.round(row.latencyMs) : '—' }}</template>
-          <template #cell-fails="{ row }">
-            <span :class="{ warn: (row.consecutiveFailures ?? 0) > 0 }">
-              {{ row.successCount != null ? row.successCount : '—' }} / {{ row.failureCount != null ? row.failureCount : '—' }}
-            </span>
-          </template>
-          <template #cell-lastAt="{ row }">{{ clock(row.lastAt) || '—' }}</template>
-          <template #cell-enabled="{ row }">
-            <!-- 启停开关写操作，勿触发行点击开抽屉 -->
+          <template #enabled="{ row }">
             <span @click.stop>
-              <NtSwitch v-if="!auth.isViewer()" :model-value="row.enabled" @update:model-value="toggle(row, $event)" />
+              <NtSwitch v-if="!auth.isViewer()" :model-value="row.enabled" @update:model-value="toggleRow(row, $event)" />
               <span v-else>{{ row.enabled ? '开' : '关' }}</span>
             </span>
           </template>
-          <template #cell-collect="{ row }">
+          <template #ops="{ row }">
             <NtButton
               v-if="!auth.isViewer() && row.enabled"
               size="sm"
-              :loading="collecting === row.id"
-              @click.stop="collect(row)"
+              :loading="collecting === row.key"
+              @click.stop="collectRow(row)"
             >
               采集
             </NtButton>
           </template>
-        </NtTable>
+        </NtSourceTable>
       </section>
 
       <section class="nt-panel">
@@ -274,7 +246,7 @@ onBeforeUnmount(() => {
         <dl>
           <div><dt>数据源</dt><dd>{{ selectedSource.name || selectedSource.id }}</dd></div>
           <div><dt>域</dt><dd>{{ selectedSource.kind }}</dd></div>
-          <div><dt>状态</dt><dd>{{ linkStatus(statusOf(selectedSource)).text }}</dd></div>
+          <div><dt>状态</dt><dd>{{ linkStatus(sourceStatus(selectedSource)).text }}</dd></div>
           <div><dt>成功率</dt><dd>{{ selectedSource.successRate != null ? ratioPct(selectedSource.successRate, 0) : '—' }}</dd></div>
           <div><dt>最近延迟</dt><dd>{{ selectedSource.latencyMs != null ? Math.round(selectedSource.latencyMs) + ' ms' : '—' }}</dd></div>
           <div><dt>平均延迟</dt><dd>{{ selectedSource.avgLatencyMs != null ? Math.round(selectedSource.avgLatencyMs) + ' ms' : '—' }}</dd></div>

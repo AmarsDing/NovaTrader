@@ -28,6 +28,7 @@ import {
 import { ApiError } from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
+import NtSourceTable from '@/display/NtSourceTable.vue'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
@@ -40,7 +41,7 @@ import NtTabs from '@/ui/NtTabs.vue'
 import { statusOf as statusMapOf, severityEntry, type StatusEntry, type StatusKey } from '@/ui/status-map'
 import { clock, messageOf, ratioPct } from '@/utils/format'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
-import { serverNow } from '@/utils/server-clock'
+import { sourceStatus, toHealthRow } from '@/display/source-rows'
 
 type Tab = 'wall' | 'domains' | 'health'
 
@@ -77,18 +78,9 @@ const capChain = ref<Capability>({ state: 'pending', message: '' })
 const capQpsQuota = ref<Capability>({ state: 'pending', message: '' })
 const capSecret = ref<Capability>({ state: 'pending', message: '' })
 
-const STALE_MS = 30 * 60 * 1000
-
-/** 与 datasource-health 面板同口径的状态灯（拧成面板内小函数，不改原面板）。 */
+/** 状态灯口径（W0-3b/FE-D1）：唯一出处在 display/source-rows.ts，本面板与治理面板共用一份。 */
 function statusOf(s: Pick<DataSource, 'enabled' | 'status' | 'lastAt'>): 'live' | 'ok' | 'stale' | 'down' | 'off' {
-  if (!s.enabled) return 'off'
-  const state = (s.status || '').toLowerCase()
-  if (state === 'open' || state === 'unavailable' || state.includes('down') || state.includes('error')) return 'down'
-  if (state === 'half_open') return 'stale'
-  if (!s.lastAt) return 'stale'
-  const at = new Date(s.lastAt).getTime()
-  if (!Number.isFinite(at)) return 'stale'
-  return serverNow() - at < STALE_MS ? 'live' : 'stale'
+  return sourceStatus(s)
 }
 
 /* ------------------------------------------------------------------ */
@@ -431,18 +423,9 @@ async function load() {
 /* 页签 C：健康（只读，复用既有通路，不开第二个写面入口）                  */
 /* ------------------------------------------------------------------ */
 
-type SourceRow = DataSource & Record<string, unknown>
-// W4b：detail 长文出列——主表 7 列；说明/错误全文走「数据源治理」面板抽屉（本面板只读页签不开第二详情入口）。
-const healthColumns: NtTableColumn<SourceRow>[] = [
-  { key: 'name', title: '数据源' },
-  { key: 'kind', title: '域', mono: true },
-  { key: 'successRate', title: '成功率', align: 'right' },
-  { key: 'latencyMs', title: '最近延迟(ms)', align: 'right' },
-  { key: 'fails', title: '成功/失败', align: 'right' },
-  { key: 'lastAt', title: '最近成功', mono: true },
-  { key: 'enabled', title: '启停' },
-]
-const healthRows = computed(() => sources.value as unknown as SourceRow[])
+/* W0-3b/FE-D1：健康页签源表=NtSourceTable 单一事实组件（列组/状态灯/缺位口径唯一出处）。
+   只读页签不传操作槽——无启停/采集列，说明/错误全文走「数据源治理」面板抽屉（不开第二详情入口）。 */
+const healthRows = computed(() => sources.value.map(toHealthRow))
 
 type QualityRow = QualityIssue & Record<string, unknown>
 // W4b：message 长文出列——主表 8 列；质量细节全文走 datasource-health 面板抽屉（本面板不开第二写面/详情入口）。
@@ -587,21 +570,7 @@ onMounted(load)
     <section v-else class="health">
       <section class="nt-panel">
         <h2 class="nt-panel__title">数据源（只读；启停与手动采集走「数据源治理」面板）</h2>
-        <NtTable :columns="healthColumns" :rows="healthRows" row-key="id" dense empty="还没有数据源">
-          <template #cell-name="{ row }">
-            <NtStatusDot :status="statusOf(row)" :label="row.name || row.id" />
-          </template>
-          <template #cell-successRate="{ row }">
-            <span v-if="row.successRate != null" :class="{ warn: row.successRate < 0.9 }">{{ ratioPct(row.successRate, 0) }}</span>
-            <span v-else class="mid" title="统计窗口内无采样，成功率无法计算">—</span>
-          </template>
-          <template #cell-latencyMs="{ row }">{{ row.latencyMs != null ? Math.round(row.latencyMs) : '—' }}</template>
-          <template #cell-fails="{ row }">
-            {{ row.successCount != null ? row.successCount : '—' }} / {{ row.failureCount != null ? row.failureCount : '—' }}
-          </template>
-          <template #cell-lastAt="{ row }">{{ clock(row.lastAt) || '—' }}</template>
-          <template #cell-enabled="{ row }">{{ row.enabled ? '开' : '关' }}</template>
-        </NtTable>
+        <NtSourceTable variant="health" :health="healthRows" empty="还没有数据源" />
       </section>
       <section class="nt-panel">
         <h2 class="nt-panel__title">质量问题（逐条；只读——说明全文与双源对照走「数据源治理」面板抽屉，此处不开第二入口）</h2>
@@ -635,13 +604,7 @@ onMounted(load)
   flex: 1 1 100%;
 }
 
-.warn {
-  color: var(--nt-warn);
-  font-weight: 600;
-}
-.mid {
-  color: var(--nt-text-2);
-}
+/* W0-3b/FE-D1：健康页签单元格着色已随 NtSourceTable 收口迁移，面板零散写告警色（G4 棘轮方向）。 */
 
 .wall__grid {
   display: grid;
