@@ -63,6 +63,13 @@ service Risk {
       get: "/risk/v1/rejects/trend"
     };
   }
+  // 拒绝明细列表（FE-R2）：窗口内被拒的逐条记录（risk_check 中 approved=false 的行），
+  // 支持规则/标的/操作人/账户过滤与分页，抽屉逐条与原始记录一一对应，不用聚合值拼。
+  rpc ListRejectRecords(RejectRecordsRequest) returns (RejectRecordsReply) {
+    option (google.api.http) = {
+      get: "/risk/v1/rejects"
+    };
+  }
   // 各项限额的上限与当前使用量（监控驾驶舱 P1，只读）。
   rpc Limits(LimitsRequest) returns (LimitsReply) {
     option (google.api.http) = {
@@ -269,6 +276,62 @@ message RejectTrendReply {
   repeated RejectDay trend = 3;
   // 窗口内按规则聚合的拒绝计数，count 降序、rule 升序兜底
   repeated RuleCount top_rules = 4;
+}
+
+/* ---------- FE-R2 拒绝明细：抽屉逐条记录 ---------- */
+
+message RejectRecordsRequest {
+  // 窗口结束日 YYYY-MM-DD，空为今天（上海时区）
+  string end = 1;
+  // 回看天数（含结束日）；<=0 取默认 1（当天），上限 31
+  int32 days = 2;
+  // 规则号过滤（R00–R15，精确），空为全部
+  string rule = 3;
+  // 标的过滤（精确），空为全部
+  string symbol = 4;
+  // 操作人过滤（精确），空为全部
+  string operator = 5;
+  // 账户类型 SIM / LIVE（精确），空为全部
+  string account_type = 6;
+  // 拒绝原因过滤（子串匹配，不区分大小写），空为全部
+  string reason = 7;
+  // 分页：偏移与页大小；limit<=0 取默认 50，上限 200；offset<0 视为 0
+  int32 offset = 8;
+  int32 limit = 9;
+}
+
+// RejectRecordItem 一条被拒记录，与 risk_check 行一一对应。
+message RejectRecordItem {
+  string client_order_id = 1;
+  string account_type = 2;
+  string symbol = 3;
+  // buy / sell
+  string side = 4;
+  // auto / watch / manual
+  string source = 5;
+  string operator = 6;
+  double price = 7;
+  int32 volume_req = 8;
+  int32 volume_final = 9;
+  // 触发拒绝的规则号 R00–R15
+  string rule = 10;
+  // 规则中文名（与 R01–R15 链一致）
+  string rule_name = 11;
+  string reason = 12;
+  int64 latency_us = 13;
+  // RFC3339
+  string created_at = 14;
+}
+
+message RejectRecordsReply {
+  string end = 1;
+  int32 days = 2;
+  // 过滤条件下窗口内拒绝总数
+  int64 total = 3;
+  int32 offset = 4;
+  int32 limit = 5;
+  // 按 created_at 降序
+  repeated RejectRecordItem items = 6;
 }
 
 /* ---------- 监控驾驶舱 P1：限额上限 × 当前用量（只读） ---------- */

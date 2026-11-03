@@ -213,6 +213,52 @@ func (s *RiskService) GetRejectTrend(ctx context.Context, req *v1.RejectTrendReq
 	return out, nil
 }
 
+// ListRejectRecords 是 FE-R2 拒绝明细：窗口内被拒的逐条记录（risk_check 中 approved=false 的行），
+// 抽屉逐条与原始记录一一对应，不用聚合值拼。
+func (s *RiskService) ListRejectRecords(ctx context.Context, req *v1.RejectRecordsRequest) (*v1.RejectRecordsReply, error) {
+	res, err := s.e.RejectRecords(ctx, biz.RejectRecordsQuery{
+		End:         req.GetEnd(),
+		Days:        int(req.GetDays()),
+		Rule:        req.GetRule(),
+		Symbol:      req.GetSymbol(),
+		Operator:    req.GetOperator(),
+		AccountType: strings.ToUpper(req.GetAccountType()),
+		Reason:      req.GetReason(),
+		Offset:      int(req.GetOffset()),
+		Limit:       int(req.GetLimit()),
+	})
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	out := &v1.RejectRecordsReply{
+		End:    res.End,
+		Days:   int32(res.Days),
+		Total:  res.Total,
+		Offset: int32(res.Offset),
+		Limit:  int32(res.Limit),
+		Items:  make([]*v1.RejectRecordItem, 0, len(res.Items)),
+	}
+	for _, it := range res.Items {
+		out.Items = append(out.Items, &v1.RejectRecordItem{
+			ClientOrderId: it.ClientOrderID,
+			AccountType:   it.AccountType,
+			Symbol:        it.Symbol,
+			Side:          it.Side,
+			Source:        it.Source,
+			Operator:      it.Operator,
+			Price:         it.Price,
+			VolumeReq:     int32(it.VolumeReq),
+			VolumeFinal:   int32(it.VolumeFinal),
+			Rule:          it.Rule,
+			RuleName:      risk.RuleName(it.Rule),
+			Reason:        it.Reason,
+			LatencyUs:     it.LatencyUs,
+			CreatedAt:     formatTime(it.CreatedAt),
+		})
+	}
+	return out, nil
+}
+
 // Limits 返回各项限额的上限与当前用量（监控驾驶舱 P1，只读）。
 func (s *RiskService) Limits(_ context.Context, req *v1.LimitsRequest) (*v1.LimitsReply, error) {
 	out := &v1.LimitsReply{AccountType: strings.ToUpper(strings.TrimSpace(req.GetAccountType()))}

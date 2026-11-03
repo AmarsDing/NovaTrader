@@ -266,6 +266,57 @@ func (r *Repo) RejectTrend(ctx context.Context, from, to time.Time) (*biz.Reject
 	return out, nil
 }
 
+// RejectRecords 查窗口内 approved=false 的 risk_check 行：Total 是过滤条件下总数，
+// Items 按 created_at 降序分页（窗口/过滤/分页参数均已由 biz 层规范化）。
+func (r *Repo) RejectRecords(ctx context.Context, f biz.RejectRecordFilter) (*biz.RejectRecords, error) {
+	q := r.client.RiskCheck.Query().
+		Where(riskcheck.ApprovedEQ(false), riskcheck.CreatedAtGTE(f.From), riskcheck.CreatedAtLT(f.To))
+	if f.Rule != "" {
+		q = q.Where(riskcheck.RuleIDEQ(f.Rule))
+	}
+	if f.Symbol != "" {
+		q = q.Where(riskcheck.SymbolEQ(f.Symbol))
+	}
+	if f.Operator != "" {
+		q = q.Where(riskcheck.OperatorEQ(f.Operator))
+	}
+	if f.AccountType != "" {
+		q = q.Where(riskcheck.AccountTypeEQ(f.AccountType))
+	}
+	if f.Reason != "" {
+		q = q.Where(riskcheck.ReasonContainsFold(f.Reason))
+	}
+	total, err := q.Clone().Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.Order(riskcheck.ByCreatedAt(entsql.OrderDesc())).
+		Offset(f.Offset).Limit(f.Limit).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &biz.RejectRecords{Total: int64(total), Items: make([]biz.RejectRecord, 0, len(rows))}
+	for _, row := range rows {
+		out.Items = append(out.Items, biz.RejectRecord{
+			ClientOrderID: row.ClientOrderID,
+			AccountType:   row.AccountType,
+			Symbol:        row.Symbol,
+			Side:          row.Side,
+			Source:        row.Source,
+			Operator:      row.Operator,
+			Price:         row.Price,
+			VolumeReq:     row.VolumeReq,
+			VolumeFinal:   row.VolumeFinal,
+			Rule:          row.RuleID,
+			Reason:        row.Reason,
+			LatencyUs:     row.LatencyUs,
+			CreatedAt:     row.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
 func (r *Repo) RestoreDay(ctx context.Context, from time.Time) (biz.DayState, error) {
 	st := biz.DayState{Breakers: map[risk.AccountType]string{}, Buys: map[risk.AccountType]int{}}
 	evs, err := r.client.RiskEvent.Query().

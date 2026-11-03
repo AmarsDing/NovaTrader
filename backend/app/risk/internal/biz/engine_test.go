@@ -35,6 +35,9 @@ type fakeRepo struct {
 	trendErr     error
 	trendFrom    time.Time
 	trendTo      time.Time
+	records      *RejectRecords
+	recordsErr   error
+	recordsFilter RejectRecordFilter
 }
 
 func (f *fakeRepo) LoadAccountSnapshots(context.Context) ([]accountstate.Snapshot, error) {
@@ -90,6 +93,10 @@ func (f *fakeRepo) Report(context.Context, time.Time, time.Time) (*Report, error
 func (f *fakeRepo) RejectTrend(_ context.Context, from, to time.Time) (*RejectTrend, error) {
 	f.trendFrom, f.trendTo = from, to
 	return f.trend, f.trendErr
+}
+func (f *fakeRepo) RejectRecords(_ context.Context, fl RejectRecordFilter) (*RejectRecords, error) {
+	f.recordsFilter = fl
+	return f.records, f.recordsErr
 }
 func (f *fakeRepo) RestoreDay(context.Context, time.Time) (DayState, error) {
 	f.mu.Lock()

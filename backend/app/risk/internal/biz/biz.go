@@ -32,6 +32,9 @@ type Repo interface {
 	Report(ctx context.Context, from, to time.Time) (*Report, error)
 	// RejectTrend 聚合 [from,to) 内 risk_check：每日校验/拒绝计数 + 窗口按规则拒绝计数。
 	RejectTrend(ctx context.Context, from, to time.Time) (*RejectTrend, error)
+	// RejectRecords 查窗口内 approved=false 的 risk_check 行：Total 是过滤条件下总数，
+	// Items 按 created_at 降序分页（offset/limit 已由 biz 规范化）。
+	RejectRecords(ctx context.Context, f RejectRecordFilter) (*RejectRecords, error)
 	// RestoreDay 读 from 以来已锁存的账户熔断和已放行的买单数，重启后当日状态不丢。
 	RestoreDay(ctx context.Context, from time.Time) (DayState, error)
 	// RefData 读 stock_basic 和 day 那天的日线成交额。
