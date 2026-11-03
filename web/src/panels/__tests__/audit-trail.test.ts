@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import AuditTrail from '../admin/audit-trail.panel.vue'
 import NtAdminScaffold from '@/display/NtAdminScaffold.vue'
+import NtInput from '@/ui/NtInput.vue'
+import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 
 const mock = vi.hoisted(() => ({ req: vi.fn() }))
@@ -105,5 +107,30 @@ describe('审计日志面板（W4b 三段式）', () => {
     expect(text).toContain('操作员')
     // auditor 不在册 → role.unknown「未知」，不回显原词冒充已识别角色
     expect(text).toContain('未知')
+  })
+
+  it('FE-N4/W1：操作人/结果/时间段读面筛选——只裁已取记录，注记明示口径', async () => {
+    await mountPanel()
+    // 无筛选：不显示「筛后」注记。
+    expect(wrapper!.text()).toContain('3 条记录')
+    expect(wrapper!.text()).not.toContain('筛后')
+
+    // 操作人子串筛选（不区分大小写）：仅 trade-bot 行存活。
+    await wrapper!.findComponent(NtInput).vm.$emit('update:modelValue', 'trade')
+    expect(wrapper!.text()).toContain('筛后 1 / 已取 3 条记录')
+    expect(wrapper!.text()).toContain('筛选只作用于已取回的最近')
+    await wrapper!.findComponent(NtInput).vm.$emit('update:modelValue', '')
+
+    // 结果筛选：仅失败 → a2 一行。
+    const selects = wrapper!.findAllComponents(NtSelect)
+    await selects[2]!.vm.$emit('update:modelValue', 'fail')
+    expect(wrapper!.text()).toContain('筛后 1 / 已取 3 条记录')
+
+    // 时间段筛选：1h 窗口（样例行均为数日前）→ 0 行，空态承认筛选条件存在。
+    await selects[3]!.vm.$emit('update:modelValue', '1h')
+    expect(wrapper!.text()).toContain('筛后 0 / 已取 3 条记录')
+    expect(wrapper!.text()).toContain('当前筛选条件下没有审计记录')
+    // 裁剪不透传重取：审计接口仍只按 action/limit 请求过一次。
+    expect(mock.req).toHaveBeenCalledTimes(1)
   })
 })

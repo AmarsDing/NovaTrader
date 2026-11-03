@@ -1,9 +1,27 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import { createPinia } from 'pinia'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import SignalView from '../SignalView.vue'
+import OverviewView from '../OverviewView.vue'
 import { request } from '@/api/http'
+import { stagePanelParams } from '@/workspace/panel-bus'
 import { buildGaps, countBlockedSources, missLabel, sourceBlocked, strategyLabel } from '../decision-desk'
+
+/* FE-O5：竞价强弱条只在竞价时段（09:15–09:30 上海）显——组件用 serverNow 判定，测试经 mock 钟控时。
+ * vi.mock 提升（hoisted）须搭档 vi.hoisted 的可变钟；每个用例后回拨真实钟，不惊动既有用例。 */
+const clockCtl = vi.hoisted(() => ({ now: Date.now() }))
+vi.mock('@/utils/server-clock', () => ({ serverNow: () => clockCtl.now }))
+/* FE-O2 漏选钻取断言：工作台注入换桩——漏选行点击应 openPanel('signals', {symbol})。
+ * importOriginal 保住 registerWorkbench/useWorkbench 等其余导出（挂载子树里有间接引用）。 */
+const workbench = vi.hoisted(() => ({ openPanel: vi.fn() }))
+vi.mock('@/workspace/inject', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/workspace/inject')>()),
+  getWorkbench: () => workbench,
+}))
+afterEach(() => {
+  clockCtl.now = Date.now()
+  workbench.openPanel.mockClear()
+})
 
 const clear: Parameters<typeof buildGaps>[0] = {
   sourcesFailed: false,
@@ -51,6 +69,29 @@ describe('决策台缺口', () => {
   })
 })
 
+describe('FE-O1 可交易状态卡', () => {
+  it('链路齐是常态不着色；只有告警转 warn，有阻断转 danger 且值只数阻断', () => {
+    expect(buildTradeState([])).toEqual({ value: '链路齐', tone: 'neutral', sub: '链路检查全部通过' })
+    const warnOnly = buildTradeState([{ id: 'brief', level: 'warn', text: '', panel: 'morning-briefing' }])
+    expect(warnOnly).toMatchObject({ value: '链路齐', tone: 'warn' })
+    expect(warnOnly.sub).toContain('1 项告警')
+    const blocked = buildTradeState([
+      { id: 'kill', level: 'block', text: '', panel: 'risk-chain' },
+      { id: 'tape', level: 'block', text: '', panel: 'datasource-health' },
+      { id: 'brief', level: 'warn', text: '', panel: 'morning-briefing' },
+    ])
+    expect(blocked.value).toBe('阻断 2')
+    expect(blocked.tone).toBe('danger')
+    expect(blocked.sub).toContain('1 项告警')
+  })
+
+  it('阻断且无告警时子句只留定位指引', () => {
+    const blocked = buildTradeState([{ id: 'kill', level: 'block', text: '', panel: 'risk-chain' }])
+    expect(blocked.value).toBe('阻断 1')
+    expect(blocked.sub).toBe('点击下方清单定位')
+  })
+})
+
 describe('决策台文案', () => {
   it('策略和漏选原因翻成中文，未知代码原样保留', () => {
     expect(strategyLabel('first_board_weak2strong')).toBe('首板弱转强')
@@ -75,10 +116,15 @@ describe('决策台文案', () => {
 
 import {
   buildMissed,
+  buildAuctionStrip,
   buildDecisionAction,
   buildTickets,
+  buildTradeState,
   dimVotes,
+  groupMissed,
   isPendingStatus,
+  laneBadge,
+  laneRemainText,
   objectionsOf,
   splitReasons,
   ticketRisk,
@@ -86,6 +132,7 @@ import {
   hasAvailableSource,
   type DecisionContext,
 } from '../decision-desk'
+import type { AuctionSummary } from '@/api/market'
 import type { Candidate, SignalItem } from '@/api/types/strategy'
 
 vi.mock('@/api/http', () => ({ request: vi.fn() }))
@@ -257,6 +304,33 @@ describe('一张票：漏选列', () => {
     expect(rows.map((row) => row.symbol)).toEqual(['000003', '000002'])
     expect(rows[0]?.reason).toBe('below_threshold')
   })
+
+  it('FE-O3 不再截断：超过 8 条的漏选全量返回', () => {
+    const rows = buildMissed(
+      Array.from({ length: 12 }, (_, i) =>
+        candidate({ id: `m${i}`, symbol: `0001${String(i).padStart(2, '0')}`, ruleScore: 50 + i }),
+      ),
+    )
+    expect(rows).toHaveLength(12)
+    expect(rows[0]?.ruleScore).toBe(61)
+  })
+
+  it('FE-O3 分组：按 missReason 聚合计数头，组按条数降序，组内保持规则分倒序', () => {
+    const groups = groupMissed(
+      buildMissed([
+        candidate({ id: 'a', symbol: '000001', missReason: 'below_threshold', ruleScore: 55 }),
+        candidate({ id: 'b', symbol: '000002', missReason: 'below_threshold', ruleScore: 70 }),
+        candidate({ id: 'c', symbol: '000003', missReason: 'pool_filtered', ruleScore: 80 }),
+      ]),
+    )
+    expect(groups.map((group) => [group.reason, group.count])).toEqual([
+      ['below_threshold', 2],
+      ['pool_filtered', 1],
+    ])
+    // 计数头给中文口径；组内不重新排序，沿用 buildMissed 的规则分倒序。
+    expect(groups[0]?.label).toBe('综合分低于 75')
+    expect(groups[0]?.rows.map((row) => row.ruleScore)).toEqual([70, 55])
+  })
 })
 
 describe('白话行动计划与执行准备', () => {
@@ -420,7 +494,11 @@ describe('信号页行动入口', () => {
 
   it('被拒绝的高分票仍展示原因，原生交易按钮明确禁用', async () => {
     mockReadOnlyRequests({ status: 'rejected', reason: 'R07 仓位超限' })
-    const wrapper = shallowMount(SignalView, { global: { plugins: [createPinia()] } })
+    /* W0-3b/FE-O6：行动计划块已收编 TicketAction 子组件，shallowMount 须取消打桩才断言得到正文。
+       W2 收编：票体全量走 TicketDetail——正文链路=SignalView→TicketDetail→TicketAction，两层都解桩。 */
+    const wrapper = shallowMount(SignalView, {
+      global: { plugins: [createPinia()], stubs: { TicketDetail: false, TicketAction: false } },
+    })
     try {
       await flushPromises()
       expect(wrapper.text()).toContain('主要阻断R07 仓位超限')
@@ -432,11 +510,314 @@ describe('信号页行动入口', () => {
 
   it('风控读取失败不会让 approved 票显示成可执行', async () => {
     mockReadOnlyRequests({ status: 'approved' }, true)
-    const wrapper = shallowMount(SignalView, { global: { plugins: [createPinia()] } })
+    const wrapper = shallowMount(SignalView, {
+      global: { plugins: [createPinia()], stubs: { TicketDetail: false, TicketAction: false } },
+    })
     try {
       await flushPromises()
       expect(wrapper.text()).toContain('风控状态未返回')
       expect(wrapper.get('button.go').attributes()).toHaveProperty('disabled')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('W2 收编：卡片全量走 TicketDetail——出场事实带持有天数、四维评语入投票块、已平仓不给下单钮', async () => {
+    mockReadOnlyRequests({
+      status: 'closed',
+      reason: '突破前高放量封板。',
+      exitPrice: 12.3,
+      closedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      exitKind: '止盈',
+      hasPnl: true,
+      pnlPct: 5.2,
+      holdingDays: 2,
+      dims: { technical: { score: 88, comment: '放量突破' } },
+      evidence: ['封单 2.1 亿'],
+    })
+    const wrapper = shallowMount(SignalView, {
+      global: { plugins: [createPinia()], stubs: { TicketDetail: false, TicketAction: false } },
+    })
+    try {
+      await flushPromises()
+      const text = wrapper.text()
+      // 票头了结注（closedNote 单源）+ 价格块出场事实一行（含持有天数）。
+      expect(text).toContain('已了结（止盈，后验 5.2%）')
+      expect(text).toContain('出场 12.30')
+      expect(text).toContain('了结方式 止盈')
+      expect(text).toContain('持有 2 日')
+      // 四维评语收编进投票块（不再走卡内私有 ul）。
+      expect(text).toContain('放量突破')
+      expect(text).not.toContain('准备模拟盘确认')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('FE-O2 漏选钻取：经总线暂存的 symbol 参数预置代码搜索词，卡片列表过滤到目标票', async () => {
+    const now = Date.now()
+    vi.mocked(request).mockImplementation(async <T>(path: string): Promise<T> => {
+      let result: unknown = {}
+      if (path === '/api/strategy/signals')
+        result = {
+          items: [
+            { ...signal({ id: 'a', symbol: '600519.SH' }), validUntil: new Date(now + 60_000).toISOString() },
+            { ...signal({ id: 'b', symbol: '000001.SZ', name: '平安银行' }), validUntil: new Date(now + 60_000).toISOString() },
+          ],
+        }
+      if (path === '/api/trade/account') result = { account: 'SIM', equity: 100000, cash: 100000 }
+      if (path === '/api/trade/positions') result = { items: [] }
+      if (path === '/api/risk/state') result = { mode: 'L1', killSwitch: { active: false } }
+      if (path === '/api/market/sentiment') result = { upCount: 100, downCount: 50, asOf: new Date(now).toISOString() }
+      if (path === '/api/datahub/sources') result = { items: [{ source: 'test', state: 'closed', enabled: true }] }
+      return result as T
+    })
+    // 决策台漏选行点击 → openPanel('signals', {symbol})：总线在面板未挂载时进 pending，挂载后一次性消费。
+    stagePanelParams('signals', { symbol: '600519' })
+    const wrapper = shallowMount(SignalView, { global: { plugins: [createPinia()] } })
+    try {
+      await flushPromises()
+      // 暂存参数进站归一为 600519.SH，搜索词预置后只留目标票一张卡。
+      expect(wrapper.findAll('article.card')).toHaveLength(1)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+})
+
+describe('FE-O2 一张票：状态徽标与有效期倒计时', () => {
+  const now = Date.parse('2026-10-12T10:00:00+08:00')
+  const future = new Date(now + 30 * 60_000).toISOString()
+  const past = new Date(now - 60_000).toISOString()
+
+  it('未终态且有效期已过按「已过期」论；终态不做过期覆盖', () => {
+    expect(laneBadge({ status: 'approved', validUntil: past }, now)?.text).toBe('已过期')
+    expect(laneBadge({ status: 'done', validUntil: past }, now)?.text).toBe('已有成交')
+    expect(laneBadge({ status: 'closed', validUntil: past }, now)?.text).toBe('已平仓')
+    expect(laneBadge({ status: 'rejected', validUntil: past }, now)?.text).toBe('已拦截')
+    expect(laneBadge({ status: 'approved', validUntil: future }, now)?.text).toBe('已通过')
+  })
+
+  it('canceled 归一到 cancelled；册外状态返回 null（模板原样回显，禁自封文案）', () => {
+    expect(laneBadge({ status: 'canceled', validUntil: '' }, now)?.text).toBe('已取消')
+    expect(laneBadge({ status: 'brand_new', validUntil: '' }, now)).toBeNull()
+  })
+
+  it('有效期倒计时：缺写「无有效期」，过点/无法解析写「已过期」，未过点写剩余分钟', () => {
+    expect(laneRemainText('', now)).toBe('无有效期')
+    expect(laneRemainText('bad-date', now)).toBe('已过期')
+    expect(laneRemainText(past, now)).toBe('已过期')
+    expect(laneRemainText(future, now)).toBe('剩 30 分')
+  })
+})
+
+describe('FE-O5 竞价强弱条（纯函数）', () => {
+  const auctionNow = Date.parse('2026-11-03T09:20:00+08:00')
+  const morningNow = Date.parse('2026-11-03T10:20:00+08:00')
+  const summary: AuctionSummary = {
+    tradeDate: '2026-11-03',
+    found: true,
+    totalAmount: 5.2e9,
+    limitUpCount: 12,
+    asOf: '2026-11-03 09:25:01',
+    limitUps: [
+      { symbol: '600001.SH', auctionPct: 9.98, auctionAmount: 1e8, auctionVolRatio: 3.2, auctionTurnover: 1.1, auctionLimitUp: true, auctionUnmatched: 12_000 },
+      { symbol: '600002.SH', auctionPct: 9.97, auctionAmount: 2e8, auctionVolRatio: 2.1, auctionTurnover: 0.8, auctionLimitUp: true, auctionUnmatched: null },
+    ],
+    topRush: [
+      // 与涨停榜重复出现的行只参与涨幅/未匹配聚合，样本只数按代码去重。
+      { symbol: '600002.SH', auctionPct: 9.97, auctionAmount: 2e8, auctionVolRatio: 2.1, auctionTurnover: 0.8, auctionLimitUp: true, auctionUnmatched: null },
+      { symbol: '000001.SZ', auctionPct: 4.5, auctionAmount: 3e8, auctionVolRatio: 5.5, auctionTurnover: 2.0, auctionLimitUp: false, auctionUnmatched: -5_000 },
+    ],
+  }
+
+  it('非竞价时段整条不渲（宿主的时段判定走 serverNow）', () => {
+    expect(buildAuctionStrip(summary, morningNow)).toBeNull()
+    expect(buildAuctionStrip(null, morningNow)).toBeNull()
+  })
+
+  it('样本按代码去重；均涨幅与未匹配净买按样本行聚合', () => {
+    const strip = buildAuctionStrip(summary, auctionNow)
+    expect(strip?.found).toBe(true)
+    expect(strip?.sampleCount).toBe(3)
+    expect(strip?.avgPct).toBeCloseTo((9.98 + 9.97 + 9.97 + 4.5) / 4, 3)
+    expect(strip?.unmatchedShares).toBe(7_000)
+    expect(strip?.totalAmount).toBe(5.2e9)
+    expect(strip?.limitUpCount).toBe(12)
+    expect(strip?.asOf).toBe('2026-11-03 09:25:01')
+  })
+
+  it('样本全缺涨幅/未匹配 → null 显「—」（没取到≠0）；found=false 表达截面未落库', () => {
+    const strip = buildAuctionStrip({ ...summary, found: false, limitUps: [], topRush: [], asOf: '' }, auctionNow)
+    expect(strip?.found).toBe(false)
+    expect(strip?.sampleCount).toBe(0)
+    expect(strip?.avgPct).toBeNull()
+    expect(strip?.unmatchedShares).toBeNull()
+  })
+
+  it('接口未应答（summary null）时段内仍出缺口条，交给模板写「竞价接口未应答」', () => {
+    const strip = buildAuctionStrip(null, auctionNow)
+    expect(strip?.found).toBe(false)
+    expect(strip?.sampleCount).toBe(0)
+  })
+})
+
+describe('决策台票卡与竞价条（集成）', () => {
+  // SymbolName 打桩须显式声明 props，否则模板里 {{ code }} 渲染为空（既有教训①）。
+  const SYMBOL_STUB = { props: ['code'], template: '<span class="sym">{{ code }}</span>' }
+
+  function mockDeskRequests(init?: {
+    signals?: Array<Record<string, unknown>>
+    candidates?: Array<Record<string, unknown>>
+    auction?: Record<string, unknown> | 'fail'
+  }) {
+    vi.mocked(request).mockImplementation(async <T>(path: string): Promise<T> => {
+      let result: unknown = {}
+      if (path === '/api/strategy/signals') result = { items: init?.signals ?? [] }
+      if (path === '/api/trade/account') result = { account: 'SIM', equity: 1_000_000, cash: 400_000 }
+      if (path === '/api/trade/positions') result = { items: [] }
+      if (path === '/api/risk/state') result = { mode: 'L1', killSwitch: { active: false } }
+      if (path === '/api/market/sentiment')
+        result = { upCount: 2100, downCount: 1800, asOf: new Date(clockCtl.now).toISOString() }
+      if (path === '/api/strategy/candidates') result = { items: init?.candidates ?? [] }
+      if (path === '/api/intel/hotwords') result = { items: [] }
+      if (path === '/api/brain/briefing/latest') result = { summary: '', items: [] }
+      if (path === '/api/datahub/sources') result = { items: [{ source: 'test', state: 'closed', enabled: true }] }
+      if (path === '/api/market/auction') {
+        if (init?.auction === 'fail') throw new Error('竞价服务未应答')
+        result = init?.auction ?? { trade_date: '2026-11-03', found: false, limit_ups: [], top_rush: [], as_of: '' }
+      }
+      if (path === '/api/config') result = { values: {} }
+      return result as T
+    })
+  }
+
+  function mountDesk() {
+    return shallowMount(OverviewView, {
+      global: { plugins: [createPinia()], stubs: { NtBadge: false, SymbolName: SYMBOL_STUB } },
+    })
+  }
+
+  it('FE-O2：待执行票卡出状态徽标/入场区间/有效期倒计时；漏选行点击钻取信号中枢', async () => {
+    clockCtl.now = Date.parse('2026-11-03T09:20:00+08:00')
+    mockDeskRequests({
+      signals: [{ ...signal({ id: 'p1' }), validUntil: new Date(clockCtl.now + 30 * 60_000).toISOString() }],
+      candidates: [
+        { symbol: '000001.SZ', name: '平安银行', stage: 'scored', miss_reason: 'below_threshold', rule_score: 60 },
+      ],
+    })
+    const wrapper = mountDesk()
+    try {
+      await flushPromises()
+      const text = wrapper.text()
+      // 票头行：signal 册徽标；副行：方向/综合分/入场区间/有效期倒计时。
+      expect(text).toContain('已通过')
+      expect(text).toContain('买入')
+      expect(text).toContain('入场 1,680.00–1,686.00')
+      expect(text).toContain('剩 30 分')
+      // 漏选行整行可点：跳信号中枢并带代码定位（验收：漏选每行 2 次点击内到达解释）。
+      await wrapper.get('button.miss-row').trigger('click')
+      expect(workbench.openPanel).toHaveBeenCalledWith('signals', { symbol: '000001.SZ' })
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('FE-O2/O5：已执行票卡出了结注与成交均价/股数；竞价条时段内出全量读数', async () => {
+    clockCtl.now = Date.parse('2026-11-03T09:20:00+08:00')
+    mockDeskRequests({
+      signals: [{ ...signal({ id: 'e1', status: 'done' }), executedPrice: 1685.5, executedVolume: 200 }],
+      auction: {
+        trade_date: '2026-11-03',
+        found: true,
+        total_amount: 5.2e9,
+        limit_up_count: 12,
+        as_of: '2026-11-03 09:25:01',
+        limit_ups: [
+          { symbol: '600001.SH', auction_pct: 10, auction_amount: 1e8, auction_limit_up: true, auction_unmatched: 12_000 },
+          { symbol: '600002.SH', auction_pct: 8, auction_amount: 2e8, auction_limit_up: true },
+        ],
+        top_rush: [{ symbol: '000001.SZ', auction_pct: 6, auction_amount: 3e8, auction_unmatched: -5_000 }],
+      },
+    })
+    const wrapper = mountDesk()
+    try {
+      await flushPromises()
+      const text = wrapper.text()
+      // 已执行卡：了结注（closedNote 单源）+ 成交均价/股数副行。
+      expect(text).toContain('已有成交 200 股')
+      expect(text).toContain('成交均价 1,685.50')
+      // 竞价条（09:20 时段内，found=true）：涨停家数/竞价额/样本/均涨幅/未匹配净买/截面时点。
+      const strip = wrapper.get('.auction-strip')
+      expect(strip.text()).toContain('涨停 12 家')
+      expect(strip.text()).toContain('竞价额 52.00 亿')
+      expect(strip.text()).toContain('样本 3 只')
+      expect(strip.text()).toContain('均涨幅 8.00%')
+      expect(strip.text()).toContain('未匹配净买 0.70 万股')
+      expect(strip.text()).toContain('截面 2026-11-03 09:25:01')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('FE-O5：竞价接口未应答写缺口文案且不拖主表错误；非竞价时段整条不渲', async () => {
+    clockCtl.now = Date.parse('2026-11-03T09:20:00+08:00')
+    mockDeskRequests({ auction: 'fail' })
+    const wrapper = mountDesk()
+    try {
+      await flushPromises()
+      expect(wrapper.get('.auction-strip').text()).toContain('竞价接口未应答')
+      // 竞价是辅助条：失败不进主表错误（独立成败语义）。
+      expect(wrapper.text()).not.toContain('竞价服务未应答')
+    } finally {
+      wrapper.unmount()
+    }
+
+    // 时段外（10:20 上午连续竞价）：同一接口数据整条不渲。
+    clockCtl.now = Date.parse('2026-11-03T10:20:00+08:00')
+    const offSession = mountDesk()
+    try {
+      await flushPromises()
+      expect(offSession.find('.auction-strip').exists()).toBe(false)
+    } finally {
+      offSession.unmount()
+    }
+  })
+
+  it('FE-O1/O3：四卡重排（权益/系统退场）；今日风控缺数据显「—」；漏选按原因分组出计数头', async () => {
+    clockCtl.now = Date.parse('2026-11-03T10:20:00+08:00')
+    mockDeskRequests({
+      candidates: [
+        { symbol: '000001.SZ', name: '平安银行', stage: 'scored', miss_reason: 'below_threshold', rule_score: 60 },
+        { symbol: '000002.SZ', name: '万科A', stage: 'scored', miss_reason: 'below_threshold', rule_score: 58 },
+        { symbol: '600001.SH', name: '浦发银行', stage: 'scored', miss_reason: 'pool_filtered', rule_score: 80 },
+      ],
+    })
+    // 卡面文案要进断言：NtStatCard 解桩渲染；NtBadge 照 mountDesk 惯例解桩（徽注行要读文本）。
+    const wrapper = shallowMount(OverviewView, {
+      global: { plugins: [createPinia()], stubs: { NtBadge: false, NtStatCard: false, SymbolName: SYMBOL_STUB } },
+    })
+    try {
+      await flushPromises()
+      const text = wrapper.text()
+      // FE-O1：四卡=当日盈亏/可交易状态/情绪/今日风控；权益与系统标签退场。
+      const cardLabels = wrapper.findAllComponents({ name: 'NtStatCard' }).map((card) => card.props('label'))
+      expect(cardLabels).toEqual(['当日盈亏', '可交易状态', '情绪', '今日风控'])
+      expect(text).not.toContain('权益')
+      // 情绪卡收编涨/跌家数与炸板率（mock 情绪 2100/1800，炸板率未给显「—」）。
+      expect(text).toContain('涨 2100 / 跌 1800')
+      expect(text).toContain('炸板率 —')
+      // 今日风控：state 未给 buysToday/参数册 → 「—」不猜数；日报未 mock 路径 → fulfilled 空报，拦截「—」。
+      expect(text).toContain('买入 —/—')
+      expect(text).toContain('拦截 —')
+      // 链路徽注行承接原系统卡的实时性与模式。
+      expect(wrapper.get('.link-strip').text()).toContain('模式 L1')
+      // FE-O3：组头=中文口径+聚合计数，条数多的组在前；三行漏选全量渲染不截断。
+      const heads = wrapper.findAll('.miss-group h4')
+      expect(heads).toHaveLength(2)
+      expect(heads[0]?.text()).toContain('综合分低于 75')
+      expect(heads[0]?.text()).toContain('2')
+      expect(wrapper.findAll('button.miss-row')).toHaveLength(3)
     } finally {
       wrapper.unmount()
     }

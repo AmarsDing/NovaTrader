@@ -5,8 +5,10 @@
  */
 
 import type { Candidate, SignalItem } from '@/api/types/strategy'
-import { formatDateTime, parseTime } from '@/utils/time'
-import { price } from '@/utils/format'
+import type { AuctionSummary } from '@/api/market'
+import { formatDateTime, parseTime, sessionOf } from '@/utils/time'
+import { isValidExpired, missLabel, price, validRemainText } from '@/utils/format'
+import { STATUS_MAP, type StatusEntry } from '@/ui/status-map'
 
 export { strategyLabel, missLabel } from '@/utils/format'
 
@@ -136,6 +138,33 @@ export function buildGaps(input: DeskInput): DeskGap[] {
   return gaps
 }
 
+/* ================= FE-O1 四卡：可交易状态 ================= */
+
+export interface TradeStateCard {
+  /** 阻断 n / 链路齐 */
+  value: string
+  tone: 'neutral' | 'warn' | 'danger'
+  sub: string
+}
+
+/**
+ * FE-O1 四卡之「可交易状态」：阻断优先于告警，值只给阻断数，子句留告警数。
+ * 链路齐是常态不是利好，tone 保持 neutral 不着色。
+ */
+export function buildTradeState(gaps: DeskGap[]): TradeStateCard {
+  const blocks = gaps.filter((gap) => gap.level === 'block').length
+  const warns = gaps.length - blocks
+  if (blocks > 0) {
+    return {
+      value: `阻断 ${blocks}`,
+      tone: 'danger',
+      sub: warns > 0 ? `另有 ${warns} 项告警，点击下方清单定位` : '点击下方清单定位',
+    }
+  }
+  if (warns > 0) return { value: '链路齐', tone: 'warn', sub: `${warns} 项告警待看` }
+  return { value: '链路齐', tone: 'neutral', sub: '链路检查全部通过' }
+}
+
 /* ================= 一张票（P3） =================
  * 只用现有信号/候选字段拼，不新开模型调用、不编理由：
  * 没有研判正文时写「未调用」或「规则分」，由界面原样展示。
@@ -151,6 +180,8 @@ export interface DimVote {
   score: number | null
   /** < 50 记反对（中立线 50 与 brain neutralScore 同口径） */
   against: boolean
+  /** 模型给这一维的一句话评语（dims 对象值带 comment 才有，scale 票体收编四维评语的载体）；无为空串 */
+  comment: string
 }
 
 export interface TicketRisk {
@@ -191,6 +222,16 @@ export interface DeskTicket {
   entryHigh: number | null
   stop: number | null
   take: number | null
+  /** ATR（信号卡事实位，决策台价区同源显示） */
+  atr: number | null
+  /** 已了结票的出场事实（SignalView 卡尾同源字段，票体收编时一并归位） */
+  exitPrice: number | null
+  closedAt: string
+  exitKind: string
+  /** 后验盈亏是否有效；hasPnl 为真才带 pnlPct */
+  hasPnl: boolean
+  pnlPct: number | null
+  holdingDays: number | null
   validUntil: string
   holdDaysMax: number | null
   votes: DimVote[]
@@ -244,6 +285,15 @@ function dimScore(raw: unknown): number | null {
   return null
 }
 
+/** 评语抽取：dims 对象值带非空 comment 才取（与 utils/format dimComment 同口径，此处一并进票不另查）。 */
+function dimCommentOf(raw: unknown): string {
+  if (raw && typeof raw === 'object') {
+    const comment = (raw as Record<string, unknown>).comment
+    if (typeof comment === 'string' && comment.trim()) return comment.trim()
+  }
+  return ''
+}
+
 /** 四维投票：按固定四行出，缺的维给 null 而不是跳过，界面才看得出哪一维没评 */
 export function dimVotes(dims: Record<string, unknown>): DimVote[] {
   const lookup = new Map<string, unknown>()
@@ -257,7 +307,7 @@ export function dimVotes(dims: Record<string, unknown>): DimVote[] {
       }
     }
     const score = dimScore(raw)
-    return { key: def.key, label: def.label, score, against: score != null && score < DIM_NEUTRAL }
+    return { key: def.key, label: def.label, score, against: score != null && score < DIM_NEUTRAL, comment: dimCommentOf(raw) }
   })
 }
 
@@ -290,6 +340,23 @@ export function ruleOf(ticket: { evidence: string[]; reason?: string }): string 
   const haystack = [...ticket.evidence, ticket.reason ?? ''].join(' ')
   const match = /R\d{2}/.exec(haystack)
   return match ? match[0] : ''
+}
+
+/**
+ * 盈亏比（入场区间中值 vs 止损/止盈）：决策台票体与信号中枢卡片同源，唯一出处。
+ * 缺任一腿或止损不在入场区间之下不折算，显「—」——缺位不是 0R。
+ */
+export function riskRewardOf(ticket: {
+  entryLow: number | null
+  entryHigh: number | null
+  stop: number | null
+  take: number | null
+}): string {
+  if (ticket.entryLow == null || ticket.entryHigh == null || ticket.stop == null || ticket.take == null) return '—'
+  const mid = (ticket.entryLow + ticket.entryHigh) / 2
+  const risk = mid - ticket.stop
+  if (!(risk > 0)) return '—'
+  return `${((ticket.take - mid) / risk).toFixed(1)}R`
 }
 
 /**
@@ -349,6 +416,13 @@ function toTicket(signal: SignalItem, lane: TicketLane, maxSinglePct: number | n
     entryHigh: signal.entryHigh,
     stop: signal.stop,
     take: signal.take,
+    atr: signal.atr,
+    exitPrice: signal.exitPrice,
+    closedAt: signal.closedAt,
+    exitKind: signal.exitKind,
+    hasPnl: signal.hasPnl,
+    pnlPct: signal.pnlPct,
+    holdingDays: signal.holdingDays,
     validUntil: signal.validUntil,
     holdDaysMax: signal.holdDaysMax,
     votes,
@@ -359,6 +433,11 @@ function toTicket(signal: SignalItem, lane: TicketLane, maxSinglePct: number | n
     risk: ticketRisk(signal, maxSinglePct),
     closedNote: lane === 'executed' ? closedNote(signal) : '',
   }
+}
+
+/** 信号中枢卡片票体（W2 全量收编 TicketDetail 的转换口）：lane 按状态归位——执行/了结票带出场事实与成交说明，其余归待执行位。 */
+export function toDeskTicket(signal: SignalItem, maxSinglePct: number | null = null): DeskTicket {
+  return toTicket(signal, EXECUTED_STATUS.has(signal.status.toLowerCase()) ? 'executed' : 'pending', maxSinglePct)
 }
 
 /**
@@ -382,12 +461,11 @@ export function buildTickets(
   return { pending, executed }
 }
 
-/** 漏选列：漏斗里没入选且带原因的候选，按规则分倒序 */
-export function buildMissed(candidates: Candidate[], limit = 8): MissTicket[] {
+/** 漏选列：漏斗里没入选且带原因的候选，按规则分倒序。FE-O3 起不再截断，完整列表交给分组与滚动收口。 */
+export function buildMissed(candidates: Candidate[]): MissTicket[] {
   return candidates
     .filter((row) => row.stage !== 'selected' && row.missReason)
     .sort((a, b) => (b.ruleScore ?? 0) - (a.ruleScore ?? 0))
-    .slice(0, limit)
     .map((row) => ({
       symbol: row.symbol,
       name: row.name,
@@ -397,6 +475,95 @@ export function buildMissed(candidates: Candidate[], limit = 8): MissTicket[] {
       ruleScore: row.ruleScore,
       finalScore: row.finalScore,
     }))
+}
+
+/** FE-O3 漏选分组：一组一个 missReason，计数头用的聚合结果。 */
+export interface MissGroup {
+  reason: string
+  /** missLabel 转好的中文口径 */
+  label: string
+  count: number
+  rows: MissTicket[]
+}
+
+/** 组按条数降序（同数按中文标签定序保证稳定），组内保持 buildMissed 的规则分倒序。 */
+export function groupMissed(rows: MissTicket[]): MissGroup[] {
+  const byReason = new Map<string, MissTicket[]>()
+  for (const row of rows) {
+    const list = byReason.get(row.reason)
+    if (list) list.push(row)
+    else byReason.set(row.reason, [row])
+  }
+  return [...byReason.entries()]
+    .map(([reason, groupRows]) => ({
+      reason,
+      label: missLabel(reason),
+      count: groupRows.length,
+      rows: groupRows,
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh'))
+}
+
+/* ================= FE-O2：票卡徽标与有效期倒计时（左列票卡标准化的纯函数收口） ================= */
+
+/** signal 册查词：动态状态码查册，册外返回 null（模板原样回显原始状态，禁自封文案）。 */
+function signalEntry(status: string): StatusEntry | null {
+  return (STATUS_MAP as Readonly<Record<string, StatusEntry>>)[`signal.${status}`] ?? null
+}
+
+/** 票卡状态徽标（FE-O2）：文案/tone 唯一出处=signal 册；未终态且有效期已过按「已过期」论
+ *  （与信号中枢 stateBadge 同口径）；终态（已有成交/已平仓/已取消/已拦截）不做过期覆盖。 */
+export function laneBadge(ticket: Pick<DeskTicket, 'status' | 'validUntil'>, now: number): StatusEntry | null {
+  const status = ticket.status.toLowerCase() === 'canceled' ? 'cancelled' : ticket.status.toLowerCase()
+  const terminal = status === 'done' || status === 'closed' || status === 'cancelled' || status === 'rejected'
+  if (!terminal && isValidExpired(ticket.validUntil, now)) return signalEntry('expired')
+  return signalEntry(status)
+}
+
+/** 票卡有效期倒计时（FE-O2）：缺有效期写「无有效期」；余量走 validRemainText，过点/无法解析写「已过期」
+ *  （与票体 valid 行同口径，卡片行是列表不是票头，档位压低不抢读数）。 */
+export function laneRemainText(validUntil: string, now: number): string {
+  if (!validUntil) return '无有效期'
+  return validRemainText(validUntil, now) || '已过期'
+}
+
+/* ================= FE-O5：竞价强弱条（09:15–09:30 时段显示，过时段自动隐藏） ================= */
+
+export interface AuctionStrip {
+  /** false=截面未落库/接口未应答——时段内条仍显（模板给缺口文案）；时段外整条 null 不渲。 */
+  found: boolean
+  /** 全市场竞价成交额（元）。 */
+  totalAmount: number
+  /** 全市场竞价涨停家数。 */
+  limitUpCount: number
+  /** 参与样本只数（竞价涨停 ∪ 抢筹榜按代码去重；列表是 top 截断样本，非全市场口径）。 */
+  sampleCount: number
+  /** 样本竞价均涨幅（百分点口径，与 pkg/market/auction.go auction_pct=(open-preClose)/preClose*100 同源）；
+   *  样本全部未返回涨幅 → null 显「—」（没取到≠0）。 */
+  avgPct: number | null
+  /** 样本未匹配净买量合计（股；auction_unmatched=bv−av，09:20–09:25 无快照为 null）；
+   *  全部未返回 → null 显「—」。 */
+  unmatchedShares: number | null
+  asOf: string
+}
+
+/** 竞价强弱条：仅集合竞价时段（09:15–09:30，上海钟）出条；指标由 GetAuction 截面推导，
+ *  越页签/过时段由宿主用 serverNow 判定（P2-10）。 */
+export function buildAuctionStrip(summary: AuctionSummary | null, nowMs: number): AuctionStrip | null {
+  if (sessionOf(new Date(nowMs)) !== 'auction') return null
+  const rows = [...(summary?.limitUps ?? []), ...(summary?.topRush ?? [])]
+  const symbols = new Set(rows.map((row) => row.symbol).filter(Boolean))
+  const pcts = rows.map((row) => row.auctionPct).filter((value): value is number => value != null)
+  const unmatched = rows.map((row) => row.auctionUnmatched).filter((value): value is number => value != null)
+  return {
+    found: summary?.found ?? false,
+    totalAmount: summary?.totalAmount ?? 0,
+    limitUpCount: summary?.limitUpCount ?? 0,
+    sampleCount: symbols.size,
+    avgPct: pcts.length ? pcts.reduce((acc, value) => acc + value, 0) / pcts.length : null,
+    unmatchedShares: unmatched.length ? unmatched.reduce((acc, value) => acc + value, 0) : null,
+    asOf: summary?.asOf || '',
+  }
 }
 
 /** 本轮只读检查的上下文；接口失败时必须置为 false，不能沿用 store 的上次成功值。 */
