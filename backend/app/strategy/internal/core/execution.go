@@ -61,14 +61,7 @@ func (r *Runner) subscribeExecutions() error {
 			}
 			bounded, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := r.onExecution(bounded, msg.Subject, msg.Data); err != nil {
-				observe.FinishError(finish, err)
-				r.log.Warnf("execution event projection: %v", err)
-				_ = msg.NakWithDelay(2 * time.Second)
-				return
-			}
-			finish(observe.Succeeded)
-			_ = msg.Ack()
+			r.handleExecutionResult(msg, finish, r.onExecution(bounded, msg.Subject, msg.Data))
 		}, nats.Durable(item.durable), nats.ManualAck(), nats.DeliverAll(), nats.AckWait(15*time.Second), nats.MaxAckPending(128))
 		if err != nil {
 			errs = append(errs, err)
@@ -79,7 +72,33 @@ func (r *Runner) subscribeExecutions() error {
 	return errors.Join(errs...)
 }
 
+type executionAck interface {
+	Ack(...nats.AckOpt) error
+	NakWithDelay(time.Duration, ...nats.AckOpt) error
+}
+
+func (r *Runner) handleExecutionResult(msg executionAck, finish func(observe.Outcome), err error) {
+	if err != nil {
+		if errors.Is(err, errEmptyExecutionPayload) {
+			finish(observe.Rejected)
+			_ = msg.Ack()
+			return
+		}
+		observe.FinishError(finish, err)
+		r.log.Warnf("execution event projection: %v", err)
+		_ = msg.NakWithDelay(2 * time.Second)
+		return
+	}
+	finish(observe.Succeeded)
+	_ = msg.Ack()
+}
+
+var errEmptyExecutionPayload = errors.New("strategy: empty execution payload")
+
 func executionOrderID(subject string, body []byte) (events.Envelope, string, error) {
+	if len(body) == 0 {
+		return events.Envelope{}, "", errEmptyExecutionPayload
+	}
 	env, err := events.Unmarshal(body)
 	if err != nil {
 		return env, "", err

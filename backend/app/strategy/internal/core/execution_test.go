@@ -1,8 +1,15 @@
 package core
 
 import (
-	"server/pkg/events"
+	"context"
+	"errors"
 	"testing"
+	"time"
+
+	"github.com/go-kratos/kratos/v2/log"
+	"github.com/nats-io/nats.go"
+	"server/pkg/events"
+	"server/pkg/observe"
 )
 
 func tradeMessage(t *testing.T, subject, source string, payload any) []byte {
@@ -16,6 +23,34 @@ func tradeMessage(t *testing.T, subject, source string, payload any) []byte {
 		t.Fatal(err)
 	}
 	return p
+}
+
+type recordingExecutionAck struct {
+	acks int
+	naks int
+}
+
+func (a *recordingExecutionAck) Ack(...nats.AckOpt) error { a.acks++; return nil }
+func (a *recordingExecutionAck) NakWithDelay(time.Duration, ...nats.AckOpt) error {
+	a.naks++
+	return nil
+}
+
+func TestExecutionEmptyPayloadIsPermanentDrop(t *testing.T) {
+	r := &Runner{log: log.NewHelper(log.DefaultLogger)} // nil usecase：若进入 SQL reconciliation 会立即 panic。
+	err := r.onExecution(context.Background(), events.SubjectTradeOrder, nil)
+	if !errors.Is(err, errEmptyExecutionPayload) {
+		t.Fatalf("空 payload 必须归类为永久丢弃错误,实际 %v", err)
+	}
+	ack := &recordingExecutionAck{}
+	var outcomes []observe.Outcome
+	r.handleExecutionResult(ack, func(outcome observe.Outcome) { outcomes = append(outcomes, outcome) }, err)
+	if ack.acks != 1 || ack.naks != 0 {
+		t.Fatalf("空 payload 只能 Ack 不得 Nak: ack=%d nak=%d", ack.acks, ack.naks)
+	}
+	if len(outcomes) != 1 || outcomes[0] != observe.Rejected {
+		t.Fatalf("空 payload 必须记 Rejected: %v", outcomes)
+	}
 }
 
 func TestExecutionEventIdentityOnlyAcceptsOriginalOrderWakeup(t *testing.T) {
