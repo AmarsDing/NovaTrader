@@ -36,7 +36,16 @@ export const useAlertsStore = defineStore('alerts', () => {
     loading.value = true
     try {
       const list = await quiet(() => listMessages({ limit: 100 }))
-      if (list) messages.value = list
+      if (list) {
+        messages.value = list
+        /* 批次 A5：服务端未读回种 StatusBar 角标基线（notify.unread 单源，推送增量在其上累加；
+           面板清零后若服务端仍有未读，下一轮刷新如实回弹——未读跨设备一致的代价）。
+           useNotifyStore 走动态 import：顶层静态引用会把 alerts 拉进
+           utils/notify → alerts → stores/notify → ws/hub → utils/notify 模块环，
+           vitest 的 vi.mock 插桩在环上会把 bumpToast 解析回真身（notify-funnel 合同测试现形）。 */
+        const { useNotifyStore } = await import('@/stores/notify')
+        useNotifyStore().setUnread(list.filter((m) => !m.read).length)
+      }
       ready.value = list != null
       return ready.value
     } finally {

@@ -2,7 +2,7 @@
  * HUD 十格的牌面解析：时段（timeband.ts）给格子定义，这里把 MonitorInput
  * 解析成人读的主词/副行。纯函数，缺口格写明缺哪个接口（监控业务监控方案 §7 纪律）。
  */
-import { amount, compactAmount, pctText, phaseName, ratioPct, signed, toneOf } from '@/utils/format'
+import { amount, compactAmount, phaseName, ppText, ratioPct, signed, toneOf } from '@/utils/format'
 import { useSecurityStore } from '@/stores/security'
 import { bandCountdown, type HudCellDef, type SparkKey } from './timeband'
 import type { MonitorInput } from './types'
@@ -84,7 +84,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     case 'mainline': {
       const top = input.sectors?.ok ? input.sectors.rows[0] : null
       if (!top) return { face: '未返回', sub: '板块接口无返回', tone: 'flat' }
-      return { face: top.name || '未命名', sub: top.avgPct == null ? '' : `板块均 ${pctText(top.avgPct)}`, tone: 'flat' }
+      return { face: top.name || '未命名', sub: top.avgPct == null ? '' : `板块均 ${ppText(top.avgPct)}`, tone: 'flat' }
     }
     case 'signal': {
       if (!input.signals?.ok) return { face: '信号未返回', sub: '', tone: 'flat' }
@@ -158,7 +158,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
       if (!perf) return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
       if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
-      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率 · 盈亏比 ${perf.plRatio > 0 ? perf.plRatio.toFixed(1) : '不足'}`, tone: 'flat' }
+      return { face: ratioPct(perf.winRate, 0), sub: `近 ${perf.sample} 笔胜率 · 盈亏比 ${perf.plRatio > 0 ? perf.plRatio.toFixed(1) : '不足'}`, tone: 'flat' }
     }
     case 'gap:misslimit': {
       /* 昨日涨停名单 × 候选漏选名单：漏掉的涨停只数（§5.6 盘后漏选复盘的同一口径）。
@@ -182,7 +182,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
     case 'overnight:overseas': {
       const hit = input.sectors?.ok ? input.sectors.rows.find((row) => row.overseas != null) : null
       if (!hit) return { face: '未调用', sub: '', tone: 'flat' }
-      return { face: hit.name, sub: `外围 ${pctText(hit.overseas)}`, tone: 'flat' }
+      return { face: hit.name, sub: `外围 ${ppText(hit.overseas)}`, tone: 'flat' }
     }
     case 'gap:auction-amount': {
       const auction = input.marketP1?.ok ? input.marketP1.auction : null
@@ -257,7 +257,7 @@ function resolve(key: string, input: MonitorInput, date: Date): Pick<HudCellView
       const perf = input.strategyP1?.ok ? input.strategyP1.performance : null
       if (!perf) return { face: '未接入', sub: GAP_PERF, tone: 'flat' }
       if (perf.sample === 0) return { face: '样本不足', sub: '还没有已出后验的信号', tone: 'flat' }
-      return { face: pctText(perf.winRate * 100, 0), sub: `近 ${perf.sample} 笔胜率`, tone: 'flat' }
+      return { face: ratioPct(perf.winRate, 0), sub: `近 ${perf.sample} 笔胜率`, tone: 'flat' }
     }
     case 'gap:attribution': {
       const perf = input.strategyP1?.ok ? input.strategyP1.performance : null

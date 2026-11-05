@@ -18,7 +18,7 @@ import {
   compactAmount,
   intText,
   missLabel,
-  pctText,
+  ppText,
   ratioPct,
   signalStatusLabel,
   signed,
@@ -426,7 +426,7 @@ function accountSections(input: MonitorInput, extra: DetailExtra): DetailSection
   const perfRows: DetailRow[] = perf
     ? perf.sample > 0
       ? [
-          { key: 'win', label: '近 20 笔胜率', value: pctText(perf.winRate * 100, 1), note: `${perf.sample} 笔已出后验` },
+          { key: 'win', label: '近 20 笔胜率', value: ratioPct(perf.winRate, 1), note: `${perf.sample} 笔已出后验` },
           { key: 'pl', label: '盈亏比', value: perf.plRatio > 0 ? perf.plRatio.toFixed(2) : '样本不足（缺盈利或缺亏损笔）' },
           { key: 'dd', label: '最大回撤', value: ratioPct(perf.maxDrawdown, 2), note: '按后验收益逐笔累计的峰谷差' },
           { key: 'avg', label: '平均实际收益', value: ratioPct(perf.avgReturn, 2) },
@@ -512,7 +512,7 @@ function signalPanel(input: MonitorInput, id: string, now: number, extra: Detail
       value: focus.stop == null ? '未返回' : amount(focus.stop),
       note:
         focus.entry != null && focus.stop != null
-          ? `依据：距入场 ${ratioPct((focus.entry - focus.stop) / focus.entry, 1)}（risk.stop_pct 上限 ${stopCap == null ? '未返回' : pctText(stopCap * 100)}）`
+          ? `依据：距入场 ${ratioPct((focus.entry - focus.stop) / focus.entry, 1)}（risk.stop_pct 上限 ${stopCap == null ? '未返回' : ratioPct(stopCap)}）`
           : '',
     },
     {
@@ -570,7 +570,7 @@ function signalPanel(input: MonitorInput, id: string, now: number, extra: Detail
     evidenceRows.push(['资金面', '主力净流入额', '未拉取', '资金因子只拉焦点股'])
   }
   const overseas = input.sectors?.ok ? input.sectors.rows.find((row) => row.overseas != null) : undefined
-  evidenceRows.push(['外围', overseas ? overseas.name : '关联外盘标的', overseas ? `外围 ${pctText(overseas.overseas)}` : '未返回', overseas ? '板块联动口径' : ''])
+  evidenceRows.push(['外围', overseas ? overseas.name : '关联外盘标的', overseas ? `外围 ${ppText(overseas.overseas)}` : '未返回', overseas ? '板块联动口径' : ''])
   const evidence: DetailSection = {
     key: 'evidence',
     title: '证据链',
@@ -712,7 +712,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
       label: '单日最大亏损',
       value: account?.dayPnl == null ? GAP_DAY_PNL : '参数未返回：risk.daily_loss_pct',
       tone: 'warn',
-      note: maxLoss != null ? `上限 ${pctText(maxLoss * 100)}` : '',
+      note: maxLoss != null ? `上限 ${ratioPct(maxLoss)}` : '',
     })
   } else {
     const used = Math.max(0, -account.dayPnl) / (equity || 1)
@@ -721,7 +721,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
     limitRows.push({
       key: 'loss',
       label: '单日最大亏损',
-      value: `${ratioPct(used)} / ${pctText(cap * 100)}`,
+      value: `${ratioPct(used)} / ${ratioPct(cap)}`,
       note: '达到上限即锁仓，今日不再开仓（R15）',
       ring: { pct, tone: ringTone(pct) },
     })
@@ -745,7 +745,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
             item.name,
             item.used < 0 ? '不可得' : fmtLimitValue(item.used, item.unit),
             item.limit < 0 ? '不适用' : fmtLimitValue(item.limit, item.unit),
-            item.ratio < 0 ? '—' : pctText(item.ratio * 100, 0),
+            item.ratio < 0 ? '—' : ratioPct(item.ratio, 0),
             item.note,
           ]),
           empty: '限额接口没有返回条目',
@@ -864,7 +864,7 @@ function sourcePanel(input: MonitorInput, id: string, now: number): DetailPanel 
   const throughput: DetailRow[] = [
     { key: 'succ', label: '成功数', value: intText(item.successCount ?? null) },
     { key: 'fail', label: '失败数', value: intText(item.failureCount ?? null) },
-    { key: 'failrate', label: '失败率', value: failRate == null ? '未返回' : pctText(failRate, 1), tone: failRate != null && failRate > 20 ? 'warn' : 'flat' },
+    { key: 'failrate', label: '失败率', value: failRate == null ? '未返回' : ppText(failRate, 1), tone: failRate != null && failRate > 20 ? 'warn' : 'flat' },
     { key: 'avg', label: '平均延迟', value: item.avgLatencyMs == null ? '未返回' : `${Math.round(item.avgLatencyMs)} ms` },
     { key: 'last', label: '最近延迟', value: item.latencyMs == null ? '未返回' : `${Math.round(item.latencyMs)} ms` },
     { key: 'p95', label: 'P95 延迟', value: '未接入', note: 'SourceStatus 只给 last_latency_ms 与 avg_latency_ms，没有分位桶' },
@@ -951,7 +951,7 @@ function modelPanel(input: MonitorInput, id: string): DetailPanel {
       tier.configured === false ? '未配置' : tier.circuitOpen ? '熔断' : '在线',
       calls == null ? '未返回' : String(calls),
       failures == null ? '未返回' : String(failures),
-      failRate == null ? '未返回' : pctText(failRate, 1),
+      failRate == null ? '未返回' : ppText(failRate, 1),
       tier.p50Ms == null ? '未返回' : `${Math.round(tier.p50Ms)} ms`,
       tier.p95Ms == null ? '未返回' : `${Math.round(tier.p95Ms)} ms`,
       intText(tier.inFlight ?? null),
@@ -1278,7 +1278,7 @@ function scanSections(input: MonitorInput): DetailSection[] {
             `${step.fromHeight} 进 ${step.fromHeight >= 3 ? '4+' : step.fromHeight + 1}`,
             step.sample === 0 ? '无样本' : `${step.sample} 只`,
             step.sample === 0 ? '—' : `${step.succeeded} 只`,
-            step.sample === 0 ? '—' : pctText(step.rate * 100, 0),
+            step.sample === 0 ? '—' : ratioPct(step.rate, 0),
           ]),
           empty: '近 5 日没有连板样本',
         },
@@ -1307,11 +1307,11 @@ function scanSections(input: MonitorInput): DetailSection[] {
             rows: auction.topRush.map((row) => [
               nameCell(row.symbol),
               row.symbol,
-              pctText(row.auctionPct, 2),
+              ppText(row.auctionPct, 2),
               compactAmount(row.auctionAmount),
               // 「没取到≠0」：无 5 日均量时量比为 null，显「—」不得显 0.0
               row.auctionVolRatio != null ? row.auctionVolRatio.toFixed(1) : '—',
-              pctText(row.auctionTurnover, 2),
+              ppText(row.auctionTurnover, 2),
             ]),
             empty: '当日没有竞价截面行',
           },

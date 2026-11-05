@@ -1,12 +1,16 @@
 /**
  * 下单条（P0，视频设计指引 §8 底条恒随）契约：
- * 停笔预览 + 落单前全新试算两段门闩；LIVE 账本恒禁；回报必带原因；网络异常显「待核」指去交易面板。
+ * 停笔预览 + 落单前全新试算两段门闩；回报必带原因；网络异常显「待核」指去交易面板。
+ * FE-T4：LIVE 可选性走 admission 信封总闸（fail-closed），不再前端硬编码恒禁；
+ * FE-T1：确认顺序=落单前全新试算→确认（载荷带试算摘要与幂等键）→提交；
+ * FE-T3：submitBlock 四闸对齐 TradeView（风控读到/账本读到/新鲜度 30s/账本同源）。
  * W5c：F9/F10 面板热键（window keydown 派发 KeyboardEvent）/ R 倍数联动 / 反手两步显式 /
  * 止盈止损告警联动（createAlertRule mock 到门面，联动失败不阻塞主单）。
  * 速记：Vitest 假定时器推进 250ms 停笔防抖；NtInput/NtTabs 走 stub 的 update:modelValue 派发。
  */
 import { flushPromises, shallowMount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import TradeBar from '../trade/trade-bar.panel.vue'
 import NtBlockerCard from '@/display/NtBlockerCard.vue'
@@ -27,11 +31,15 @@ const mock = vi.hoisted(() => ({
   toast: { success: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() },
   live: true,
   viewer: false,
+  /* FE-T3：submitBlock 新鲜度/一致性闸读 accountOk/checkedAt/snapshot 与 risk.checkedAt——
+     beforeEach 统一给「刚读到且同源」基线，单闸用例各自覆写。 */
   accountStore: {
     book: 'SIM', cash: 100_000, equity: 100_000, openHalted: false, haltReason: '',
-    positionsOk: true, positions: [] as unknown[], refresh: vi.fn(),
+    accountOk: true, positionsOk: true, checkedAt: 0, snapshot: null as { account: string } | null,
+    positions: [] as unknown[], refresh: vi.fn(),
   },
-  riskStore: { ready: true, killActive: false, refresh: vi.fn() },
+  riskStore: { ready: true, killActive: false, checkedAt: 0, refresh: vi.fn() },
+  admissionStore: { liveEnabled: false, ensureFresh: vi.fn(), startPolling: vi.fn() },
   tradeStore: {
     orders: [] as { id: string; account: string; symbol: string; side: string; status: string; price: number | null; volume: number | null; filled: number | null; reason: string }[],
     fills: [] as unknown[],
@@ -48,6 +56,7 @@ vi.mock('@/ui/useToast', () => ({ useToast: () => mock.toast }))
 vi.mock('@/ws/hub', () => ({ isLive: () => mock.live }))
 vi.mock('@/workspace/inject', () => ({ getWorkbench: mock.workbench }))
 vi.mock('@/stores/account', () => ({ useAccountStore: () => mock.accountStore }))
+vi.mock('@/stores/admission', () => ({ useAdmissionStore: () => mock.admissionStore }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => mock.viewer, operatorName: 'tester' }) }))
 vi.mock('@/stores/risk', () => ({ useRiskStore: () => mock.riskStore }))
 vi.mock('@/stores/trade', () => ({ useTradeStore: () => ({ ...mock.tradeStore, place: mock.place }) }))
@@ -99,13 +108,22 @@ beforeEach(() => {
   }
   mock.live = true
   mock.viewer = false
-  mock.accountStore.book = 'SIM'
-  mock.accountStore.openHalted = false
-  mock.accountStore.positions = []
+  /* FE-T3 闸门用例在挂载后改写 store 读数——plain 对象进不了 computed 依赖，submitBlock 会吃缓存。
+     每用例重建 reactive 版让闸门随覆写重估（FE-T3 基线：假时钟下 serverNow≈Date.now，「刚读到且同源」）。 */
+  mock.accountStore = reactive({
+    book: 'SIM', cash: 100_000, equity: 100_000, openHalted: false, haltReason: '',
+    accountOk: true, positionsOk: true, checkedAt: Date.now(), snapshot: { account: 'SIM' } as { account: string } | null,
+    positions: [] as unknown[], refresh: vi.fn(),
+  })
+  mock.riskStore = reactive({ ready: true, killActive: false, checkedAt: Date.now(), refresh: vi.fn() })
+  // FE-T4：LIVE 可选性走 admission 信封——默认未授权（单测各自翻闸验放开路径）。
+  mock.admissionStore = reactive({ liveEnabled: false, ensureFresh: vi.fn(), startPolling: vi.fn() })
   mock.tradeStore.orders = []
   mock.tradeStore.fills = []
   mock.tradeStore.ready = true
   mock.preview.mockResolvedValue({ ...PREVIEW_OK })
+  // FE-T1 确认弹层默认放行（LIVE 链路用例覆写拒绝/超时路径）。
+  mock.confirm.mockResolvedValue('ok')
   mock.place.mockResolvedValue({ id: 'manual-1', status: 'submitted' })
   mock.createRule.mockResolvedValue([])
   // W3b.b 拦截位：默认全就绪不现身卡；单测各自覆写未就绪场景。
@@ -277,6 +295,58 @@ describe('trade bar（视频落地 P0）', () => {
     expect(wrapper!.findComponent(NtBlockerCard).exists()).toBe(false)
     await fillForm()
     expect(mock.preview).toHaveBeenCalled()
+  })
+
+  it('FE-T3：账本读数超 30 秒未刷新 → 提交禁用且回车路径同样被拦（闸门对齐 TradeView）', async () => {
+    await mountPanel()
+    await fillForm()
+    mock.accountStore.checkedAt = Date.now() - 31_000
+    await wrapper!.vm.$nextTick()
+    expect(buttonWith('提交委托')!.props('disabled')).toBe(true)
+    await submitForm()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('账本读数超过 30 秒未刷新')
+  })
+
+  it('FE-T3：账户响应账本不一致 / 风控未读到 → 不落单（对齐 TradeView 完整闸门口径）', async () => {
+    await mountPanel()
+    await fillForm()
+    mock.accountStore.snapshot = { account: 'LIVE' } // 当前 SIM 账本，响应却回 LIVE
+    await wrapper!.vm.$nextTick()
+    expect(buttonWith('提交委托')!.props('disabled')).toBe(true)
+    await submitForm()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('账户响应与当前账本不一致')
+    // 风控读数失效同样拦（刷新 mock 不回填，闸保持拦态）
+    mock.accountStore.snapshot = { account: 'SIM' }
+    mock.riskStore.ready = false
+    await wrapper!.vm.$nextTick()
+    expect(buttonWith('提交委托')!.props('disabled')).toBe(true)
+    await submitForm()
+    expect(mock.place).not.toHaveBeenCalled()
+    expect(wrapper!.findComponent(NtErrorGuide).props('error')).toContain('风控状态未读到最新结果')
+  })
+
+  it('FE-T1/T4：LIVE 信封放开后——试算先于确认，确认载荷带试算摘要与幂等键，确认后才落单', async () => {
+    mock.admissionStore.liveEnabled = true
+    mock.accountStore.book = 'LIVE'
+    mock.accountStore.snapshot = { account: 'LIVE' }
+    await mountPanel()
+    expect(wrapper!.text()).toContain('实盘LIVE·授权')
+    await fillForm()
+    await submitForm()
+    // 顺序：停笔预览之外，落单前那次全新试算必须先于确认。
+    expect(mock.confirm).toHaveBeenCalledTimes(1)
+    const lastPreview = mock.preview.mock.invocationCallOrder.at(-1)!
+    expect(mock.confirm.mock.invocationCallOrder[0]!).toBeGreaterThan(lastPreview)
+    expect(mock.confirm.mock.calls[0]![0]).toMatchObject({
+      clientOrderId: expect.stringMatching(/^manual-/),
+      previewAmount: 11_000,
+      previewFee: 5.5,
+      previewCashDelta: -11_005.5,
+    })
+    expect(mock.place).toHaveBeenCalledTimes(1)
+    expect((mock.place.mock.calls[0]![0] as { account: string }).account).toBe('LIVE')
   })
 })
 

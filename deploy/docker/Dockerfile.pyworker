@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYWORKER_LISTEN=0.0.0.0:18080 \
+    PYWORKER_ROLES=akshare,baostock
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r /app/requirements.txt
+COPY app.py /app/app.py
+EXPOSE 18080
+CMD ["python", "-u", "app.py"]

@@ -1,7 +1,7 @@
 /**
  * BacktestView 结果页六步骨架（W8b；R-UI-20/23/44）合同测试：
  * - 六步固定顺序（结论→信任条→假设→曲线→交易明细→原始参数），data-step 键序锁定；
- * - 结论 6 KPI + 警告行归入结论段；假设固定 8 格、未声明槽灰显保位；原始参数 mono 展开；
+ * - 结论 7 KPI（批次 A6 起含盈亏比）+ 警告行归入结论段；假设固定 8 格、未声明槽灰显保位；原始参数 mono 展开；
  * - 详情读口独立降级：getTask 挂 → 信任条 12 槽全缺位 + 参数段缺位徽注，报告本体五步照常（缺步灰显）。
  */
 import { flushPromises, mount } from '@vue/test-utils'
@@ -105,10 +105,13 @@ describe('六步骨架（步骤序固定）', () => {
     wrapper.unmount()
   })
 
-  it('结论段 6 KPI 全出、警告行归入结论段；信任条判据位按详情渲染', async () => {
+  it('结论段 7 KPI 全出（含盈亏比）、警告行归入结论段；信任条判据位按详情渲染', async () => {
     const wrapper = await openReport()
     const conclusion = wrapper.find('[data-step="conclusion"]')
-    expect(conclusion.findAll('.nt-stat')).toHaveLength(6)
+    expect(conclusion.findAll('.nt-stat')).toHaveLength(7)
+    // 批次 A6：盈亏比卡（profitFactor 1.8 → 1.80，口径注脚「总盈利 / 总亏损」）
+    expect(conclusion.text()).toContain('盈亏比')
+    expect(conclusion.text()).toContain('1.80')
     expect(conclusion.text()).toContain('样本内只有 5 笔成交')
     const trust = wrapper.findComponent(NtTrustBar)
     expect(trust.props('bar')).toEqual(trustBar)

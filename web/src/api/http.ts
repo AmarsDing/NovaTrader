@@ -6,7 +6,7 @@
  * - 401 统一交回全局处理器（登录失效 → 跳登录）。
  * - 无调用方 signal/body 的并发 GET 共享在途请求，完成即释放，不缓存结果。
  */
-import { httpBase } from '@/utils/endpoint'
+import { getHttpPort, httpBase } from '@/utils/endpoint'
 import { getToken } from '@/utils/token'
 
 export class ApiError extends Error {
@@ -128,7 +128,7 @@ async function performRequest<T>(
     if (ctrl.signal.aborted || (error as Error | null)?.name === 'AbortError') {
       throw new ApiError(abortCause === 'timeout' ? '请求超时' : '请求已取消', 0)
     }
-    throw new ApiError('无法连接 admin（2001）', 0)
+    throw new ApiError(`无法连接 admin（${getHttpPort()}）`, 0)
   } finally {
     clearTimeout(timer)
     upstream?.removeEventListener('abort', onAbort)

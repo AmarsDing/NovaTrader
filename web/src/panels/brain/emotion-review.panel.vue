@@ -20,7 +20,7 @@ import NtInput from '@/ui/NtInput.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { useAuthStore } from '@/stores/auth'
 import { statusOf } from '@/ui/status-map'
-import { amount, messageOf, pctText } from '@/utils/format'
+import { amount, compactAmount, messageOf, ppText } from '@/utils/format'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const auth = useAuthStore()
@@ -120,6 +120,17 @@ function today(): string {
 const ladder = computed<Record<string, { symbol: string; name: string; firstSealAt?: string }[]>>(() => parseJSON(frozen.value?.ladderJson) ?? {})
 const themes = computed<{ reason: string; count: number; maxHeight: number }[]>(() => parseJSON(frozen.value?.themeTreeJson) ?? [])
 const prevTier = computed<{ symbol: string; name: string; pct: number; relimit: boolean }[]>(() => parseJSON(frozen.value?.prevTierJson) ?? [])
+/* 批次 A10：首板结构 / 封单质量直渲（M05 定稿的 first_board_json / seal_quality_json 早已下发，此前未渲染）。
+   口径（backend app/brain/internal/biz/emotion.go）：首板=今日涨停且非连板，后端按首封时刻升序；
+   封单质量三项分母同为今日涨停池——limit_pool 缺失时 SealQ 整体为 null（没取到≠0，整组「没取到」）。 */
+const firstBoard = computed<{ symbol: string; name: string; reason?: string; seal_amount?: number; first_seal_at?: string }[]>(
+  () => parseJSON(frozen.value?.firstBoardJson) ?? [],
+)
+const sealQ = computed<{ never_broken?: number; resealed?: number; early_seal?: number } | null>(() =>
+  parseJSON(frozen.value?.sealQualityJson),
+)
+/** 涨停池没取到时首板名单必然为空（后端同池构建）——空文案分说，不把缺失示成「无首板」。 */
+const poolMissing = computed(() => frozen.value?.missing.includes('limit_pool') ?? false)
 
 function parseJSON<T>(raw: string | undefined): T | null {
   if (!raw) return null
@@ -276,6 +287,16 @@ onMounted(load)
           <div v-if="frozen.structureGaps.length" class="cell wide"><span>梯队断层</span><strong class="up">{{ frozen.structureGaps.map((g) => `${g}板`).join('、') }}</strong></div>
         </div>
 
+        <!-- 批次 A10：封单质量——三项计数分母同为今日涨停，并列给分母便于直读占比。 -->
+        <h2 class="sec">封单质量</h2>
+        <div v-if="sealQ" class="nt-grid metric">
+          <div class="cell"><span>一封到底（未开板）</span><strong>{{ na(sealQ.never_broken) }}</strong></div>
+          <div class="cell"><span>炸板回封</span><strong>{{ na(sealQ.resealed) }}</strong></div>
+          <div class="cell"><span>早盘封板（10:00 前）</span><strong>{{ na(sealQ.early_seal) }}</strong></div>
+          <div class="cell"><span>今日涨停（分母）</span><strong>{{ na(frozen.upCount) }}</strong></div>
+        </div>
+        <p v-else class="nt-empty">没取到封单质量</p>
+
         <h2 class="sec">盘中情绪路径</h2>
         <template v-if="path">
           <div class="nt-grid metric">
@@ -334,6 +355,22 @@ onMounted(load)
           <p v-if="!Object.keys(ladder).length" class="nt-empty">没取到天梯数据</p>
         </div>
 
+        <!-- 批次 A10：首板结构——天梯看高度，首板看宽度；首封时刻/封单金额是次日接力判断的主读数。 -->
+        <h2 class="sec">首板结构<span v-if="firstBoard.length" class="nt-meta">（{{ firstBoard.length }} 只 · 按首封时刻）</span></h2>
+        <div v-if="firstBoard.length" class="nt-table-wrap"><table>
+          <thead><tr><th>名称</th><th class="r">首封</th><th class="r">封单金额</th><th>涨停原因</th></tr></thead>
+          <tbody>
+            <tr v-for="b in firstBoard.slice(0, 20)" :key="b.symbol">
+              <td><SymbolName :code="b.symbol" mode="inline" /></td>
+              <td class="r mono">{{ b.first_seal_at || '没取到' }}</td>
+              <td class="r">{{ compactAmount(b.seal_amount ?? null) }}</td>
+              <td class="muted">{{ b.reason || '—' }}</td>
+            </tr>
+          </tbody>
+        </table></div>
+        <p v-else class="nt-empty">{{ poolMissing ? '涨停池没取到，首板名单同步缺失' : '今日无首板（涨停均为连板）' }}</p>
+        <p v-if="firstBoard.length > 20" class="nt-meta">仅列前 20 只，共 {{ firstBoard.length }} 只</p>
+
         <h2 class="sec">题材归并 Top</h2>
         <div v-if="themes.length" class="nt-table-wrap"><table>
           <thead><tr><th>题材</th><th class="r">只数</th><th class="r">最高板</th></tr></thead>
@@ -353,7 +390,7 @@ onMounted(load)
           <tbody>
             <tr v-for="r in prevTier.slice(0, 20)" :key="r.symbol">
               <td>{{ r.name || r.symbol }}</td>
-              <td class="r" :class="r.pct > 0 ? 'up' : r.pct < 0 ? 'down' : ''">{{ pctText(r.pct) }}</td>
+              <td class="r" :class="r.pct > 0 ? 'up' : r.pct < 0 ? 'down' : ''">{{ ppText(r.pct) }}</td>
               <td class="r"><NtBadge v-if="r.relimit" tone="danger" dot>涨停</NtBadge><span v-else>—</span></td>
             </tr>
           </tbody>
@@ -397,7 +434,7 @@ onMounted(load)
             <tr v-for="r in c.results" :key="r.symbol">
               <td><SymbolName v-if="r.symbol" :code="r.symbol" mode="inline" /><template v-else>—</template></td>
               <td class="muted">{{ c.candidates.find((x) => x.symbol === r.symbol)?.text || c.candidates.find((x) => x.symbol === r.symbol)?.reason || '—' }}</td>
-              <td class="r" :class="r.pct != null && r.pct > 0 ? 'up' : r.pct != null && r.pct < 0 ? 'down' : ''">{{ r.pct == null ? '没取到' : pctText(r.pct) }}</td>
+              <td class="r" :class="r.pct != null && r.pct > 0 ? 'up' : r.pct != null && r.pct < 0 ? 'down' : ''">{{ r.pct == null ? '没取到' : ppText(r.pct) }}</td>
               <td class="r">
                 <NtBadge v-if="r.relimit" tone="danger" dot>涨停</NtBadge>
                 <NtBadge v-else-if="r.hit" tone="neutral">收涨</NtBadge>
@@ -558,6 +595,7 @@ onMounted(load)
 
 <style scoped>
 .sec { margin: 0; font-size: 13px; font-weight: 600; color: var(--nt-text-2); border-left: 3px solid var(--nt-accent); padding-left: 9px; }
+.sec .nt-meta { margin-left: 6px; font-weight: 400; }
 .nt-detail { border: 1px solid var(--nt-border-1); border-radius: var(--nt-radius-m); background: var(--nt-data-raised); padding: 8px 10px; }
 .nt-detail > summary { cursor: pointer; font-size: 12px; color: var(--nt-text-2); margin-bottom: 8px; }
 .nt-pre { margin: 0; font-family: var(--nt-font-mono); font-size: 11px; color: var(--nt-text-2); white-space: pre-wrap; word-break: break-all; }

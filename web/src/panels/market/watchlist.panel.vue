@@ -15,7 +15,7 @@ import SymbolName from '@/display/SymbolName.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
-import { compactAmount, messageOf, missLabel, pnlClass, price, signed } from '@/utils/format'
+import { compactAmount, messageOf, missLabel, pnlClass, ppText, price, signed } from '@/utils/format'
 import { serverNow } from '@/utils/server-clock'
 import { raiseAlert } from '@/utils/notify'
 
@@ -47,8 +47,10 @@ const missRows = computed(() =>
 
 /**
  * 命中票列表（方案 §10-17 R1 盯盘行）：本次扫描产生买卖信号的标的行情行。
- * 数据链：scan 只回 signalIds/sellSignalIds → listSignals 反查 symbol → GetQuote 补现价/涨跌额·幅/成交额；
- * 量比 GetQuote 未携带盘中口径（附录 B-2 未上）——列显「—」不冒充（数据纪律，同 quote-sidebar 量额区先例）。
+ * 数据链：scan 只回 signalIds/sellSignalIds → listSignals 反查 symbol → GetQuote 补现价/涨跌额·幅/成交额。
+ * R1 修订（方案 §7）：量比 GetQuote 未携带盘中口径留 BE-04——撤恒「—」的占位列（空列是噪音不是信息），
+ * 改接 Quote 已有的涨/跌停价·振幅·换手率（W1）；振幅/涨跌停派生总闸门=prevClose>0（P3-10c 契约），
+ * 换手率 0=未知（无股本数据），一律显「—」不冒充。
  */
 interface HitRow {
   symbol: string
@@ -56,8 +58,12 @@ interface HitRow {
   chg: number | null
   pctChg: number | null
   amount: number | null
-  /** GetQuote 无比量字段，恒 null → 列显「—」。 */
-  volRatio: number | null
+  amplitude: number | null
+  turnoverRate: number | null
+  limitUp: number | null
+  limitDown: number | null
+  /** 无涨跌幅限制（新股前五日等）→ 涨跌停列显册内「无涨跌幅」文案。 */
+  noLimit: boolean
   [key: string]: unknown
 }
 const hits = ref<HitRow[]>([])
@@ -71,7 +77,9 @@ const hitColumns: NtTableColumn<HitRow>[] = [
   { key: 'last', title: '现价', align: 'right' },
   { key: 'pctChg', title: '涨跌额/幅', align: 'right' },
   { key: 'amount', title: '成交额', align: 'right' },
-  { key: 'volRatio', title: '量比', align: 'right' },
+  { key: 'amplitude', title: '振幅', align: 'right' },
+  { key: 'turnoverRate', title: '换手', align: 'right' },
+  { key: 'limit', title: '涨/跌停', align: 'right' },
 ]
 
 async function loadHits(reply: ScanReply) {
@@ -113,14 +121,31 @@ async function loadHits(reply: ScanReply) {
         chg: q.prevClose > 0 ? q.chg : null,
         pctChg: q.prevClose > 0 ? q.pctChg : null,
         amount: q.amount > 0 ? q.amount : null,
-        volRatio: null,
+        // prevClose=0 是振幅/涨跌停派生的不可算总闸门（Quote 契约注释）——缺口径显「—」。
+        amplitude: q.prevClose > 0 && q.amplitude > 0 ? q.amplitude : null,
+        // 换手率 0=未知（无股本数据），契约口径不显假 0。
+        turnoverRate: q.turnoverRate > 0 ? q.turnoverRate : null,
+        limitUp: !q.noLimit && q.prevClose > 0 && q.limitUp > 0 ? q.limitUp : null,
+        limitDown: !q.noLimit && q.prevClose > 0 && q.limitDown > 0 ? q.limitDown : null,
+        noLimit: q.noLimit,
       }
     }),
   )
   hits.value = settled.map((outcome, index) =>
     outcome.status === 'fulfilled'
       ? outcome.value
-      : { symbol: symbols[index] ?? '', last: null, chg: null, pctChg: null, amount: null, volRatio: null },
+      : {
+          symbol: symbols[index] ?? '',
+          last: null,
+          chg: null,
+          pctChg: null,
+          amount: null,
+          amplitude: null,
+          turnoverRate: null,
+          limitUp: null,
+          limitDown: null,
+          noLimit: false,
+        },
   )
   hitsFreshAt.value = hitTimes.length ? Math.max(...hitTimes) : null
   hitsState.value = hits.value.length ? 'ok' : 'empty'
@@ -364,6 +389,16 @@ onBeforeUnmount(() => {
           }}</span>
         </template>
         <template #cell-amount="{ row }">{{ row.amount != null ? compactAmount(row.amount) : '—' }}</template>
+        <template #cell-amplitude="{ row }">{{ row.amplitude != null ? ppText(row.amplitude) : '—' }}</template>
+        <template #cell-turnoverRate="{ row }">{{ row.turnoverRate != null ? ppText(row.turnoverRate) : '—' }}</template>
+        <template #cell-limit="{ row }">
+          <!-- 涨/跌停同格（红涨绿跌令牌色）；无涨跌幅限制显册内文案，缺口径显「—」（同 quote-sidebar 价格区先例） -->
+          <span v-if="row.noLimit" class="nt-note">无涨跌幅</span>
+          <template v-else-if="row.limitUp != null && row.limitDown != null">
+            <span class="up">{{ price(row.limitUp) }}</span> / <span class="down">{{ price(row.limitDown) }}</span>
+          </template>
+          <template v-else>—</template>
+        </template>
       </NtTable>
     </section>
 

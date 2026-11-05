@@ -3,7 +3,7 @@
  * 桌变更必须显式更新快照进评审（防静默改键位/面板编排）。
  */
 import { describe, expect, it } from 'vitest'
-import { DESKS, deskByHotkey, getDesk, matchDeskHotkey, validateDesks } from '../desks'
+import { DEFAULT_LAYOUT, DESKS, deskByHotkey, getDesk, matchDeskHotkey, validateDesks } from '../desks'
 
 function keyEvent(init: KeyboardEventInit): KeyboardEvent {
   return new KeyboardEvent('keydown', init)
@@ -43,6 +43,12 @@ describe('桌定义完整性', () => {
 
   it('DESKS 全表快照', () => {
     expect(DESKS).toMatchSnapshot()
+  })
+
+  it('FE-C6 默认屏瘦身锁定：恰为 决策台/行情/信号/下单条 四件且全可见（梯队/情报/侧栏/交易走 Ctrl+K 按需唤出）', () => {
+    expect(DEFAULT_LAYOUT.map((s) => s.id)).toEqual(['overview', 'market', 'signals', 'trade-bar'])
+    // 四件各有独立落位（无 within 页签互埋）——瘦身的目的就是一屏看全，藏回页签等于没瘦。
+    expect(DEFAULT_LAYOUT.filter((s) => s.direction === 'within')).toEqual([])
   })
 })
 

@@ -24,7 +24,8 @@ export interface WatchdogOptions {
 
 /** 账户 / 行情 / 风控 / 模型四路刷新（失败静默，由界面上的陈旧标记表达）。
  *  W3-1：brain 此前只在脑主题 WS 推送时刷新，离线/推流空窗期模型档页签会定格旧数；
- *  并入 10s/60s 轮询后 model-stats 面板头注「随连接看门狗周期刷新」成立。 */
+ *  并入 10s/60s 轮询后 brain-monitor 头注「随连接看门狗周期刷新」成立
+ *  （FE-B1 起模型统计并入 brain-monitor，原 model-stats 面板已删）。 */
 export function refreshAll(): Promise<unknown> {
   const account = useAccountStore()
   const market = useMarketStore()

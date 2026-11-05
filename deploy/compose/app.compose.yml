@@ -1,0 +1,91 @@
+# NovaTrader 部署 · 应用层（全 Go 同容器 + pyworker + nginx 前端）
+name: novatrader
+
+networks:
+  nt-net:
+    external: true
+    name: nt-net
+
+services:
+  app:
+    image: ${NT_APP_IMAGE:-novatrader-app:runtime}
+    container_name: nt-app
+    restart: unless-stopped
+    networks: [nt-net]
+    ports:
+      - "${ADMIN_HTTP_PORT:-22001}:2001"
+      - "${ADMIN_WS_PORT:-22003}:2003"
+    environment:
+      TZ: Asia/Shanghai
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+    volumes:
+      - ../runtime/configs:/app/configs:ro
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/app-logs:/app/logs
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/secrets:/app/secrets
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_started }
+      pyworker: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:2001/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }
+
+  # nt-mcp 机器面（三仓联动 P3，2026-11-02）：与 app 同镜像第二二进制，
+  # Streamable HTTP :9303（仅内网）。只读四件（行情快照/持仓/信号/回测报告）；
+  # 下单/改仓/审批绝不进 MCP。Bearer 走 NT_MCP_TOKEN（env:/enc:），enabled=false 进程退出。
+  ntmcp:
+    image: ${NT_APP_IMAGE:-novatrader-app:runtime}
+    container_name: nt-mcp
+    restart: unless-stopped
+    networks: [nt-net]
+    entrypoint: ["/app/bin/ntmcp"]
+    command: ["-conf", "/app/configs"]
+    ports:
+      - "${NTMCP_PORT:-9303}:9303"
+    environment:
+      TZ: Asia/Shanghai
+      NT_MCP_TOKEN: ${NT_MCP_TOKEN:-}
+    volumes:
+      - ../runtime/configs:/app/configs:ro
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/app-logs:/app/logs
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/secrets:/app/secrets
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "2" }
+
+  pyworker:
+    image: ${NT_PYWORKER_IMAGE:-novatrader-pyworker:runtime}
+    container_name: nt-pyworker
+    restart: unless-stopped
+    networks: [nt-net]
+    environment:
+      TZ: Asia/Shanghai
+      PYWORKER_LISTEN: "0.0.0.0:18080"
+      PYWORKER_ROLES: ${PYWORKER_ROLES:-akshare,baostock}
+    # 不映射宿主端口：仅 nt-app 经服务名访问
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }
+
+  web:
+    image: ${NT_WEB_IMAGE:-novatrader-web:runtime}
+    container_name: nt-web
+    restart: unless-stopped
+    networks: [nt-net]
+    ports:
+      - "${WEB_PORT:-9302}:80"
+    depends_on:
+      app: { condition: service_healthy }
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "2" }

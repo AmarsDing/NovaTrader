@@ -6,10 +6,13 @@
  * U4 视觉语言：梯队卡左 inset 1px 轨道（accent）+ hover 底色走 bg 阶层提亮（bg-1→bg-2，
  * 非 glow、零常驻 tint——数据背板稳定底色纪律）；个股行右列 = 板块角标（NtBoardTag，
  * 主板不打标）+ 封单额 compactAmount（null 显「—」，数据纪律）。
+ * FE-L2/三页签收口：个股行右列补首封时间（formatMinute，缺时点显「—」不编）——
+ * 打板视角「谁带的头」一眼可读，时间排在封单额下弱一档。
  */
 import NtBoardTag from '@/display/NtBoardTag.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { compactAmount } from '@/utils/format'
+import { formatMinute } from '@/utils/time'
 
 export interface LadderStock {
   symbol: string
@@ -18,6 +21,8 @@ export interface LadderStock {
   sealAmount?: number | null
   openCount?: number | null
   status?: string
+  /** 首封时间（ISO 串，可空串）；行内渲染 HH:mm，缺位显「—」。 */
+  firstSealAt?: string
 }
 
 export interface LadderTier {
@@ -48,6 +53,7 @@ defineProps<{ tiers: LadderTier[]; empty?: string }>()
             <span class="nt-ladder__meta">
               <NtBoardTag :code="s.symbol" />
               <b class="nt-ladder__seal">{{ compactAmount(s.sealAmount) }}</b>
+              <span class="nt-ladder__time">{{ formatMinute(s.firstSealAt) || '—' }}</span>
             </span>
           </li>
         </ul>
@@ -132,6 +138,14 @@ defineProps<{ tiers: LadderTier[]; empty?: string }>()
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--nt-text-2);
+}
+
+/* 首封时间：封单额下弱一档（打板带队顺序的辅读数，不抢金额）。 */
+.nt-ladder__time {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--nt-text-3);
 }
 
 .nt-ladder__empty {

@@ -24,6 +24,7 @@ describe('resolveTimeoutMs', () => {
 
 describe('classifyApiError', () => {
   it('断连/超时归 network 且可重试', () => {
+    expect(classifyApiError(new ApiError('无法连接 admin（127.0.0.1:2001）', 0)).kind).toBe('network')
     expect(classifyApiError(new ApiError('无法连接 admin（2001）', 0))).toEqual({
       kind: 'network',
       message: '无法连接 admin（2001）',

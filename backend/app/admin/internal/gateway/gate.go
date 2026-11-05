@@ -438,7 +438,8 @@ var routes = []route{
 	{name: "backtest", prefix: "/api/backtest/", trim: "/api/backtest", join: "/v1/backtest", timeout: 3 * time.Minute},
 	{name: "brain", prefix: "/api/brain/", trim: "/api/brain", join: "/v1/brain", timeout: 20 * time.Second},
 	{name: "notify", prefix: "/api/notify/", trim: "/api/notify", join: "/notify/v1", timeout: 20 * time.Second},
-	{name: "datahub", prefix: "/api/datahub/", trim: "/api/datahub", join: "/v1/datahub", timeout: 20 * time.Second},
+	// security/全市场 clist、macro/overseas 等采集常超过 20s；与 backtest 同级放宽
+	{name: "datahub", prefix: "/api/datahub/", trim: "/api/datahub", join: "/v1/datahub", timeout: 3 * time.Minute},
 }
 
 func (g *Gate) proxy(name string) *httputil.ReverseProxy {

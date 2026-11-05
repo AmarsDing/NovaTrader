@@ -8,7 +8,7 @@
  * 只读：整条终端带没有写操作，点行只是选中画布节点。缺口写「未接入：需要 GET …」，不编数。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { amount, compactAmount, intText, missLabel, pctText, ratioPct, signed, toneOf } from '@/utils/format'
+import { amount, compactAmount, intText, missLabel, ratioPct, signed, toneOf } from '@/utils/format'
 import { useSecurityStore, type SecurityBasicPatch } from '@/stores/security'
 import { attributionLabel, equityStats } from './detail'
 import { dutyOf, isLoud, statusDot } from './duty'
@@ -291,7 +291,7 @@ const reviewLines = computed<PaneLine[]>(() => {
   if (perf) {
     lines.push(
       perf.sample > 0
-        ? { key: 'win', label: '近 20 笔胜率', value: pctText(perf.winRate * 100, 1), tone: 'flat' }
+        ? { key: 'win', label: '近 20 笔胜率', value: ratioPct(perf.winRate, 1), tone: 'flat' }
         : { key: 'win', label: '胜率', value: '样本不足：还没有已出后验的信号', tone: 'flat' },
     )
     if (perf.sample > 0) {

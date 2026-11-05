@@ -7,7 +7,7 @@ import { healthz } from '@/api/system'
 import { useAuthStore } from '@/stores/auth'
 import NtButton from '@/ui/NtButton.vue'
 import NtInput from '@/ui/NtInput.vue'
-import { getHost, setHost } from '@/utils/endpoint'
+import { getHost, getHttpPort, getWsPort, setHost, setHttpPort, setWsPort } from '@/utils/endpoint'
 import { messageOf } from '@/utils/format'
 
 const router = useRouter()
@@ -17,31 +17,42 @@ const auth = useAuthStore()
 const username = ref('')
 const password = ref('')
 const host = ref(getHost())
+const httpPort = ref(String(getHttpPort()))
+const wsPort = ref(String(getWsPort()))
 const health = ref('检测中')
 
 /** 连接三态按结局着色（直觉5/2）：检测中=中性，可达=success，无响应=danger——不再同色装傻。 */
 const healthTone = computed(() =>
-  health.value === '检测中' ? 'checking' : health.value === '2001 可达' ? 'ok' : 'bad',
+  health.value === '检测中' ? 'checking' : health.value.endsWith('可达') ? 'ok' : 'bad',
 )
+
+const portLabel = computed(() => `HTTP ${httpPort.value || getHttpPort()} · WebSocket ${wsPort.value || getWsPort()}`)
 
 function goNext() {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
   router.replace(redirect || '/')
 }
 
+function applyEndpoint() {
+  host.value = setHost(host.value)
+  httpPort.value = String(setHttpPort(httpPort.value))
+  wsPort.value = String(setWsPort(wsPort.value))
+}
+
 async function check() {
   try {
-    host.value = setHost(host.value)
+    applyEndpoint()
   } catch (err) {
     health.value = messageOf(err)
     return
   }
-  health.value = (await healthz()) ? '2001 可达' : '2001 无响应'
+  const port = getHttpPort()
+  health.value = (await healthz()) ? `${port} 可达` : `${port} 无响应`
 }
 
 async function onSubmit() {
   try {
-    setHost(host.value)
+    applyEndpoint()
   } catch (err) {
     health.value = messageOf(err)
     return
@@ -71,7 +82,11 @@ onMounted(check)
 
       <form class="form" @submit.prevent="onSubmit">
         <NtInput v-model="host" label="admin 主机" mono @blur="check" />
-        <p class="status" :class="`status--${healthTone}`">连接 {{ health }} · HTTP 2001 · WebSocket 2003</p>
+        <div class="ports">
+          <NtInput v-model="httpPort" label="HTTP 端口" mono @blur="check" />
+          <NtInput v-model="wsPort" label="WebSocket 端口" mono @blur="check" />
+        </div>
+        <p class="status" :class="`status--${healthTone}`">连接 {{ health }} · {{ portLabel }}</p>
         <NtInput v-model="username" label="账号" placeholder="用户名 / 邮箱" />
         <NtInput v-model="password" label="密码" type="password" placeholder="••••••••" />
 
@@ -121,6 +136,12 @@ onMounted(check)
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.ports {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .status {

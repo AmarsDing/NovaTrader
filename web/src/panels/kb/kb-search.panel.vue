@@ -27,7 +27,7 @@ import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { statusOf } from '@/ui/status-map'
-import { clock, messageOf, pctText, phaseName, pnlClass, price } from '@/utils/format'
+import { clock, messageOf, phaseName, pnlClass, ppText, price } from '@/utils/format'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import {
   attributionLabel,
@@ -536,7 +536,7 @@ onMounted(() => {
                   : ''
               "
             >
-              {{ pctText(hit.kbCase.pnlPct) }}
+              {{ ppText(hit.kbCase.pnlPct) }}
             </span>
           </header>
           <p class="kb-cases__meta">

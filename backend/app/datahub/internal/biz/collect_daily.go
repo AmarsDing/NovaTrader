@@ -386,7 +386,8 @@ func (c *Collector) CollectFinance(ctx context.Context, since time.Time, only st
 
 // CollectOverseas 采外围行情。
 func (c *Collector) CollectOverseas(ctx context.Context) (CollectSummary, error) {
-	items, src, err := Run(ctx, c.p, DomainOverseas, RunOptions{Timeout: time.Minute},
+	// hist 限速重试在 pyworker 侧可达 1–2 分钟；共享机东财抖动时再留余量
+	items, src, err := Run(ctx, c.p, DomainOverseas, RunOptions{Timeout: 3 * time.Minute},
 		func(ctx context.Context, s Source) ([]OverseasQuote, error) {
 			return s.(OverseasSource).Overseas(ctx)
 		},

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { askConfirm } from '@/stores/confirm'
 import { useAccountStore } from '@/stores/account'
+import { useAdmissionStore } from '@/stores/admission'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { getAccount } from '@/api/trade'
@@ -40,6 +41,7 @@ import {
   price,
   ratioPct,
   sideLabel,
+  signed,
 } from '@/utils/format'
 import { formatDateTime } from '@/utils/time'
 import { serverNow } from '@/utils/server-clock'
@@ -53,6 +55,8 @@ import { draftPrice, normalizeBook, pendingTradeKey, readPendingTrade, signalCon
 const auth = useAuthStore()
 const accountStore = useAccountStore()
 const riskStore = useRiskStore()
+/** FE-T4：LIVE 可选性只认 admission 信封单源（总闸 liveEnabled fail-closed），删前端 liveAllowed 硬编码。 */
+const admission = useAdmissionStore()
 
 const account = ref('SIM')
 const positions = ref<Position[]>([])
@@ -128,13 +132,16 @@ const previewIssue = ref('')
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let previewSequence = 0
 
-// 连续运行报告只提供证据，不授予权限；当前真实文件通道尚未验收。
-const liveAllowed = computed(() => false)
+/** FE-T4（§2.6-T4）：LIVE 可选性统一走 admission 信封——前端不再写死 false，也不自编通道验收口径；
+ *  信封取数失败（含从未取到）即 fail-closed 不可选；授权/收回经 PaperAdmission 审计开关留痕。 */
+const liveAllowed = computed(() => admission.liveEnabled)
 const accountOptions = computed(() => [
   { value: 'SIM', label: 'SIM 模拟' },
   {
     value: 'LIVE',
-    label: `LIVE 实盘（连续 ${PAPER_DAYS_REQUIRED} 日证据及通道另行验收）`,
+    label: liveAllowed.value
+      ? 'LIVE 实盘（总闸已开，委托仍走确认与风控）'
+      : `LIVE 实盘（未授权：连续 ${PAPER_DAYS_REQUIRED} 日证据达标后走下方授权开关）`,
     disabled: !liveAllowed.value,
   },
 ])
@@ -234,6 +241,16 @@ const fillSummary = computed(() => {
   return { count: fills.value.length, buy, sell, net: sell - buy }
 })
 
+/** FE-T6：当日盈亏分解条（头部）。已实现/浮动/当日口径均取自账户快照可空字段；
+ *  费用段属 BE-06 依赖（trade_fill.fee REST 不透传），不留恒「—」占位（R1 判例：常空列即噪音）。 */
+const pnlDay = computed(() => accountSnapshot.value?.dayPnl ?? null)
+const pnlRealized = computed(() => accountSnapshot.value?.realized ?? null)
+const pnlUnrealized = computed(() => accountSnapshot.value?.unrealized ?? null)
+/** 没取到≠0：null 显「—」，有值带符号（signed 出口已处理负号）。 */
+function pnlText(v: number | null): string {
+  return signed(v)
+}
+
 const priceNum = computed(() => Number(form.price))
 const volumeNum = computed(() => Number(form.volume))
 const symbolOk = computed(() => /^\d{6}\.(SZ|SH|BJ)$/i.test(form.symbol.trim()))
@@ -264,8 +281,9 @@ const submissionBlock = computed(() => {
   if (normalizeBook(accountSnapshot.value.account) !== normalizeBook(account.value)) return '账户响应与当前账本不一致，暂不能提交'
   if (form.side === 'buy' && accountSnapshot.value.openHalted) return accountSnapshot.value.haltReason || '账户已停止新开仓'
   if (form.side === 'buy' && (riskSnapshot.value.killActive || riskSnapshot.value.mode === 'L0')) return '当前只允许处理持仓，不能新买入'
-  if (account.value === 'LIVE' && !liveAllowed.value) return '实盘准入状态未通过'
-  if (account.value === 'LIVE') return '实盘文件单通道尚未验收，本轮仅支持模拟委托'
+  /* FE-T4：双真相收编——前端不再写死「通道未验收」独立闸；总闸未开按信封 fail-closed 拦截，
+     通道离线由服务端落单 fail-closed 兜底（回报必带原因），PaperAdmission 单页呈现通道旗标。 */
+  if (account.value === 'LIVE' && !liveAllowed.value) return '实盘准入未放行：总闸未开（见下方准入证据与授权开关）'
   // G7：表单对应的试算拦截时下按钮一并禁提交（提交时还会以全新试算再拦截一次）。
   if (preview.value && !preview.value.approved) return `风控试算未放行${preview.value.blockRule ? `（${preview.value.blockRule}）` : ''}：${preview.value.reason || '请调整委托后重试'}`
   return ''
@@ -361,6 +379,8 @@ function load() { return refreshes.refresh() }
 async function readPage(key: string): Promise<boolean> {
   const book = account.value
   const sequence = ++readSequence
+  // FE-T4：随交易读面顺手保持准入信封新鲜（店内置 30s 去重，不因 10s 轮询重复打接口）。
+  admission.ensureFresh()
   loading.value = true
   error.value = ''
   const currentAccount = getAccount(book)
@@ -436,20 +456,6 @@ async function submit() {
     await load()
     if (disposed) return
     if (submissionBlock.value) throw new Error(submissionBlock.value)
-    if (draft.account === 'LIVE') {
-      const result = await askConfirm(draft, true)
-      if (result !== 'ok') {
-        hint.value = '实盘确认已作废，委托未提交'
-        return
-      }
-      await load()
-      if (disposed) return
-    }
-    if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) {
-      throw new Error('确认期间表单或信号已变化，请重新核对')
-    }
-    clockMs.value = serverNow()
-    if (submissionBlock.value) throw new Error(submissionBlock.value)
     if (originalContext) {
       const signal = await getSignal(originalContext.signalId)
       if (disposed) return
@@ -463,7 +469,7 @@ async function submit() {
     if (disposed) return
     clockMs.value = serverNow()
     if (submissionBlock.value) throw new Error(submissionBlock.value)
-    // G7：落单前必跑一次全新的干跑试算（同草稿编号，只预演不留痕）。拦截或不可用都不生成委托。
+    // G7/FE-T1：确认前先落单前全新试算（同草稿编号，只预演不留痕）——用户确认时必须已看到金额/费用/拦截结果。
     let pv: PreviewReply
     try {
       pv = await previewOrder(previewBodyFor(draft.clientOrderId, draft.symbol, draft.side, draft.price, draft.volume))
@@ -476,6 +482,19 @@ async function submit() {
     if (!pv.approved) throw new Error(`风控试算未放行${pv.blockRule ? `（${pv.blockRule}）` : ''}：${pv.reason || '未给出原因'}`)
     if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) throw new Error('试算期间表单已变化，请重新核对')
     if (disposed) return
+    // FE-T1：确认顺序=表单→试算→确认（弹层带试算摘要与幂等键）→提交；确认期间账本可能漂移，放行后再复核一次。
+    if (draft.account === 'LIVE') {
+      const result = await askConfirm({ ...draft, previewAmount: pv.amount, previewFee: pv.fee, previewCashDelta: pv.cashDelta, previewAdjusted: pv.adjusted, previewVolume: pv.volume }, true)
+      if (result !== 'ok') {
+        hint.value = '实盘确认已作废，委托未提交'
+        return
+      }
+      await load()
+      if (disposed) return
+      if (draft.account !== account.value || draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || originalContext !== signalContext.value) throw new Error('确认期间表单或信号已变化，请重新核对')
+      clockMs.value = serverNow()
+      if (submissionBlock.value) throw new Error(submissionBlock.value)
+    }
     const pending = readPendingTrade(localStorage, journalKey)
     if (pending) {
       uncertainDraft.value = pending
@@ -599,6 +618,8 @@ watch([() => form.symbol, () => form.side], () => {
 const offPanelParams = onPanelParams('trade', applyOrderParams)
 
 onMounted(() => {
+  /* FE-T4：LIVE 可选性走 admission 信封——挂载即开 30s 静候档轮询（幂等，PaperAdmission 同店）。 */
+  admission.startPolling()
   // 预填：面板参数优先；路由 query 兜底（面板不在 RouterView 下，勿用 useRoute）。
   const panelParams = consumePanelParams('trade') ?? {}
   const q = router.currentRoute.value.query
@@ -659,6 +680,12 @@ onBeforeUnmount(() => {
           <span v-if="riskStore.buysToday != null" class="head-meta">今日买入 {{ riskStore.buysToday }}/5</span>
           <span class="channel-pill" :class="channelPill.kind" :title="channelPill.title">{{ channelPill.text }}</span>
         </p>
+        <!-- FE-T6：当日盈亏分解条（已实现/浮动/当日口径红涨绿跌；费用段属 BE-06 依赖，不留恒「—」占位） -->
+        <p class="pnl-strip" title="当日盈亏分解：已实现 / 浮动 / 当日口径。费用拆出待后端透传（BE-06）。">
+          <span>当日 <b :class="pnlClass(pnlDay)">{{ pnlText(pnlDay) }}</b></span>
+          <span>已实现 <b :class="pnlClass(pnlRealized)">{{ pnlText(pnlRealized) }}</b></span>
+          <span>浮动 <b :class="pnlClass(pnlUnrealized)">{{ pnlText(pnlUnrealized) }}</b></span>
+        </p>
       </div>
       <NtSelect v-model="account" label="账户" :options="accountOptions" />
     </header>
@@ -703,8 +730,9 @@ onBeforeUnmount(() => {
         <span v-if="preview.approved && preview.adjusted && preview.volume != null" class="shrink">· 缩量放行 {{ preview.volume }} 股</span>
       </p>
       <p v-if="!preview.approved && preview.reason" class="preview-reason">{{ preview.reason }}</p>
+      <!-- FE-T5：hits.detail 全显——只看 code+name 答不出「为什么被拦」。 -->
       <p v-if="previewFailed.length" class="preview-fails">
-        未过规则：<span v-for="hit in previewFailed" :key="hit.code" class="fail">{{ hit.code }} {{ hit.name }}</span>
+        未过规则：<span v-for="hit in previewFailed" :key="hit.code" class="fail">{{ hit.code }} {{ hit.name }}<template v-if="hit.detail">：{{ hit.detail }}</template></span>
       </p>
     </section>
     <p v-else-if="previewIssue" class="nt-note">{{ previewIssue }}</p>
@@ -789,6 +817,29 @@ h2 {
   font-family: var(--nt-font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--nt-text-2);
+}
+
+/* FE-T6：当日盈亏分解条——三段同档 mono 数字，红涨绿跌走 pnlClass 全局语义色。 */
+.pnl-strip {
+  margin: 2px 0 0;
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--nt-text-3);
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pnl-strip b {
+  font-weight: 600;
+}
+
+.pnl-strip b.up {
+  color: var(--nt-up);
+}
+
+.pnl-strip b.down {
+  color: var(--nt-down);
 }
 
 .symbol-echo {

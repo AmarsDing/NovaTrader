@@ -1,51 +1,28 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getAdmission, grantLive, revokeLive, type AdmissionReport } from '@/api/admission'
+import { grantLive, revokeLive } from '@/api/admission'
 import { getOpsReadiness, type ReadinessGate } from '@/api/ops'
+import { useAdmissionStore } from '@/stores/admission'
 import { useAuthStore } from '@/stores/auth'
 import { clock, messageOf } from '@/utils/format'
 import { openDeeplink } from '@/utils/deeplink'
 import { blockingGaps, gateItems, LIVE_GATE_ADVISORY } from '@/utils/preflight'
-import { createPageRefresh } from './page-refresh'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtModal from '@/ui/NtModal.vue'
 import NtPreflightChecklist, { type PreflightItem } from '@/display/NtPreflightChecklist.vue'
 const auth = useAuthStore()
-const report = ref<AdmissionReport | null>(null),
-  liveEnabled = ref(false),
-  brokerConnected = ref(false),
-  error = ref(''),
-  busy = ref(false)
-let disposed = false,
-  timer: ReturnType<typeof setInterval> | undefined
-const refresh = createPageRefresh({
-  key: () => 'SIM:default',
-  pushIntervalMs: 0,
-  read: async () => {
-    busy.value = true
-    try {
-      const r = await getAdmission()
-      if (disposed) return false
-      report.value = r.report
-      liveEnabled.value = r.liveEnabled
-      brokerConnected.value = r.brokerConnected
-      error.value = ''
-      return true
-    } catch (e) {
-      if (!disposed) {
-        report.value = null
-        // 总闸/通道是信封旗标：取数失败后旧牌翻回关闭态（fail-closed 显示，不留过期「已开」假绿）。
-        liveEnabled.value = false
-        brokerConnected.value = false
-        error.value = messageOf(e)
-      }
-      return false
-    } finally {
-      if (!disposed) busy.value = false
-    }
-  },
-})
+/** FE-T4：准入信封唯一读口收编进 stores/admission（TradeView/下单条同源），本卡只做呈现。 */
+const admission = useAdmissionStore()
+const report = computed(() => admission.report),
+  liveEnabled = computed(() => admission.liveEnabled),
+  brokerConnected = computed(() => admission.brokerConnected),
+  error = computed(() => admission.error),
+  busy = computed(() => admission.busy)
+let disposed = false
+function refreshNow(): void {
+  void admission.refresh()
+}
 /* ---------- W3c 启用模态：实盘授权申请 + 收回（同件双态） ----------
  * 申请=清单式前置检查（R-UI-30/36）：必堵项只有准入证据（服务端同口径 fail-closed），
  * 链路/通道摆提示行不拦；收回=审计开关确认，提示 fail-closed 即时生效的口径。 */
@@ -109,13 +86,10 @@ async function submitGrant(revokeMode: boolean) {
   granting.value = true
   grantError.value = ''
   try {
-    /* 回执即翻闸后真信（双闸旗标+重算报告）：直接回填，不再补 GET。 */
+    /* 回执即翻闸后真信（双闸旗标+重算报告）：直接回填单源店（TradeView/下单条同拍翻闸），不补 GET。 */
     const env = revokeMode ? await revokeLive(auth.operatorName) : await grantLive(auth.operatorName)
     if (!disposed) {
-      report.value = env.report
-      liveEnabled.value = env.liveEnabled
-      brokerConnected.value = env.brokerConnected
-      error.value = ''
+      admission.applyEnvelope(env)
       grantOpen.value = false
     }
   } catch (e) {
@@ -153,15 +127,11 @@ const reasons: Record<string, string> = {
   future_evidence: '发现未来时刻证据',
 }
 onMounted(() => {
-  void refresh.refresh()
-  timer = setInterval(() => {
-    if (!document.hidden) void refresh.refresh()
-  }, 30_000)
+  /* 30s 静候档轮询由单源店托管（幂等启动）：TradeView/下单条共读同一信封。 */
+  admission.startPolling()
 })
 onBeforeUnmount(() => {
   disposed = true
-  refresh.dispose()
-  if (timer) clearInterval(timer)
 })
 </script>
 <template>
@@ -172,7 +142,7 @@ onBeforeUnmount(() => {
         <h3>连续模拟运行 · 准入证据</h3>
       </div>
       <div class="head-actions">
-        <NtButton size="sm" :loading="busy" @click="refresh.refresh()">核验</NtButton>
+        <NtButton size="sm" :loading="busy" @click="refreshNow">核验</NtButton>
         <NtButton
           v-if="report"
           size="sm"

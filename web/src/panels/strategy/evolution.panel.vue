@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/auth'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
+import NtInput from '@/ui/NtInput.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import NtStatCard from '@/display/NtStatCard.vue'
 import NtTabs from '@/ui/NtTabs.vue'
@@ -104,8 +105,63 @@ const proposalColumns: NtTableColumn<ProposalRow>[] = [
   { key: 'strategy', title: '策略', mono: true },
   { key: 'status', title: '状态' },
   { key: 'createdAt', title: '提出时间', mono: true },
+  { key: 'decidedAt', title: '决定时间', mono: true },
+  { key: 'reason', title: '审批理由' },
 ]
 const proposalRows = computed(() => proposals.value as unknown as ProposalRow[])
+
+/* ---------- 批次 A7：提案 diff 与审批理由（盲签→明签） ---------- */
+
+/** 待审提案（只给 pending 出操作；rolled_back 等终态不再复活审批入口——旧实现把 rolled_back 也当可批，本批收正）。 */
+const pendingProposals = computed(() => proposals.value.filter((p) => p.status === 'pending'))
+/** 每条待审提案的审批理由（必填，写进审计）。 */
+const decideReasons = ref<Record<string, string>>({})
+
+interface ParamDiffRow {
+  key: string
+  base: number | null
+  next: number | null
+  changed: boolean
+  [key: string]: unknown
+}
+const diffColumns: NtTableColumn<ParamDiffRow>[] = [
+  { key: 'key', title: '参数', mono: true },
+  { key: 'base', title: '当前值', align: 'right', mono: true },
+  { key: 'next', title: '提案值', align: 'right', mono: true },
+]
+/** 参数 diff：baseParams/params 键并集；新增显「新增」、删除显「删除」，同值不高亮。 */
+function diffRowsOf(p: Proposal): ParamDiffRow[] {
+  const keys = [...new Set([...Object.keys(p.baseParams), ...Object.keys(p.params)])].sort()
+  return keys.map((key) => {
+    const base = Object.prototype.hasOwnProperty.call(p.baseParams, key) ? p.baseParams[key] : null
+    const next = Object.prototype.hasOwnProperty.call(p.params, key) ? p.params[key] : null
+    return { key, base, next, changed: base !== next }
+  })
+}
+
+interface MetricDiffRow {
+  key: string
+  base: string
+  next: string
+  [key: string]: unknown
+}
+const metricColumns: NtTableColumn<MetricDiffRow>[] = [
+  { key: 'key', title: '指标', mono: true },
+  { key: 'base', title: '基线', align: 'right', mono: true },
+  { key: 'next', title: '提案', align: 'right', mono: true },
+]
+/** 指标对比：Struct 透传只读——数值保留至多 4 位小数，非数值原样字符串；不猜比率/百分点口径。 */
+function metricText(v: unknown): string {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.abs(v) >= 100 ? v.toFixed(2) : String(Number(v.toFixed(4)))
+  if (v == null) return '—'
+  return String(v)
+}
+function metricRowsOf(p: Proposal): MetricDiffRow[] {
+  const keys = [...new Set([...Object.keys(p.baseMetrics), ...Object.keys(p.newMetrics)])].sort()
+  return keys
+    .map((key) => ({ key, base: metricText(p.baseMetrics[key]), next: metricText(p.newMetrics[key]) }))
+    .filter((row) => row.base !== '—' || row.next !== '—')
+}
 
 /** 审批章文案/tone 出自 evolution 册（§7.1，一字锁定）：已批准/已拒绝/待审；
  *  册外值原样回显、tone 取待审同系 warn（不自封文案）。 */
@@ -162,11 +218,18 @@ async function runIntro() {
 
 async function decide(id: string, action: 'approve' | 'reject') {
   if (auth.isViewer()) return
+  /* 批次 A7：审批理由必填——盲签收正为明签，理由写进提案 reason 字段随审计留痕。 */
+  const reason = (decideReasons.value[id] ?? '').trim()
+  if (!reason) {
+    error.value = '请先填写审批理由（必填，写入审计）'
+    return
+  }
   actingId.value = id
   error.value = ''
   try {
-    if (action === 'approve') await approveProposal(id)
-    else await rejectProposal(id)
+    if (action === 'approve') await approveProposal(id, reason)
+    else await rejectProposal(id, reason)
+    delete decideReasons.value[id]
     proposals.value = await listProposals()
     if (strategy.value) admission.value = await getAdmission(strategy.value)
   } catch (err) {
@@ -277,14 +340,53 @@ onMounted(loadAll)
       <h2 class="nt-panel__title">进化提案</h2>
       <NtTable :columns="proposalColumns" :rows="proposalRows" row-key="id" dense empty="还没有进化提案">
         <template #cell-createdAt="{ row }">{{ clock(row.createdAt) }}</template>
+        <template #cell-decidedAt="{ row }">{{ row.decidedAt ? clock(row.decidedAt) : '—' }}</template>
+        <template #cell-reason="{ row }">{{ row.reason || '—' }}</template>
         <template #cell-status="{ row }">
           <NtBadge :tone="proposalStatus(row.status).tone">{{ proposalStatus(row.status).text }}</NtBadge>
         </template>
       </NtTable>
-      <div v-if="!auth.isViewer()" class="actions">
-        <template v-for="p in proposals" :key="p.id">
-          <div v-if="p.status !== 'approved' && p.status !== 'rejected'" class="actions__row">
-            <span class="actions__title">{{ p.title }}</span>
+
+      <!-- 批次 A7：待审提案卡——参数 diff + 指标对比 + 理由必填（盲签→明签）。 -->
+      <template v-if="pendingProposals.length">
+        <h3 class="sub">待审批 · {{ pendingProposals.length }} 条</h3>
+        <article v-for="p in pendingProposals" :key="p.id" class="pending__card">
+          <header class="pending__head">
+            <b class="pending__title">{{ p.title }}</b>
+            <span class="pending__meta">{{ p.strategy || '—' }} · 提出 {{ clock(p.createdAt) }}</span>
+          </header>
+          <p v-if="p.body" class="pending__body">{{ p.body }}</p>
+          <div class="pending__grids">
+            <div class="pending__grid">
+              <h4 class="pending__sub">参数改动</h4>
+              <NtTable
+                :columns="diffColumns"
+                :rows="diffRowsOf(p)"
+                row-key="key"
+                dense
+                empty="提案未携带参数（旧格式），无法对比"
+              >
+                <template #cell-base="{ row }">{{ row.base == null ? '（新增）' : row.base }}</template>
+                <template #cell-next="{ row }">
+                  <span :class="{ 'diff-changed': row.changed }">{{ row.next == null ? '（删除）' : row.next }}</span>
+                </template>
+              </NtTable>
+            </div>
+            <div class="pending__grid">
+              <h4 class="pending__sub">指标对比（透传口径见提案正文）</h4>
+              <NtTable
+                :columns="metricColumns"
+                :rows="metricRowsOf(p)"
+                row-key="key"
+                dense
+                empty="提案未携带指标对比"
+              />
+            </div>
+          </div>
+          <div v-if="!auth.isViewer()" class="pending__decide">
+            <div class="pending__reason">
+              <NtInput v-model="decideReasons[p.id]" placeholder="审批理由（必填，写入审计）" />
+            </div>
             <NtButton size="sm" variant="success" :loading="actingId === p.id" @click="decide(p.id, 'approve')"
               >通过</NtButton
             >
@@ -292,8 +394,8 @@ onMounted(loadAll)
               >拒绝</NtButton
             >
           </div>
-        </template>
-      </div>
+        </article>
+      </template>
     </section>
 
     <section v-show="tab === 'admission'" class="nt-panel">
@@ -324,22 +426,80 @@ onMounted(loadAll)
   font-weight: 600;
 }
 
-.actions {
+/* 批次 A7：待审提案卡——diff 两栏栅格 + 理由必填行。 */
+.pending__card {
   margin-top: 10px;
   display: grid;
   gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-s);
+  background: var(--nt-bg-2);
 }
 
-.actions__row {
+.pending__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pending__title {
+  font-size: 13px;
+  color: var(--nt-text-1);
+}
+
+.pending__meta {
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--nt-text-3);
+}
+
+.pending__body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--nt-text-2);
+  white-space: pre-wrap;
+}
+
+.pending__grids {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.pending__grid {
+  min-width: 0;
+}
+
+.pending__sub {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--nt-text-2);
+}
+
+.pending__decide {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.actions__title {
+.pending__reason {
   flex: 1;
-  font-size: 12.5px;
-  color: var(--nt-text-1);
+  min-width: 0;
+}
+
+.pending__reason :deep(input) {
+  width: 100%;
+}
+
+/* diff 变更格高亮走 accent——参数改动无涨跌语义，不用 up/down 色。 */
+.diff-changed {
+  color: var(--nt-accent);
+  font-weight: 600;
 }
 
 .checks {

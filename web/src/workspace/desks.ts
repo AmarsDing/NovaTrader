@@ -31,19 +31,16 @@ export interface DeskDef {
 }
 
 /**
- * 盘中全览默认屏：中决策台，右涨停/行情/信号/情报同组，单券侧栏独立一列，
- * 下交易＋下单条。U10 单源——DockHost 构建与 registry-integrity「core 集合
- * 断言」同读这份表；布局版本升级后旧布局作废。
+ * 盘中全览默认屏（FE-C6 瘦身）：四件全可见——中决策台＋底下单条成主列，
+ * 右列行情在上/信号在下；梯队/情报/侧栏/交易面板按需 Ctrl+K 唤出或走桌包。
+ * U10 单源——DockHost 构建与 registry-integrity「core 集合断言」同读这份表；
+ * 布局版本升级后旧布局作废（stores/layout LAYOUT_STORAGE_VERSION 随之 bump）。
  */
 export const DEFAULT_LAYOUT: DeskPanelSpec[] = [
   { id: 'overview' },
-  { id: 'limit-ladder', ref: 'overview', direction: 'right' },
-  { id: 'market', ref: 'limit-ladder', direction: 'within' },
-  { id: 'signals', ref: 'limit-ladder', direction: 'within' },
-  { id: 'intel', ref: 'limit-ladder', direction: 'within' },
-  { id: 'quote-sidebar', ref: 'limit-ladder', direction: 'right' },
-  { id: 'trade', ref: 'overview', direction: 'below' },
-  { id: 'trade-bar', ref: 'trade', direction: 'within' },
+  { id: 'market', ref: 'overview', direction: 'right' },
+  { id: 'signals', ref: 'market', direction: 'below' },
+  { id: 'trade-bar', ref: 'overview', direction: 'below' },
 ]
 
 export const DESKS: DeskDef[] = [

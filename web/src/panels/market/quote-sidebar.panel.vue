@@ -14,7 +14,14 @@
  *   只画价不伪造量），合成输入也不可得→组件旁仍落纯文字空态，逐笔/异动入口显「P1 待接入」。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getQuote, type QuoteView } from '@/api/market'
+import {
+  getChipDistribution,
+  getQuote,
+  getSeatStats,
+  type ChipDistribution,
+  type QuoteView,
+  type SeatStatsReply,
+} from '@/api/market'
 import { timeline, type IntelItem } from '@/api/intel'
 import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
@@ -24,7 +31,7 @@ import NtInput from '@/ui/NtInput.vue'
 import NtTabs from '@/ui/NtTabs.vue'
 import SymbolName from '@/display/SymbolName.vue'
 import { statusOf, type StatusEntry } from '@/ui/status-map'
-import { clock, compactAmount, messageOf, pctText, price, signed, toneOf } from '@/utils/format'
+import { clock, compactAmount, messageOf, pnlClass, ppText, price, ratioPct, signed, toneOf } from '@/utils/format'
 import { useSecurityStore } from '@/stores/security'
 import { useSymbolStore } from '@/stores/symbol'
 import { getWorkbench } from '@/workspace/inject'
@@ -36,6 +43,13 @@ import NtDepthBoard from '@/viz/NtDepthBoard.vue'
 
 const symbolStore = useSymbolStore()
 const security = useSecurityStore()
+
+/** FE-M4/W1：筹码分布卡（随个股加载）与席位胜率卡（全市场口径，挂载一次）。
+ *  三态纪律：ok / 不可用（status≠ok 显后端 reason 原样）/ 读取失败（不冒充「无数据」）。 */
+const chip = ref<ChipDistribution | null>(null)
+const chipFailed = ref(false)
+const seats = ref<SeatStatsReply | null>(null)
+const seatsFailed = ref(false)
 
 /** 面板头的手输框：跟随全局代码；回车/失焦写回 store（source 记本面板）。 */
 const draft = ref(symbolStore.code)
@@ -81,9 +95,11 @@ async function load(withNews = false) {
   loading.value = true
   error.value = ''
   try {
-    const [q, intelRes] = await Promise.all([
+    const [q, intelRes, chipRes] = await Promise.all([
       getQuote(sym),
       withNews ? timeline(sym).catch(() => null) : Promise.resolve(null),
+      // FE-M4/W1：筹码随个股加载——独立失败态，不挡行情主链路。
+      getChipDistribution(sym).catch(() => null),
     ])
     if (disposed || seq !== loadSeq || sym !== code.value) return
     // G1：快照差分打跳——同代码、前后两帧都有真值且现价变化才打标（切代码 prev=null 不打）。
@@ -92,6 +108,8 @@ async function load(withNews = false) {
       quoteFlash.mark(sym, q.last > prev.last ? 'up' : 'down')
     }
     quote.value = q
+    chip.value = chipRes
+    chipFailed.value = !chipRes
     if (q.found && q.name) symbolStore.fillName(sym, q.name)
     // 情报三态（B3 走查销号）：失败也算读过了——「未返回≠没有消息」，显式区分，不永冒「读取中」。
     if (withNews) {
@@ -105,6 +123,16 @@ async function load(withNews = false) {
     error.value = messageOf(err)
   } finally {
     if (seq === loadSeq) loading.value = false
+  }
+}
+
+/** FE-M4/W1：席位胜率=全市场龙虎榜口径（GetSeatStats 无 symbol 维度），挂载加载一次，不随个股刷新。 */
+async function loadSeats() {
+  try {
+    seats.value = await getSeatStats('', 8)
+    seatsFailed.value = false
+  } catch {
+    seatsFailed.value = true
   }
 }
 
@@ -197,7 +225,7 @@ const priceFields = computed<FieldItem[]>(() => {
     { label: '今开', value: num(q.open, price) },
     { label: '最高', value: num(q.high, price) },
     { label: '最低', value: num(q.low, price) },
-    { label: '振幅', value: q.amplitude > 0 ? pctText(q.amplitude) : MISS_QUOTE },
+    { label: '振幅', value: q.amplitude > 0 ? ppText(q.amplitude) : MISS_QUOTE },
     { label: '涨停价', value: q.noLimit ? '无' : num(q.limitUp, price) },
     { label: '跌停价', value: q.noLimit ? '无' : num(q.limitDown, price) },
   ]
@@ -220,7 +248,7 @@ const volumeFields = computed<FieldItem[]>(() => {
   return [
     { label: '总量', value: q.volume ? compactAmount(q.volume) : MISS_QUOTE },
     { label: '总额', value: q.amount ? compactAmount(q.amount) : MISS_QUOTE },
-    { label: '换手', value: q.turnoverRate > 0 ? pctText(q.turnoverRate) : MISS_QUOTE },
+    { label: '换手', value: q.turnoverRate > 0 ? ppText(q.turnoverRate) : MISS_QUOTE },
     { label: '量比', value: MISS_FIELD },
     { label: '52周高/低', value: q.high52w && q.low52w ? `${price(q.low52w)} / ${price(q.high52w)}` : MISS_FIELD },
   ]
@@ -249,6 +277,28 @@ const depthSource = computed<{ lastPrice: number | null; preClose: number | null
   }
 })
 
+/** FE-M4/W1 筹码卡字段（status==ok 才组列）：价格与衍生列 proto optional——
+ *  null 显「—」（「没取到≠0」）；status≠ok 时卡体显后端 reason 原样，不在此拼数。 */
+const chipFields = computed<FieldItem[]>(() => {
+  const c = chip.value
+  if (!c || c.status !== 'ok') return []
+  const band = (lo: number | null, hi: number | null) =>
+    lo != null && hi != null ? `${price(lo)} – ${price(hi)}` : MISS_FIELD
+  return [
+    { label: '获利比例', value: c.profit != null ? ratioPct(c.profit) : MISS_FIELD },
+    { label: '加权平均成本', value: c.avgCost != null ? price(c.avgCost) : MISS_FIELD },
+    { label: '90%成本区', value: band(c.cost90Lo, c.cost90Hi) },
+    { label: '90%集中度', value: c.concentration90 != null ? ratioPct(c.concentration90) : MISS_FIELD },
+    { label: '70%成本区', value: band(c.cost70Lo, c.cost70Hi) },
+    { label: '筹码峰', value: c.peakPrice != null ? price(c.peakPrice) : MISS_FIELD },
+  ]
+})
+
+/** FE-M4/W1 席位卡：带符号收益率（分数→百分点，红涨绿跌由 pnlClass 在模板承担，null 显「—」）。 */
+function signedPct(v: number | null): string {
+  return v == null ? '—' : `${v >= 0 ? '+' : ''}${ratioPct(v)}`
+}
+
 function openIntel(item?: IntelItem) {
   getWorkbench()?.openPanel('intel', {
     symbol: code.value || undefined,
@@ -265,6 +315,7 @@ onMounted(() => {
     if (typeof p.symbol === 'string') symbolStore.setSymbol(p.symbol, 'QL')
   })
   if (code.value) applyStoreCode(code.value)
+  void loadSeats()
   offPush = onPush(onPushMessage)
 })
 
@@ -371,6 +422,59 @@ onBeforeUnmount(() => {
             <dd :class="{ miss: isMiss(f.value) }">{{ f.value }}</dd>
           </template>
         </dl>
+      </section>
+
+      <!-- FE-M4/W1：筹码分布卡（换手衰减模型纯计算，不落库）；status≠ok 显后端 reason 原样，不自封文案 -->
+      <section class="grid nt-panel">
+        <h2 class="nt-panel__title">筹码分布</h2>
+        <p v-if="chipFailed" class="nt-empty">筹码分布读取失败，不能判断筹码结构——稍后刷新重试。</p>
+        <p v-else-if="!chip" class="nt-empty">筹码分布读取中……</p>
+        <p v-else-if="chip.status !== 'ok'" class="nt-empty">筹码分布不可用：{{ chip.reason || chip.status }}。</p>
+        <template v-else>
+          <dl class="pairs">
+            <template v-for="f in chipFields" :key="f.label">
+              <dt>{{ f.label }}</dt>
+              <dd :class="{ miss: isMiss(f.value) }">{{ f.value }}</dd>
+            </template>
+          </dl>
+          <p class="nt-note chip-note">
+            窗口 {{ chip.windowStart }} – {{ chip.windowEnd }} · 累计换手 {{ ppText(chip.cumTurnoverPct) }} · 纯计算模型（前复权日K×换手率），不落库
+          </p>
+        </template>
+      </section>
+
+      <!-- FE-M4/W1：席位胜率卡（全市场龙虎榜口径，GetSeatStats 无个股维度——注脚明示不冒充个股关联） -->
+      <section class="grid nt-panel">
+        <h2 class="nt-panel__title">席位胜率</h2>
+        <p v-if="seatsFailed" class="nt-empty">席位胜率读取失败，不能判断龙虎榜席位质量——稍后重试。</p>
+        <p v-else-if="!seats" class="nt-empty">席位胜率读取中……</p>
+        <p v-else-if="!seats.found" class="nt-empty">
+          {{ seats.tradeDate || '当日' }} 龙虎榜无席位统计行（当日无上榜或任务未跑）。
+        </p>
+        <template v-else>
+          <ul class="seats">
+            <li v-for="row in seats.rows" :key="row.seat">
+              <div class="seats__head">
+                <b>{{ row.seat }}</b>
+                <span>上榜 {{ row.sample }} 次</span>
+              </div>
+              <div class="seats__line">
+                <span
+                  >T+1 胜率 {{ row.winRateT1 != null ? ratioPct(row.winRateT1, 0) : '—' }} · 均收
+                  <i :class="pnlClass(row.avgRetT1)">{{ signedPct(row.avgRetT1) }}</i></span
+                >
+                <span
+                  >T+5 胜率 {{ row.winRateT5 != null ? ratioPct(row.winRateT5, 0) : '—' }} · 均收
+                  <i :class="pnlClass(row.avgRetT5)">{{ signedPct(row.avgRetT5) }}</i></span
+                >
+              </div>
+            </li>
+          </ul>
+          <p class="nt-note chip-note">
+            全市场龙虎榜口径，与当前个股无关 · 基准日 {{ seats.tradeDate || seats.asOf }} · 窗口
+            {{ seats.rows[0]?.lookback ?? '—' }} 交易日
+          </p>
+        </template>
       </section>
 
       <section class="nt-panel">
@@ -538,6 +642,64 @@ onBeforeUnmount(() => {
 
 .pairs dd.miss {
   color: var(--nt-text-3);
+}
+
+/* FE-M4/W1：筹码/席位卡注脚（口径与窗口一行说清，不塞进 dl 冒充字段）。 */
+.chip-note {
+  margin: 6px 0 0;
+  font-size: var(--nt-fs-micro);
+}
+
+.seats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.seats li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--nt-fs-body);
+}
+
+.seats__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.seats__head b {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seats__head span {
+  flex: none;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--nt-text-3);
+  font-size: var(--nt-fs-micro);
+}
+
+.seats__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--nt-fs-micro);
+  color: var(--nt-text-2);
+}
+
+.seats__line i {
+  font-style: normal;
 }
 
 .news {

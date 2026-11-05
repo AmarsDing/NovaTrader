@@ -14,7 +14,7 @@ import NtSelect from '@/ui/NtSelect.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import { useAuthStore } from '@/stores/auth'
 import { openDeeplink } from '@/utils/deeplink'
-import { clock, messageOf, missLabel, pnlClass, ratioPct } from '@/utils/format'
+import { clock, messageOf, missLabel, pnlClass, price, ratioPct } from '@/utils/format'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 
 const auth = useAuthStore()
@@ -58,7 +58,11 @@ const columns: NtTableColumn<Row>[] = [
   { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'pool', title: '池' },
   { key: 'stage', title: '阶段' },
-  { key: 'finalScore', title: '评分', align: 'right' },
+  /* 批次 A4：双分并列（规则分/AI 分各司其职，只看综合分不清是谁在打分）+ 参考价；null 由 NtTable 默认显「—」。 */
+  { key: 'ruleScore', title: '规则分', align: 'right', mono: true },
+  { key: 'aiScore', title: 'AI 分', align: 'right', mono: true },
+  { key: 'finalScore', title: '综合分', align: 'right', mono: true },
+  { key: 'refPrice', title: '参考价', align: 'right', mono: true },
   { key: 'retT1', title: 'T+1', align: 'right' },
   { key: 'retT3', title: 'T+3', align: 'right' },
   { key: 'retT5', title: 'T+5', align: 'right' },
@@ -168,6 +172,7 @@ onMounted(() => {
     <section class="nt-panel">
       <h2 class="nt-panel__title">候选股</h2>
       <NtTable :columns="columns" :rows="rows" row-key="id" dense :empty="loading ? '读取中…' : error ? '候选股未返回——点上方刷新重试' : '今日还没有候选股——股池标的经策略扫描出入池后在这里展开'">
+        <template #cell-refPrice="{ row }">{{ price(row.refPrice) }}</template>
         <template #cell-retT1="{ row }">
           <span :class="pnlClass(row.retT1)">{{ ratioPct(row.retT1) }}</span>
         </template>

@@ -2,14 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { hotWords, timeline, type HotWord, type IntelItem } from '@/api/intel'
 import { listSectors, type SectorRow } from '@/api/market'
-import NtBadge from '@/ui/NtBadge.vue'
 import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtFreshness from '@/ui/NtFreshness.vue'
 import NtInput from '@/ui/NtInput.vue'
+import IntelRow from '@/display/IntelRow.vue'
 import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import SymbolName from '@/display/SymbolName.vue'
-import { clock, messageOf, pctText, pnlClass } from '@/utils/format'
+import { clock, compactAmount, intText, messageOf, pnlClass, ppText, ratioPct } from '@/utils/format'
 import { normalizeCode } from '@/utils/symbol'
 import { useSymbolStore } from '@/stores/symbol'
 import { consumePanelParams, onPanelParams } from '@/workspace/panel-bus'
@@ -30,9 +30,27 @@ const highlight = ref('')
 const sectorColumns: NtTableColumn<SectorRow>[] = [
   { key: 'name', title: '板块' },
   { key: 'avgPct', title: '涨跌', align: 'right' },
+  /* 批次 A9：板块全景补全——「哪个板块在热、为什么」：涨停数/上涨占比/成交额/龙头理由。 */
+  { key: 'upLimitCount', title: '涨停数', align: 'right' },
+  { key: 'advanceRatio', title: '上涨占比', align: 'right' },
+  { key: 'amount', title: '成交额', align: 'right' },
   { key: 'overseas', title: '外围脉冲', align: 'right' },
   { key: 'leader', title: '龙头' },
+  { key: 'leaderReason', title: '龙头逻辑' },
 ]
+
+/* 批次 A9：消息流重要度筛选（后端 importance 早已下发，只渲染过 ≥4 徽章未做筛选）。 */
+const minImportance = ref('')
+const importanceOptions = [
+  { value: '', label: '全部重要度' },
+  { value: '3', label: '重要度 ≥3' },
+  { value: '4', label: '只看重要（≥4）' },
+]
+const filteredItems = computed(() => {
+  if (!minImportance.value) return items.value
+  const min = Number(minImportance.value)
+  return items.value.filter((it) => (it.importance ?? 0) >= min)
+})
 
 /** §7.3 收编：情报时点取时间线条目 publish_time 最大者（SignalView/watchlist 先例——行自带时间戳直喂，
  *  取最大者为最新证据）；无条目/全非法 → null 显「时点未知」，不冒充当前时刻。
@@ -167,16 +185,16 @@ onBeforeUnmount(() => {
     <div class="nt-split">
       <section class="nt-panel">
         <h2 class="nt-panel__title">消息流</h2>
+        <!-- 批次 A9：重要度筛选 + 计数（筛到几条例行可见） -->
+        <div class="news-tools">
+          <NtSelect v-model="minImportance" :options="importanceOptions" />
+          <span v-if="items.length" class="nt-note">{{ filteredItems.length }} / {{ items.length }} 条</span>
+        </div>
         <p v-if="!items.length" class="nt-empty">还没有这条时间线。</p>
+        <p v-else-if="!filteredItems.length" class="nt-empty">当前重要度筛选下没有消息——放宽筛选再看看。</p>
         <ul v-else class="list">
-          <li v-for="item in items" :key="item.id || item.title" :class="{ hit: highlight && item.id === highlight }">
-            <div class="item-head">
-              <b :class="pnlClass(item.sentiment)">{{ clock(item.time) || '—' }} {{ item.source }}</b>
-              <NtBadge v-if="(item.importance ?? 0) >= 4" tone="warn">重要</NtBadge>
-              <span v-if="item.kind" class="kind">{{ item.kind }}</span>
-            </div>
-            <span>{{ item.title }}</span>
-          </li>
+          <!-- W0-3b/FE-I4：消息行=IntelRow 单一事实组件（时点/来源/重要度/kind/原文外链唯一出处） -->
+          <IntelRow v-for="item in filteredItems" :key="item.id || item.title" :item="item" :hit="highlight === item.id" />
         </ul>
       </section>
       <div class="stack">
@@ -197,10 +215,14 @@ onBeforeUnmount(() => {
           <h2 class="nt-panel__title">板块 / 外围</h2>
           <NtTable :columns="sectorColumns" :rows="sectors" row-key="name" empty="板块未返回">
             <template #cell-avgPct="{ value }">
-              <span :class="pnlClass(value)">{{ pctText(value) }}</span>
+              <span :class="pnlClass(value)">{{ ppText(value) }}</span>
             </template>
+            <template #cell-upLimitCount="{ value }">{{ intText(value) }}</template>
+            <!-- advanceRatio 份额口径（0.62=62%）走 ratioPct；amount 元走 compactAmount。 -->
+            <template #cell-advanceRatio="{ value }">{{ ratioPct(value, 0) }}</template>
+            <template #cell-amount="{ value }">{{ compactAmount(value) }}</template>
             <template #cell-overseas="{ value }">
-              <span :class="pnlClass(value)">{{ pctText(value) }}</span>
+              <span :class="pnlClass(value)">{{ ppText(value) }}</span>
             </template>
             <template #cell-leader="{ value }">
               <!-- §10-6：龙头为结构化证券目标（leaderSymbol）→ SymbolName inline；
@@ -209,6 +231,7 @@ onBeforeUnmount(() => {
               <template v-else>—</template>
             </template>
           </NtTable>
+          <p v-if="sectors[0]?.asOf" class="nt-note foot">板块快照 {{ clock(sectors[0].asOf) }}</p>
         </section>
       </div>
     </div>
@@ -231,32 +254,19 @@ onBeforeUnmount(() => {
   gap: 6px;
 }
 
-.list li {
+/* 批次 A9：消息流工具行（筛选 + 计数）。行级样式（item-head/imp/kind/ext/hit）已随 W0-3b 收进 IntelRow 组件。 */
+.news-tools {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12.5px;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 0;
 }
 
-.list li.hit {
-  border-left: 2px solid var(--nt-accent);
-  padding-left: 8px;
+.news-tools :deep(.nt-select select) {
+  min-width: 110px;
 }
 
-.list li b {
-  font-family: var(--nt-font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-}
-
-.item-head {
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.kind {
-  font-size: 11px;
-  color: var(--nt-text-3);
+.foot {
+  margin: 8px 0 0;
 }
 </style>

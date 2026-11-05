@@ -15,9 +15,16 @@ import { useSymbolStore } from '@/stores/symbol'
 const mock = vi.hoisted(() => ({
   quote: vi.fn(),
   timeline: vi.fn(),
+  chip: vi.fn(),
+  seats: vi.fn(),
   live: [] as boolean[],
 }))
-vi.mock('@/api/market', () => ({ getQuote: mock.quote }))
+/* W1/FE-M4：面板新增筹码/席位两卡——mock 补齐两接口；两卡三态渲染另有专项断言（见组末）。 */
+vi.mock('@/api/market', () => ({
+  getQuote: mock.quote,
+  getChipDistribution: mock.chip,
+  getSeatStats: mock.seats,
+}))
 vi.mock('@/api/intel', () => ({ timeline: mock.timeline }))
 vi.mock('@/ws/hub', () => ({
   subscribe: () => vi.fn(),
@@ -51,6 +58,9 @@ beforeEach(() => {
   mock.live.length = 0
   mock.quote.mockResolvedValue({ ...QUOTE })
   mock.timeline.mockResolvedValue({ items: [], sentiment: null })
+  // 默认：筹码不可用（status≠ok 走 reason 显位）、席位无行——两卡不挡主链路断言。
+  mock.chip.mockResolvedValue({ symbol: '600519.SH', status: 'not_meaningful', reason: '流通股本缺失，无法计算换手率', profit: null, avgCost: null, cost90Lo: null, cost90Hi: null, cost70Lo: null, cost70Hi: null, concentration90: null, concentration70: null, peakPrice: null, price: null, daysUsed: 0, cumTurnoverPct: 0, windowStart: '', windowEnd: '' })
+  mock.seats.mockResolvedValue({ tradeDate: '2026-10-19', found: false, rows: [], asOf: '' })
 })
 
 describe('quote sidebar（视频落地 P0）', () => {
@@ -158,5 +168,42 @@ describe('quote sidebar（视频落地 P0）', () => {
     expect(li.exists()).toBe(true)
     expect(li.attributes('role')).toBe('button')
     expect(li.attributes('tabindex')).toBe('0')
+  })
+
+  it('FE-M4/W1：筹码卡渲获利比例/成本区/筹码峰，席位卡渲胜率与均收（均收红涨绿跌）', async () => {
+    mock.live.push(true)
+    mock.chip.mockResolvedValue({
+      symbol: '600519.SH', status: 'ok', reason: '', profit: 0.62, avgCost: 1500.5,
+      cost90Lo: 1200, cost90Hi: 1800, cost70Lo: 1350, cost70Hi: 1680,
+      concentration90: 0.2, concentration70: 0.11, peakPrice: 1550, price: 1705,
+      daysUsed: 240, cumTurnoverPct: 230.5, windowStart: '2025-10-20', windowEnd: '2026-10-19',
+    })
+    mock.seats.mockResolvedValue({
+      tradeDate: '2026-10-19', found: true, asOf: '2026-10-19',
+      rows: [{ seat: '华泰证券深圳益田路', asOf: '2026-10-19', lookback: 60, sample: 12, sampleT5: 8,
+        winRateT1: 0.62, avgRetT1: 0.032, medRetT1: null, winRateT5: 0.5, avgRetT5: -0.012, medRetT5: null, source: 'tdx' }],
+    })
+    await mountPanel()
+    useSymbolStore().setSymbol('600519', 'QL')
+    await flushPromises()
+    const text = wrapper!.text()
+    expect(text).toContain('获利比例')
+    expect(text).toContain('62.00%')
+    expect(text).toContain('1,200.00 – 1,800.00')
+    expect(text).toContain('华泰证券深圳益田路')
+    expect(text).toContain('T+1 胜率 62% · 均收 +3.20%')
+    expect(text).toContain('T+5 胜率 50% · 均收 -1.20%')
+    // 全市场口径注脚明示，不冒充个股关联（GetSeatStats 无个股维度）。
+    expect(text).toContain('全市场龙虎榜口径')
+  })
+
+  it('FE-M4/W1：筹码不可用显后端 reason 原样，席位无行显基准日口径（不自封不冒充）', async () => {
+    mock.live.push(true)
+    await mountPanel()
+    useSymbolStore().setSymbol('600519', 'QL')
+    await flushPromises()
+    const text = wrapper!.text()
+    expect(text).toContain('筹码分布不可用：流通股本缺失，无法计算换手率')
+    expect(text).toContain('2026-10-19 龙虎榜无席位统计行')
   })
 })

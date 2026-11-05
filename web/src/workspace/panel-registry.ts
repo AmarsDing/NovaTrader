@@ -51,7 +51,6 @@ export const POPOUT_ALLOWED = new Set([
   'morning-briefing',
   'emotion-review',
   'brain-monitor',
-  'model-stats',
   'watchlist',
   'pool-manager',
   'risk-chain',
@@ -119,7 +118,6 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/TradeView.vue'),
     group: 'bottom',
     singleton: true,
-    core: true,
     shortcut: {
       prefix: 'JY',
       argKind: 'side',
@@ -149,7 +147,6 @@ const defs: PanelDef[] = [
     loader: () => import('@/view/IntelView.vue'),
     group: 'right',
     singleton: true,
-    core: true,
     shortcut: {
       prefix: 'QB',
       argKind: 'ticker',
@@ -203,7 +200,6 @@ const defs: PanelDef[] = [
     loader: () => import('@/panels/market/limit-ladder.panel.vue'),
     group: 'right',
     singleton: true,
-    core: true,
     shortcut: {
       prefix: 'DB',
       argKind: 'none',
@@ -230,7 +226,6 @@ const defs: PanelDef[] = [
     loader: () => import('@/panels/market/quote-sidebar.panel.vue'),
     group: 'right',
     singleton: true,
-    core: true,
     shortcut: {
       prefix: 'QL',
       argKind: 'ticker',
@@ -275,19 +270,6 @@ const defs: PanelDef[] = [
       prefix: 'BR',
       argKind: 'none',
       description: '各 agent 调用链、延迟与失败观测。',
-    },
-  },
-  {
-    id: 'model-stats',
-    title: '模型统计',
-    icon: '模',
-    loader: () => import('@/panels/brain/model-stats.panel.vue'),
-    group: 'right',
-    singleton: true,
-    shortcut: {
-      prefix: 'MT',
-      argKind: 'none',
-      description: '调用量、token 消耗与评分分布。',
     },
   },
   {

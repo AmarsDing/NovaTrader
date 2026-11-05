@@ -241,6 +241,31 @@ export interface Proposal {
   createdAt: string
   decidedAt: string
   reason: string
+  /** 参数基线（批准前）；空对象=旧格式提案未携带。 */
+  baseParams: Record<string, number>
+  /** 提案参数（批准后生效）。 */
+  params: Record<string, number>
+  /** 基线/提案绩效指标（Struct 透传，键值原样；渲染层只读不猜口径）。 */
+  baseMetrics: Record<string, unknown>
+  newMetrics: Record<string, unknown>
+}
+
+/** map<string,double> 归一：只收数值项，非数值键丢弃（proto map<double> 契约）。 */
+function numMap(raw: RawRecord, ...keys: string[]): Record<string, number> {
+  const src = pick<Record<string, unknown>>(raw, ...keys)
+  const out: Record<string, number> = {}
+  if (src && typeof src === 'object') {
+    for (const [k, v] of Object.entries(src)) {
+      const n = num(v)
+      if (n != null) out[k] = n
+    }
+  }
+  return out
+}
+
+function structMap(raw: RawRecord, ...keys: string[]): Record<string, unknown> {
+  const src = pick<Record<string, unknown>>(raw, ...keys)
+  return src && typeof src === 'object' ? src : {}
 }
 
 export async function listProposals(): Promise<Proposal[]> {
@@ -254,6 +279,10 @@ export async function listProposals(): Promise<Proposal[]> {
     createdAt: pick<string>(raw, 'createdAt', 'created_at') || '',
     decidedAt: pick<string>(raw, 'decidedAt', 'decided_at') || '',
     reason: pick<string>(raw, 'reason') || '',
+    baseParams: numMap(raw, 'baseParams', 'base_params'),
+    params: numMap(raw, 'params'),
+    baseMetrics: structMap(raw, 'baseMetrics', 'base_metrics'),
+    newMetrics: structMap(raw, 'newMetrics', 'new_metrics'),
   }))
 }
 

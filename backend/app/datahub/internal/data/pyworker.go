@@ -298,6 +298,21 @@ func NewAkshare(base string, opt HTTPOptions) *Akshare {
 	return &Akshare{newPyworker(biz.SourceAkshare, base, opt)}
 }
 
+func parseYMD(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "T "); i > 0 {
+		s = s[:i]
+	}
+	s = strings.ReplaceAll(s, "/", "-")
+	if len(s) == 8 && s[0] >= '0' && s[0] <= '9' {
+		s = s[:4] + "-" + s[4:6] + "-" + s[6:8]
+	}
+	if len(s) >= 10 {
+		s = s[:10]
+	}
+	return time.ParseInLocation("2006-01-02", s, shanghaiLoc())
+}
+
 func (s *Akshare) Overseas(ctx context.Context) ([]biz.OverseasQuote, error) {
 	var out struct {
 		Items []struct {
@@ -314,7 +329,7 @@ func (s *Akshare) Overseas(ctx context.Context) ([]biz.OverseasQuote, error) {
 	now := time.Now()
 	items := make([]biz.OverseasQuote, 0, len(out.Items))
 	for _, x := range out.Items {
-		d, err := time.Parse("2006-01-02", x.TradeDate)
+		d, err := parseYMD(x.TradeDate)
 		if err != nil {
 			continue
 		}
@@ -338,7 +353,7 @@ func (s *Akshare) Macro(ctx context.Context) ([]biz.MacroPoint, error) {
 	}
 	items := make([]biz.MacroPoint, 0, len(out.Items))
 	for _, x := range out.Items {
-		d, err := time.ParseInLocation("2006-01-02", x.Date, shanghaiLoc())
+		d, err := parseYMD(x.Date)
 		if err != nil {
 			continue
 		}

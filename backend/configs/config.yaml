@@ -85,6 +85,24 @@ postgres:
   dial_timeout: 5s
   max_open_conns: 50
   max_idle_conns: 10
+# 服务：nt-mcp 机器面（三仓联动 P3·NT 侧；cmd/ntmcp）。
+# 红线：只读四件（行情快照/持仓/信号/回测报告）——下单/改仓/审批一律走 M09
+# 风控链与人工审批，绝不进 MCP。yaml 零密钥：token_ref 走 env:/enc:/明文三写法
+# 经 pkg/llm.ResolveAPIKey 启动时解析（失败/空值即拒启动；与 harness caller
+# token、HCF AGT caller token 三分立，严禁复用）。enabled=false 默认关：
+# 进程直接退出（部署窗口置 true + 配 NT_MCP_TOKEN 后方对外）。
+ntmcp:
+  enabled: false
+  listen: ":9303"                 # MCP Streamable HTTP 监听（仅内网；admin :9302 旁）
+  path: "/mcp"
+  token_ref: "env:NT_MCP_TOKEN"   # 机器面 Bearer（env:/enc:/明文三写法）
+  page_size_max: 50               # 工具条数上限（防大页拖慢机器面）
+  http_timeout: "15s"
+  tools:                          # 逐项白名单（默认全开；四件全为只读工具）
+    market_snapshot: true
+    positions: true
+    trade_signals: true
+    backtest_report: true
 # 服务：datahub（M01 数据采集）。口径见 doc/开发文档/M01-数据采集/设计文档.md
 datahub:
   http:
@@ -136,7 +154,7 @@ datahub:
       enabled: true
       official: true
       url: http://127.0.0.1:18080
-      timeout: 30s
+      timeout: 180s   # 外围 hist 限速重试可达分钟级
       concurrency: 2
     baostock:
       enabled: false    # 依赖装好（pip install baostock==0.9.4，pyworker 重启带 baostock 角色）后再改 true
@@ -147,9 +165,9 @@ datahub:
     eastmoney:
       enabled: true
       official: false
-      qps: 4
-      timeout: 10s
-      concurrency: 4
+      qps: 2            # 共享机出网：clist 并发过高易 EOF；44 实测 4→2
+      timeout: 60s      # 全市场分页 10s 不够
+      concurrency: 2
     sina:
       enabled: true
       official: false

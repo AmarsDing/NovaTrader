@@ -34,6 +34,30 @@ def unavailable(reason: str):
     return 503, {"error": "unavailable", "reason": reason}
 
 
+def ymd_str(value) -> str:
+    """Normalize any date-like value to YYYY-MM-DD for datahub Parse."""
+    if value is None:
+        return datetime.now(SHANGHAI).strftime("%Y-%m-%d")
+    if hasattr(value, "strftime"):
+        try:
+            return value.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+    s = str(value).strip()
+    if not s:
+        return datetime.now(SHANGHAI).strftime("%Y-%m-%d")
+    # "2024-10-28 00:00:00" / "2024/10/28" / "20241028"
+    for sep in (" ", "T"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    s = s.replace("/", "-")
+    if len(s) == 8 and s.isdigit():
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    return datetime.now(SHANGHAI).strftime("%Y-%m-%d")
+
+
 def parse_symbol_file(name: str) -> str | None:
     stem = Path(name).stem.lower()
     for prefix, mkt in MARKETS.items():
@@ -556,92 +580,124 @@ def usdcny_pct_chg(ak) -> float | None:
 
 
 def ak_global():
+    """外围行情：东财全球指数 hist（中文名）+ 汇率/SOX。
+
+    44 实测：spot/美股/外盘期货易 EOF；index_global_hist_em('道琼斯') 等可用，
+    但需限速；取满 3 条即停（对齐 datahub CollectOverseas 门槛）。
+    """
+    import time
     import akshare as ak
 
     items = []
-    try:
-        df = ak.stock_us_spot_em()
-        if df is not None and not df.empty:
-            row = df.iloc[0]
-            item = {
-                "code": "US_SPOT",
-                "name": str(row.get("名称", "美股")),
-                "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
-                "close": float(row.get("最新价", 0) or 0),
-            }
-            pct = row.get("涨跌幅")
-            if pct not in (None, ""):
-                item["pct_chg"] = float(pct)
-            items.append(item)
-    except Exception:
-        pass
-    try:
-        df = ak.fx_spot_quote(symbol="美元人民币")
-        if df is not None and not df.empty:
-            row = df.iloc[-1]
-            item = {
-                "code": "USDCNH",
-                "name": "美元兑人民币",
-                "trade_date": str(row.get("日期", datetime.now(SHANGHAI).date())),
-                "close": float(row.get("最新价", row.get("卖出价", 0)) or 0),
-            }
-            pct = usdcny_pct_chg(ak)
-            if pct is None:
-                # 数据纪律「没取到≠0」：上一收盘不可得则缺键表达缺失（datahub 列已可空，落 NULL，T12c 已销）
-                logger.warning("ak_global: USDCNH pct_chg 上一收盘不可得，载荷缺键（T12c 后落 NULL，不再冒充 0）")
-            else:
-                item["pct_chg"] = pct
-            items.append(item)
-    except Exception:
-        pass
-    try:
-        df = ak.futures_foreign_commodity_realtime(symbol="NYMEX原油")
-        if df is not None and not df.empty:
-            row = df.iloc[0]
-            item = {
-                "code": "CL",
-                "name": "WTI原油",
-                "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
-                "close": float(row.get("最新价", 0) or 0),
-            }
-            pct = row.get("涨跌幅")
-            if pct not in (None, ""):
-                item["pct_chg"] = float(pct)
-            items.append(item)
-    except Exception:
-        pass
-    try:
-        df = ak.futures_foreign_commodity_realtime(symbol="COMEX黄金")
-        if df is not None and not df.empty:
-            row = df.iloc[0]
-            item = {
-                "code": "XAU",
-                "name": "COMEX黄金",
-                "trade_date": datetime.now(SHANGHAI).strftime("%Y-%m-%d"),
-                "close": float(row.get("最新价", 0) or 0),
-            }
-            pct = row.get("涨跌幅")
-            if pct not in (None, ""):
-                item["pct_chg"] = float(pct)
-            items.append(item)
-    except Exception:
-        pass
-    try:
-        df = ak.macro_global_sox_index()
-        if df is not None and not df.empty:
-            row = df.iloc[-1]  # 按日期升序，最新收盘在末行
-            item = {
-                "code": "SOX",
-                "name": "费城半导体指数",
-                "trade_date": str(row.get("日期", datetime.now(SHANGHAI).date())),
-                "close": float(row.get("最新值", 0) or 0),
-            }
-            pct = row.get("涨跌幅")
-            if pct not in (None, ""):
-                item["pct_chg"] = float(pct)
-            items.append(item)
-    except Exception:
-        pass
+
+    def add(code: str, name: str, trade_date, close, pct) -> None:
+        if any(x["code"] == code for x in items):
+            return
+        try:
+            c = float(close or 0)
+        except (TypeError, ValueError):
+            return
+        if c == 0:
+            return
+        item = {"code": code, "name": name, "trade_date": ymd_str(trade_date), "close": c}
+        if pct not in (None, ""):
+            try:
+                v = float(pct)
+                if v == v:  # not NaN
+                    item["pct_chg"] = v
+            except (TypeError, ValueError):
+                pass
+        items.append(item)
+
+    def pct_from_closes(closes: list) -> float | None:
+        return pct_chg_from_closes(closes)
+
+    # 1) 东财全球指数历史末行（中文 symbol；限速 + 重试）
+    hist_symbols = (
+        ("美元指数", "UDI"),
+        ("道琼斯", "DJI"),
+        ("标普500", "SPX"),
+        ("纳斯达克", "IXIC"),
+        ("恒生指数", "HSI"),
+    )
+    for sym_name, code in hist_symbols:
+        if len(items) >= 3:
+            break
+        ok = False
+        for attempt in range(3):
+            try:
+                if attempt or items:
+                    time.sleep(1.5 + attempt)
+                df = ak.index_global_hist_em(symbol=sym_name)
+                if df is None or getattr(df, "empty", True):
+                    break
+                row = df.iloc[-1]
+                closes = []
+                if "最新价" in df.columns:
+                    closes = [float(x) for x in df["最新价"].dropna().tolist()[-3:]]
+                pct = pct_from_closes(closes) if len(closes) >= 2 else None
+                add(code, str(row.get("名称", sym_name)), row.get("日期", datetime.now(SHANGHAI).date()), row.get("最新价"), pct)
+                ok = True
+                break
+            except Exception as e:
+                logger.warning("ak_global hist %s attempt=%d: %s", sym_name, attempt + 1, e)
+                time.sleep(3.0 * (attempt + 1))
+        if not ok:
+            logger.warning("ak_global hist %s gave up", sym_name)
+
+    # 2) 快照兜底（偶发可用，失败忽略）
+    if len(items) < 3:
+        try:
+            df = ak.index_global_spot_em()
+            if df is not None and not df.empty:
+                want = {"道琼斯": "DJI", "标普500": "SPX", "纳斯达克": "IXIC", "恒生": "HSI", "日经": "N225", "美元指数": "UDI"}
+                for _, row in df.iterrows():
+                    name = str(row.get("名称", ""))
+                    for key, code in want.items():
+                        if key in name:
+                            add(code, name, row.get("最新行情时间", datetime.now(SHANGHAI)), row.get("最新价"), row.get("涨跌幅"))
+                    if len(items) >= 5:
+                        break
+        except Exception as e:
+            logger.warning("ak_global index_global_spot_em: %s", e)
+
+    # 3) 美元兑人民币（仅不足 3 条时补；中行序列若过旧则丢弃）
+    if len(items) < 3 and not any(x["code"] == "USDCNH" for x in items):
+        try:
+            try:
+                df = ak.currency_boc_sina(symbol="美元")
+            except TypeError:
+                df = ak.currency_boc_sina()
+            if df is not None and not df.empty:
+                row = df.iloc[-1]
+                mid = row.get("央行中间价", row.get("中行折算价"))
+                try:
+                    mid_f = float(mid)
+                    close = mid_f / 100.0 if mid_f > 20 else mid_f
+                except (TypeError, ValueError):
+                    close = None
+                day = ymd_str(row.get("日期", datetime.now(SHANGHAI).date()))
+                # 丢弃明显陈旧的中间价（44 上无参序列曾停在 2023）
+                if day >= (datetime.now(SHANGHAI) - timedelta(days=14)).strftime("%Y-%m-%d"):
+                    pct = usdcny_pct_chg(ak)
+                    if pct is None:
+                        logger.warning("ak_global: USDCNH pct_chg 上一收盘不可得，载荷缺键（T12c 后落 NULL，不再冒充 0）")
+                    add("USDCNH", "美元兑人民币", day, close, pct)
+                else:
+                    logger.warning("ak_global USDCNH stale date=%s skipped", day)
+        except Exception as e:
+            logger.warning("ak_global USDCNH: %s", e)
+
+    # 4) SOX 补齐（重；仅不足 3 条时）
+    if len(items) < 3:
+        try:
+            df = ak.macro_global_sox_index()
+            if df is not None and not df.empty:
+                row = df.iloc[-1]
+                add("SOX", "费城半导体指数", row.get("日期", datetime.now(SHANGHAI).date()), row.get("最新值"), row.get("涨跌幅"))
+        except Exception as e:
+            logger.warning("ak_global SOX: %s", e)
+
     if len(items) < 1:
         return unavailable("AkShare 外围接口不可用")
     return 200, {"items": items}
@@ -651,11 +707,6 @@ def ak_macro():
     import akshare as ak
 
     items = []
-    series = [
-        ("CPI_YOY", "CPI同比", "ak.macro_china_cpi_yearly", "%"),
-        ("PPI_YOY", "PPI同比", "ak.macro_china_ppi_yearly", "%"),
-        ("PMI_MFG", "制造业PMI", "ak.macro_china_pmi_yearly", ""),
-    ]
     fetchers = {
         "CPI_YOY": lambda: ak.macro_china_cpi_yearly(),
         "PPI_YOY": lambda: ak.macro_china_ppi_yearly(),
@@ -666,19 +717,26 @@ def ak_macro():
     for code, fn in fetchers.items():
         try:
             df = fn()
-        except Exception:
+        except Exception as e:
+            logger.warning("ak_macro %s: %s", code, e)
             continue
         if df is None or getattr(df, "empty", True):
+            logger.warning("ak_macro %s: empty", code)
             continue
         row = df.iloc[-1]
         date_col = df.columns[0]
         val_col = df.columns[-1]
+        try:
+            value = float(row[val_col] or 0)
+        except (TypeError, ValueError):
+            logger.warning("ak_macro %s: bad value %r", code, row[val_col])
+            continue
         items.append(
             {
                 "code": code,
                 "name": names[code],
-                "date": str(row[date_col])[:10],
-                "value": float(row[val_col] or 0),
+                "date": ymd_str(row[date_col]),
+                "value": value,
                 "unit": units[code],
             }
         )

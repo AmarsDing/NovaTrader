@@ -1,0 +1,70 @@
+# NovaTrader 部署 · 基础设施（postgres pgvector / redis / nats）
+# 网络显式 subnet：44 上 Docker IPv4 pool 已近耗尽（HCF 实录）
+name: novatrader
+
+networks:
+  nt-net:
+    name: nt-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.181.0.0/24
+
+services:
+  postgres:
+    image: ${PG_IMAGE:-pgvector/pgvector:pg18}
+    container_name: nt-postgres
+    restart: unless-stopped
+    networks: [nt-net]
+    environment:
+      POSTGRES_USER: ${PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请在 deploy/env/.env 设置 PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB:-novatrader}
+      TZ: Asia/Shanghai
+    ports:
+      - "${PG_PORT:-5435}:5432"
+    volumes:
+      # pg18 镜像要求挂 /var/lib/postgresql（非 .../data），与 aranea 一致
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-postgres} -d ${PG_DB:-novatrader}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7}
+    container_name: nt-redis
+    restart: unless-stopped
+    networks: [nt-net]
+    ports:
+      - "${REDIS_PORT:-6381}:6379"
+    volumes:
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }
+
+  nats:
+    image: ${NATS_IMAGE:-nats:2.10}
+    container_name: nt-nats
+    restart: unless-stopped
+    networks: [nt-net]
+    command: ["-js", "-m", "8222", "-sd", "/data/jetstream"]
+    ports:
+      - "${NATS_CLIENT_PORT:-24222}:4222"
+      - "${NATS_HTTP_PORT:-28222}:8222"
+    volumes:
+      - ${NT_DATA_ROOT:-/mnt/exdata/novatrader/data}/nats:/data
+    # scratch 镜像无 shell → 无容器内 healthcheck；deploy.sh / smoke 用宿主 curl :28222/healthz
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }

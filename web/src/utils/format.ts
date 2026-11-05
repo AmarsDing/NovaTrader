@@ -58,8 +58,8 @@ export function ratioPct(value: unknown, digits = 2): string {
   return `${(n * 100).toFixed(digits)}%`
 }
 
-/** 已经是百分点口径的数字（如 avgPct = 1.23 表示 1.23%）。 */
-export function pctText(value: unknown, digits = 2): string {
+/** 百分点口径输入（如 avgPct = 1.23 表示 1.23%）。比率/份额输入（0.0123）走 ratioPct，禁在此 ×100 换算（S3 口径收口）。 */
+export function ppText(value: unknown, digits = 2): string {
   const n = num(value)
   if (n === null) return '—'
   return `${n.toFixed(digits)}%`
@@ -89,7 +89,7 @@ export function clock(value: unknown): string {
 /**
  * 市场情绪五阶段（M02 §6）唯一定义：冰点 → 修复 → 升温 → 高潮 → 退潮。
  * coef = 评分系数默认；scale = 仓位系数默认（props 显式给值时调用方覆盖）。
- * 全仓只认这一套：SentimentStages.vue、phaseName、监控 HUD/KB 全部从这里取。
+ * 全仓只认这一套：涨停梯队头部细条、phaseName、监控 HUD/KB 全部从这里取。
  */
 export const SENTIMENT_STAGES = [
   { code: 'ICE', label: '冰点', coef: 0.8, scale: 0.3 },
@@ -116,13 +116,34 @@ const DIM_KEYS: Record<string, string[]> = {
   外围: ['外围', 'peripheral', 'overseas', 'external'],
 }
 
+/** 四维取值：兼容裸数字与 {score, comment} 对象两种回包（与 decision-desk dimScore 同口径）；
+ *  别名键命中但取不出数时继续看后别名，不再提前判 null。 */
 export function dimValue(dims: unknown, label: string): number | null {
   const keys = DIM_KEYS[label] || [label]
   for (const key of keys) {
     const value = pick(dims, key)
-    if (value !== undefined) return num(value)
+    if (value === undefined) continue
+    const n = num(value)
+    if (n !== null) return n
+    if (value && typeof value === 'object') {
+      const score = num((value as Record<string, unknown>).score)
+      if (score !== null) return score
+    }
   }
   return null
+}
+
+/** 四维评语（批次 A3）：dims 值为 {score, comment} 形态时取出评语；无评语回空串（调用方不显位，数据纪律）。 */
+export function dimComment(dims: unknown, label: string): string {
+  const keys = DIM_KEYS[label] || [label]
+  for (const key of keys) {
+    const value = pick(dims, key)
+    if (value && typeof value === 'object') {
+      const comment = (value as Record<string, unknown>).comment
+      if (typeof comment === 'string' && comment.trim()) return comment.trim()
+    }
+  }
+  return ''
 }
 
 const ORDER_STATUS: Record<string, string> = {

@@ -24,7 +24,7 @@ import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTrustBar from '@/display/NtTrustBar.vue'
 import NtEquityCurve from '@/viz/NtEquityCurve.vue'
 import ResearchJobs from './ResearchJobs.vue'
-import { messageOf, price, ratioPct, signed } from '@/utils/format'
+import { amount, messageOf, price, ratioPct, signed } from '@/utils/format'
 
 const strategies = ref<StrategyMeta[]>([])
 const tasks = ref<BacktestTask[]>([])
@@ -68,8 +68,18 @@ const tradeColumns: NtTableColumn<TradeRow>[] = [
   { key: 'side', title: '方向' },
   { key: 'price', title: '价格', align: 'right' },
   { key: 'quantity', title: '数量', align: 'right' },
+  { key: 'amount', title: '金额', align: 'right' },
   { key: 'pnl', title: '盈亏', align: 'right' },
+  { key: 'reason', title: '理由' },
 ]
+
+/** 批次 A6：运行中任务的进度条文本（progress 是 0..1 比率，后端 SetProgress(1) 收口；null=未上报）。 */
+function progressText(row: BacktestTask): string {
+  return row.progress == null ? '' : ratioPct(row.progress, 0)
+}
+function isActiveTask(row: BacktestTask): boolean {
+  return ['pending', 'queued', 'running'].includes(String(row.status || '').toLowerCase())
+}
 
 function taskStatus(row: BacktestTask): string {
   const labels: Record<string, string> = {
@@ -88,9 +98,7 @@ function taskStatus(row: BacktestTask): string {
 }
 
 /** 有排队/运行中任务时 5 秒自动刷新。 */
-const hasActive = computed(() =>
-  tasks.value.some((row) => ['pending', 'queued', 'running'].includes(String(row.status || '').toLowerCase())),
-)
+const hasActive = computed(() => tasks.value.some(isActiveTask))
 let timer: ReturnType<typeof setInterval> | null = null
 
 /** KPI 注脚：区间缺腿就直说，不拿空串糊弄（数据纪律「没取到≠空」）。 */
@@ -230,7 +238,14 @@ onBeforeUnmount(() => {
     >
       <template #cell-name="{ row }">{{ row.name || row.id }}</template>
       <template #cell-strategy="{ row }">{{ row.strategy }} · {{ row.freq }}</template>
-      <template #cell-status="{ row }">{{ taskStatus(row) }}</template>
+      <template #cell-status="{ row }">
+        <span>{{ taskStatus(row) }}</span>
+        <!-- 批次 A6：排队/运行中任务给真实进度（progress 是后端上报的 0..1，未上报不画条） -->
+        <span v-if="isActiveTask(row) && row.progress != null" class="task-progress">
+          <i class="task-progress__track"><i class="task-progress__bar" :style="{ width: `${Math.min(100, Math.max(0, row.progress * 100))}%` }"></i></i>
+          <em>{{ progressText(row) }}</em>
+        </span>
+      </template>
       <template #cell-totalReturn="{ value }">{{ ratioPct(value) }}</template>
       <template #cell-maxDrawdown="{ value }">{{ ratioPct(value) }}</template>
       <template #cell-winRate="{ value }">{{ ratioPct(value) }}</template>
@@ -251,6 +266,12 @@ onBeforeUnmount(() => {
           <NtStatCard label="年化" :value="ratioPct(report.metrics.annualReturn)" :sub="rangeText" />
           <NtStatCard label="最大回撤" :value="ratioPct(report.metrics.maxDrawdown)" />
           <NtStatCard label="胜率" :value="ratioPct(report.metrics.winRate)" :sub="sampleText" />
+          <!-- 批次 A6：盈亏比是超短策略核心质量指标（已归一未渲，本批接入） -->
+          <NtStatCard
+            label="盈亏比"
+            :value="report.metrics.profitFactor != null ? report.metrics.profitFactor.toFixed(2) : '—'"
+            sub="总盈利 / 总亏损"
+          />
           <NtStatCard label="夏普" :value="report.metrics.sharpe != null ? String(report.metrics.sharpe) : '—'" sub="按区间成交与净值" />
           <NtStatCard label="回合" :value="report.metrics.rounds != null ? String(report.metrics.rounds) : '—'" :sub="sampleText" />
         </div>
@@ -282,6 +303,7 @@ onBeforeUnmount(() => {
         <h3 class="bt-step__title">⑤ 交易明细</h3>
         <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="该区间无成交——策略未触发任何交易">
           <template #cell-price="{ value }">{{ price(value) }}</template>
+          <template #cell-amount="{ value }">{{ amount(value) }}</template>
           <template #cell-pnl="{ value }">{{ signed(value) }}</template>
         </NtTable>
       </section>
@@ -352,5 +374,36 @@ onBeforeUnmount(() => {
 
 .active-hint {
   color: var(--nt-accent);
+}
+
+/* 批次 A6：任务行内进度条——固定轨道 + 真实进度填充，宽度即进度。 */
+.task-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.task-progress__track {
+  display: inline-block;
+  width: 72px;
+  height: 3px;
+  background: var(--nt-border-1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.task-progress__bar {
+  display: block;
+  height: 100%;
+  background: var(--nt-accent);
+}
+
+.task-progress em {
+  font-style: normal;
+  font-family: var(--nt-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--nt-text-3);
 }
 </style>

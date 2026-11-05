@@ -10,6 +10,7 @@ const mock = vi.hoisted(() => ({
   account: vi.fn(), positions: vi.fn(), orders: vi.fn(), fills: vi.fn(), risk: vi.fn(),
   place: vi.fn(), getOrder: vi.fn(), signal: vi.fn(), confirm: vi.fn(), preview: vi.fn(), channel: vi.fn(),
   accountStore: { book: 'SIM', cash: 100_000, refresh: vi.fn() },
+  admissionStore: { liveEnabled: false, ensureFresh: vi.fn(), startPolling: vi.fn() },
   params: null as null | ((params: Record<string, unknown>) => void),
   push: null as null | ((message: { topic: string; data?: unknown }) => void | Promise<void>),
 }))
@@ -21,6 +22,7 @@ vi.mock('@/api/risk', () => ({ getRiskState: mock.risk, previewOrder: mock.previ
 vi.mock('@/api/signals', () => ({ getSignal: mock.signal }))
 vi.mock('@/stores/confirm', () => ({ askConfirm: mock.confirm }))
 vi.mock('@/stores/account', () => ({ useAccountStore: () => mock.accountStore }))
+vi.mock('@/stores/admission', () => ({ useAdmissionStore: () => mock.admissionStore }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ isViewer: () => false, operatorName: 'tester' }) }))
 vi.mock('@/stores/risk', () => ({ useRiskStore: () => ({ buysToday: 0 }) }))
 vi.mock('@/router', () => ({ router: { currentRoute: { value: { query: {} } } } }))
@@ -69,6 +71,8 @@ beforeEach(() => {
   mock.signal.mockResolvedValue({ id: '42', strategyVersionId: '9', book: 'paper', symbol: '600519.SH', side: 'buy', status: 'approved', validUntil: signalParams.validUntil, entryLow: 9.9, entryHigh: 10.1 })
   mock.place.mockImplementation(async (draft: { clientOrderId: string }) => ({ id: draft.clientOrderId, status: 'submitted', reason: '', ...draft }))
   mock.confirm.mockResolvedValue('ok')
+  // FE-T4：LIVE 可选性走 admission 信封——默认未授权（单测各自翻闸验放开路径）。
+  mock.admissionStore.liveEnabled = false
   // G7 通道状态默认正常；各用例按需要覆盖为降级/读取失败。
   mock.channel.mockResolvedValue([{ channel: 'sim', status: 'connected', since: '2026-10-14T09:30:00+08:00' }])
 })
@@ -130,8 +134,8 @@ describe('trade view contracts', () => {
     expect(wrapper!.text()).toContain('解除原信号关联')
   })
 
-  it('风控试算拦截时禁提交，摘要中标出拦截规则', async () => {
-    mock.preview.mockResolvedValue({ approved: false, blockRule: 'R04', reason: '单票仓位超限', volume: 0, adjusted: false, amount: 0, fee: 0, cashDelta: 0, hits: [{ code: 'R04', name: '单票仓位', pass: false, detail: '单票仓位超限' }] })
+  it('风控试算拦截时禁提交，摘要中标出拦截规则与明细（FE-T5 hits.detail 全显）', async () => {
+    mock.preview.mockResolvedValue({ approved: false, blockRule: 'R04', reason: '单票仓位超限', volume: 0, adjusted: false, amount: 0, fee: 0, cashDelta: 0, hits: [{ code: 'R04', name: '单票仓位', pass: false, detail: '个股持仓 12% 超上限 10%' }] })
     await mountView()
     await prepareSignal()
     await wrapper!.find('form').trigger('submit')
@@ -142,6 +146,8 @@ describe('trade view contracts', () => {
     const text = wrapper!.text()
     expect(text).toContain('风控试算拦截 R04')
     expect(text).toContain('未过规则')
+    // FE-T5：命中明细要跟 code/name 一起亮出来——只看 R04 答不出「为什么被拦」。
+    expect(text).toContain('R04 单票仓位：个股持仓 12% 超上限 10%')
     // 试算拦截留在面板状态里，提交按钮持续禁用。
     const submitButton = wrapper!.findAllComponents({ name: 'NtButton' }).find((button) => button.text().includes('提交委托'))
     expect(submitButton!.props('disabled')).toBe(true)
@@ -312,6 +318,60 @@ describe('trade view contracts', () => {
     await flushPromises()
     expect(mock.place).not.toHaveBeenCalled()
     expect(wrapper!.text()).toContain('此信号已有关联委托 original')
+  })
+
+  it('FE-T4：信封总闸开启后 LIVE 可选；提交顺序=试算→确认（带试算摘要与幂等键）→落单', async () => {
+    mock.admissionStore.liveEnabled = true
+    await mountView()
+    const accountSelect = wrapper!.findAllComponents(NtSelect)[0]!
+    expect((accountSelect.props('options') as { value: string; disabled?: boolean }[]).find((o) => o.value === 'LIVE')?.disabled).toBe(false)
+    accountSelect.vm.$emit('update:modelValue', 'LIVE')
+    await flushPromises()
+    wrapper!.findAllComponents(NtInput)[0]!.vm.$emit('update:modelValue', '600519.SH')
+    wrapper!.findAllComponents(NtInput)[1]!.vm.$emit('update:modelValue', '10')
+    wrapper!.findAllComponents(NtInput)[2]!.vm.$emit('update:modelValue', '100')
+    await wrapper!.vm.$nextTick()
+    await wrapper!.find('form').trigger('submit')
+    await flushPromises()
+    // FE-T1 顺序：确认必须发生在落单前那次全新试算之后（用户确认时已看到代价）。
+    expect(mock.confirm).toHaveBeenCalledTimes(1)
+    const lastPreview = mock.preview.mock.invocationCallOrder.at(-1)!
+    expect(mock.confirm.mock.invocationCallOrder[0]!).toBeGreaterThan(lastPreview)
+    expect(mock.confirm.mock.calls[0]![0]).toMatchObject({
+      clientOrderId: expect.stringMatching(/^manual-/),
+      previewAmount: 1000,
+      previewFee: 5.05,
+      previewCashDelta: -1005.05,
+    })
+    expect(mock.place).toHaveBeenCalledWith(expect.objectContaining({ account: 'LIVE', symbol: '600519.SH' }))
+  })
+
+  it('FE-T4：信封取数失败 fail-closed——总闸未开时 LIVE 恒禁（双真相收编，前端不再写死）', async () => {
+    await mountView()
+    const options = wrapper!.findAllComponents(NtSelect)[0]!.props('options') as { value: string; disabled?: boolean }[]
+    expect(options.find((o) => o.value === 'LIVE')?.disabled).toBe(true)
+    wrapper!.findAllComponents(NtSelect)[0]!.vm.$emit('update:modelValue', 'LIVE')
+    await flushPromises()
+    // 纠回 SIM：前端自锁走后端信封，不迷信下拉 disabled。
+    expect((wrapper!.findAllComponents(NtSelect)[0]!.props('modelValue'))).toBe('SIM')
+  })
+
+  it('FE-T6：头部当日盈亏分解条——已实现/浮动/当日三段显口径值，缺口径显「—」不冒充 0', async () => {
+    mock.account.mockImplementation(async (account: string) => ({ account, cash: 100_000, equity: 100_000, realized: 120, unrealized: -30, dayPnl: 90, paperDays: 27, openHalted: false, haltReason: '' }))
+    await mountView()
+    const strip = wrapper!.find('.pnl-strip')
+    expect(strip.exists()).toBe(true)
+    expect(strip.text()).toContain('当日 +90.00')
+    expect(strip.text()).toContain('已实现 +120.00')
+    expect(strip.text()).toContain('浮动 -30.00')
+  })
+
+  it('FE-T6：账户盈亏字段未返回显「—」不冒充 0（没取到≠0）', async () => {
+    await mountView()
+    const strip = wrapper!.find('.pnl-strip')
+    expect(strip.text()).toContain('当日 —')
+    expect(strip.text()).toContain('已实现 —')
+    expect(strip.text()).toContain('浮动 —')
   })
 
   it('模拟通道徽标呈现服务端状态', async () => {

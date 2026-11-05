@@ -1,0 +1,16 @@
+# NovaTrader 多二进制运行镜像（由 build_image.sh 在 build-ctx 生成等价文件）
+ARG ALPINE_MIRROR=mirrors.tuna.tsinghua.edu.cn
+FROM alpine:latest
+ARG ALPINE_MIRROR
+RUN sed -i "s|dl-cdn.alpinelinux.org|${ALPINE_MIRROR}|g" /etc/apk/repositories && \
+    apk add --no-cache ca-certificates tzdata wget && \
+    adduser -D -u 10001 nt && \
+    mkdir -p /app/bin /app/configs /app/logs /app/secrets && \
+    chown -R nt:nt /app
+WORKDIR /app
+COPY bin/ /app/bin/
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh /app/bin/*
+USER nt
+EXPOSE 2001 2002 2003
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -5,7 +5,9 @@
  * - 表单 symbol 默认随全局 symbol store，布局不动；
  * - XD buy/sell 助记符直达：经 panel-bus 预填方向与代码（P0-2 修复，与 TradeView.applyOrderParams 同款）；
  * - 提交前强制两段试算：停笔预览（防抖）+ 落单前一次全新试算；试算拦截/不可用都不落单；
- * - LIVE 账本永不放开（执行权限未验收，与 TradeView liveAllowed 同口径）；
+ * - 确认顺序对齐 FE-T1：试算 → 确认（带试算摘要与幂等键）→ 提交；
+ * - LIVE 可选性只认 admission 信封（FE-T4，与 TradeView 同店单源；总闸未开 fail-closed）；
+ * - 闸门对齐 TradeView 完整口径（FE-T3）：风控就绪+账本读到/新鲜/同源，缺闸不提交；
  * - 授权徽标常显；下单回报 toast 必带原因，网络层异常显「待核」并指引去交易面板核对。
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -15,6 +17,7 @@ import { createAlertRule, type AlertRuleDraft } from '@/api/alert-rules'
 import { getOpsReadiness, type OpsReadiness } from '@/api/ops'
 import type { OrderDraft } from '@/api/trade'
 import { useAccountStore } from '@/stores/account'
+import { useAdmissionStore } from '@/stores/admission'
 import { useAuthStore } from '@/stores/auth'
 import { useRiskStore } from '@/stores/risk'
 import { useSymbolStore } from '@/stores/symbol'
@@ -35,6 +38,7 @@ import { deskNotify } from '@/utils/notify'
 import { openDeeplink } from '@/utils/deeplink'
 import { serverNow } from '@/utils/server-clock'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
+import { normalizeBook } from '@/view/trade-draft'
 import { useToast } from '@/ui/useToast'
 import { isLive } from '@/ws/hub'
 import { getWorkbench } from '@/workspace/inject'
@@ -56,8 +60,9 @@ const PREFS_ALLOW = { tab: ['order', 'open', 'all', 'hold'] } as const
 const tab = ref<TabId>((loadPanelPrefs(PREFS_KEY, PREFS_ALLOW).tab as TabId | undefined) ?? 'order')
 watch([tab], () => savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { tab: tab.value }))
 
-/** 实盘执行权限：与 TradeView 同源——连续运行证据只供核验，不授予权限；通道验收前恒 false。 */
-const liveAllowed = computed(() => false)
+/** FE-T4：LIVE 可选性只认 admission 信封总闸（与 TradeView 同店单源）；信封取数失败即 fail-closed 不可选，不再前端写死。 */
+const admission = useAdmissionStore()
+const liveAllowed = computed(() => admission.liveEnabled)
 const book = computed(() => (accountStore.book === 'LIVE' ? 'LIVE' : 'SIM'))
 
 const form = reactive({ symbol: symbolStore.code, side: 'buy' as 'buy' | 'sell', price: '', volume: '' })
@@ -372,6 +377,12 @@ const submitBlock = computed(() => {
   if (form.side === 'buy' && (risk.ready && risk.killActive)) return '急停已触发，不能新买入'
   if (form.side === 'buy' && accountStore.openHalted) return accountStore.haltReason || '账户已停止新开仓'
   if (book.value === 'LIVE' && !liveAllowed.value) return '实盘执行权限尚未开放，仅支持 SIM 委托'
+  /* FE-T3 对齐 TradeView 完整闸门口径：风控就绪 + 账本读到/新鲜/同源（此前只查急停与开仓锁，缺这三闸——
+     下单条与全量订单中心两条提交链路闸门不齐，本会话收编同一口径）。 */
+  if (!risk.ready || !risk.checkedAt || serverNow() - risk.checkedAt > 30_000) return '风控状态未读到最新结果，暂不能提交'
+  if (!accountStore.accountOk || !accountStore.positionsOk) return '账户或持仓未读到最新结果，暂不能提交'
+  if (!accountStore.checkedAt || serverNow() - accountStore.checkedAt > 30_000) return '账本读数超过 30 秒未刷新，暂不能提交'
+  if (accountStore.snapshot && normalizeBook(accountStore.snapshot.account) !== normalizeBook(book.value)) return '账户响应与当前账本不一致，暂不能提交'
   if (previewError.value) return `试算不可用，暂不放开提交：${previewError.value}`
   if (previewBlocked.value) {
     return `风控试算未放行${previewBlocked.value.blockRule ? `（${previewBlocked.value.blockRule}）` : ''}：${previewBlocked.value.reason || '请调整委托后重试'}`
@@ -402,12 +413,23 @@ async function submit() {
   try {
     // 先刷新账本与风控的最新读数，再按同一草稿编号重跑试算（不落单不留痕）。
     await Promise.all([accountStore.refresh(), risk.refresh()])
-    if (draft.account === 'LIVE') {
-      const reply = await askConfirm(draft, true)
-      if (reply !== 'ok') {
-        submitHint.value = '实盘确认已作废，委托未提交'
-        return
-      }
+    // FE-T3：落单前复核账本/风控新鲜度与一致性（对齐 TradeView submissionBlock 的同一组闸——
+    // 按钮禁用只是 UI，回车/热键路径也得被同一口径拦下；试算闸由下方全新试算兜底，不重复判）。
+    if (!risk.ready || !risk.checkedAt || serverNow() - risk.checkedAt > 30_000) {
+      submitError.value = '风控状态未读到最新结果，暂不能提交'
+      return
+    }
+    if (!accountStore.accountOk || !accountStore.positionsOk) {
+      submitError.value = '账户或持仓未读到最新结果，暂不能提交'
+      return
+    }
+    if (!accountStore.checkedAt || serverNow() - accountStore.checkedAt > 30_000) {
+      submitError.value = '账本读数超过 30 秒未刷新，暂不能提交'
+      return
+    }
+    if (accountStore.snapshot && normalizeBook(accountStore.snapshot.account) !== normalizeBook(book.value)) {
+      submitError.value = '账户响应与当前账本不一致，暂不能提交'
+      return
     }
     let pv: PreviewReply
     try {
@@ -421,6 +443,14 @@ async function submit() {
     if (!pv.approved) {
       submitError.value = `风控试算未放行${pv.blockRule ? `（${pv.blockRule}）` : ''}：${pv.reason || '未给出原因'}`
       return
+    }
+    // FE-T1：确认顺序=试算→确认（弹层带试算摘要与幂等键）→提交——用户确认时必须已看到金额/费用/缩量。
+    if (draft.account === 'LIVE') {
+      const reply = await askConfirm({ ...draft, previewAmount: pv.amount, previewFee: pv.fee, previewCashDelta: pv.cashDelta, previewAdjusted: pv.adjusted, previewVolume: pv.volume }, true)
+      if (reply !== 'ok') {
+        submitHint.value = '实盘确认已作废，委托未提交'
+        return
+      }
     }
     // 提交的门闩：此时表单若已改（停笔输入），按新输入不算数，交给用户重新核对。
     if (draft.symbol !== form.symbol.trim() || draft.side !== form.side || draft.price !== priceNum.value || draft.volume !== volumeNum.value || draft.account !== book.value) {
@@ -510,9 +540,14 @@ function orderStatusEntry(status: string | null | undefined) {
   return null
 }
 
+/** FE-T4：授权徽标状态词走 status-map 册（auth.sim/auth.live/auth.unauthorized），不自封文案。 */
 const badge = computed(() => {
-  if (book.value === 'LIVE') return { text: 'LIVE · 未授权', tone: 'danger' as const, note: '实盘执行权限未验收，提交保持禁用' }
-  return { text: 'SIM 模拟', tone: 'accent' as const, note: '模拟账本撮合，不等同实盘成交' }
+  if (book.value === 'LIVE') {
+    return liveAllowed.value
+      ? { text: statusOf('auth.live').text, tone: statusOf('auth.live').tone, note: '实盘总闸已开（admission 信封）；新委托仍走确认与风控试算' }
+      : { text: `LIVE · ${statusOf('auth.unauthorized').text}`, tone: statusOf('auth.unauthorized').tone, note: '实盘总闸未开：经交易面板的准入证据与授权开关核验' }
+  }
+  return { text: statusOf('auth.sim').text, tone: statusOf('auth.sim').tone, note: '模拟账本撮合，不等同实盘成交' }
 })
 
 const REFRESH_MS = 10_000
@@ -525,7 +560,8 @@ let readinessTimer: ReturnType<typeof setInterval> | undefined
 const bookFreshAt = ref<number | null>(null)
 
 function refreshBook() {
-  void Promise.allSettled([accountStore.refresh(), trade.refresh(book.value)]).then((settled) => {
+  /* FE-T3：账本/风控同一轮新鲜度——submitBlock 三闸的输入同源刷新（缺风险拍，风控闸只剩「急停」半边）。 */
+  void Promise.allSettled([accountStore.refresh(), trade.refresh(book.value), risk.refresh()]).then((settled) => {
     if (disposed) return
     if (settled.some((s) => s.status === 'fulfilled')) bookFreshAt.value = serverNow()
   })
@@ -541,6 +577,8 @@ onMounted(() => {
   if (staged) applyOrderParams(staged)
   refreshBook()
   void refreshReadiness()
+  /* FE-T4：LIVE 可选性走 admission 信封——挂载即开 30s 静候档轮询（幂等，TradeView/PaperAdmission 同店）。 */
+  admission.startPolling()
   refreshTimer = setInterval(() => {
     if (disposed || document.hidden || !isLive()) return
     void trade.refresh(book.value)
