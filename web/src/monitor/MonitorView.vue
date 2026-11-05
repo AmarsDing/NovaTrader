@@ -5,7 +5,7 @@
  * 版面：顶部 HUD 数字带 + 中间可拖拽画布（接入 → 研判 → 裁决）+ 底部终端带。
  * 画布只认 scene-model 产出的 SceneGraph，本文件不再自己排坐标。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getConfigSnapshot, saveConfig, previewConfig, type ConfigSnapshot, type ConfigPreview } from '@/api/config'
 import ConfigRevisionPanel from '@/view/ConfigRevisionPanel.vue'
@@ -47,6 +47,8 @@ import EnvironmentExplorer from './EnvironmentExplorer.vue'
 import { bandCountdown, bandSegments, bandSpec, detectBand, hudCells, shanghaiWall } from './timeband'
 import type { TapeRow } from './tape'
 import type { Pulse } from './types'
+import { createModalFocus } from '@/ui/modal-focus'
+import LimitFocus from './LimitFocus.vue'
 import './monitor.css'
 
 const router = useRouter()
@@ -658,6 +660,52 @@ function closeDetail() {
   selectedId.value = ''
   selectedEdgeId.value = ''
 }
+
+/* 详情弹层焦点：打开入层、Tab 圈定、Esc 只关这一层、关闭归位到触发节点/连线。 */
+const limitFocusOpen = ref(false)
+let limitTrigger: HTMLElement | null = null
+
+/* 双层弹层不能同时抢 Esc：开涨停聚焦时把综合扫描的焦点圈定让出去，
+ * 关闭后再把焦点交回综合扫描层与触发按钮，保证「Esc 只关顶层」。 */
+function openLimitFocus(event: Event) {
+  limitTrigger = (event.currentTarget as HTMLElement | null) ?? null
+  limitFocusOpen.value = true
+  popFocus.deactivate(false)
+}
+
+async function closeLimitFocus() {
+  limitFocusOpen.value = false
+  await nextTick()
+  if (picked.value) popFocus.activate(popSheet.value, closeDetail, { fallback: limitTrigger })
+}
+
+const popSheet = ref<HTMLElement | null>(null)
+const popFocus = createModalFocus()
+watch(
+  () => Boolean(picked.value || edgeDetail.value),
+  async (open) => {
+    if (open) {
+      await nextTick()
+      popFocus.activate(popSheet.value, closeDetail)
+    } else {
+      popFocus.deactivate()
+    }
+  },
+)
+
+/* 健康分明细是同页轻弹层：开时入层，关时归位到健康徽标。 */
+const healthPop = ref<HTMLElement | null>(null)
+const healthFocus = createModalFocus()
+watch(healthOpen, async (open) => {
+  if (open) {
+    await nextTick()
+    healthFocus.activate(healthPop.value, () => {
+      healthOpen.value = false
+    })
+  } else {
+    healthFocus.deactivate()
+  }
+})
 </script>
 
 <template>
@@ -672,7 +720,15 @@ function closeDetail() {
         <button type="button" class="nt-health__badge" :data-tone="health.tone" @click="healthOpen = !healthOpen">
           {{ health.score == null ? '健康待判定' : `健康 ${health.score}` }} · 观测 {{ health.measuredCount }}/{{ health.totalCount }}<i class="dot" :class="`is-${health.tone}`"></i>
         </button>
-        <section v-if="healthOpen" class="nt-health__pop" role="dialog" aria-label="健康分明细">
+        <section
+          v-if="healthOpen"
+          ref="healthPop"
+          class="nt-health__pop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="健康分明细"
+          tabindex="-1"
+        >
           <h3>{{ health.score == null ? '健康待判定' : `健康分 ${health.score}` }} · 已观测 {{ health.measuredCount }}/{{ health.totalCount }}</h3>
           <ul>
             <li v-for="part in health.parts" :key="part.key" :data-measured="part.measured">
@@ -761,80 +817,94 @@ function closeDetail() {
       @flash="onTapeFlash"
     />
 
-    <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true" @click.self="closeDetail">
-      <section class="nt-pop__sheet" :class="{ 'nt-pop__sheet--deep': detailPanel }">
+    <div v-if="picked" class="nt-pop" role="dialog" aria-modal="true" aria-labelledby="nt-pop-title" @click.self="closeDetail">
+      <section
+        ref="popSheet"
+        class="nt-pop__sheet nt-pop__sheet--node"
+        :class="{ 'nt-pop__sheet--deep': detailPanel }"
+        tabindex="-1"
+      >
         <header>
           <i class="dot" :class="`is-${picked.status}`"></i>
           <div>
-            <h2>{{ detailWhere === 'runtime' ? dutyOf(picked.title).name : picked.title }}</h2>
+            <h2 id="nt-pop-title">{{ detailWhere === 'runtime' ? dutyOf(picked.title).name : picked.title }}</h2>
             <p>{{ detailWhere === 'runtime' ? dutyOf(picked.title).role : picked.sub || picked.detail }}</p>
           </div>
           <button type="button" @click="closeDetail">关闭</button>
         </header>
-        <p class="nt-pop__face" :class="picked.tone">{{ picked.face || statusWordOf(picked.status) || statusOf('monitor.gap').text }}</p>
-        <DetailSheet v-if="detailPanel" :panel="detailPanel" @exit="onDetailExit" />
-        <div v-else class="nt-pop__grid">
-          <article v-for="card in cards" :key="card.id">
-            <span>{{ card.title }}</span>
-            <strong :class="card.tone">{{ card.face }}</strong>
-            <small v-if="card.sub">{{ card.sub }}</small>
-            <button
-              v-if="card.id.startsWith('symbol:') || card.id === 'action:trade' || card.id.startsWith('book:')"
-              type="button"
-              @click="select(card.id)"
-            >
-              打开
-            </button>
-          </article>
+        <div class="nt-pop__body">
+          <p class="nt-pop__face" :class="picked.tone">{{ picked.face || statusWordOf(picked.status) || statusOf('monitor.gap').text }}</p>
+          <!-- 职责拆分：综合扫描只留市场诊断；个股层（封板/开板/连板/封单/板块）走独立「涨停聚焦」。 -->
+          <button v-if="picked.id === 'post:scan'" type="button" class="nt-pop__focus-link" @click="openLimitFocus">
+            查看涨停聚焦（个股层）
+          </button>
+          <DetailSheet v-if="detailPanel" :panel="detailPanel" @exit="onDetailExit" />
+          <div v-else class="nt-pop__grid">
+            <article v-for="card in cards" :key="card.id">
+              <span>{{ card.title }}</span>
+              <strong :class="card.tone">{{ card.face }}</strong>
+              <small v-if="card.sub">{{ card.sub }}</small>
+              <button
+                v-if="card.id.startsWith('symbol:') || card.id === 'action:trade' || card.id.startsWith('book:')"
+                type="button"
+                @click="select(card.id)"
+              >
+                打开
+              </button>
+            </article>
+          </div>
+          <form v-if="configFields.length" class="nt-pop__form" @submit.prevent="saveDraft">
+            <h3>配置</h3>
+            <label v-for="field in configFields" :key="field.key">
+              <span>{{ field.label }}</span>
+              <select v-if="field.kind === 'select'" v-model="draft[field.key]">
+                <option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </select>
+              <select v-else-if="field.kind === 'bool'" v-model="draft[field.key]">
+                <option value="true">打开</option>
+                <option value="false">关闭</option>
+              </select>
+              <input v-else v-model="draft[field.key]" :type="field.kind === 'secret' ? 'password' : 'text'" :placeholder="field.hint" />
+            </label>
+            <ConfigRevisionPanel compact :snapshot="configSnapshot" :preview="configImpact" @refresh="refreshConfigReceipts" />
+            <button type="submit" :disabled="saving || !configSnapshot">{{ saving ? '处理中' : configImpact ? '确认保存新版本' : '预览配置变更' }}</button>
+            <button type="button" :disabled="saving" @click="loadDraft(configFields)">重新读取配置</button>
+            <small>{{ configMsg || '留空的项不会覆盖原来的配置' }}</small>
+          </form>
+          <section v-if="detailWhere === 'runtime'" class="nt-pop__log">
+            <h3>运行记录</h3>
+            <p>当前 {{ statusWordOf(picked.status) || picked.status }} · {{ cards[0]?.sub || '没有更多状态' }}</p>
+            <p v-if="serviceLogs.length === 0">审计里没有这条服务的操作记录。这里只能重新检查它是否在线，没有启停开关。</p>
+            <ul v-else>
+              <li v-for="item in serviceLogs" :key="item.id">{{ item.time }} {{ item.action }} {{ item.target }}</li>
+            </ul>
+            <button type="button" @click="pull">重新检查</button>
+          </section>
         </div>
-        <form v-if="configFields.length" class="nt-pop__form" @submit.prevent="saveDraft">
-          <h3>配置</h3>
-          <label v-for="field in configFields" :key="field.key">
-            <span>{{ field.label }}</span>
-            <select v-if="field.kind === 'select'" v-model="draft[field.key]">
-              <option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-            <select v-else-if="field.kind === 'bool'" v-model="draft[field.key]">
-              <option value="true">打开</option>
-              <option value="false">关闭</option>
-            </select>
-            <input v-else v-model="draft[field.key]" :type="field.kind === 'secret' ? 'password' : 'text'" :placeholder="field.hint" />
-          </label>
-          <ConfigRevisionPanel compact :snapshot="configSnapshot" :preview="configImpact" @refresh="refreshConfigReceipts" />
-          <button type="submit" :disabled="saving || !configSnapshot">{{ saving ? '处理中' : configImpact ? '确认保存新版本' : '预览配置变更' }}</button>
-          <button type="button" :disabled="saving" @click="loadDraft(configFields)">重新读取配置</button>
-          <small>{{ configMsg || '留空的项不会覆盖原来的配置' }}</small>
-        </form>
-        <section v-if="detailWhere === 'runtime'" class="nt-pop__log">
-          <h3>运行记录</h3>
-          <p>当前 {{ statusWordOf(picked.status) || picked.status }} · {{ cards[0]?.sub || '没有更多状态' }}</p>
-          <p v-if="serviceLogs.length === 0">审计里没有这条服务的操作记录。这里只能重新检查它是否在线，没有启停开关。</p>
-          <ul v-else>
-            <li v-for="item in serviceLogs" :key="item.id">{{ item.time }} {{ item.action }} {{ item.target }}</li>
-          </ul>
-          <button type="button" @click="pull">重新检查</button>
-        </section>
       </section>
     </div>
 
-    <div v-else-if="edgeDetail" class="nt-pop" role="dialog" aria-modal="true" aria-label="连线检视" @click.self="closeDetail">
-      <section class="nt-pop__sheet nt-pop__sheet--deep">
+    <div v-else-if="edgeDetail" class="nt-pop" role="dialog" aria-modal="true" aria-labelledby="nt-edge-title" @click.self="closeDetail">
+      <section ref="popSheet" class="nt-pop__sheet nt-pop__sheet--node" tabindex="-1">
         <header>
           <i class="dot is-idle"></i>
           <div>
-            <h2>{{ edgeDetail.title }}</h2>
+            <h2 id="nt-edge-title">{{ edgeDetail.title }}</h2>
             <p>连线检视 · 结构关系与真实观测分别说明</p>
           </div>
           <button type="button" @click="closeDetail">关闭</button>
         </header>
-        <nav aria-label="查看通道端点">
-          <button type="button" class="nt-link" @click="select(edgeDetail.edge.from)">查看上游节点</button>
-          <button type="button" class="nt-link" @click="select(edgeDetail.edge.to)">查看下游节点</button>
-        </nav>
-        <DetailSheet :panel="edgeDetail.panel" />
+        <div class="nt-pop__body">
+          <nav aria-label="查看通道端点">
+            <button type="button" class="nt-link" @click="select(edgeDetail.edge.from)">查看上游节点</button>
+            <button type="button" class="nt-link" @click="select(edgeDetail.edge.to)">查看下游节点</button>
+          </nav>
+          <DetailSheet :panel="edgeDetail.panel" />
+        </div>
       </section>
     </div>
 
+    <LimitFocus :open="limitFocusOpen" @close="closeLimitFocus" />
     <AlertCenter :extra="channelAlert" />
   </div>
 </template>

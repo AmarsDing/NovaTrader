@@ -74,6 +74,63 @@ const host = ref<HTMLElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 const hoverId = ref('')
 const hoverEdgeId = ref('')
+/* 节点 hover 摘要：160ms 开、140ms 关；只读节点自身字段，不拉累积股票长名单。
+ * 摘要不参与布局，也不会触发缩放/平移/重排——鼠标位置只用于 fixed 定位。 */
+const hoverCard = ref<{
+  id: string
+  title: string
+  role: string
+  face: string
+  sub: string
+  fresh?: { text: string; tone: string }
+  status: string
+  x: number
+  y: number
+} | null>(null)
+let hoverOpenTimer: ReturnType<typeof setTimeout> | undefined
+let hoverCloseTimer: ReturnType<typeof setTimeout> | undefined
+let hoverIdLast = ''
+
+const STATUS_WORD: Record<string, string> = { live: '正常', idle: '待机', gap: '未观测', down: '异常', attention: '关注' }
+
+function clearHoverTimers() {
+  clearTimeout(hoverOpenTimer)
+  clearTimeout(hoverCloseTimer)
+}
+
+function scheduleHoverCard(id: string, x: number, y: number) {
+  if (hoverCard.value && hoverCard.value.id === id) {
+    hoverCard.value = { ...hoverCard.value, x, y }
+    return
+  }
+  if (id === hoverIdLast && !hoverCard.value) return
+  hoverIdLast = id
+  clearHoverTimers()
+  if (!id) {
+    hoverCloseTimer = setTimeout(() => {
+      hoverCard.value = null
+      hoverIdLast = ''
+    }, 140)
+    return
+  }
+  hoverOpenTimer = setTimeout(() => {
+    const item = nodes.find((n) => n.id === id)
+    if (!item) return
+    const left = Math.max(8, Math.min(x + 16, window.innerWidth - 308))
+    const top = Math.max(8, Math.min(y + 16, window.innerHeight - 188))
+    hoverCard.value = {
+      id,
+      title: item.node.title,
+      role: item.role,
+      face: item.node.face,
+      sub: item.node.sub,
+      fresh: item.node.fresh ? { text: item.node.fresh.text, tone: item.node.fresh.tone } : undefined,
+      status: STATUS_WORD[item.node.status] ?? item.node.status,
+      x: left,
+      y: top,
+    }
+  }, 160)
+}
 /** S3：指针悬停在漏斗光带上（点它 = 选中扫描牌，详情窗里有同一组六层数字） */
 const funnelHover = ref(false)
 const failed = ref(false)
@@ -331,6 +388,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopped = true
+  clearHoverTimers()
   renderLoop.dispose()
   persistOffsets()
   observer?.disconnect()
@@ -438,8 +496,13 @@ function onPointerMove(event: PointerEvent) {
     hoverId.value = hitNode(nodes, world)
     funnelHover.value = !hoverId.value && inRect(world, layout.funnel?.hit ?? null)
     hoverEdgeId.value = !hoverId.value && !funnelHover.value ? hitEdge(edgeCurves, world, 6 / view.scale) : ''
+    scheduleHoverCard(hoverId.value, event.clientX, event.clientY)
     return
   }
+  /* 拖动/平移期间不弹摘要，避免遮挡与误读。 */
+  clearHoverTimers()
+  hoverIdLast = ''
+  hoverCard.value = null
   const dx = point.x - pointer.startX
   const dy = point.y - pointer.startY
   if (Math.abs(dx) + Math.abs(dy) > 4) pointer.moved = true
@@ -1125,9 +1188,25 @@ defineExpose({ resetLayout })
     <!-- 画布是无焦点 2D 位图，键盘与读屏进不去：给一份等价的节点按钮清单，选中行为与点击画布一致 -->
     <ul class="nt-sr-only" aria-label="画布节点清单">
       <li v-for="item in graph.nodes" :key="item.id">
-        <button type="button" @click="emit('select', item.id)">{{ item.title }}<template v-if="item.face">：{{ item.face }}</template></button>
+        <button type="button" @click="emit('select', item.id)" @keydown.enter.prevent="emit('select', item.id)" @keydown.space.prevent="emit('select', item.id)">
+          {{ item.title }}<template v-if="item.face">：{{ item.face }}</template>
+        </button>
       </li>
     </ul>
+    <div
+      v-if="hoverCard"
+      class="nt-stage__hint"
+      :style="{ left: `${hoverCard.x}px`, top: `${hoverCard.y}px` }"
+      role="tooltip"
+    >
+      <p class="nt-stage__hint-title">{{ hoverCard.title }}<span>{{ hoverCard.role }}</span></p>
+      <dl class="nt-stage__hint-rows">
+        <div><dt>核心读数</dt><dd>{{ hoverCard.face || '未采集' }}</dd></div>
+        <div><dt>变化量</dt><dd>{{ hoverCard.sub || '未采集' }}</dd></div>
+        <div><dt>数据时间</dt><dd>{{ hoverCard.fresh?.text || '未采集' }}</dd></div>
+        <div><dt>来源状态</dt><dd>{{ hoverCard.status }}</dd></div>
+      </dl>
+    </div>
     <div v-if="failed" class="nt-stage__failed">画布不可用，监控链路改读侧栏与终端带</div>
   </div>
 </template>

@@ -198,6 +198,7 @@ export async function listLimits(direction: 'UP' | 'DOWN' = 'UP'): Promise<Limit
     limitPrice: num(pick(raw, 'limitPrice', 'limit_price')),
     firstSealAt: pick<string>(raw, 'firstSealAt', 'first_seal_at') || '',
     lastSealAt: pick<string>(raw, 'lastSealAt', 'last_seal_at') || '',
+    lastBreakAt: pick<string>(raw, 'lastBreakAt', 'last_break_at') || undefined,
     openCount: num(pick(raw, 'openCount', 'open_count')),
     sealAmount: num(pick(raw, 'sealAmount', 'seal_amount')),
     consecutive: num(pick(raw, 'consecutive')),

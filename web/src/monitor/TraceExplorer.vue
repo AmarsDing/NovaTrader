@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { createModalFocus } from '@/ui/modal-focus'
 import {
   DISPOSITION_ACTIONS,
   dispositionLabel,
@@ -77,6 +78,21 @@ function close() {
   busy.value = false
   overlay.close()
 }
+/* 追踪弹层：打开入层、Tab 圈定、Esc 只关本层、关闭归位到触发按钮。 */
+const sheetEl = ref<HTMLElement | null>(null)
+const sheetFocus = createModalFocus()
+watch(
+  () => overlay.visible.value,
+  async (open) => {
+    if (open) {
+      await nextTick()
+      sheetFocus.activate(sheetEl.value, close)
+    } else {
+      sheetFocus.deactivate()
+    }
+  },
+)
+
 onBeforeUnmount(() => {
   generation++
   controller?.abort()
@@ -128,7 +144,7 @@ function shortEvent(id: string): string {
       aria-label="持久事件追踪"
       @click.self="close"
     >
-      <section class="nt-pop__sheet nt-pop__sheet--deep trace-sheet">
+      <section ref="sheetEl" class="nt-pop__sheet nt-pop__sheet--wide trace-sheet" tabindex="-1">
         <header>
           <div>
             <h2>事件追踪与投递状态</h2>
@@ -136,7 +152,8 @@ function shortEvent(id: string): string {
           </div>
           <button type="button" @click="close">关闭</button>
         </header>
-        <form @submit.prevent="load">
+        <div class="nt-pop__body">
+          <form @submit.prevent="load">
           <input
             v-model="query"
             aria-label="精确trace_id"
@@ -267,14 +284,12 @@ function shortEvent(id: string): string {
             </li>
           </ol>
         </template>
+        </div>
       </section>
     </div></Teleport
   >
 </template>
 <style scoped>
-.trace-sheet {
-  max-width: 900px;
-}
 form {
   display: flex;
   gap: 8px;

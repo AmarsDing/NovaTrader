@@ -370,6 +370,68 @@
   min-height: 120px;
 }
 
+/* hover 摘要：fixed 定位（视口坐标，避免被画布容器/终端带裁剪），且不吃指针事件。 */
+.nt-stage__hint {
+  position: fixed;
+  z-index: 1200;
+  width: 292px;
+  max-height: 180px;
+  overflow: hidden;
+  padding: 8px 10px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: var(--nt-radius-m);
+  background: var(--nt-bg-glass, var(--nt-bg-1));
+  color: var(--nt-text-1);
+  box-shadow: var(--nt-shadow-depth);
+  pointer-events: none;
+}
+
+.nt-stage__hint-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.nt-stage__hint-title span {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--nt-text-3);
+  overflow-wrap: anywhere;
+}
+
+.nt-stage__hint-rows {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.nt-stage__hint-rows > div {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nt-stage__hint-rows dt {
+  flex: none;
+  width: 56px;
+  font-size: 11px;
+  color: var(--nt-text-3);
+}
+
+.nt-stage__hint-rows dd {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 16px;
+  font-family: var(--nt-font-mono);
+  overflow-wrap: anywhere;
+}
+
 .nt-stage__failed {
   position: absolute;
   inset: 0;
@@ -918,20 +980,28 @@ button.nt-tape__row:disabled:hover {
 
 /* ---- 详情弹层 ---- */
 
+/* 统一弹层骨架：遮罩裁切 → 面板列布局（header/footer 固定，body 仅纵向滚动）。
+ * 溢出修复是结构级的：所有直系子元素 min-width:0，栅格列 minmax(0,1fr)，
+ * 非表格长文本 overflow-wrap:anywhere；不用「外层 overflow-x:hidden」掩盖 min-content 撑宽。 */
 .nt-pop {
   position: fixed;
   inset: 0;
   z-index: 40;
   display: grid;
   place-items: center;
-  padding: 28px;
+  padding: 24px;
+  overflow: hidden;
   background: var(--nt-scrim);
 }
 
 .nt-pop__sheet {
-  width: min(660px, 100%);
-  max-height: min(80vh, 780px);
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  width: min(720px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 18px;
   border: 1px solid var(--nt-glass-border);
   border-radius: var(--nt-radius-l);
@@ -939,12 +1009,101 @@ button.nt-tape__row:disabled:hover {
   backdrop-filter: var(--nt-glass-filter);
   box-shadow: var(--nt-edge-light), var(--nt-shadow-depth), var(--nt-glow-soft);
   color: var(--nt-text-1);
-  scrollbar-width: thin;
 }
 
-/* S5 深化牌：六张表要横排得下，放宽一档 */
+/* 尺寸档（宽/高）：普通节点 720/560；涨停 840/560；综合扫描 960/560；环境与追踪 1120/560。 */
+.nt-pop__sheet--node {
+  width: min(720px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+}
+
+.nt-pop__sheet--limit {
+  width: min(840px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+}
+
+/* S5 深化牌：六张表要横排得下，放宽一档（综合扫描 960/560） */
 .nt-pop__sheet--deep {
-  width: min(960px, 100%);
+  width: min(960px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+}
+
+.nt-pop__sheet--wide {
+  width: min(1120px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+}
+
+/* 头部固定、底部随内容；只有 body 纵向滚动，横向禁止滚动。 */
+.nt-pop__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+
+.nt-pop__body > *,
+.nt-pop__sheet > *,
+.nt-pop__grid > *,
+.nt-pop__grid > article,
+.nt-pop__form,
+.nt-pop__log,
+.nt-pop__grid section {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nt-pop__sheet > header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.nt-pop__focus-link {
+  align-self: flex-start;
+  margin: 2px 0 10px;
+  padding: 4px 12px;
+  border: 1px solid var(--nt-border-2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nt-text-1);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nt-pop__face,
+.nt-pop__grid article small,
+.nt-pop__log p,
+.nt-pop__form label,
+.nt-pop__form small {
+  overflow-wrap: anywhere;
+}
+
+/* <640px：取消固定宽高，全屏化（375 档不出现任何横向溢出）。 */
+@media (max-width: 640px) {
+  .nt-pop {
+    padding: 0;
+  }
+
+  .nt-pop__sheet,
+  .nt-pop__sheet--node,
+  .nt-pop__sheet--limit,
+  .nt-pop__sheet--deep,
+  .nt-pop__sheet--wide {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
 }
 
 .nt-pop__sheet header {

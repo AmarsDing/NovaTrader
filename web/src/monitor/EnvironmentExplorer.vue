@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { createModalFocus } from '@/ui/modal-focus'
 import { getEnvironment, type EnvironmentSnapshot } from '@/api/environment'
 import { useOverlay } from '@/ui/useOverlay'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
@@ -61,6 +62,21 @@ function close() {
   stop()
   overlay.close()
 }
+/* 环境弹层与其它详情共用同一套焦点规则。 */
+const sheetEl = ref<HTMLElement | null>(null)
+const sheetFocus = createModalFocus()
+watch(
+  () => overlay.visible.value,
+  async (open) => {
+    if (open) {
+      await nextTick()
+      sheetFocus.activate(sheetEl.value, close)
+    } else {
+      sheetFocus.deactivate()
+    }
+  },
+)
+
 onBeforeUnmount(stop)
 </script>
 <template>
@@ -75,7 +91,7 @@ onBeforeUnmount(stop)
       aria-label="环境与消费者观测"
       @click.self="close"
     >
-      <section class="nt-pop__sheet nt-pop__sheet--deep environment-sheet">
+      <section ref="sheetEl" class="nt-pop__sheet nt-pop__sheet--wide environment-sheet" tabindex="-1">
         <header>
           <div>
             <span class="eyebrow">ENVIRONMENT / CONSUMER TELEMETRY</span>
@@ -83,7 +99,8 @@ onBeforeUnmount(stop)
           </div>
           <button type="button" @click="close">关闭</button>
         </header>
-        <p class="note">
+        <div class="nt-pop__body">
+          <p class="note">
           计数按本实例最近窗口采样。收到通知、进入队列、处理返回分别展示；模型规则降级计入跳过，输出丢弃计入拒绝。完成范围以每项声明为准。
         </p>
         <button type="button" :disabled="busy" @click="load">{{ busy ? '采样中' : '重新采样' }}</button>
@@ -164,14 +181,13 @@ onBeforeUnmount(stop)
           </article>
           <p class="note">环境覆盖边界：{{ data.unsupported.map(label).join(' · ') || '未声明' }}</p>
         </template>
+        </div>
       </section>
     </div></Teleport
   >
 </template>
 <style scoped>
-.environment-sheet {
-  width: min(1180px, 96vw);
-}
+
 header {
   display: flex;
   justify-content: space-between;

@@ -56,7 +56,8 @@ function rowTone(row: DetailRow): string {
         </div>
       </div>
 
-      <div v-if="section.table" class="nt-deep__tablewrap">
+      <!-- 局部横滚标记 data-scroll="x"：仅此容器允许横向超出，外层仍须零溢出。 -->
+      <div v-if="section.table" class="nt-deep__tablewrap" data-scroll="x">
         <table class="nt-deep__table" :data-key="section.table.key">
           <thead>
             <tr>
@@ -93,10 +94,19 @@ function rowTone(row: DetailRow): string {
 </template>
 
 <style scoped>
+/* 结构级防溢出：grid 直系子元素默认 min-width:auto 会被 nowrap 表格的 min-content 撑宽，
+ * 这里是基线 1734/1713 的真实成因。全部显式 min-width:0 + max-width:100%。 */
 .nt-deep {
   display: grid;
   gap: 14px;
   margin-top: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nt-deep > section {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .nt-deep__sec h3 {
@@ -105,12 +115,15 @@ function rowTone(row: DetailRow): string {
   letter-spacing: 0.1em;
   color: var(--nt-text-3);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .nt-deep__rows {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .nt-deep__row {
@@ -133,7 +146,7 @@ function rowTone(row: DetailRow): string {
   font-family: var(--nt-font-mono);
   font-size: 14px;
   font-weight: 600;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .nt-deep__value.up {
@@ -162,6 +175,9 @@ function rowTone(row: DetailRow): string {
   display: flex;
   align-items: center;
   gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 
 .nt-deep__radar ul {
@@ -183,6 +199,8 @@ function rowTone(row: DetailRow): string {
 .nt-deep__bars {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .nt-deep__bar {
@@ -216,8 +234,12 @@ function rowTone(row: DetailRow): string {
   text-align: right;
 }
 
+/* 唯一允许横向溢出的局部容器：宽度被约束到 100%，表格自身仍在容器内横滚。 */
 .nt-deep__tablewrap {
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--nt-border-1);
   border-radius: var(--nt-radius-m);
 }
@@ -314,6 +336,8 @@ function rowTone(row: DetailRow): string {
 .nt-deep__spark {
   display: grid;
   gap: 2px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .nt-deep__spark small,
@@ -322,6 +346,7 @@ function rowTone(row: DetailRow): string {
   color: var(--nt-text-3);
   line-height: 1.5;
   margin: 6px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .nt-deep__exit {

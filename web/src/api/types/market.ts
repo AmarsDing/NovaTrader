@@ -51,6 +51,8 @@ export interface LimitBoard {
   limitPrice: number | null
   firstSealAt: string
   lastSealAt: string
+  /** 当日最后一次真实开板时刻；未采集时缺省（不拿 asOf 冒充）。 */
+  lastBreakAt?: string
   openCount: number | null
   sealAmount: number | null
   consecutive: number | null
