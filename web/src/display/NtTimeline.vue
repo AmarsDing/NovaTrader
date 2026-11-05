@@ -94,12 +94,14 @@ const emit = defineEmits<{
   border-left: 1px solid var(--nt-border-1);
 }
 
+/* 已读态不再整行降透明度：opacity 会把正文/时间/涨跌/风险色一起压到 AA 以下。
+ * 只降标题字重，语义色与文本对比度保持原值。 */
 .nt-tl__item.read {
-  opacity: 0.72;
+  opacity: 1;
 }
 
 .nt-tl__item.read .nt-tl__title {
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .nt-tl__item.clickable {
