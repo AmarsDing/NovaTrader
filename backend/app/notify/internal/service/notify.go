@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	v1 "server/api/notify/v1"
@@ -79,7 +80,21 @@ func toReply(m biz.Message) *v1.MessageReply {
 		DesktopStatus: m.DesktopStatus, DesktopAttempts: int32(m.DesktopAttempts), DesktopError: m.DesktopError,
 		FeishuStatus: m.FeishuStatus, FeishuAttempts: int32(m.FeishuAttempts), FeishuError: m.FeishuError,
 		CreatedAt: fmtTime(m.CreatedAt), SentAt: fmtTime(m.SentAt), ReadAt: fmtTime(m.ReadAt),
+		Symbol: symbolOf(m.Fields),
 	}
+}
+
+// symbolOf 只透传来源事件 Fields["symbol"]，不从标题/正文推断，也不补交易所后缀。
+// 空值返回 nil，proto 的 optional 字段在 JSON 中缺省不出现。
+func symbolOf(fields map[string]string) *string {
+	if len(fields) == 0 {
+		return nil
+	}
+	value := strings.TrimSpace(fields["symbol"])
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func fmtTime(t time.Time) string {

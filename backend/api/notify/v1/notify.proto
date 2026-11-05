@@ -74,4 +74,7 @@ message MessageReply {
   string created_at = 20;
   string sent_at = 21;
   string read_at = 22;
+  // 关联股票代码（如 600519.SH），取自来源事件 Fields["symbol"]；来源事件没有该键时缺省不出现。
+  // 只做透传，不从标题/正文推断，也不补交易所后缀。
+  optional string symbol = 23;
 }
