@@ -48,6 +48,25 @@ func TestLimitTrackerSealBreakReseal(t *testing.T) {
 	}
 }
 
+// 开板时刻只记录真实的「封住→打开」事件；从未开板保持零值（不回填 as_of）。
+func TestLimitTrackerLastBreakAt(t *testing.T) {
+	tr := NewLimitTracker("000001.SZ", at("09:30:00"), 10, 0.10, 0, false)
+	tr.Push(limitSnap("09:41:00", 11, 11, [][2]float64{{11, 20000}}, nil))
+	if b := tr.Boards(); len(b) != 1 || !b[0].LastBreakAt.IsZero() {
+		t.Fatalf("sealed without break should have zero last_break_at: %+v", b)
+	}
+	tr.Push(limitSnap("10:00:00", 10.95, 11, [][2]float64{{10.95, 100}}, [][2]float64{{10.96, 100}}))
+	if b := tr.Boards(); len(b) != 1 || b[0].LastBreakAt.Format("15:04") != "10:00" {
+		t.Fatalf("first break not recorded: %+v", b)
+	}
+	tr.Push(limitSnap("10:30:00", 11, 11, [][2]float64{{11, 5000}}, nil))
+	tr.Push(limitSnap("14:59:00", 10.8, 11, [][2]float64{{10.8, 1}}, [][2]float64{{10.81, 1}}))
+	b := tr.Boards()[0]
+	if b.Status != StatusBroken || b.OpenCount != 2 || b.LastBreakAt.Format("15:04") != "14:59" {
+		t.Fatalf("last break should be the newest break event: %+v", b)
+	}
+}
+
 func TestLimitDownAndNoLimit(t *testing.T) {
 	tr := NewLimitTracker("000001.SZ", at("09:30:00"), 10, 0.10, 0, false)
 	s := Snapshot{Symbol: "000001.SZ", Time: at("10:00:00"), PreClose: 10, High: 10, Low: 9, Last: 9, Ask: [][2]float64{{9, 1000}}}

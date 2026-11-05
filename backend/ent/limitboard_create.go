@@ -80,6 +80,20 @@ func (_c *LimitBoardCreate) SetNillableLastSealAt(v *time.Time) *LimitBoardCreat
 	return _c
 }
 
+// SetLastBreakAt sets the "last_break_at" field.
+func (_c *LimitBoardCreate) SetLastBreakAt(v time.Time) *LimitBoardCreate {
+	_c.mutation.SetLastBreakAt(v)
+	return _c
+}
+
+// SetNillableLastBreakAt sets the "last_break_at" field if the given value is not nil.
+func (_c *LimitBoardCreate) SetNillableLastBreakAt(v *time.Time) *LimitBoardCreate {
+	if v != nil {
+		_c.SetLastBreakAt(*v)
+	}
+	return _c
+}
+
 // SetOpenCount sets the "open_count" field.
 func (_c *LimitBoardCreate) SetOpenCount(v int) *LimitBoardCreate {
 	_c.mutation.SetOpenCount(v)
@@ -276,6 +290,10 @@ func (_c *LimitBoardCreate) createSpec() (*LimitBoard, *sqlgraph.CreateSpec) {
 		_spec.SetField(limitboard.FieldLastSealAt, field.TypeTime, value)
 		_node.LastSealAt = &value
 	}
+	if value, ok := _c.mutation.LastBreakAt(); ok {
+		_spec.SetField(limitboard.FieldLastBreakAt, field.TypeTime, value)
+		_node.LastBreakAt = &value
+	}
 	if value, ok := _c.mutation.OpenCount(); ok {
 		_spec.SetField(limitboard.FieldOpenCount, field.TypeInt, value)
 		_node.OpenCount = value
@@ -443,6 +461,24 @@ func (u *LimitBoardUpsert) UpdateLastSealAt() *LimitBoardUpsert {
 // ClearLastSealAt clears the value of the "last_seal_at" field.
 func (u *LimitBoardUpsert) ClearLastSealAt() *LimitBoardUpsert {
 	u.SetNull(limitboard.FieldLastSealAt)
+	return u
+}
+
+// SetLastBreakAt sets the "last_break_at" field.
+func (u *LimitBoardUpsert) SetLastBreakAt(v time.Time) *LimitBoardUpsert {
+	u.Set(limitboard.FieldLastBreakAt, v)
+	return u
+}
+
+// UpdateLastBreakAt sets the "last_break_at" field to the value that was provided on create.
+func (u *LimitBoardUpsert) UpdateLastBreakAt() *LimitBoardUpsert {
+	u.SetExcluded(limitboard.FieldLastBreakAt)
+	return u
+}
+
+// ClearLastBreakAt clears the value of the "last_break_at" field.
+func (u *LimitBoardUpsert) ClearLastBreakAt() *LimitBoardUpsert {
+	u.SetNull(limitboard.FieldLastBreakAt)
 	return u
 }
 
@@ -668,6 +704,27 @@ func (u *LimitBoardUpsertOne) UpdateLastSealAt() *LimitBoardUpsertOne {
 func (u *LimitBoardUpsertOne) ClearLastSealAt() *LimitBoardUpsertOne {
 	return u.Update(func(s *LimitBoardUpsert) {
 		s.ClearLastSealAt()
+	})
+}
+
+// SetLastBreakAt sets the "last_break_at" field.
+func (u *LimitBoardUpsertOne) SetLastBreakAt(v time.Time) *LimitBoardUpsertOne {
+	return u.Update(func(s *LimitBoardUpsert) {
+		s.SetLastBreakAt(v)
+	})
+}
+
+// UpdateLastBreakAt sets the "last_break_at" field to the value that was provided on create.
+func (u *LimitBoardUpsertOne) UpdateLastBreakAt() *LimitBoardUpsertOne {
+	return u.Update(func(s *LimitBoardUpsert) {
+		s.UpdateLastBreakAt()
+	})
+}
+
+// ClearLastBreakAt clears the value of the "last_break_at" field.
+func (u *LimitBoardUpsertOne) ClearLastBreakAt() *LimitBoardUpsertOne {
+	return u.Update(func(s *LimitBoardUpsert) {
+		s.ClearLastBreakAt()
 	})
 }
 
@@ -1068,6 +1125,27 @@ func (u *LimitBoardUpsertBulk) UpdateLastSealAt() *LimitBoardUpsertBulk {
 func (u *LimitBoardUpsertBulk) ClearLastSealAt() *LimitBoardUpsertBulk {
 	return u.Update(func(s *LimitBoardUpsert) {
 		s.ClearLastSealAt()
+	})
+}
+
+// SetLastBreakAt sets the "last_break_at" field.
+func (u *LimitBoardUpsertBulk) SetLastBreakAt(v time.Time) *LimitBoardUpsertBulk {
+	return u.Update(func(s *LimitBoardUpsert) {
+		s.SetLastBreakAt(v)
+	})
+}
+
+// UpdateLastBreakAt sets the "last_break_at" field to the value that was provided on create.
+func (u *LimitBoardUpsertBulk) UpdateLastBreakAt() *LimitBoardUpsertBulk {
+	return u.Update(func(s *LimitBoardUpsert) {
+		s.UpdateLastBreakAt()
+	})
+}
+
+// ClearLastBreakAt clears the value of the "last_break_at" field.
+func (u *LimitBoardUpsertBulk) ClearLastBreakAt() *LimitBoardUpsertBulk {
+	return u.Update(func(s *LimitBoardUpsert) {
+		s.ClearLastBreakAt()
 	})
 }
 

@@ -145,6 +145,26 @@ func (_u *LimitBoardUpdate) ClearLastSealAt() *LimitBoardUpdate {
 	return _u
 }
 
+// SetLastBreakAt sets the "last_break_at" field.
+func (_u *LimitBoardUpdate) SetLastBreakAt(v time.Time) *LimitBoardUpdate {
+	_u.mutation.SetLastBreakAt(v)
+	return _u
+}
+
+// SetNillableLastBreakAt sets the "last_break_at" field if the given value is not nil.
+func (_u *LimitBoardUpdate) SetNillableLastBreakAt(v *time.Time) *LimitBoardUpdate {
+	if v != nil {
+		_u.SetLastBreakAt(*v)
+	}
+	return _u
+}
+
+// ClearLastBreakAt clears the value of the "last_break_at" field.
+func (_u *LimitBoardUpdate) ClearLastBreakAt() *LimitBoardUpdate {
+	_u.mutation.ClearLastBreakAt()
+	return _u
+}
+
 // SetOpenCount sets the "open_count" field.
 func (_u *LimitBoardUpdate) SetOpenCount(v int) *LimitBoardUpdate {
 	_u.mutation.ResetOpenCount()
@@ -316,6 +336,12 @@ func (_u *LimitBoardUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if _u.mutation.LastSealAtCleared() {
 		_spec.ClearField(limitboard.FieldLastSealAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.LastBreakAt(); ok {
+		_spec.SetField(limitboard.FieldLastBreakAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastBreakAtCleared() {
+		_spec.ClearField(limitboard.FieldLastBreakAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.OpenCount(); ok {
 		_spec.SetField(limitboard.FieldOpenCount, field.TypeInt, value)
 	}
@@ -471,6 +497,26 @@ func (_u *LimitBoardUpdateOne) SetNillableLastSealAt(v *time.Time) *LimitBoardUp
 // ClearLastSealAt clears the value of the "last_seal_at" field.
 func (_u *LimitBoardUpdateOne) ClearLastSealAt() *LimitBoardUpdateOne {
 	_u.mutation.ClearLastSealAt()
+	return _u
+}
+
+// SetLastBreakAt sets the "last_break_at" field.
+func (_u *LimitBoardUpdateOne) SetLastBreakAt(v time.Time) *LimitBoardUpdateOne {
+	_u.mutation.SetLastBreakAt(v)
+	return _u
+}
+
+// SetNillableLastBreakAt sets the "last_break_at" field if the given value is not nil.
+func (_u *LimitBoardUpdateOne) SetNillableLastBreakAt(v *time.Time) *LimitBoardUpdateOne {
+	if v != nil {
+		_u.SetLastBreakAt(*v)
+	}
+	return _u
+}
+
+// ClearLastBreakAt clears the value of the "last_break_at" field.
+func (_u *LimitBoardUpdateOne) ClearLastBreakAt() *LimitBoardUpdateOne {
+	_u.mutation.ClearLastBreakAt()
 	return _u
 }
 
@@ -674,6 +720,12 @@ func (_u *LimitBoardUpdateOne) sqlSave(ctx context.Context) (_node *LimitBoard, 
 	}
 	if _u.mutation.LastSealAtCleared() {
 		_spec.ClearField(limitboard.FieldLastSealAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastBreakAt(); ok {
+		_spec.SetField(limitboard.FieldLastBreakAt, field.TypeTime, value)
+	}
+	if _u.mutation.LastBreakAtCleared() {
+		_spec.ClearField(limitboard.FieldLastBreakAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.OpenCount(); ok {
 		_spec.SetField(limitboard.FieldOpenCount, field.TypeInt, value)

@@ -1861,15 +1861,15 @@ func init() {
 		}
 	}()
 	// limitboardDescOpenCount is the schema descriptor for open_count field.
-	limitboardDescOpenCount := limitboardFields[7].Descriptor()
+	limitboardDescOpenCount := limitboardFields[8].Descriptor()
 	// limitboard.DefaultOpenCount holds the default value on creation for the open_count field.
 	limitboard.DefaultOpenCount = limitboardDescOpenCount.Default.(int)
 	// limitboardDescSealAmount is the schema descriptor for seal_amount field.
-	limitboardDescSealAmount := limitboardFields[8].Descriptor()
+	limitboardDescSealAmount := limitboardFields[9].Descriptor()
 	// limitboard.DefaultSealAmount holds the default value on creation for the seal_amount field.
 	limitboard.DefaultSealAmount = limitboardDescSealAmount.Default.(float64)
 	// limitboardDescConsecutive is the schema descriptor for consecutive field.
-	limitboardDescConsecutive := limitboardFields[9].Descriptor()
+	limitboardDescConsecutive := limitboardFields[10].Descriptor()
 	// limitboard.DefaultConsecutive holds the default value on creation for the consecutive field.
 	limitboard.DefaultConsecutive = limitboardDescConsecutive.Default.(int)
 	limitpoolFields := schema.LimitPool{}.Fields()

@@ -27,6 +27,8 @@ func (LimitBoard) Fields() []ent.Field {
 		field.Float("limit_price").SchemaType(numericPrice),
 		field.Time("first_seal_at").Optional().Nillable().SchemaType(pgTimestamptz),
 		field.Time("last_seal_at").Optional().Nillable().SchemaType(pgTimestamptz),
+		// 当日最后一次真实开板的时刻；历史数据不回填，读侧缺省即「未采集」。
+		field.Time("last_break_at").Optional().Nillable().SchemaType(pgTimestamptz).Comment("最后一次开板时刻，未采集为空"),
 		field.Int("open_count").Default(0).Comment("炸板次数：从封住到打开的次数"),
 		field.Float("seal_amount").Default(0).SchemaType(numericMoney).Comment("最近一次封板时的封单额，元"),
 		field.Int("consecutive").Default(0).Comment("连板数"),

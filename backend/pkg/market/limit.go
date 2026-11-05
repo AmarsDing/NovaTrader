@@ -30,6 +30,9 @@ type LimitBoard struct {
 	LimitPrice  float64   `json:"limit_price"`
 	FirstSealAt time.Time `json:"first_seal_at,omitempty"`
 	LastSealAt  time.Time `json:"last_seal_at,omitempty"`
+	// LastBreakAt 当日最后一次真实开板（封住→打开）的时刻；从未开板为零值。
+	// 与 AsOf 语义不同：AsOf 是快照时刻，不能用它冒充开板时刻。
+	LastBreakAt time.Time `json:"last_break_at,omitempty"`
 	OpenCount   int       `json:"open_count"`
 	SealAmount  float64   `json:"seal_amount"`
 	Consecutive int       `json:"consecutive"`
@@ -48,15 +51,16 @@ type LimitEvent struct {
 }
 
 type side struct {
-	dir     string
-	price   float64
-	touched bool
-	sealed  bool
-	first   time.Time
-	last    time.Time
-	opens   int
-	amount  float64
-	asOf    time.Time
+	dir       string
+	price     float64
+	touched   bool
+	sealed    bool
+	first     time.Time
+	last      time.Time
+	lastBreak time.Time
+	opens     int
+	amount    float64
+	asOf      time.Time
 }
 
 // LimitTracker 跟踪一只股票当天的涨跌停状态。
@@ -137,6 +141,7 @@ func (sd *side) update(symbol string, s Snapshot, sealed, touched bool, amount f
 		sd.last = s.Time
 	case !sealed && sd.sealed:
 		sd.opens++
+		sd.lastBreak = s.Time
 		kind = EventBreak
 	}
 	sd.sealed = sealed
@@ -164,7 +169,7 @@ func (t *LimitTracker) Boards() []LimitBoard {
 		}
 		b := LimitBoard{
 			Symbol: t.Symbol, TradeDate: t.Day, Direction: sd.dir, LimitPrice: sd.price,
-			FirstSealAt: sd.first, LastSealAt: sd.last, OpenCount: sd.opens,
+			FirstSealAt: sd.first, LastSealAt: sd.last, LastBreakAt: sd.lastBreak, OpenCount: sd.opens,
 			SealAmount: sd.amount, AsOf: sd.asOf, Status: StatusBroken,
 		}
 		if sd.sealed {

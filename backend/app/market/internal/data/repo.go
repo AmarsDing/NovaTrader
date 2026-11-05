@@ -322,6 +322,7 @@ func (r *Repo) SaveBoards(ctx context.Context, boards []market.LimitBoard) error
 				SetSymbol(b.Symbol).SetTradeDate(pgDay(b.TradeDate)).SetDirection(b.Direction).
 				SetStatus(b.Status).SetLimitPrice(b.LimitPrice).
 				SetNillableFirstSealAt(nilTime(b.FirstSealAt)).SetNillableLastSealAt(nilTime(b.LastSealAt)).
+				SetNillableLastBreakAt(nilTime(b.LastBreakAt)).
 				SetOpenCount(b.OpenCount).SetSealAmount(b.SealAmount).SetConsecutive(b.Consecutive).
 				SetAsOf(b.AsOf))
 		}
@@ -705,6 +706,9 @@ func (r *Repo) Boards(ctx context.Context, day time.Time, direction, status stri
 		}
 		if row.LastSealAt != nil {
 			b.LastSealAt = *row.LastSealAt
+		}
+		if row.LastBreakAt != nil {
+			b.LastBreakAt = *row.LastBreakAt
 		}
 		out = append(out, b)
 	}

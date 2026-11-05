@@ -31,6 +31,8 @@ type LimitBoard struct {
 	FirstSealAt *time.Time `json:"first_seal_at,omitempty"`
 	// LastSealAt holds the value of the "last_seal_at" field.
 	LastSealAt *time.Time `json:"last_seal_at,omitempty"`
+	// 最后一次开板时刻，未采集为空
+	LastBreakAt *time.Time `json:"last_break_at,omitempty"`
 	// 炸板次数：从封住到打开的次数
 	OpenCount int `json:"open_count,omitempty"`
 	// 最近一次封板时的封单额，元
@@ -53,7 +55,7 @@ func (*LimitBoard) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case limitboard.FieldSymbol, limitboard.FieldDirection, limitboard.FieldStatus:
 			values[i] = new(sql.NullString)
-		case limitboard.FieldTradeDate, limitboard.FieldFirstSealAt, limitboard.FieldLastSealAt, limitboard.FieldAsOf:
+		case limitboard.FieldTradeDate, limitboard.FieldFirstSealAt, limitboard.FieldLastSealAt, limitboard.FieldLastBreakAt, limitboard.FieldAsOf:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -119,6 +121,13 @@ func (_m *LimitBoard) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.LastSealAt = new(time.Time)
 				*_m.LastSealAt = value.Time
+			}
+		case limitboard.FieldLastBreakAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_break_at", values[i])
+			} else if value.Valid {
+				_m.LastBreakAt = new(time.Time)
+				*_m.LastBreakAt = value.Time
 			}
 		case limitboard.FieldOpenCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -202,6 +211,11 @@ func (_m *LimitBoard) String() string {
 	builder.WriteString(", ")
 	if v := _m.LastSealAt; v != nil {
 		builder.WriteString("last_seal_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.LastBreakAt; v != nil {
+		builder.WriteString("last_break_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

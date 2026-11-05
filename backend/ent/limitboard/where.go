@@ -89,6 +89,11 @@ func LastSealAt(v time.Time) predicate.LimitBoard {
 	return predicate.LimitBoard(sql.FieldEQ(FieldLastSealAt, v))
 }
 
+// LastBreakAt applies equality check predicate on the "last_break_at" field. It's identical to LastBreakAtEQ.
+func LastBreakAt(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldEQ(FieldLastBreakAt, v))
+}
+
 // OpenCount applies equality check predicate on the "open_count" field. It's identical to OpenCountEQ.
 func OpenCount(v int) predicate.LimitBoard {
 	return predicate.LimitBoard(sql.FieldEQ(FieldOpenCount, v))
@@ -482,6 +487,56 @@ func LastSealAtIsNil() predicate.LimitBoard {
 // LastSealAtNotNil applies the NotNil predicate on the "last_seal_at" field.
 func LastSealAtNotNil() predicate.LimitBoard {
 	return predicate.LimitBoard(sql.FieldNotNull(FieldLastSealAt))
+}
+
+// LastBreakAtEQ applies the EQ predicate on the "last_break_at" field.
+func LastBreakAtEQ(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldEQ(FieldLastBreakAt, v))
+}
+
+// LastBreakAtNEQ applies the NEQ predicate on the "last_break_at" field.
+func LastBreakAtNEQ(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldNEQ(FieldLastBreakAt, v))
+}
+
+// LastBreakAtIn applies the In predicate on the "last_break_at" field.
+func LastBreakAtIn(vs ...time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldIn(FieldLastBreakAt, vs...))
+}
+
+// LastBreakAtNotIn applies the NotIn predicate on the "last_break_at" field.
+func LastBreakAtNotIn(vs ...time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldNotIn(FieldLastBreakAt, vs...))
+}
+
+// LastBreakAtGT applies the GT predicate on the "last_break_at" field.
+func LastBreakAtGT(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldGT(FieldLastBreakAt, v))
+}
+
+// LastBreakAtGTE applies the GTE predicate on the "last_break_at" field.
+func LastBreakAtGTE(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldGTE(FieldLastBreakAt, v))
+}
+
+// LastBreakAtLT applies the LT predicate on the "last_break_at" field.
+func LastBreakAtLT(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldLT(FieldLastBreakAt, v))
+}
+
+// LastBreakAtLTE applies the LTE predicate on the "last_break_at" field.
+func LastBreakAtLTE(v time.Time) predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldLTE(FieldLastBreakAt, v))
+}
+
+// LastBreakAtIsNil applies the IsNil predicate on the "last_break_at" field.
+func LastBreakAtIsNil() predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldIsNull(FieldLastBreakAt))
+}
+
+// LastBreakAtNotNil applies the NotNil predicate on the "last_break_at" field.
+func LastBreakAtNotNil() predicate.LimitBoard {
+	return predicate.LimitBoard(sql.FieldNotNull(FieldLastBreakAt))
 }
 
 // OpenCountEQ applies the EQ predicate on the "open_count" field.

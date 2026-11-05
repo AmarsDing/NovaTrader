@@ -33658,6 +33658,7 @@ type LimitBoardMutation struct {
 	addlimit_price *float64
 	first_seal_at  *time.Time
 	last_seal_at   *time.Time
+	last_break_at  *time.Time
 	open_count     *int
 	addopen_count  *int
 	seal_amount    *float64
@@ -34067,6 +34068,55 @@ func (m *LimitBoardMutation) ResetLastSealAt() {
 	delete(m.clearedFields, limitboard.FieldLastSealAt)
 }
 
+// SetLastBreakAt sets the "last_break_at" field.
+func (m *LimitBoardMutation) SetLastBreakAt(t time.Time) {
+	m.last_break_at = &t
+}
+
+// LastBreakAt returns the value of the "last_break_at" field in the mutation.
+func (m *LimitBoardMutation) LastBreakAt() (r time.Time, exists bool) {
+	v := m.last_break_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastBreakAt returns the old "last_break_at" field's value of the LimitBoard entity.
+// If the LimitBoard object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *LimitBoardMutation) OldLastBreakAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastBreakAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastBreakAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastBreakAt: %w", err)
+	}
+	return oldValue.LastBreakAt, nil
+}
+
+// ClearLastBreakAt clears the value of the "last_break_at" field.
+func (m *LimitBoardMutation) ClearLastBreakAt() {
+	m.last_break_at = nil
+	m.clearedFields[limitboard.FieldLastBreakAt] = struct{}{}
+}
+
+// LastBreakAtCleared returns if the "last_break_at" field was cleared in this mutation.
+func (m *LimitBoardMutation) LastBreakAtCleared() bool {
+	_, ok := m.clearedFields[limitboard.FieldLastBreakAt]
+	return ok
+}
+
+// ResetLastBreakAt resets all changes to the "last_break_at" field.
+func (m *LimitBoardMutation) ResetLastBreakAt() {
+	m.last_break_at = nil
+	delete(m.clearedFields, limitboard.FieldLastBreakAt)
+}
+
 // SetOpenCount sets the "open_count" field.
 func (m *LimitBoardMutation) SetOpenCount(i int) {
 	m.open_count = &i
@@ -34305,7 +34355,7 @@ func (m *LimitBoardMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *LimitBoardMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.symbol != nil {
 		fields = append(fields, limitboard.FieldSymbol)
 	}
@@ -34326,6 +34376,9 @@ func (m *LimitBoardMutation) Fields() []string {
 	}
 	if m.last_seal_at != nil {
 		fields = append(fields, limitboard.FieldLastSealAt)
+	}
+	if m.last_break_at != nil {
+		fields = append(fields, limitboard.FieldLastBreakAt)
 	}
 	if m.open_count != nil {
 		fields = append(fields, limitboard.FieldOpenCount)
@@ -34361,6 +34414,8 @@ func (m *LimitBoardMutation) Field(name string) (ent.Value, bool) {
 		return m.FirstSealAt()
 	case limitboard.FieldLastSealAt:
 		return m.LastSealAt()
+	case limitboard.FieldLastBreakAt:
+		return m.LastBreakAt()
 	case limitboard.FieldOpenCount:
 		return m.OpenCount()
 	case limitboard.FieldSealAmount:
@@ -34392,6 +34447,8 @@ func (m *LimitBoardMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldFirstSealAt(ctx)
 	case limitboard.FieldLastSealAt:
 		return m.OldLastSealAt(ctx)
+	case limitboard.FieldLastBreakAt:
+		return m.OldLastBreakAt(ctx)
 	case limitboard.FieldOpenCount:
 		return m.OldOpenCount(ctx)
 	case limitboard.FieldSealAmount:
@@ -34457,6 +34514,13 @@ func (m *LimitBoardMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLastSealAt(v)
+		return nil
+	case limitboard.FieldLastBreakAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastBreakAt(v)
 		return nil
 	case limitboard.FieldOpenCount:
 		v, ok := value.(int)
@@ -34573,6 +34637,9 @@ func (m *LimitBoardMutation) ClearedFields() []string {
 	if m.FieldCleared(limitboard.FieldLastSealAt) {
 		fields = append(fields, limitboard.FieldLastSealAt)
 	}
+	if m.FieldCleared(limitboard.FieldLastBreakAt) {
+		fields = append(fields, limitboard.FieldLastBreakAt)
+	}
 	return fields
 }
 
@@ -34592,6 +34659,9 @@ func (m *LimitBoardMutation) ClearField(name string) error {
 		return nil
 	case limitboard.FieldLastSealAt:
 		m.ClearLastSealAt()
+		return nil
+	case limitboard.FieldLastBreakAt:
+		m.ClearLastBreakAt()
 		return nil
 	}
 	return fmt.Errorf("unknown LimitBoard nullable field %s", name)
@@ -34621,6 +34691,9 @@ func (m *LimitBoardMutation) ResetField(name string) error {
 		return nil
 	case limitboard.FieldLastSealAt:
 		m.ResetLastSealAt()
+		return nil
+	case limitboard.FieldLastBreakAt:
+		m.ResetLastBreakAt()
 		return nil
 	case limitboard.FieldOpenCount:
 		m.ResetOpenCount()

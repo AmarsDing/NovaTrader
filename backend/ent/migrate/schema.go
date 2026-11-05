@@ -1100,6 +1100,7 @@ var (
 		{Name: "limit_price", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(12,4)"}},
 		{Name: "first_seal_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "last_seal_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_break_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "open_count", Type: field.TypeInt, Default: 0},
 		{Name: "seal_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "numeric(18,2)"}},
 		{Name: "consecutive", Type: field.TypeInt, Default: 0},

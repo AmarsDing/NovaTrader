@@ -25,6 +25,8 @@ const (
 	FieldFirstSealAt = "first_seal_at"
 	// FieldLastSealAt holds the string denoting the last_seal_at field in the database.
 	FieldLastSealAt = "last_seal_at"
+	// FieldLastBreakAt holds the string denoting the last_break_at field in the database.
+	FieldLastBreakAt = "last_break_at"
 	// FieldOpenCount holds the string denoting the open_count field in the database.
 	FieldOpenCount = "open_count"
 	// FieldSealAmount holds the string denoting the seal_amount field in the database.
@@ -47,6 +49,7 @@ var Columns = []string{
 	FieldLimitPrice,
 	FieldFirstSealAt,
 	FieldLastSealAt,
+	FieldLastBreakAt,
 	FieldOpenCount,
 	FieldSealAmount,
 	FieldConsecutive,
@@ -119,6 +122,11 @@ func ByFirstSealAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastSealAt orders the results by the last_seal_at field.
 func ByLastSealAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastSealAt, opts...).ToFunc()
+}
+
+// ByLastBreakAt orders the results by the last_break_at field.
+func ByLastBreakAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastBreakAt, opts...).ToFunc()
 }
 
 // ByOpenCount orders the results by the open_count field.

@@ -109,6 +109,16 @@ func adjustOf(a v1.Adjust) market.Adjust {
 	}
 }
 
+// optTime 未采集（零值）返回 nil，JSON 中缺省不出现；有值才输出 RFC3339。
+// 用于 optional 字段，禁止用 as_of 之类的快照时刻兜底。
+func optTime(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	value := fmtTime(t)
+	return &value
+}
+
 func fmtTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -338,7 +348,7 @@ func (s *MarketService) GetLimitBoards(ctx context.Context, req *v1.GetLimitBoar
 			Symbol: b.Symbol, TradeDate: fmtDay(b.TradeDate), Direction: b.Direction, Status: b.Status,
 			LimitPrice: b.LimitPrice, FirstSealAt: fmtTime(b.FirstSealAt), LastSealAt: fmtTime(b.LastSealAt),
 			OpenCount: int32(b.OpenCount), SealAmount: b.SealAmount, Consecutive: int32(b.Consecutive),
-			AsOf: fmtTime(b.AsOf),
+			AsOf: fmtTime(b.AsOf), LastBreakAt: optTime(b.LastBreakAt),
 		})
 	}
 	return reply, nil
