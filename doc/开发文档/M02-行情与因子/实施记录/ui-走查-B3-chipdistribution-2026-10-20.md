@@ -3,7 +3,7 @@
 本刀交付为 market 服务纯计算链路（`pkg/market/chip.go` 纯函数 + biz 聚合 +
 market.proto 读出口），纯计算不落库——零新表零调度零配置，**前端零文件改动**
 （`web/src` 无 diff）。
-对照 doc/开发文档/1.视觉需求.md 逐项：
+对照 doc/开发文档/design/01-视觉风格.md 逐项：
 
 | 维度 | 结论 |
 |---|---|

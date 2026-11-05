@@ -169,7 +169,7 @@
 13. **高频文本缓存**：监控画布与 TerminalStrip 引入 `text-width-cache`/`formatted-labels-cache` 等价物，按 (font+text) 缓存，周期清理；canvas 销毁处学 `releaseCanvas`（`canvas-utils.ts:28-36`）。（2026-10-19 已落地见 §7 P2-13：宽测缓存 4bac98e 已有、本轮补卸载清零+releaseCanvas；formatted-labels 不另造——热点全在 Vue computed，框架已 memo）
 14. **行情边车合同文档化**：把 G2 落地后推送帧的 bar/tick schema 写进 `doc/开发文档/M01` 设计文档（proto-first 原则），前后端类型同时从它生成。（2026-10-19 已落地见 §7 P2-14：合同立档 M01 §7，制图+对账实测纠正六处分歧——bar 帧已产未路由、tick 属预留无生产者、stale 死显示等；前后端类型同生成的 proto 化留作后续项 M01 §7.9）
 
-## 5. UI 走查（对照 `doc/开发文档/1.视觉需求.md` 与本次静态审读）
+## 5. UI 走查（对照 `doc/开发文档/design/01-视觉风格.md` 与本次静态审读）
 
 - ✔ 红涨绿跌、主题×密度、玻璃霓虹材质已实现并有 token 层（`theme/tokens`），NtKline 颜色全部走 palette，不留硬编码色。保持。
 - ✔ ~~K线十字线处于 Normal 漂移态~~（2026-10-19 P1-5 已开 MagnetOHLC，十字线吸附 OHLC + 价格轴精确对价）。
@@ -349,7 +349,7 @@
 - **冷编译 flake 实测注记**：webServer 探活只拿到 SPA 回吐的 index.html（`/dev/gallery` 是懒路由），首条用例的 goto 要吃整棵 GalleryView 静态模块图（ui/viz/display/monitor + echarts/depth 深链约 40 组件）的按需编译；CI 清缓存（npm ci）+ 2 workers 下首波可吃满 60s 预算稳定记红、重跑又绿。解法：`graphics/global-setup.ts` 热身一枪 `?case=tokens`（一页即覆盖整模块图），不 import config 自身（循环引用）改读 env 覆盖。
 - **评审闭环（15 agent，354k token）**：3 维 finder（flake 面/工程约定/CanvasStage 修复面）出 13 项，12 项敌意核实（workflow 上限裁第 13 项后人工自证为真）→ **9 确认 / 3 驳回**。确认项全修：OS 字体 blocker（上文 ④⑤，最大的立项风险）、JetBrains 顺位 → :root Cascadia 钉死、冷编译暖身 + CI 90s、reuse:false、tsconfig include、四道门头注 ×2（ci.yml 与 CLAUDE.md §6）、CanvasStage style 迁 monitor.css 共址、dpr 变化观察（matchMedia resolution 单发查询逐次重挂——RO 不触发 dpr 变化，混 DPI 多屏（本驾驶舱常态）此前背模糊画布）。驳回留痕：①「GPU 光栅后端差异」——要求实测，探针在受管 GPU 机器上比对 `--disable-gpu` 与否截图 hash 全同（Playwright 托管 headless Chromium 默认即 SwiftShader 软光栅，有 GPU 亦然），驳回；②「settle 与画布清帧存在因果」——固定尺寸+同尺寸护栏下 RO 级联不可能复现，waitUntil 降级属假想解，驳回；③「.gitattributes 会把 PNG 文本化」——`text=auto` 保留二进制嗅探，且全仓没有也不会引入 `* text`，驳回。
 - **测试**：graphics 92/92 定稿后连跑全绿（终轮 15.8s，含暖身与 reuse:false 路径）；CanvasStage 修复后 monitor 单元 261 例全过。门禁：vue-tsc 0 错、eslint（自身文件范围）0、CI 由三道门升四道门（web/graphics/tauri-smoke/backend，graphics job 钉 windows-2025 + 镜像浮动注记）。全量 vitest 88 文件 796 过、8 红**全部归属并行会话在途 WIP**——signals.ts P3-10 线 5+3（其 declared 范围外落盘快照）与 c1 名称字典线借 detail.ts/hud.ts 引入 useSecurityStore 致纯 Pinia 测试 2 红（现盘实测通报 novatrader-53 已转其 P4 复核账），均与 P2-12 无涉、不代为修复（并行仓纪律：门禁红先查归属，只交自己文件）。
-- **走查**：抽 6 张 golden 目检（kline-light-normal、buttons-dark-normal、heatmap-dark-normal、table-light-compact、monitor-stage-dark-normal、monitor-flow-light-compact）——红涨绿跌、主题 token、密度矩阵、玻璃材质均合 `doc/开发文档/1.视觉需求.md`；监控画布 golden 现为**完整场景**（三列 01 签入/02 研判/03 表决、节点卡、贝塞尔束线、S3 漏斗光带、急停态红环），正是修复有效的目检证据。本轮改动属「恢复本应显示的绘制」的行为修正+基建，无外观规范冲突。
+- **走查**：抽 6 张 golden 目检（kline-light-normal、buttons-dark-normal、heatmap-dark-normal、table-light-compact、monitor-stage-dark-normal、monitor-flow-light-compact）——红涨绿跌、主题 token、密度矩阵、玻璃材质均合 `doc/开发文档/design/01-视觉风格.md`；监控画布 golden 现为**完整场景**（三列 01 签入/02 研判/03 表决、节点卡、贝塞尔束线、S3 漏斗光带、急停态红环），正是修复有效的目检证据。本轮改动属「恢复本应显示的绘制」的行为修正+基建，无外观规范冲突。
 
 ### P2-10 技术债清偿：市场行情纪元钉北京时间（2026-10-20 落地）
 

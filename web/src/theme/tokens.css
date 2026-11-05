@@ -1,4 +1,4 @@
-/* 视觉令牌唯一来源（doc/开发文档/1.视觉需求.md 第七节）。
+/* 视觉令牌唯一来源（规范说明见 doc/开发文档/design/03-设计令牌.md）。
    所有颜色/间距/字号只能从这里取；亮暗主题与密度通过 <html data-theme|data-density> 切换。 */
 
 :root {
@@ -80,6 +80,7 @@
   --nt-radius-s: 6px;
   --nt-radius-m: 8px;
   --nt-radius-l: 12px;
+  --nt-radius-pill: 999px;
 
   --nt-row-h: 26px;
   --nt-cell-pad: 4px 8px;

@@ -68,7 +68,7 @@ gloomberb alerts 插件（`plugins/builtin/alerts/`）：`levels.ts`（价格水
 
 `docs/pane-conventions.md`（714 行 UI 宪法）：一个元素一种样式、全部 token 化、层级差 ≥15%、"扩展 kit 而非 fork"、改动对照全应用截图审。兜底是 CI：`src/architecture/` 下 `ui-literals.test.ts` + `ui-literals-allowlist.json`（UI 字面量例外必须登记且带理由，**计数只降不升**）、`import-boundaries.test.ts`（目录间 import 边界）、`silent-catches.test.ts`（静默 catch 登记）。
 
-对应我们：`doc/开发文档/1.视觉需求.md` 是规范但没有 CI 兜底；`/dev/gallery` 走查是人工的。**抄点**：web 侧加 eslint 自定义规则或 vitest 守护——禁裸 hex 色值（必须走 tokens）、任一面板 JSON 快照对比、allowlist 计数单调降。
+对应我们：`doc/开发文档/design/01-视觉风格.md` 是规范但没有 CI 兜底；`/dev/gallery` 走查是人工的。**抄点**：web 侧加 eslint 自定义规则或 vitest 守护——禁裸 hex 色值（必须走 tokens）、任一面板 JSON 快照对比、allowlist 计数单调降。
 
 ### P0-5 Ask Gloom 的面板上下文注入
 

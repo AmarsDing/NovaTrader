@@ -1,0 +1,53 @@
+{
+  "revision": "R6",
+  "date": "2026-10-31",
+  "scope": "Isolated Chromium file prototype: targeted real input/pointer/keyboard/time/lifecycle regressions; not production or all-source state acceptance.",
+  "checks": [
+    {
+      "name": "输入状态、配色、尺寸模式与重置",
+      "pass": true,
+      "evidence": "文本/多行输入跨原作与星舰切换、预览卸载重载保留；自然尺寸不被配色重载覆盖；显式重置恢复原作初值；默认原生输入面使用主题令牌。"
+    },
+    {
+      "name": "错误页码与分类回到内容起点",
+      "pass": true,
+      "evidence": "超出页数显示关联错误；Enter提交有效页码清除错误；从底部切换分类回到第一页与工具栏。"
+    },
+    {
+      "name": "缩放画布与原尺寸长表单",
+      "pass": true,
+      "evidence": "宽按钮组各按钮中心实际命中，body不再二次裁切；长表单原尺寸可滚动到末端，提交留在本地预览。"
+    },
+    {
+      "name": "动画静态帧、重播与场景装饰层",
+      "pass": true,
+      "evidence": "减少动态时仍可见且禁止重播；恢复后真实动画时间推进；snow等同名颜色动画名保持，5段动画存在，星空背景不压小宇航员。"
+    },
+    {
+      "name": "同组件重新打开后的异步隔离",
+      "pass": true,
+      "evidence": "旧详情复制尚未完成时关闭再开同一组件，迟到结果不会写入新详情。"
+    },
+    {
+      "name": "文档重载与组件集切换",
+      "pass": true,
+      "evidence": "连续6次配色重建后无自触发transitionend循环；含multiple输入的预览不会中断完整库/精修集切换。"
+    }
+  ],
+  "errors": [],
+  "remoteRequests": [],
+  "screenshots": [
+    "r6-form-input-state.png",
+    "r6-wide-controls-unclipped.png",
+    "r6-long-form-natural.png",
+    "r6-animation-still.png",
+    "r6-astronaut-detail.png",
+    "r6-fixed-g119.png",
+    "r6-fixed-g193.png",
+    "r6-fixed-g2129.png",
+    "r6-fixed-g2130.png",
+    "r6-fixed-g2278.png",
+    "r6-fixed-g2283.png",
+    "r6-fixed-g3232.png"
+  ]
+}

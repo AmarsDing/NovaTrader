@@ -1,7 +1,7 @@
 # UI 走查 — B1 margin_mkt（2026-10-20）
 
 本刀交付为 datahub 采集链路（ent schema + biz/data/worker/config），**前端零文件改动**。
-对照 doc/开发文档/1.视觉需求.md 逐项：
+对照 doc/开发文档/design/01-视觉风格.md 逐项：
 
 | 维度 | 结论 |
 |---|---|

@@ -1,6 +1,6 @@
 # UI 走查 · B5 AH 溢价读出口（2026-10-20）
 
-> 每轮交付带一次 UI 走查（对照 `doc/开发文档/1.视觉需求.md`）。**本刀 `web/src` 零改动**（并行会话在场，只核自己文件面）。本片为纯后端读出口（`GET /v1/market/ah-premium`，admin in-gate `/api/market/` 纯前缀反代自动可达），无面板消费方——走查对象是**合同给未来面板的消费规范**，同型先例 B3 `ui-走查-B3-chipdistribution` / B4 `ui-走查-B4-reportestimates`。
+> 每轮交付带一次 UI 走查（对照 `doc/开发文档/design/01-视觉风格.md`）。**本刀 `web/src` 零改动**（并行会话在场，只核自己文件面）。本片为纯后端读出口（`GET /v1/market/ah-premium`，admin in-gate `/api/market/` 纯前缀反代自动可达），无面板消费方——走查对象是**合同给未来面板的消费规范**，同型先例 B3 `ui-走查-B3-chipdistribution` / B4 `ui-走查-B4-reportestimates`。
 
 ## 1. 消费规范（未来 detail/个股面板接入时按此渲染）
 

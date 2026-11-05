@@ -1,0 +1,440 @@
+{
+  "date": "2026-10-30",
+  "browser": "156.0.8078.4",
+  "runtime": "v24.16.0",
+  "checks": [
+    {
+      "name": "本地HTML/CSS/JS及主题令牌加载",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "跨分类草稿保留及未保存计数",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "无效地址内联错误及阻止预览",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "预览密钥遮蔽、演示保存版本及加载未知态",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "放弃当前分类草稿及字段本地检索",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "密度、完整/节能/减少动态及系统减少动态",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "原生模态Esc关闭及回焦",
+      "result": "PASS",
+      "details": ""
+    },
+    {
+      "name": "8宽度×2主题×4视图，64组合无页面水平溢出",
+      "result": "PASS",
+      "details": "1920/1440/1366/1100/1024/768/390/320px；高度为1000或844px"
+    },
+    {
+      "name": "无页面运行时异常与资源加载失败",
+      "result": "PASS",
+      "details": ""
+    }
+  ],
+  "layoutCases": [
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1366,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1100,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 1024,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "view": "datasource",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "view": "summary",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "view": "look",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "view": "models",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "view": "datasource",
+      "result": "PASS"
+    }
+  ],
+  "errors": [],
+  "scope": "文档样稿，不代表业务应用或Tauri验收"
+}

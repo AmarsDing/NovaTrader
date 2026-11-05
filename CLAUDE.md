@@ -45,7 +45,7 @@ NovaTrader：部署在 NVIDIA DGX Spark 上的**私有化 A 股超短线量化�
 需求与设计（改对应模块前必读该目录下三份文件）：
 - `doc/开发文档/README.md` — 模块索引和已确认决策。
 - `doc/开发文档/M00` 至 `M12` — 每个模块的需求、设计、开发进度。
-- `doc/开发文档/1.视觉需求.md` — 前端视觉规范。
+- `doc/开发文档/design/README.md` — 前端样式与UI控件唯一指导文件，以Aether V2星舰主题演示为开发基准；旧稿已合并归档。
 - `doc/NovaTrader智脑方案.md`、`doc/RAG.md` — 早期材料，与开发文档冲突时以开发文档为准。
 
 ## 2. 技术栈总览
@@ -137,8 +137,8 @@ backend/ent/
   - `npm run tauri dev` 联调，`npm run tauri build` 出安装包；本机 Rust 构建配方：`RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc CARGO_TARGET_DIR=C:\nt-target`（F:\股票 非 ASCII 路径会损坏 in-tree 产物）；
   - 后端地址运行时可配（设置面板），拼接集中在 `web/src/utils/endpoint.ts`，HTTP 只走 `web/src/api/http.ts`；
   - popout 多屏：`core:webview:allow-create-webview-window` capability + `popout.html` 宿主页 + `POPOUT_ALLOWED` 白名单（trade/settings/ops 禁弹）。
-- UI 交付强制手册：`doc/开发文档/0.UI制作规则.md`（R-UI-xx 编号规则即验收条件，每次 UI 开发/评审/走查必遵守，提交说明引用批号）；当批波次任务见 `doc/开发文档/UI体验提升实施计划-2026-10-25.md`（W1–W8 窗口制）。
-- 视觉规范严格遵循 `doc/开发文档/1.视觉需求.md`：**红涨绿跌**、主题/密度与统一token保持；2026-10-15用户要求更强毛玻璃/半透明/霓虹，使用范围以第七节取代第五节旧限制；材质与完整/节能/减少动态模式已实现，完整视觉/硬件压力仍待验收。保留原监控画布/HUD/终端带与dockview一张票，真实性/对比度/性能共同验收；禁止引入 UI 组件库破坏该风格（element-plus/naive-ui 等默认不要装）。K 线用 lightweight-charts，其余图用 ECharts（`echarts/core` 按需引入）。
+- UI开发统一阅读 `doc/开发文档/design/README.md`，并以同目录 `assets/aether-v2-2026-10-30/index.html` 为样式和交互基准：星舰配色、毛玻璃、淡边光、对象配置工作区和统一控件。R-UI编号规则继续作为验收条件；测试、来源许可与W1–W8任务集中在 `doc/开发文档/design/archive/验证与来源-2026-11-02.md`。后续只维护这套入口，不再并列建立版本设计稿。
+- **红涨绿跌**、主题/密度、统一token、数据真实性和业务授权保持；样稿通过不等于生产已接线。监控画布/HUD/终端带及dockview工作台按原业务合同保留；禁止引入UI组件库破坏统一风格（element-plus/naive-ui等默认不要装）。K线用lightweight-charts，其余图用ECharts（`echarts/core`按需引入）。
 - CI 五道门（`.github/workflows/ci.yml`）：web（typecheck/lint/test/build+产物校验）、graphics（viz 图形回归 golden 比对，windows，P2-12）、tauri-smoke（windows `tauri build --no-bundle`）、backend（go build/vet/test 全服务，带隔离 PG+JetStream NATS 集成）、sidecars（pyworker/source-worker/broker-gw 的 pytest）。
 
 ## 7. 配置与端口

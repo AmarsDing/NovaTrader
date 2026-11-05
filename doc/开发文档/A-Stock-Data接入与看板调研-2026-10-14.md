@@ -36,7 +36,9 @@
 已保存实际截图：
 
 - [监控离线截图](F:/股票/NovaTrader/doc/开发文档/监控面板离线评审-2026-10-14.jpg)
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 - [盯盘离线截图](F:/股票/NovaTrader/doc/开发文档/盯盘面板离线评审-2026-10-14.jpg)
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 
 ## 3. A-Stock-Data 是什么，可以提供什么
 
@@ -86,13 +88,21 @@
 | 文件 | 用途 |
 | --- | --- |
 | [source.go](F:/股票/NovaTrader/backend/app/datahub/internal/biz/source.go:15) | 已按日线、分钟线、因子、快照、资金、财务、情报等拆出能力接口；只实现经过验证的能力 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [sources.go](F:/股票/NovaTrader/backend/app/datahub/internal/data/sources.go:104) | 注册新适配器；不绕开统一流水线 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [pipeline.go](F:/股票/NovaTrader/backend/app/datahub/internal/biz/pipeline.go:207) | 复用按域优先级、超时、配额、断路与同轮切源 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [config.yaml](F:/股票/NovaTrader/backend/configs/config.yaml:184) | 配置数据源开关与各域主备顺序 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [backfill.go](F:/股票/NovaTrader/backend/app/datahub/internal/biz/backfill.go:16) | 复用按日期/证券/指定来源补数 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [repo.go](F:/股票/NovaTrader/backend/app/datahub/internal/data/repo.go:50) | 复用事务 upsert 与 ready/outbox；无需另建独立数据库 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [pyworker/app.py](F:/股票/NovaTrader/pyworker/app.py:1) | Python 实现可在现有边车内模块化提供；边车继续只采集、不写业务库 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | [gateway/config.go](F:/股票/NovaTrader/backend/app/admin/internal/gateway/config.go:80) | 如需桌面配置，扩展白名单和配置目录；YAML 新键不会自动出现在 UI |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 
 建议给可独立观测的能力分配独立源名，如 `tdx_http`、`qq_kline`；另外记录上游 provider、dataset 和实现版本。不要将多种实际来源隐藏在一个“AStockData 正常”的绿灯后面。现有行情表 source 长度为 16，命名和元数据应与当前 schema 约束一致。
 
@@ -113,6 +123,7 @@
 | 情报 | 原文 URL、发布时间、采集时间、来源 ID 与去重键保留 |
 
 腾讯 K 线缺失成交额尤其需要前置处理：当前 [biz.Bar.Amount](F:/股票/NovaTrader/backend/app/datahub/internal/biz/model.go:73) 是非空 float64，[UpsertBars](F:/股票/NovaTrader/backend/app/datahub/internal/data/repo.go:168) 直接 SetAmount。尽管 ent 的 amount 可空，当前采集 DTO/仓储路径仍不能诚实表达未知成交额。应扩展可空契约/质量标记，或限制该源的使用范围，不能悄悄写 0。
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 
 现有行情唯一键为 symbol/bar_time/freq，补源可能覆盖已有行。应定义数据质量和来源优先级，避免字段不完整的备源覆盖更完整记录；保留必要的原始证据，才便于对拍和追溯。
 
@@ -123,29 +134,44 @@
 | 问题 | 当前证据与影响 | 建议 |
 | --- | --- | --- |
 | 旧报价可能被整批保鲜 | [validate.go:66](F:/股票/NovaTrader/backend/app/datahub/internal/biz/validate.go:66) 只检查整批最新时间；[collector.go:136](F:/股票/NovaTrader/backend/app/datahub/internal/biz/collector.go:136) 给全部记录写当前 AsOf/Stale=false。风险服务会采用 AsOf 判断时间 | 逐证券检查源时间，接收时间单列；同日旧报价不能因此进入新开仓 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | 离线仍显示健康 80 | [health.ts:39](F:/股票/NovaTrader/web/src/monitor/health.ts:39) 的未知项多不扣分；本轮离线 UI 实际复现 | 显示“不可评估 / 已测 x/5”；业务阻断项独立于健康总分持续可见 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | LIVE 与 L0–L3 混淆 | [health.ts:118](F:/股票/NovaTrader/web/src/monitor/health.ts:118)、[TerminalStrip.vue:451](F:/股票/NovaTrader/web/src/monitor/TerminalStrip.vue:451) 用 risk.mode 判实盘，但该字段是风控等级 | 用 account.book 判 SIM/LIVE，用真实 brokerFiles 探针判文件单通道，用 risk.mode 显示风险等级 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | 无关 WS 让旧 REST 数据显得刚读到 | [freshness.ts:186](F:/股票/NovaTrader/web/src/monitor/freshness.ts:186) 依赖 input.now；[MonitorView.vue:557](F:/股票/NovaTrader/web/src/monitor/MonitorView.vue:557) 接收脉冲重写它 | 分离每个数据域的 sampledAt/asOf 和 lastPushAt |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 
 静态链路还发现 [trade/core/runner.go:42](F:/股票/NovaTrader/backend/app/trade/internal/core/runner.go:42) 直接把 NATS 消息解成 bars，而 market 发布的是 Envelope。按现有结构会得到空 bars，分钟线自动模拟撮合入口需修正并做集成验收。现有 biz 撮合测试通过不能证明这条事件链已打通。
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 
 ### P1：修指标口径和盯盘状态
 
 | 问题 | 证据 | 建议 |
 | --- | --- | --- |
 | 后验收益放大 100 倍 | [proto:77](F:/股票/NovaTrader/backend/api/strategy/v1/strategy.proto:77) 定义 4.8=4.8%；[SignalView:225](F:/股票/NovaTrader/web/src/view/SignalView.vue:225)、[decision-desk:299](F:/股票/NovaTrader/web/src/view/decision-desk.ts:299) 再乘 100 | 区分百分点与比率，建立字段格式字典 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | 1 分钟 K 被当成当日行情 | [MarketView:42](F:/股票/NovaTrader/web/src/view/MarketView.vue:42) 用上一根 close 计算涨跌，最后一根 OHLC/量额直接做报价条 | 当前价/前收/当日 OHLC 取 snapshot；临时用 bars 时明确标“本根 K 线” |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | 交易列表缺盘中更新 | [TradeView:204](F:/股票/NovaTrader/web/src/view/TradeView.vue:204) 只在 load 更新本地 refs；看门狗不更新这些表 | 统一交易 store、订阅成交/仓位事件并在重连后补拉 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | 推荐限价未正确填入 | [OverviewView:147](F:/股票/NovaTrader/web/src/view/OverviewView.vue:147) 传 number；[TradeView:325](F:/股票/NovaTrader/web/src/view/TradeView.vue:325) 只接 string | 接受有限正数；换标的时清理不适用的旧价格并标价源 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | HUD 标签与窗口不一致 | [hud.ts:55](F:/股票/NovaTrader/web/src/monitor/hud.ts:55)、[hud.ts:84](F:/股票/NovaTrader/web/src/monitor/hud.ts:84)、[hud.ts:142](F:/股票/NovaTrader/web/src/monitor/hud.ts:142) | 封板数/炸板数、漏选数/候选数分别算；近20笔胜率不能标成“今日/昨日胜率” |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 | 模型统计未按说明持续刷新 | [model-stats.panel.vue:12](F:/股票/NovaTrader/web/src/panels/brain/model-stats.panel.vue:12) 只读 store；[watchdog:14](F:/股票/NovaTrader/web/src/workspace/connection-watchdog.ts:14) 未刷新 brain | 可见期间刷新/订阅，展示窗口与最后成功时间 |
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 
 ### 数据能力与文档差异
 
 - **通达信本地官方接口仍是占位**：[app.py:450](F:/股票/NovaTrader/pyworker/app.py:450) 起的 local_snapshot/local_bars/local_securities 直接 unavailable；不只是安装插件即可恢复。
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 - **默认全市场分钟采集链不完整**：[collect_daily.go:51](F:/股票/NovaTrader/backend/app/datahub/internal/biz/collect_daily.go:51) 未填 securities；文件分钟读取要求指定证券，AkShare 分钟源也不支持空证券池。不要据文档承诺已具备完整分钟历史。
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 - **外围数据覆盖窄**：[app.py:464](F:/股票/NovaTrader/pyworker/app.py:464) 实际只尝试少量项目；US_SPOT 列表首行不能当作明确的美股指数。
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 - **来源摘要损失细节**：[ops.go:96](F:/股票/NovaTrader/backend/app/admin/internal/gateway/ops.go:96) 将状态压成 name/status/detail。完整 datahub API 和前端 normalizeSource 已保留不少详细字段，问题主要在部分摘要/HUD 消费与状态语义，不能说整个前端没有源明细。
+<!-- 历史路径，文件已不在仓库（2026-10-14 迁移前） -->
 - **交易通道尚未完成**：仓库有 CSV 写出工具，运维接口也如实报告 broker-gw 缺失；新增行情源不会自动补齐文件单回报、对账与实盘准入。
 - **仍需真实样本核验**：腾讯科创板成交量单位、5 分钟结束时间转换、多源复权一致性。此处列为待验证，未当作已实测成立的缺陷。
 

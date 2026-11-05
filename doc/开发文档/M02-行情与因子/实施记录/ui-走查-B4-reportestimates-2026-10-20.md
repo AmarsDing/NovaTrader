@@ -4,7 +4,7 @@
 data 读仓储 + service），读 `report_estimate` PIT 明细；写入链归 M01 datahub
 report 采集分支（`CollectIntel` 挂钩 `EstimateRowsOf`→`UpsertReportEstimates`，
 先落库后发事件，已完结，见 M01 进度 B4 条），**前端零文件改动**（本刀 `web/src` 零改动）。
-对照 doc/开发文档/1.视觉需求.md 逐项：
+对照 doc/开发文档/design/01-视觉风格.md 逐项：
 
 | 维度 | 结论 |
 |---|---|

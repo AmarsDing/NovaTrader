@@ -45,3 +45,23 @@ backend/runtime/acceptance-*/
 
 # UI 设计研究档案（56MB 图片集，留仓外；2026-10-24 用户拍板不入库，决策档：doc/开发文档/实施记录/doc-UI-处置裁决-2026-10-24.md）
 doc/UI/
+
+# ----- 项目外统一产物目录约定（2026-11-03）-----
+backend/runtime/bin/
+backend/runtime/local/
+backend/runtime/logs/
+backend/runtime/acceptance-*/
+backend/build/
+backend/dist/
+backend/*.exe
+backend/*.log
+web/dist/
+web/.tmp/
+web/bundle-stats.html
+web/graphics/test-results/
+web/src-tauri/gen/
+web/src-tauri/target/
+doc/UI/
+**/__pycache__/
+**/.pytest_cache/
+research-worker/runs/
