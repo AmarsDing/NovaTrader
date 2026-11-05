@@ -11,6 +11,7 @@
  *   → 冷却抑 toast → 分流 toast + 落 feed → L3 抬页签角标 + 按声音开关单响；
  * event 缺省保持存量行为，trade-bar 等存量调用方零改动。
  */
+import { normalizeNotifySymbol } from '@/api/notify'
 import { useAlertsStore, bumpToast, type ToastItem } from '@/stores/alerts'
 import { useNotifyStore } from '@/stores/notify'
 import { useSettingsStore } from '@/stores/settings'
@@ -97,7 +98,7 @@ async function funnelNotify(text: string, textBody: string, kind: unknown, event
       kind: event.kind,
       title: text,
       body: textBody || undefined,
-      symbol: event.symbol,
+      symbol: normalizeNotifySymbol(event.symbol),
       causeKey: key,
       at: Date.now(),
     }
