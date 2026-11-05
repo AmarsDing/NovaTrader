@@ -10,5 +10,9 @@ export interface NotifyMessage {
   read: boolean
   /** 关联股票代码（如 600519.SH）；来源事件没有该键时为 undefined（不从正文推断）。 */
   symbol?: string
+  /** 明确方向字段（buy/sell），来源事件没有该键时为 undefined（不解析正文）。 */
+  side?: string
+  /** 明确方向字段（up/down），来源事件没有该键时为 undefined（不解析正文）。 */
+  direction?: string
   [key: string]: unknown
 }

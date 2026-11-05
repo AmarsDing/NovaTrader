@@ -162,4 +162,20 @@ describe('通知中心（三层密度）', () => {
     await flushPromises()
     expect(document.querySelector('.nc-modal')).not.toBeNull()
   })
+
+  it('方向字段经 REST 归一保留：side=buy 显示 ▲、direction=down 显示 ▼，正文代码不参与判定', async () => {
+    mock.req.mockResolvedValue({
+      items: [
+        { id: 'd-buy', kind: 'signal', level: 'L2', title: '买点触发', body: '无方向提示', time: '2026-10-27T10:00:00+08:00', read: false, side: 'buy' },
+        { id: 'd-down', kind: 'signal', level: 'L2', title: '卖点触发', body: '正文写着上涨两字', time: '2026-10-27T09:00:00+08:00', read: true, direction: 'down' },
+      ],
+    })
+    await mountPanel()
+    const buy = wrapper!.find('[data-row-id="d-buy"] .nc-row__emo')
+    const down = wrapper!.find('[data-row-id="d-down"] .nc-row__emo')
+    expect(buy.text()).toBe('▲')
+    expect(buy.attributes('data-tone')).toBe('up')
+    expect(down.text()).toBe('▼')
+    expect(down.attributes('data-tone')).toBe('down')
+  })
 })

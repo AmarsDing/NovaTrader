@@ -15,6 +15,13 @@ export function normalizeNotifySymbol(raw: unknown): string | undefined {
   return value || undefined
 }
 
+/** 方向字段归一：只接受字符串，trim 并小写；空值归一为 undefined。 */
+export function normalizeNotifyDirection(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  const value = raw.trim().toLowerCase()
+  return value || undefined
+}
+
 export async function listMessages(query: Record<string, unknown> = {}): Promise<NotifyMessage[]> {
   const data = await request('/api/notify/messages', { query })
   return asList(data, 'items', 'messages').map((row) => normalizeMessage(row))
@@ -41,6 +48,7 @@ export function markRead(ids: string[]): Promise<unknown> {
  * kind：原 kind/type 缺省回落 category（signal/risk/intel/market/fill/briefing/review），供类别过滤与分级；
  * causeKey：由 dedup_key 推导，与 WS 推送条同口径，通知中心 feed/api 合并去重靠它。
  * symbol：经 normalizeNotifySymbol 统一归一，WS 与 REST 同一条消息必须得到相同值。
+ * side/direction：只透传明确方向字段（大小写归一），用于 ▲/▼ 情绪；不解析标题正文。
  * overrides 供 WS 推送补本地合成 id/接收时刻/未读态，仍走同一套字段归一。
  */
 export function normalizeMessage(raw: RawRecord, overrides: Partial<NotifyMessage> = {}): NotifyMessage {
@@ -59,8 +67,15 @@ export function normalizeMessage(raw: RawRecord, overrides: Partial<NotifyMessag
     category,
     dedupKey,
     symbol: normalizeNotifySymbol(raw.symbol),
+    side: normalizeNotifyDirection(raw.side),
+    direction: normalizeNotifyDirection(raw.direction),
     causeKey: causeKey({ dedupKey }),
   }
   const merged = { ...base, ...overrides }
-  return { ...merged, symbol: normalizeNotifySymbol(merged.symbol) }
+  return {
+    ...merged,
+    symbol: normalizeNotifySymbol(merged.symbol),
+    side: normalizeNotifyDirection(merged.side),
+    direction: normalizeNotifyDirection(merged.direction),
+  }
 }
