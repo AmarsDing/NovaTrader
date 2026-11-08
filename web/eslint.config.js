@@ -35,8 +35,8 @@ export default tseslint.config(
     },
   },
   {
-    // 根目录配置脚本跑在 Node
-    files: ['*.js', '*.config.js'],
+    // 根目录配置脚本与 scripts/ 工具脚本跑在 Node
+    files: ['*.js', '*.config.js', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: { ...globals.node },
     },
