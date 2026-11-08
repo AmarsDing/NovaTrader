@@ -127,7 +127,8 @@ describe('functionIndex 功能卡', () => {
   it('覆盖全部面板且字段齐备（数量与 registry 同步演进）', () => {
     const cards = functionIndex()
     // 26 = 23 + 3 - 1 + 1：FE-B1/W0-3 模型统计并入模型链路（model-stats 面板移除）。
-    expect(cards).toHaveLength(23 + 3 - 1 + 1)
+    // +1 market-board（TSP 看板信息架构移植，2026-11-08 市场看板实施批）。
+    expect(cards).toHaveLength(23 + 3 - 1 + 1 + 1)
     for (const c of cards) {
       expect(c.prefix).toMatch(/^[A-Z0-9]{2,4}$/)
       expect(c.title).toBeTruthy()

@@ -16,6 +16,7 @@
     "test:graphics": "playwright test --config=playwright.config.ts",
     "test:graphics:update": "playwright test --config=playwright.config.ts --update-snapshots",
     "analyze": "cross-env ANALYZE=1 vite build",
+    "check:ui": "node scripts/audit-ui-system.mjs --check --output ../../temp/NovaTrader/review/ui-audit.json",
     "tauri": "tauri"
   },
   "dependencies": {

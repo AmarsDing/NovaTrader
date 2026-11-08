@@ -26,11 +26,13 @@ import { quoteFlash, type FlashSample } from '@/utils/quote-flash'
 import { loadPanelPrefs, savePanelPrefs } from '@/utils/panel-prefs'
 import { createPageRefresh } from './page-refresh'
 import { mergeGapRows } from './market-backfill'
+import { computeKeyLevels } from './market-levels'
 import { fillSideTone, aggregateKlineMarkers, withFillsCostLine } from './market-markers'
+import type { LevelLike } from '@/utils/kline-transform'
 
 // W3-2 面板偏好持久化：键版勿改，旧档自然失效。
 const PREFS_KEY = 'nt.prefs.view.market.v1'
-const PREFS_ALLOW = { freq: ['1d', '1m'], account: ['SIM', 'LIVE'] } as const
+const PREFS_ALLOW = { freq: ['1d', '1m'], account: ['SIM', 'LIVE'], lvHL: ['0', '1'], lvPivot: ['0', '1'], lvGap: ['0', '1'], lvRound: ['0', '1'] } as const
 // 读档须在首次订阅/拉数前完成（freq 直接进 resubMarket 与 getBars）。
 const savedPrefs = loadPanelPrefs(PREFS_KEY, PREFS_ALLOW)
 
@@ -53,6 +55,14 @@ const loading = ref(false)
 const loaded = ref(false)
 /** 框选测量开关：换 symbol/周期/账户一律复位，避免框住旧数据。 */
 const measuring = ref(false)
+
+/** B2 关键价位开关（TSP LEVEL_GROUPS 移植）：默认开 前高前低/枢轴/缺口，整数关口默认关（线最多）。
+ *  算法是日线口径（枢轴取已完成日 K 的 H/L/C），1m 周期下不提供（不拿分钟线硬凑日级语义）。 */
+const lvHL = ref(savedPrefs.lvHL !== '0')
+const lvPivot = ref(savedPrefs.lvPivot !== '0')
+const lvGap = ref(savedPrefs.lvGap !== '0')
+const lvRound = ref(savedPrefs.lvRound === '1')
+const levelsEnabled = computed(() => freq.value === '1d')
 
 const freqOptions = [
   { value: '1d', label: '日线' },
@@ -128,9 +138,30 @@ const hasSubIndicators = computed(() =>
   indicators.value.some((point) => point.macd != null || point.dif != null || point.dea != null || point.rsi6 != null),
 )
 
+/** B2 关键价位（TSP LEVEL_GROUPS 移植）：四组纯函数自 bars 计算；组色经 PALETTE——
+ *  枢轴 P=accent、R1/S1=accent2；前高前低=warn；缺口=info；整数关口=text3；
+ *  涨跌色不用于价位线（up/down 仅价格涨跌语义，AGENTS.md §6-7）。 */
+const keyLevelGroups = computed(() => (levelsEnabled.value ? computeKeyLevels(bars.value) : null))
+const keyLevelCounts = computed(() => ({
+  hl: keyLevelGroups.value?.prevHL.length ?? 0,
+  pivot: keyLevelGroups.value?.pivots.length ?? 0,
+  gap: keyLevelGroups.value?.gaps.length ?? 0,
+  round: keyLevelGroups.value?.round.length ?? 0,
+}))
+const keyLevels = computed<LevelLike[]>(() => {
+  const g = keyLevelGroups.value
+  if (!g) return []
+  const out: LevelLike[] = []
+  if (lvHL.value) out.push(...g.prevHL.map((l) => ({ ...l, color: PALETTE.warn })))
+  if (lvPivot.value) out.push(...g.pivots.map((l) => ({ ...l, color: l.title === '枢轴P' ? PALETTE.accent : PALETTE.accent2 })))
+  if (lvGap.value) out.push(...g.gaps.map((l) => ({ ...l, color: PALETTE.info })))
+  if (lvRound.value) out.push(...g.round.map((l) => ({ ...l, color: PALETTE.text3 })))
+  return out
+})
+
 /** 摊薄成本线（W6b 收编 cost 槽）：买卖成交额差 ÷ 净持仓股数；净额≤0 或数据不全不交成本线。
  *  levels 维度照走 cost 槽语义（成本入 withCostLine 首），同价关键价被成本接管。 */
-const fillsCostOf = computed(() => withFillsCostLine([], fills.value, symbol.value.trim()))
+const fillsCostOf = computed(() => withFillsCostLine(keyLevels.value, fills.value, symbol.value.trim()))
 const klineLevels = computed<KlineLevel[]>(() => fillsCostOf.value.levels)
 const klineCost = computed(() => fillsCostOf.value.cost)
 
@@ -344,9 +375,16 @@ watch([symbol, freq, account], (next, before) => {
   if (next[0] === before[0] && symbol.value.trim()) void reloadWithRefit()
 }, { flush: 'sync' })
 
-// 偏好整档持久化：周期与成交标记读取范围为浏览偏好（非执行账本，安全闸不涉及）。
-watch([freq, account], () => {
-  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, { freq: freq.value, account: account.value })
+// 偏好整档持久化：周期与成交标记读取范围为浏览偏好（非执行账本，安全闸不涉及）；B2 价位开关同属浏览偏好。
+watch([freq, account, lvHL, lvPivot, lvGap, lvRound], () => {
+  savePanelPrefs(PREFS_KEY, PREFS_ALLOW, {
+    freq: freq.value,
+    account: account.value,
+    lvHL: lvHL.value ? '1' : '0',
+    lvPivot: lvPivot.value ? '1' : '0',
+    lvGap: lvGap.value ? '1' : '0',
+    lvRound: lvRound.value ? '1' : '0',
+  })
 })
 
 let offPush: (() => void) | undefined
@@ -515,6 +553,21 @@ onBeforeUnmount(() => {
       >
         框选测量
       </NtButton>
+      <!-- B2 关键价位开关（TSP LEVEL_GROUPS 移植）：色点即图上线色；日线口径，1m 不提供。 -->
+      <div v-if="levelsEnabled && bars.length" class="lv-chips" role="group" aria-label="关键价位叠加">
+        <button type="button" class="lv-chip" :class="{ on: lvHL }" :aria-pressed="lvHL" @click="lvHL = !lvHL">
+          <i class="lv-dot lv-dot--hl" aria-hidden="true" />前高前低({{ keyLevelCounts.hl }})
+        </button>
+        <button type="button" class="lv-chip" :class="{ on: lvPivot }" :aria-pressed="lvPivot" @click="lvPivot = !lvPivot">
+          <i class="lv-dot lv-dot--pivot" aria-hidden="true" />枢轴({{ keyLevelCounts.pivot }})
+        </button>
+        <button type="button" class="lv-chip" :class="{ on: lvGap }" :aria-pressed="lvGap" @click="lvGap = !lvGap">
+          <i class="lv-dot lv-dot--gap" aria-hidden="true" />缺口({{ keyLevelCounts.gap }})
+        </button>
+        <button type="button" class="lv-chip" :class="{ on: lvRound }" :aria-pressed="lvRound" @click="lvRound = !lvRound">
+          <i class="lv-dot lv-dot--round" aria-hidden="true" />整数关口({{ keyLevelCounts.round }})
+        </button>
+      </div>
     </form>
     <NtErrorGuide v-if="error" :error="error" />
     <p v-else-if="snapshotLine" class="nt-note snap-line">行情推送：{{ snapshotLine }}</p>
@@ -632,6 +685,77 @@ onBeforeUnmount(() => {
 
 .q-item {
   color: var(--nt-text-2);
+}
+
+/* B2 关键价位开关 chips：色点即图上线色（前高前低=warn / 枢轴=accent / 缺口=info / 整数关口=text3）。 */
+.lv-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.lv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--nt-text-3);
+  background: transparent;
+  border: 1px solid var(--nt-border-1);
+  border-radius: var(--nt-radius-pill);
+  cursor: pointer;
+  transition:
+    color var(--nt-transition),
+    border-color var(--nt-transition),
+    background var(--nt-transition);
+}
+
+.lv-chip:hover {
+  color: var(--nt-text-1);
+  border-color: var(--nt-border-2);
+}
+
+.lv-chip.on {
+  color: var(--nt-text-1);
+  background: var(--nt-bg-2);
+  border-color: var(--nt-border-2);
+}
+
+.lv-chip:focus-visible {
+  outline: 2px solid var(--nt-accent);
+  outline-offset: 4px;
+}
+
+.lv-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nt-text-3);
+  opacity: 0.35;
+}
+
+.lv-chip.on .lv-dot {
+  opacity: 1;
+}
+
+.lv-dot--hl {
+  background: var(--nt-warn);
+}
+
+.lv-dot--pivot {
+  background: var(--nt-accent);
+}
+
+.lv-dot--gap {
+  background: var(--nt-info);
+}
+
+.lv-dot--round {
+  background: var(--nt-text-3);
 }
 
 .q-time {

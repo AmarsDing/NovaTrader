@@ -98,6 +98,15 @@ exports[`助记符表与功能卡快照 > functionIndex 全表快照 1`] = `
     "aliases": [],
     "argHint": "",
     "argKind": "none",
+    "description": "市场全局看板：指数 / 情绪 / 广度 / 梯队 / 板块 / 异动九卡一屏总览。",
+    "id": "market-board",
+    "prefix": "MB",
+    "title": "市场看板",
+  },
+  {
+    "aliases": [],
+    "argHint": "",
+    "argKind": "none",
     "description": "急拉（3min ≥1.5%）/ 封板 / 开板实时流，支持幅度筛选与候选池聚焦。",
     "id": "intraday-alerts",
     "prefix": "YD",
@@ -334,6 +343,12 @@ exports[`助记符表与功能卡快照 > prefix → 面板映射快照 1`] = `
     "arg": "none",
     "id": "kb-search",
     "title": "知识库",
+  },
+  "MB": {
+    "aliases": [],
+    "arg": "none",
+    "id": "market-board",
+    "title": "市场看板",
   },
   "PZ": {
     "aliases": [],

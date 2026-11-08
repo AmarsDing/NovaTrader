@@ -42,7 +42,8 @@ describe('panel-registry shortcut 完整性', () => {
   it('面板数量与 popout 白名单不自相矛盾', () => {
     // +1 datasource-center（含 /api/config 凭证写面，与 settings 同级禁弹——不在 POPOUT_ALLOWED）
     // 26 = 23 + 3 - 1：FE-B1/W0-3 模型统计并入模型链路（model-stats 面板移除，减不是加）。
-    expect(listPanels()).toHaveLength(23 + 3 - 1 + 1)
+    // +1 market-board（TSP 看板信息架构移植，2026-11-08 市场看板实施批；进 POPOUT_ALLOWED）。
+    expect(listPanels()).toHaveLength(23 + 3 - 1 + 1 + 1)
   })
 
   it('U10 core 集合恰为默认屏 ids（集合互证 + 默认屏内部序）', () => {

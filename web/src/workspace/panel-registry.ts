@@ -43,6 +43,7 @@ export const POPOUT_ALLOWED = new Set([
   'overview',
   'signals',
   'market',
+  'market-board',
   'intel',
   'backtest',
   'limit-ladder',
@@ -204,6 +205,21 @@ const defs: PanelDef[] = [
       prefix: 'DB',
       argKind: 'none',
       description: '连板高度、梯队结构与开板率，打板情绪一屏看全。',
+    },
+  },
+  {
+    // TSP 看板信息架构的 NT 重述（docs/NovaTrader/plan/2026-11-08-market-board-implementation-plan.md）。
+    // prefix 原计划 KB，与 kb-search 冲突改 MB；非 core（默认屏四件不动）。
+    id: 'market-board',
+    title: '市场看板',
+    icon: '板',
+    loader: () => import('@/panels/market/market-board.panel.vue'),
+    group: 'center',
+    singleton: true,
+    shortcut: {
+      prefix: 'MB',
+      argKind: 'none',
+      description: '市场全局看板：指数 / 情绪 / 广度 / 梯队 / 板块 / 异动九卡一屏总览。',
     },
   },
   {

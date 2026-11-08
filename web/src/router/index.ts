@@ -32,6 +32,13 @@ if (import.meta.env.DEV) {
     component: () => import('@/dev/GalleryView.vue'),
     meta: { public: true },
   })
+  // 原生控件预览页（规范 docs/_shared/ui-ux/guidelines/06-控件预览页规范.md）
+  routes.push({
+    path: '/dev/theme-preview',
+    name: 'theme-preview',
+    component: () => import('@/dev/ThemePreview.vue'),
+    meta: { public: true },
+  })
 }
 
 export const router = createRouter({

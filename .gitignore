@@ -64,4 +64,11 @@ web/src-tauri/target/
 doc/UI/
 **/__pycache__/
 **/.pytest_cache/
-research-worker/runs/
+research-worker/
+
+# ----- 部署运行态产物（2026-11-08 本机部署 F:\Novatrader 起新增）-----
+deploy/runtime/
+deploy/build-ctx/
+deploy/build-ctx-py/
+deploy/build-ctx-web/
+backend/bin_deploy/runs/

@@ -17,6 +17,7 @@ import NtButton from '@/ui/NtButton.vue'
 import NtErrorGuide from '@/ui/NtErrorGuide.vue'
 import NtInput from '@/ui/NtInput.vue'
 import NtMissing from '@/ui/NtMissing.vue'
+import NtSegmented from '@/ui/NtSegmented.vue'
 import NtSelect from '@/ui/NtSelect.vue'
 import { statusOf } from '@/ui/status-map'
 import NtStatCard from '@/display/NtStatCard.vue'
@@ -24,7 +25,10 @@ import NtTable, { type NtTableColumn } from '@/ui/NtTable.vue'
 import NtTrustBar from '@/display/NtTrustBar.vue'
 import NtEquityCurve from '@/viz/NtEquityCurve.vue'
 import ResearchJobs from './ResearchJobs.vue'
+import TradeReplayModal from './TradeReplayModal.vue'
+import { aggregateSymbolStats, type SymbolStat } from './backtest-symbol-stats'
 import { amount, messageOf, price, ratioPct, signed } from '@/utils/format'
+import { downloadCsv, type CsvSection } from '@/utils/csv'
 
 const strategies = ref<StrategyMeta[]>([])
 const tasks = ref<BacktestTask[]>([])
@@ -52,25 +56,38 @@ const freqOptions = [
 
 type TaskRow = BacktestTask & Record<string, unknown>
 type TradeRow = BacktestTrade & Record<string, unknown>
+type SymbolRow = SymbolStat & Record<string, unknown>
 
 const taskColumns: NtTableColumn<TaskRow>[] = [
-  { key: 'name', title: '名称' },
-  { key: 'strategy', title: '策略' },
+  { key: 'name', title: '名称', sortable: true },
+  { key: 'strategy', title: '策略', sortable: true },
   { key: 'status', title: '状态' },
-  { key: 'totalReturn', title: '收益', align: 'right' },
-  { key: 'maxDrawdown', title: '回撤', align: 'right' },
-  { key: 'winRate', title: '胜率', align: 'right' },
+  { key: 'totalReturn', title: '收益', align: 'right', sortable: true },
+  { key: 'maxDrawdown', title: '回撤', align: 'right', sortable: true },
+  { key: 'winRate', title: '胜率', align: 'right', sortable: true },
   { key: 'actions', title: '', width: '70px' },
 ]
 const tradeColumns: NtTableColumn<TradeRow>[] = [
-  { key: 'time', title: '时间' },
-  { key: 'symbol', title: '代码', kind: 'symbol' },
-  { key: 'side', title: '方向' },
-  { key: 'price', title: '价格', align: 'right' },
-  { key: 'quantity', title: '数量', align: 'right' },
-  { key: 'amount', title: '金额', align: 'right' },
-  { key: 'pnl', title: '盈亏', align: 'right' },
+  { key: 'time', title: '时间', mono: true, sortable: true },
+  { key: 'symbol', title: '代码', kind: 'symbol', sortable: true },
+  { key: 'side', title: '方向', sortable: true },
+  { key: 'price', title: '价格', align: 'right', sortable: true },
+  { key: 'quantity', title: '数量', align: 'right', sortable: true },
+  { key: 'amount', title: '金额', align: 'right', sortable: true },
+  { key: 'pnl', title: '盈亏', align: 'right', sortable: true },
   { key: 'reason', title: '理由' },
+  // 回放直达钮：键盘可达路径（行点击是鼠标密径，二者同入口）——§4.1
+  { key: 'replay', title: '', width: '64px' },
+]
+/** B1 分标的统计表（TSP picks 表移植）：全列 sortable，行点击定位该标的最近一笔回放。 */
+const symbolColumns: NtTableColumn<SymbolRow>[] = [
+  { key: 'symbol', title: '证券', kind: 'symbol', sortable: true },
+  { key: 'fills', title: '成交笔数', align: 'right', sortable: true },
+  { key: 'buys', title: '买', align: 'right', sortable: true },
+  { key: 'sells', title: '卖', align: 'right', sortable: true },
+  { key: 'closedPnl', title: '合计盈亏', align: 'right', sortable: true },
+  { key: 'winRate', title: '胜率', align: 'right', sortable: true },
+  { key: 'avgPnl', title: '均盈亏', align: 'right', sortable: true },
 ]
 
 /** 批次 A6：运行中任务的进度条文本（progress 是 0..1 比率，后端 SetProgress(1) 收口；null=未上报）。 */
@@ -122,6 +139,92 @@ const configText = computed(() => {
   const cfg = detail.value?.config
   return cfg && Object.keys(cfg).length > 0 ? JSON.stringify(cfg, null, 2) : ''
 })
+
+const symbolStats = computed<SymbolStat[]>(() => aggregateSymbolStats(trades.value))
+
+/* ---------- B1：⑤ 交易明细 逐笔/分标的 + 交易回放 + CSV 导出 ---------- */
+
+const tradesTabOptions = [
+  { value: 'fills', label: '逐笔' },
+  { value: 'symbols', label: '分标的' },
+]
+const tradesTab = ref<'fills' | 'symbols'>('fills')
+const replayOpen = ref(false)
+const replayIndex = ref(0)
+const tradesStep = ref<HTMLElement | null>(null)
+/** 关窗回焦点：回放按钮（键盘可达路径）优先，行点击路径退到 ⑤ 步锚点。 */
+let replayReturn: HTMLElement | null = null
+
+function openReplay(row: TradeRow, event?: MouseEvent) {
+  const idx = trades.value.indexOf(row)
+  if (idx < 0) return
+  replayReturn = (event?.currentTarget as HTMLElement | null) ?? (document.activeElement as HTMLElement | null)
+  replayIndex.value = idx
+  replayOpen.value = true
+}
+
+/** 分标的行 → 该标的最近一笔（aggregateSymbolStats.lastIndex 已记账）。 */
+function openSymbolReplay(row: SymbolRow) {
+  if (row.lastIndex < 0) return
+  replayReturn = document.activeElement as HTMLElement | null
+  replayIndex.value = row.lastIndex
+  replayOpen.value = true
+}
+
+function onReplayToggle(open: boolean) {
+  replayOpen.value = open
+  if (open) return
+  const target = replayReturn
+  replayReturn = null
+  if (target && document.contains(target) && target.tabIndex >= 0) {
+    target.focus()
+    return
+  }
+  tradesStep.value?.focus()
+}
+
+/** 导出：概要镜像报告（格式串）；明细/分标的是原始数值（Excel 可再计算）。
+ *  缺段写「未返回」（报告未回）；真空段（区间无成交）只发表头，不写占位词。 */
+function exportCsv() {
+  const task = selected.value
+  if (!task) return
+  const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_')
+  const rep = report.value
+  const sections: CsvSection[] = [
+    rep
+      ? {
+          title: '概要',
+          header: ['指标', '值'],
+          rows: [
+            ['任务', task.name || task.id],
+            ['策略', `${task.strategy} · ${task.freq}`],
+            ['区间', rangeText.value],
+            ['总收益', ratioPct(rep.metrics.totalReturn)],
+            ['年化', ratioPct(rep.metrics.annualReturn)],
+            ['最大回撤', ratioPct(rep.metrics.maxDrawdown)],
+            ['胜率', ratioPct(rep.metrics.winRate)],
+            ['盈亏比', rep.metrics.profitFactor != null ? rep.metrics.profitFactor.toFixed(2) : null],
+            ['夏普', rep.metrics.sharpe],
+            ['回合', rep.metrics.rounds],
+            ['成交样本', trades.value.length],
+          ],
+        }
+      : { title: '概要', header: ['说明'], rows: [['报告未返回']] },
+  ]
+  const CAP = 5000
+  const list = trades.value.length > CAP ? trades.value.slice(0, CAP) : trades.value
+  sections.push({
+    title: trades.value.length > CAP ? `明细（已按 ${CAP} 行截断）` : '明细',
+    header: ['时间', '代码', '方向', '价格', '数量', '金额', '盈亏', '理由'],
+    rows: list.map((t) => [t.time, t.symbol, t.side, t.price, t.quantity, t.amount, t.pnl, t.reason]),
+  })
+  sections.push({
+    title: '分标的',
+    header: ['代码', '成交笔数', '买', '卖', '合计盈亏', '胜率', '均盈亏'],
+    rows: symbolStats.value.map((s) => [s.symbol, s.fills, s.buys, s.sells, s.closedPnl, s.winRate, s.avgPnl]),
+  })
+  downloadCsv(`${safe(task.name || task.id) || '回测报告'}.csv`, sections)
+}
 
 async function load() {
   loading.value = true
@@ -255,7 +358,11 @@ onBeforeUnmount(() => {
     </NtTable>
 
     <section v-if="selected" class="nt-panel">
-      <h2 class="nt-panel__title">报告 · {{ selected.name || selected.id }}</h2>
+      <div class="report-head">
+        <h2 class="nt-panel__title">报告 · {{ selected.name || selected.id }}</h2>
+        <!-- B1：概要+明细+分标的三段单文件导出（TSP 四段导出移植），报告未回则概要段写「未返回」 -->
+        <NtButton size="sm" @click="exportCsv">导出 CSV</NtButton>
+      </div>
 
       <!-- W8b 结果页六步重排：步骤序固定（结论→信任条→假设→曲线→交易明细→原始参数），缺步灰显不蒸发（R-UI-23） -->
       <section class="bt-step" data-step="conclusion">
@@ -299,12 +406,40 @@ onBeforeUnmount(() => {
         <NtMissing v-else label="曲线未返回" />
       </section>
 
-      <section class="bt-step" data-step="trades">
-        <h3 class="bt-step__title">⑤ 交易明细</h3>
-        <NtTable :columns="tradeColumns" :rows="trades as TradeRow[]" :row-key="'seq'" empty="该区间无成交——策略未触发任何交易">
+      <section ref="tradesStep" class="bt-step" data-step="trades" tabindex="-1">
+        <div class="bt-step__bar">
+          <h3 class="bt-step__title">⑤ 交易明细</h3>
+          <!-- B1：逐笔（行点击/回放钮 → K 线现场）与分标的（聚合统计 → 该标的最近一笔）两视图 -->
+          <NtSegmented v-model="tradesTab" :options="tradesTabOptions" size="sm" />
+        </div>
+        <NtTable
+          v-if="tradesTab === 'fills'"
+          :columns="tradeColumns"
+          :rows="trades as TradeRow[]"
+          :row-key="'seq'"
+          clickable
+          empty="该区间无成交——策略未触发任何交易"
+          @row-click="openReplay"
+        >
           <template #cell-price="{ value }">{{ price(value) }}</template>
           <template #cell-amount="{ value }">{{ amount(value) }}</template>
           <template #cell-pnl="{ value }">{{ signed(value) }}</template>
+          <template #cell-replay="{ row }">
+            <NtButton size="sm" variant="quiet" @click.stop="openReplay(row, $event)">回放</NtButton>
+          </template>
+        </NtTable>
+        <NtTable
+          v-else
+          :columns="symbolColumns"
+          :rows="symbolStats as SymbolRow[]"
+          row-key="symbol"
+          clickable
+          empty="该区间无成交——无法聚合分标的统计"
+          @row-click="openSymbolReplay"
+        >
+          <template #cell-closedPnl="{ value }">{{ signed(value) }}</template>
+          <template #cell-winRate="{ value }">{{ ratioPct(value) }}</template>
+          <template #cell-avgPnl="{ value }">{{ signed(value) }}</template>
         </NtTable>
       </section>
 
@@ -314,12 +449,40 @@ onBeforeUnmount(() => {
         <NtMissing v-else :label="words.undeclared" />
       </section>
     </section>
+
+    <!-- B1：交易回放弹窗（Esc 关窗回焦，←/→ 换笔；关窗焦点回 ⑤ 步锚点或回放钮） -->
+    <TradeReplayModal
+      :open="replayOpen"
+      :trades="trades"
+      :index="replayIndex"
+      @update:open="onReplayToggle"
+      @update:index="replayIndex = $event"
+    />
   </div>
 </template>
 
 <style scoped>
 .report {
   margin-bottom: 0;
+}
+
+.report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bt-step__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ⑤ 步锚点：关窗回焦落点（键盘路径经回放钮时回钮上），落点本身不可见框。 */
+.bt-step:focus {
+  outline: none;
 }
 
 .bt-step {
