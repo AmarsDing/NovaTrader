@@ -200,8 +200,8 @@ const asOfMs = computed(() => {
 
 const brokenColumns: NtTableColumn<LimitBoard & Record<string, unknown>>[] = [
   { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
-  { key: 'consecutive', title: '连板', align: 'right', mono: true },
-  { key: 'openCount', title: '开板次数', align: 'right', mono: true },
+  { key: 'consecutive', title: '连板', align: 'right', mono: true, sortable: true },
+  { key: 'openCount', title: '开板次数', align: 'right', mono: true, sortable: true },
   { key: 'lastSealAt', title: '最后封板', mono: true },
 ]
 const brokenRows = computed(() => broken.value as unknown as (LimitBoard & Record<string, unknown>)[])
@@ -464,7 +464,17 @@ onBeforeUnmount(() => {
     <!-- 炸板/跌停：跨页签的今日板面状态，常驻页签区外 -->
     <section class="nt-panel">
       <h2 class="nt-panel__title">炸板 · {{ upReady ? broken.length : '—' }} 只</h2>
-      <NtTable :columns="brokenColumns" :rows="brokenRows" row-key="symbol" dense :empty="upReady ? '今日没有炸板' : '涨停名单未返回，炸板明细未知'" />
+      <!-- 炸板明细可达数百行：virtual 只渲染窗口（借法 FreqUI/Perspective 大表范式）；
+           连板/开板次数列可排序（打板审查高频按高度倒序）。 -->
+      <NtTable
+        :columns="brokenColumns"
+        :rows="brokenRows"
+        row-key="symbol"
+        dense
+        virtual
+        height="320px"
+        :empty="upReady ? '今日没有炸板' : '涨停名单未返回，炸板明细未知'"
+      />
     </section>
 
     <section class="nt-panel">

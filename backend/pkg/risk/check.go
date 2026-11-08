@@ -48,6 +48,9 @@ var chain = []rule{
 	{"R13", "禁止自成交", ruleSelfTrade},
 	{"R14", "速度上限", ruleRate},
 	{"R15", "熔断", ruleBreaker},
+	// R16 是声明式保护规则位（2026-11-08 借法 freqtrade protections），追加在末尾，
+	// R01–R15 的顺序与语义不变。锁定状态由引擎按信号闭合历史算好经 Input.Protection 传入。
+	{"R16", "保护锁定", ruleProtection},
 }
 
 // RuleName 返回规则编号对应的名称。
@@ -514,4 +517,14 @@ func ruleBreaker(in *Input, p *Params, vol int) outcome {
 		return reject("%s，暂停开仓", why)
 	}
 	return pass(vol)
+}
+
+// ruleProtection 只执行引擎算好的锁定可见状态（推导在 risk 服务 biz/protection.go）。
+// 与 R01/R02 同口径：只挡自动买单；卖出与人工单永远放行。
+func ruleProtection(in *Input, _ *Params, vol int) outcome {
+	if !in.Protection.Locked || in.Order.Side != Buy || !isAuto(in.Order) {
+		return pass(vol)
+	}
+	until := in.Protection.Until.In(tradecal.Shanghai()).Format("15:04")
+	return reject("%s（锁至 %s）", in.Protection.Reason, until)
 }

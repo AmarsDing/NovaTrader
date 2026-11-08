@@ -67,6 +67,13 @@ type Params struct {
 	RejectAlertRate     float64
 	RejectAlertCooldown time.Duration
 
+	// 声明式保护规则（R16，借法 freqtrade protections），symbol 级，作用于自动买单。
+	// ProtectionLossStreak：同 symbol 最近 N 笔闭合信号全部亏损即锁定买入，0 关闭。
+	// ProtectionLock：连亏锁定时长。ProtectionCooldown：任意闭合后禁止再买的冷却期，0 关闭。
+	ProtectionLossStreak int
+	ProtectionLock       time.Duration
+	ProtectionCooldown   time.Duration
+
 	Fee ashare.Fee
 }
 
@@ -103,7 +110,11 @@ func Defaults() Params {
 		RejectAlertMin:      20,
 		RejectAlertRate:     0.5,
 		RejectAlertCooldown: 30 * time.Minute,
-		Fee:                 ashare.DefaultFee(),
+		// 保护规则默认全关（声明式规则须显式启用，与 freqtrade protections 缺省空名单同义）。
+		ProtectionLossStreak: 0,
+		ProtectionLock:       time.Hour,
+		ProtectionCooldown:   0,
+		Fee:                  ashare.DefaultFee(),
 	}
 }
 
@@ -220,6 +231,9 @@ var fields = map[string]paramField{
 	"reject_alert_min":          intField(func(p *Params) *int { return &p.RejectAlertMin }, 0, 10000),
 	"reject_alert_rate":         floatField(func(p *Params) *float64 { return &p.RejectAlertRate }, 0, 1),
 	"reject_alert_cooldown_sec": durField(func(p *Params) *time.Duration { return &p.RejectAlertCooldown }, time.Second, 60, 86400),
+	"protection_loss_streak":    intField(func(p *Params) *int { return &p.ProtectionLossStreak }, 0, 20),
+	"protection_lock_min":       durField(func(p *Params) *time.Duration { return &p.ProtectionLock }, time.Minute, 1, 1440),
+	"protection_cooldown_min":   durField(func(p *Params) *time.Duration { return &p.ProtectionCooldown }, time.Minute, 0, 1440),
 }
 
 // Keys 返回全部参数名（不带前缀），已排序。

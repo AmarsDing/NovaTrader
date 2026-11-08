@@ -197,7 +197,7 @@ const funnel: FunnelStage[] = [
   { label: '候选池', value: 5120, hint: '全市场' },
   { label: '初筛', value: 486, hint: '量价异动' },
   { label: 'AI 评分', value: 97, hint: '四维 ≥70' },
-  { label: '风控通过', value: 23, hint: 'R01–R15' },
+  { label: '风控通过', value: 23, hint: 'R01–R16' },
   { label: '下单', value: 8, hint: '模拟盘' },
 ]
 

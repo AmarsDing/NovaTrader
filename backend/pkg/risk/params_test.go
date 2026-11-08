@@ -137,3 +137,36 @@ func TestRate(t *testing.T) {
 		t.Fatal("new day", s, d)
 	}
 }
+
+// TestProtectionParams 覆盖 R16 三个参数的取值与边界（分钟单位）。
+func TestProtectionParams(t *testing.T) {
+	p := Defaults()
+	// 默认全关：连亏不锁、冷却关闭，锁定时长 1 小时兜底。
+	if p.ProtectionLossStreak != 0 || p.ProtectionCooldown != 0 || p.ProtectionLock != time.Hour {
+		t.Fatalf("unexpected defaults: %+v", p)
+	}
+	if err := p.Set("protection_loss_streak", "3"); err != nil || p.ProtectionLossStreak != 3 {
+		t.Fatal(err, p.ProtectionLossStreak)
+	}
+	if err := p.Set("protection_loss_streak", "21"); err == nil {
+		t.Fatal("streak above 20 must be rejected")
+	}
+	if err := p.Set("protection_lock_min", "30"); err != nil || p.ProtectionLock != 30*time.Minute {
+		t.Fatal(err, p.ProtectionLock)
+	}
+	if err := p.Set("protection_lock_min", "0"); err == nil {
+		t.Fatal("lock below 1 minute must be rejected")
+	}
+	if err := p.Set("protection_cooldown_min", "15"); err != nil || p.ProtectionCooldown != 15*time.Minute {
+		t.Fatal(err, p.ProtectionCooldown)
+	}
+	if err := p.Set("protection_cooldown_min", "0"); err != nil || p.ProtectionCooldown != 0 {
+		t.Fatal("cooldown 0 closes the rule")
+	}
+	// 三个键都在 Keys/Values 里（配置面板可见）。
+	for _, k := range []string{"protection_loss_streak", "protection_lock_min", "protection_cooldown_min"} {
+		if _, ok := p.Get("risk." + k); !ok {
+			t.Fatalf("%s missing from param surface", k)
+		}
+	}
+}

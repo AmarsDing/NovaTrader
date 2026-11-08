@@ -335,7 +335,7 @@ export function splitReasons(reason: string): string[] {
   return out
 }
 
-/** 证据/理由里出现的第一个风控规则号（R00–R15 口径） */
+/** 证据/理由里出现的第一个风控规则号（R00–R16 口径） */
 export function ruleOf(ticket: { evidence: string[]; reason?: string }): string {
   const haystack = [...ticket.evidence, ticket.reason ?? ''].join(' ')
   const match = /R\d{2}/.exec(haystack)

@@ -46,6 +46,18 @@ type IntelAlertPayload struct {
 	Sentiment float64  `json:"sentiment"`
 }
 
+// SignalClosedPayload 是 strategy.signal.updated 里风控关心的部分（R16 保护锁定的数据源）。
+// 终态（status=closed）才携带 pnl_pct/closed_at；非终态事件字段缺省，直接忽略。
+// pnl_pct 为 nil 表示盈亏未知：不计入连亏序列（「没取到≠0」），冷却期不受影响。
+type SignalClosedPayload struct {
+	SignalID  int        `json:"signal_id"`
+	Book      string     `json:"book"`
+	Status    string     `json:"status"`
+	StockCode string     `json:"stock_code"`
+	PnlPct    *float64   `json:"pnl_pct,omitempty"`
+	ClosedAt  *time.Time `json:"closed_at,omitempty"`
+}
+
 // KillRequestPayload 是 sys.killswitch.request。
 type KillRequestPayload struct {
 	Source string `json:"source"`

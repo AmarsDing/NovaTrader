@@ -38,6 +38,7 @@ type fakeRepo struct {
 	records      *RejectRecords
 	recordsErr   error
 	recordsFilter RejectRecordFilter
+	protections   []string
 }
 
 func (f *fakeRepo) LoadAccountSnapshots(context.Context) ([]accountstate.Snapshot, error) {
@@ -85,6 +86,12 @@ func (f *fakeRepo) SaveBreaker(_ context.Context, _ risk.AccountType, _ bool, re
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.breakers = append(f.breakers, reason)
+	return nil
+}
+func (f *fakeRepo) SaveProtection(_ context.Context, account risk.AccountType, symbol, reason string, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.protections = append(f.protections, string(account)+" "+symbol+" "+reason)
 	return nil
 }
 func (f *fakeRepo) Report(context.Context, time.Time, time.Time) (*Report, error) {
@@ -521,5 +528,73 @@ func TestParamAndMode(t *testing.T) {
 	r.account(1_000_000, 500_000)
 	if d, _ := r.e.Check(ctx, buy("a", 100)); d.Approved {
 		t.Fatal("risk level 3 blocks buys")
+	}
+}
+
+// TestProtectionLockEndToEnd 走通 R16 全链路：信号闭合 → 引擎算出保护锁并落库 →
+// 后续自动买单被 R16 拒，人工单放行（保护锁只挡自动开仓）。
+func TestProtectionLockEndToEnd(t *testing.T) {
+	repo := &fakeRepo{mode: risk.L1, haveMode: true, params: map[string]string{
+		"risk.protection_loss_streak": "2",
+		"risk.protection_lock_min":    "60",
+	}}
+	r := newRig(t, repo)
+	r.account(1_000_000, 500_000)
+	ctx := context.Background()
+
+	// 两笔连亏闭合事件触发锁；第一笔不足阈值不触发。
+	pnl := -0.01
+	for i := 0; i < 2; i++ {
+		cl := r.clock.Add(time.Duration(i) * time.Minute)
+		r.e.OnSignalClosed(ctx, SignalClosedPayload{
+			SignalID: i + 1, Book: "paper", Status: "closed", StockCode: "000001.SZ",
+			PnlPct: &pnl, ClosedAt: &cl,
+		})
+	}
+	if len(repo.protections) != 1 {
+		t.Fatalf("want exactly one protection record, got %v", repo.protections)
+	}
+
+	// 自动买单被 R16 拒。
+	if d, _ := r.e.Check(ctx, buy("auto", 1000)); d.Approved || d.Rule != "R16" {
+		t.Fatalf("locked auto buy must be rejected by R16: approved=%v rule=%s", d.Approved, d.Rule)
+	}
+
+	// 人工买单放行（只挡自动单）。
+	m := buy("manual", 1000)
+	m.Source, m.Operator = risk.Manual, "owner"
+	if dm, _ := r.e.Check(ctx, m); !dm.Approved {
+		t.Fatalf("manual buy must bypass protection lock: %s %s", dm.Rule, dm.Reason)
+	}
+
+	// 非终态事件不驱动锁：换一只未锁的股票，status=open 不应产生记录。
+	open := SignalClosedPayload{SignalID: 3, Book: "paper", Status: "open", StockCode: "600519.SH", PnlPct: &pnl, ClosedAt: &r.clock}
+	r.e.OnSignalClosed(ctx, open)
+	if len(repo.protections) != 1 {
+		t.Fatalf("non-terminal event must not trigger a lock: %v", repo.protections)
+	}
+}
+
+// TestProtectionStaleCloseDoesNotAlert 覆盖回放/补发的旧闭合：closed_at 早于锁定时长时
+// 算出的锁已过期，不为死锁落库、不发指向过去的告警（引擎层闸门）。
+func TestProtectionStaleCloseDoesNotAlert(t *testing.T) {
+	repo := &fakeRepo{mode: risk.L1, haveMode: true, params: map[string]string{
+		"risk.protection_cooldown_min": "10",
+	}}
+	r := newRig(t, repo)
+	ctx := context.Background()
+	pnl := -0.01
+	old := r.clock.Add(-2 * time.Hour)
+	r.e.OnSignalClosed(ctx, SignalClosedPayload{
+		SignalID: 1, Book: "paper", Status: "closed", StockCode: "000001.SZ",
+		PnlPct: &pnl, ClosedAt: &old,
+	})
+	if len(repo.protections) != 0 {
+		t.Fatalf("stale close must not persist a protection record, got %v", repo.protections)
+	}
+	// 且此刻可见状态为未锁定（过期锁不生效）。
+	r.account(1_000_000, 500_000)
+	if d, _ := r.e.Check(ctx, buy("x", 1000)); !d.Approved {
+		t.Fatalf("expired lock must not block buys: %s %s", d.Rule, d.Reason)
 	}
 }

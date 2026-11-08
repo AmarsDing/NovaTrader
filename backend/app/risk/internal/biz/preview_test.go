@@ -14,7 +14,7 @@ func TestPreviewApprovedBuy(t *testing.T) {
 	r := newRig(t, nil)
 	r.account(1_000_000, 500_000)
 	pv := r.e.Preview(context.Background(), buy("pv", 1000))
-	if !pv.Approved || pv.Volume != 1000 || pv.Adjusted || len(pv.Results) != 15 {
+	if !pv.Approved || pv.Volume != 1000 || pv.Adjusted || len(pv.Results) != 16 {
 		t.Fatalf("preview should approve whole: %+v", pv)
 	}
 	// 与 pkg 切片同一精度口径：金额 10000，费用 5.10，买入现金影响为负。

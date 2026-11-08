@@ -94,6 +94,10 @@ func (r *Runner) Start(ctx context.Context) error {
 		{events.SubjectTradeOrder, r.onOrder},
 		{events.SubjectMarketSnapshot, r.onSnapshot},
 		{events.SubjectMarketState, r.onState},
+		// strategy.signal.updated 是持久主题（走 JetStream），但 js.Publish 同时投递给
+		// core NATS 订阅者，故 core 订阅即可收到；seen 去重挡住 JetStream 侧重复投递。
+		// 保护锁是分钟级软增强，断流不放大、重启丢锁属已知边界（见 biz/protection.go）。
+		{events.SubjectSignal, r.onSignal},
 	}
 	for _, c := range core {
 		fn := c.fn
@@ -236,6 +240,19 @@ func (r *Runner) onAccount(ctx context.Context, env events.Envelope) {
 func (r *Runner) onOrder(_ context.Context, env events.Envelope) {
 	if p, ok := decode[biz.OrderActionPayload](r, env); ok {
 		r.e.OnOrderAction(p)
+	}
+}
+
+// onSignal 消费 strategy.signal.updated，只把终态闭合事件交给引擎驱动 R16 保护锁定。
+// 非终态事件（status≠closed）在引擎内直接忽略。与 trade 消费同一主题同源校验：
+// 只认 strategy 发布的信封，拒绝旁路/伪造的终态事件驱动锁。
+func (r *Runner) onSignal(ctx context.Context, env events.Envelope) {
+	if env.Source != "strategy" {
+		r.log.Warnf("ignore signal envelope from source %q", env.Source)
+		return
+	}
+	if p, ok := decode[biz.SignalClosedPayload](r, env); ok {
+		r.e.OnSignalClosed(ctx, p)
 	}
 }
 

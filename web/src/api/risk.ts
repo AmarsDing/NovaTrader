@@ -79,7 +79,7 @@ export function triggerKillSwitch(body: KillBody): Promise<unknown> {
   return request('/api/risk/killswitch', { method: 'POST', json: body })
 }
 
-/* ---------- R01–R15 规则链预检（M08） ---------- */
+/* ---------- R01–R16 规则链预检（M08） ---------- */
 
 export interface RuleHit {
   code: string
@@ -344,7 +344,7 @@ export interface RejectRecordQuery {
   end?: string
   /** 回看天数（含结束日）；<=0 后端取默认 1，上限 31 */
   days?: number
-  /** 规则号精确过滤（R00–R15），空为全部 */
+  /** 规则号精确过滤（R00–R16），空为全部 */
   rule?: string
   /** 标的精确过滤，空为全部 */
   symbol?: string
@@ -372,9 +372,9 @@ export interface RejectRecordItem {
   price: number
   volumeReq: number
   volumeFinal: number
-  /** 触发拒绝的规则号 R00–R15 */
+  /** 触发拒绝的规则号 R00–R16 */
   rule: string
-  /** 规则中文名（与 R01–R15 链一致） */
+  /** 规则中文名（与 R01–R16 链一致） */
   ruleName: string
   reason: string
   latencyUs: number

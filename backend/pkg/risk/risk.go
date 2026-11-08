@@ -1,4 +1,4 @@
-// Package risk 是事前风控的纯规则：参数、规则链 R01–R15、盯盘、Kill Switch 状态和速度计数。
+// Package risk 是事前风控的纯规则：参数、规则链 R01–R16、盯盘、Kill Switch 状态和速度计数。
 // 这里不访问数据库和网络。risk 服务把内存里的账户、行情拼成 Input 再调用 Check；回测直接调用。
 package risk
 
@@ -163,6 +163,15 @@ type Counters struct {
 	Today      int `json:"today"`
 }
 
+// ProtectionView 是声明式保护规则（R16，借法 freqtrade protections）在校验时刻的
+// 可见状态：引擎按信号闭合历史算出 symbol 级锁定（连亏锁/冷却期）后填进 Input，
+// 规则链只执行、不推导。Locked 只挡自动买单，卖出与人工单永远放行。
+type ProtectionView struct {
+	Locked bool      `json:"locked"`
+	Until  time.Time `json:"until,omitempty"`
+	Reason string    `json:"reason,omitempty"`
+}
+
 // Input 是一次校验看到的全部数据，原样写进审计。
 type Input struct {
 	ConfigRevision int              `json:"config_revision"`
@@ -177,6 +186,7 @@ type Input struct {
 	Market         Market           `json:"market"`
 	Counters       Counters         `json:"counters"`
 	Reservations   []Reservation    `json:"reservations,omitempty"`
+	Protection     ProtectionView   `json:"protection,omitempty"`
 }
 
 // Result 是一条规则的结论。Volume 是这条规则之后的数量。

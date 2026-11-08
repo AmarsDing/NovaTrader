@@ -631,7 +631,7 @@ interface RuleDef {
   effect: string
 }
 
-/** R01–R15 中文口径：名字与 pkg/risk/check.go 的链一致，处置方式按 shrink/passNote 的语义 */
+/** R01–R16 中文口径：名字与 pkg/risk/check.go 的链一致，处置方式按 shrink/passNote 的语义 */
 export const RULES: RuleDef[] = [
   { code: 'R01', name: '授权', desc: '模式与准入允许这笔单；急停时只放行人工卖出', effect: '阻断' },
   { code: 'R02', name: '行情新鲜', desc: '报价延迟 ≤ quote_max_delay_ms，账户快照 ≤ account_max_age_sec', effect: '阻断' },
@@ -648,6 +648,7 @@ export const RULES: RuleDef[] = [
   { code: 'R13', name: '禁止自成交', desc: '同账户同代码反向挂单不撮合', effect: '阻断' },
   { code: 'R14', name: '速度上限', desc: '每秒/每日申报笔数低于程序化交易认定线（300/s、2 万/日）', effect: '阻断' },
   { code: 'R15', name: '熔断', desc: '账户当日亏损锁存（daily_loss_pct）或市场熔断时不开仓', effect: '阻断' },
+  { code: 'R16', name: '保护锁定', desc: '同 symbol 连亏达 protection_loss_streak 笔或在平仓冷却期内（protection_cooldown_min），自动买单锁定 protection_lock_min 分钟；卖出与人工单放行', effect: '阻断' },
 ]
 
 function riskSections(input: MonitorInput, now: number, extra: DetailExtra): DetailSection[] {
@@ -756,7 +757,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
   }
   const limitsSection: DetailSection = { key: 'limits', title: '限额仪表', rows: limitRows, foot: '环形 >80% 转橙、=100% 转红（§5.3）。' }
 
-  /* R01–R15 逐条：今日命中次数来自日报 rejects，只有计数没有明细 */
+  /* R01–R16 逐条：今日命中次数来自日报 rejects，只有计数没有明细 */
   const report = input.riskReport?.ok ? input.riskReport : null
   const rejectMap = new Map((report?.rejects ?? []).map((item) => [item.rule, item.count]))
   const ruleRows = RULES.map((rule) => {
@@ -765,7 +766,7 @@ function riskSections(input: MonitorInput, now: number, extra: DetailExtra): Det
   })
   const ruleSection: DetailSection = {
     key: 'rules',
-    title: '规则明细（R01–R15）',
+    title: '规则明细（R01–R16）',
     table: { key: 'rule', columns: ['规则', '说明', '今日命中', '处置'], rows: ruleRows, empty: '' },
     foot: '最近命中时间与最近被拦的票未接入：风控日报（DailyReportReply）只给逐规则计数，没有逐条明细。',
   }

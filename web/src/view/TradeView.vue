@@ -195,18 +195,19 @@ const orderColumns: NtTableColumn<OrderRow>[] = [
   { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'side', title: '方向' },
   { key: 'status', title: '状态' },
-  { key: 'price', title: '价格', align: 'right' },
-  { key: 'volume', title: '数量', align: 'right' },
-  { key: 'filled', title: '已成', align: 'right' },
+  // 委托审查高频按价格/数量/成比排序（借法 vnpy 委托监视器 / FreqUI TradeList 列排序）
+  { key: 'price', title: '价格', align: 'right', sortable: true },
+  { key: 'volume', title: '数量', align: 'right', sortable: true },
+  { key: 'filled', title: '已成', align: 'right', sortable: true },
   { key: 'actions', title: '', width: '70px' },
 ]
 const fillColumns: NtTableColumn<FillRow>[] = [
-  { key: 'time', title: '时间' },
+  { key: 'time', title: '时间', sortable: true },
   { key: 'symbol', title: '证券', kind: 'symbol', symbolMode: 'inline', width: '150px' },
   { key: 'side', title: '方向' },
-  { key: 'price', title: '价格', align: 'right' },
+  { key: 'price', title: '价格', align: 'right', sortable: true },
   { key: 'qty', title: '数量', align: 'right' },
-  { key: 'amount', title: '金额', align: 'right' },
+  { key: 'amount', title: '金额', align: 'right', sortable: true },
 ]
 
 const posRows = computed<PosRow[]>(() =>

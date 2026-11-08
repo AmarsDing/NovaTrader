@@ -29,6 +29,8 @@ type Repo interface {
 	SaveBreaker(ctx context.Context, account risk.AccountType, active bool, reason string) error
 	// SaveAlert 写 kind=reject_rate 事件，并经 outbox 发 risk.alert。
 	SaveAlert(ctx context.Context, message string) error
+	// SaveProtection 写 kind=protection 事件（R16 保护锁定触发留痕），并经 outbox 发 risk.alert。
+	SaveProtection(ctx context.Context, account risk.AccountType, symbol, reason string, until time.Time) error
 	Report(ctx context.Context, from, to time.Time) (*Report, error)
 	// RejectTrend 聚合 [from,to) 内 risk_check：每日校验/拒绝计数 + 窗口按规则拒绝计数。
 	RejectTrend(ctx context.Context, from, to time.Time) (*RejectTrend, error)

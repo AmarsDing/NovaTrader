@@ -25,11 +25,12 @@ import (
 )
 
 const (
-	kindKill    = "killswitch"
-	kindMode    = "mode"
-	kindBreaker = "breaker"
-	kindParam   = "param"
-	kindReject  = "reject_rate"
+	kindKill       = "killswitch"
+	kindMode       = "mode"
+	kindBreaker    = "breaker"
+	kindParam      = "param"
+	kindReject     = "reject_rate"
+	kindProtection = "protection"
 )
 
 // Repo 实现 biz.Repo。
@@ -187,6 +188,29 @@ func (r *Repo) SaveAlert(ctx context.Context, message string) error {
 		}
 		return insert(ctx, tx, events.SubjectRiskAlert, biz.AlertPayload{
 			Level: "warning", Kind: kindReject, Message: message, At: now,
+		})
+	})
+}
+
+// SaveProtection 在事务里写一条 kind=protection 的 risk_event（R16 保护锁定触发留痕，
+// 日报经 Report 收录）并发 risk.alert。source 存账户类型，reason 存「代码 原因」，
+// 便于日报按条查看。锁至时刻只进告警文案不落 risk_event 列（锁是分钟级易失态，重启即失效，
+// 落库反而误导）。
+func (r *Repo) SaveProtection(ctx context.Context, account risk.AccountType, symbol, reason string, until time.Time) error {
+	now := time.Now()
+	msg := string(account) + " " + symbol + " " + reason
+	if !until.IsZero() {
+		msg += "（锁至 " + until.In(tradecal.Shanghai()).Format("15:04") + "）"
+	}
+	return r.inTx(ctx, func(tx *ent.Tx) error {
+		if err := tx.RiskEvent.Create().
+			SetKind(kindProtection).SetActive(true).SetSource(string(account)).
+			SetReason(symbol + " " + reason).SetCreatedAt(now).
+			Exec(ctx); err != nil {
+			return err
+		}
+		return insert(ctx, tx, events.SubjectRiskAlert, biz.AlertPayload{
+			Level: "warning", Kind: kindProtection, AccountType: account, Message: msg, At: now,
 		})
 	})
 }

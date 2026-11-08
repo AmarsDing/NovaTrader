@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 风控链面板（M08）：R01–R15 规则链可视化 + 手动预检。
+ * 风控链面板（M08）：R01–R16 规则链可视化 + 手动预检。
  * 对一笔假设订单跑 /api/risk/check，逐条显示规则通过/拦截情况。
  */
 import { computed, onMounted, ref } from 'vue'
@@ -104,7 +104,7 @@ onMounted(() => {
   <div class="nt-page">
     <header class="nt-head">
       <div>
-        <h1 class="nt-title">风控链 R01–R15</h1>
+        <h1 class="nt-title">风控链 R01–R16</h1>
         <p class="nt-note">
           当前模式 <b>{{ risk.mode || '—' }}</b>
           <!-- Kill Switch/熔断章词与 tone 取自 risk 册（§7.1，一字锁定）：killswitch 已触发 danger（L4 等级不降）、

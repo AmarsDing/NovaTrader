@@ -54,7 +54,7 @@ func check(t *testing.T, in Input, p Params, wantRule string) Decision {
 
 func TestBaseApproved(t *testing.T) {
 	d := check(t, base(), Defaults(), "")
-	if d.Volume != 1000 || d.Adjusted || len(d.Results) != 15 {
+	if d.Volume != 1000 || d.Adjusted || len(d.Results) != len(chain) {
 		t.Fatalf("%+v", d)
 	}
 	for i, r := range d.Results {
@@ -481,4 +481,34 @@ func TestBreaker(t *testing.T) {
 	in.Market.RiskLevel = 3
 	// 风险度 3 的仓位系数是 0，R07 先拦下。
 	check(t, in, Defaults(), "R07")
+}
+
+// TestProtectionRule 覆盖 R16 的三态：锁定的自动买单被拒，卖出与人工单永远放行，
+// 未锁定时放行。锁定状态由引擎经 Input.Protection 传入（推导不在规则里）。
+func TestProtectionRule(t *testing.T) {
+	locked := ProtectionView{Locked: true, Until: now.Add(time.Hour), Reason: "连亏 3 笔保护锁定"}
+
+	// 锁定的自动买单被拒，理由带上锁至时刻。
+	in := base()
+	in.Protection = locked
+	d := check(t, in, Defaults(), "R16")
+	if !strings.Contains(d.Reason, "锁至") || !strings.Contains(d.Reason, "连亏 3 笔") {
+		t.Fatalf("reason should carry lock text: %s", d.Reason)
+	}
+
+	// 锁定的自动卖单放行（保护锁只挡开仓）。
+	in = sellInput(1000, 1000)
+	in.Protection = locked
+	check(t, in, Defaults(), "")
+
+	// 锁定的人工买单放行（人工单不受保护锁约束）。
+	in = base()
+	in.Order.Source = Manual
+	in.Order.Operator = "owner"
+	in.Protection = locked
+	check(t, in, Defaults(), "")
+
+	// 未锁定时放行。
+	in = base()
+	check(t, in, Defaults(), "")
 }

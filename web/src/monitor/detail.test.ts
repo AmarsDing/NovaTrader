@@ -316,14 +316,14 @@ describe('§5.3 风控牌', () => {
     expect(ringTone(80)).toBe('warn')
     expect(ringTone(100)).toBe('danger')
   })
-  it('R01–R15 全表：命中次数来自日报，缺报写未返回，处置含缩量放行', () => {
+  it('R01–R16 全表：命中次数来自日报，缺报写未返回，处置含缩量放行', () => {
     const table = panel?.sections.find((s) => s.key === 'rules')?.table
-    expect(table?.rows).toHaveLength(15)
+    expect(table?.rows).toHaveLength(16)
     expect(table?.rows[0][0]).toBe('R01')
     expect(table?.rows.find((r) => r[0] === 'R10')?.[2]).toBe('2')
     expect(table?.rows.find((r) => r[0] === 'R01')?.[2]).toBe('今日未命中')
     expect(table?.rows.find((r) => r[0] === 'R07')?.[3]).toBe('缩量放行')
-    expect(RULES.map((r) => r.code)).toEqual(['R01', 'R02', 'R03', 'R04', 'R05', 'R06', 'R07', 'R08', 'R09', 'R10', 'R11', 'R12', 'R13', 'R14', 'R15'])
+    expect(RULES.map((r) => r.code)).toEqual(['R01', 'R02', 'R03', 'R04', 'R05', 'R06', 'R07', 'R08', 'R09', 'R10', 'R11', 'R12', 'R13', 'R14', 'R15', 'R16'])
     const noReport = buildDetail({ ...fixture(), riskReport: { ok: false, summary: '' } }, 'post:risk', NOW)
     expect(noReport?.sections.find((s) => s.key === 'rules')?.table?.rows[0][2]).toBe('未返回')
   })

@@ -92,6 +92,7 @@ type Engine struct {
 	exits        map[string]time.Time
 	checks       []risk.CheckMark
 	rejectAlert  time.Time
+	protections  *protections
 }
 
 func NewEngine(repo Repo, quotes QuoteSource, audit Auditor, pub Publisher, logger log.Logger) *Engine {
@@ -113,6 +114,7 @@ func NewEngine(repo Repo, quotes QuoteSource, audit Auditor, pub Publisher, logg
 		highs:         map[string]float64{},
 		news:          map[string]string{},
 		exits:         map[string]time.Time{},
+		protections:   newProtections(),
 	}
 	e.session = func(t time.Time) tradecal.Session {
 		s, err := e.cal.SessionAt(t)
@@ -287,6 +289,14 @@ func (e *Engine) input(o risk.Order, now time.Time, snap Snapshot, haveSnap bool
 		in.Counters.LastSecond, in.Counters.Today = r.Counts(now)
 	}
 	in.Counters.BuysToday = e.buys[o.Account]
+	// R16：保护锁定的可见状态（只挡自动买单，规则内判放行口径）。保护锁按 Tongdaxin
+	// 形式（600519.SH）建键，与信号闭合侧一致；这里把订单代码归一化后再查，避免上层
+	// 传入 sh600519 之类的别名形式漏查（risk.Check 内部同样归一化）。
+	if sym, err := symbol.Parse(o.Symbol); err == nil {
+		if v := e.protections.view(bookOfAccount(o.Account), sym.Tongdaxin(), now); v.Locked {
+			in.Protection = v
+		}
+	}
 	for _, r := range e.reservations {
 		if r.account == o.Account {
 			in.Reservations = append(in.Reservations, r.Reservation)
@@ -522,6 +532,40 @@ func (e *Engine) OnOrderAction(p OrderActionPayload) {
 	e.mu.RUnlock()
 	if r != nil {
 		r.Record(e.now())
+	}
+}
+
+// OnSignalClosed 消费 strategy.signal.updated 终态事件，驱动 R16 保护锁定（借法
+// freqtrade protections：用自己的交易结果驱动 StoplossGuard/CooldownPeriod，这里以
+// 信号闭合作为「一笔完结交易」的策略侧等价物）。
+// 只收 status=closed 且 book 合法、代码可解析的事件；触发新锁时落库并告警（repo 事务内
+// 一并写 risk_event + risk.alert outbox）。event_id 级去重由订阅侧（runner seen-set）保证。
+func (e *Engine) OnSignalClosed(ctx context.Context, p SignalClosedPayload) {
+	if p.Status != "closed" {
+		return
+	}
+	if p.Book != "paper" && p.Book != "live" {
+		return
+	}
+	sym, err := symbol.Parse(p.StockCode)
+	if err != nil || sym.Tongdaxin() == "" {
+		return
+	}
+	now := e.now()
+	e.mu.Lock()
+	lock, triggered := e.protections.onClosed(p.Book, sym.Tongdaxin(), p.SignalID, p.PnlPct, p.ClosedAt, e.params, now)
+	e.mu.Unlock()
+	// 旧事件（closed_at 早于锁定时长）回放时会算出「已过期」的锁：可见状态本就不会生效，
+	// 不应为一把死锁落库、更不应发一条指向过去的告警。
+	if !triggered || !lock.Until.After(now) {
+		return
+	}
+	account := risk.SIM
+	if p.Book == "live" {
+		account = risk.LIVE
+	}
+	if err := e.repo.SaveProtection(ctx, account, sym.Tongdaxin(), lock.Reason, lock.Until); err != nil {
+		e.log.Errorf("save protection lock: %v", err)
 	}
 }
 
